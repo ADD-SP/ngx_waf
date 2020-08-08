@@ -121,6 +121,14 @@ URL 白名单。写法同`url`。
 
 Referer 白名单。写法同`referer`。
 
+## 日志
+
+日志存储在 error.log 中。格式如下
+
+```text
+2020/01/02 03:04:05 [alert] 1526#0: *2 ngx_waf: URL, client: 0.0.0.0, server: www.example.com, request: "GET /www.bak HTTP/1.1", host: "www.example.com"
+```
+
 ## 感谢
 
 + [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此
