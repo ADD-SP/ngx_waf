@@ -239,7 +239,7 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
     switch (r->connection->sockaddr->sa_family) {
     case AF_INET:
         if (check_ipv4(sin->sin_addr.s_addr, srv_conf->block_ipv4) == SUCCESS) {
-            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: IP");
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: IP");
             return NGX_HTTP_FORBIDDEN;
         }
         break;
@@ -247,7 +247,7 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
     }
 
     if (ngx_regex_exec_array(srv_conf->block_url, &r->uri, r->connection->log) == NGX_OK) {
-        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: URL");
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: URL");
         return NGX_HTTP_FORBIDDEN;
     }
 
