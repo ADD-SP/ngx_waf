@@ -211,7 +211,7 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
 
-    if (srv_conf->ngx_waf == 0) {
+    if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
         return NGX_DECLINED;
     }
     
