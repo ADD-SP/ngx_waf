@@ -27,7 +27,7 @@ nginx 添加新的模块必须要重新编译，所以先[下载 nginx 源码](h
 cd /usr/local/src
 git clone https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
-git clone -b v2.1.0 https://github.com/troydhanson/uthash.git
+git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 ```
 
 #### 编译 nginx
@@ -136,7 +136,7 @@ Referer 白名单。写法同`referer`。
 
 ## 日志
 
-日志存储在 error.log 中。格式如下
+日志存储在 error.log 中。拦截记录的日志等级时 ALERT，如果模块内部出现预计中的错误其日志等级是 ERROR。
 
 ```text
 2020/01/02 03:04:05 [alert] 1526#0: *2 ngx_waf: URL, client: 0.0.0.0, server: www.example.com, request: "GET /www.bak HTTP/1.1", host: "www.example.com"
