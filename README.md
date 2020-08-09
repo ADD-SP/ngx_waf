@@ -50,7 +50,7 @@ http {
     server {
         ...
         ngx_waf on;
-        ngx_waf_rule_path /usr/local/src/rules/;
+        ngx_waf_rule_path /usr/local/src/ngx_waf/rules/;
         ngx_waf_cc_deny on;
         ngx_waf_cc_deny_limit 5 1;
         ...
