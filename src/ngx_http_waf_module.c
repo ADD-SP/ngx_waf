@@ -138,7 +138,9 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
         return NULL;
     }
     ngx_str_null(&srv_conf->ngx_waf_rule_path);
-    srv_conf->ngx_pool = cf->pool;
+    srv_conf->ngx_log = ngx_log_init(NULL);
+    srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) +(sizeof(hash_table_item_int_ulong_t) * 60000), srv_conf->ngx_log);
+    srv_conf->alloc_times = 0;
     srv_conf->ngx_waf = NGX_CONF_UNSET;
     srv_conf->ngx_waf_cc_deny = NGX_CONF_UNSET;
     srv_conf->ngx_waf_cc_deny_limit = NGX_CONF_UNSET;
@@ -152,6 +154,20 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->ipv4_times = NULL;
+
+    if (srv_conf->ngx_log == NULL
+        || srv_conf->ngx_pool == NULL
+        || srv_conf->block_ipv4 == NULL
+        || srv_conf->block_url == NULL
+        || srv_conf->block_args == NULL
+        || srv_conf->block_ua == NULL
+        || srv_conf->block_referer == NULL
+        || srv_conf->white_ipv4 == NULL
+        || srv_conf->white_url == NULL
+        || srv_conf->white_referer == NULL) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
+        return NULL;
+    }
 
     return srv_conf;
 }
@@ -248,8 +264,13 @@ static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* s
     }
     if (srv_conf->ngx_waf_cc_deny_limit == NGX_CONF_UNSET
         || srv_conf->ngx_waf_cc_deny_duration == NGX_CONF_UNSET) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
         return FAIL;
+    }
+    if (srv_conf->alloc_times > 50000) {
+        HASH_CLEAR(hh, srv_conf->ipv4_times);
+        ngx_destroy_pool(srv_conf->ngx_pool);
+        ngx_log_error(NGX_LOG_NOTICE, r->connection->log, 0, "ngx_waf: MEM-FREE");
     }
 
     hash_table_item_int_ulong_t* hash_item = NULL;
@@ -257,6 +278,11 @@ static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* s
     HASH_FIND_INT(srv_conf->ipv4_times, (int*)(&ipv4), hash_item);
     if (hash_item == NULL) {
         hash_item = ngx_palloc(srv_conf->ngx_pool, sizeof(hash_table_item_int_ulong_t));
+        if (hash_item == NULL) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: MEM-ALLOC-ERROR");
+            return FAIL;
+        }
+        ++(srv_conf->alloc_times);
         hash_item->times = 1;
         hash_item->start_time = now;
         hash_item->key = ipv4;
@@ -265,9 +291,6 @@ static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* s
     else {
         if (difftime(now, hash_item->start_time) >= srv_conf->ngx_waf_cc_deny_duration * 60.0) {
             HASH_DEL(srv_conf->ipv4_times, hash_item);
-            if (ngx_pfree(srv_conf->ngx_pool, hash_item) != NGX_OK) {
-                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: CC-DENY-MEM-FREE-ERR");
-            }
         }
         else {
             if (hash_item->times > (ngx_uint_t)srv_conf->ngx_waf_cc_deny_limit) {

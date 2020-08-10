@@ -43,7 +43,9 @@ typedef struct {
 } hash_table_item_int_ulong_t;
 
 typedef struct {
+    ngx_log_t* ngx_log;
     ngx_pool_t* ngx_pool;
+    ngx_uint_t alloc_times;
     ngx_int_t ngx_waf;
     ngx_str_t ngx_waf_rule_path;
     ngx_int_t ngx_waf_cc_deny;
