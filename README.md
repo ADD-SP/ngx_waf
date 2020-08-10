@@ -13,6 +13,8 @@
 + UserAgent 黑名单
 + Referer 黑白名单。
 
+[更新日志](CHANGES.md)
+
 ## 安装
 
 ### On Unix Like
