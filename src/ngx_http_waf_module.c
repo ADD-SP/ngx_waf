@@ -92,7 +92,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
         return NGX_CONF_ERROR;
     }
 
-    char full_path[256 * 4 * 8];
+    char* full_path = ngx_palloc(cf->pool, sizeof(char) * RULE_MAX_LEN);
     char* end = to_c_str((u_char*)full_path, srv_conf->ngx_waf_rule_path);
 
     CHECK_AND_LOAD_CONF(cf, full_path, end, IPV4_FILE, srv_conf->block_ipv4, 1);
@@ -104,6 +104,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_URL_FILE, srv_conf->white_url, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_REFERER_FILE, srv_conf->white_referer, 0);
 
+    ngx_pfree(cf->pool, full_path);
     return NGX_CONF_OK;
 }
 
@@ -303,6 +304,7 @@ static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* s
     return FAIL;
 }
 
+
 static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf) {
     hash_table_item_int_ulong_t* p = NULL;
     int count = 0;
@@ -413,11 +415,11 @@ static ngx_int_t check_ipv4(unsigned long ip, ngx_array_t* a) {
 static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
     ngx_str_t line;
-    char str[256 * 4 * 8];
+    char* str = ngx_palloc(cf->pool, sizeof(char) * RULE_MAX_LEN);
     if (fp == NULL) {
         return FAIL;
     }
-    while (fgets(str, 256 * 4 * 8, fp) != NULL) {
+    while (fgets(str, RULE_MAX_LEN - 16, fp) != NULL) {
         ngx_regex_compile_t   rc;
         u_char                errstr[NGX_MAX_CONF_ERRSTR];
         ngx_regex_elt_t* ngx_regex_elt;
@@ -450,6 +452,7 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
         }
     }
     fclose(fp);
+    ngx_pfree(cf->pool, str);
     return SUCCESS;
 }
 
