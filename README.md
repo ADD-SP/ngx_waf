@@ -99,9 +99,9 @@ https://example.com/www.bak
 规则生效顺序（靠上的优先生效）
 
 1. IP 白名单
-2. URL 白名单
-3. IP 黑名单
-4. CC 防御
+2. IP 黑名单
+3. CC 防御
+4. URL 白名单
 5. URL 黑名单
 6. 参数黑名单
 7. UserAgent 黑名单
