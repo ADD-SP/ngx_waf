@@ -209,10 +209,6 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
 
     }
 
-    if (ngx_regex_exec_array(srv_conf->white_url, &r->uri, r->connection->log) == NGX_OK) {
-        return NGX_DECLINED;
-    }
-
     switch (r->connection->sockaddr->sa_family) {
     case AF_INET:
         if (check_ipv4(ipv4, srv_conf->block_ipv4) == SUCCESS) {
@@ -225,6 +221,10 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
         }
         break;
 
+    }
+
+    if (ngx_regex_exec_array(srv_conf->white_url, &r->uri, r->connection->log) == NGX_OK) {
+        return NGX_DECLINED;
     }
 
     if (ngx_regex_exec_array(srv_conf->block_url, &r->uri, r->connection->log) == NGX_OK) {
