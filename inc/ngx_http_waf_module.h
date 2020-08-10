@@ -19,9 +19,12 @@
 #define WHITE_REFERER_FILE ("white-referer")
 
 #define SUCCESS (1)
+#define PROCESSING (2)
 #define FAIL (0)
 #define TRUE (1)
 #define FALSE (0)
+
+#define INITIAL_SIZE (sizeof(hash_table_item_int_ulong_t) * 60000)
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中 */
 #define CHECK_AND_LOAD_CONF(cf, buf, end, filename, ngx_array, mode) { \
@@ -43,14 +46,14 @@ typedef struct {
 } hash_table_item_int_ulong_t;
 
 typedef struct {
-    ngx_log_t* ngx_log;
-    ngx_pool_t* ngx_pool;
-    ngx_uint_t alloc_times;
-    ngx_int_t ngx_waf;
-    ngx_str_t ngx_waf_rule_path;
-    ngx_int_t ngx_waf_cc_deny;
-    ngx_int_t ngx_waf_cc_deny_limit;
-    ngx_int_t ngx_waf_cc_deny_duration;
+    ngx_log_t* ngx_log;                         /* 记录内存池在进行操作时的错误日志 */
+    ngx_pool_t* ngx_pool;                       /* 模块所使用的内存池 */
+    ngx_uint_t alloc_times;                     /* 当前已经从内存池中申请过多少次内存 */
+    ngx_int_t ngx_waf;                          /* 是否启用本模块 */
+    ngx_str_t ngx_waf_rule_path;                /* 配置文件所在目录 */
+    ngx_int_t ngx_waf_cc_deny;                  /* 是否启用 CC 防御 */
+    ngx_int_t ngx_waf_cc_deny_limit;            /* CC 防御的限制频率 */
+    ngx_int_t ngx_waf_cc_deny_duration;         /* CC 防御的拉黑时长 */
     ngx_array_t* block_ipv4;
     ngx_array_t* block_url;
     ngx_array_t* block_args;
@@ -60,6 +63,11 @@ typedef struct {
     ngx_array_t* white_url;
     ngx_array_t* white_referer;
     hash_table_item_int_ulong_t* ipv4_times;
+
+    ngx_pool_t* ngx_pool_old;
+    hash_table_item_int_ulong_t* ipv4_times_old;
+    hash_table_item_int_ulong_t* ipv4_times_old_cur;
+    ngx_int_t free_hash_table_step;
 }ngx_http_waf_srv_conf_t;
 
 typedef struct {
@@ -100,6 +108,17 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4);
 * 如果匹配到返回 SUCCESS，反之返回 FAIL
 */
 static ngx_int_t check_ipv4(unsigned long ip, ngx_array_t* a);
+
+/*
+* 逐渐释放旧的哈希表所占用的内存
+* 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池
+* 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
+* 第三阶段：清空旧的哈希表
+* 第四阶段：销毁旧的内存池，完成释放。
+* 如果成功返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL
+*/
+static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
+
 
 /* 将 ngx_str 转化为 C 风格的字符串 */
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str);

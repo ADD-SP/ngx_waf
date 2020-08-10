@@ -142,12 +142,6 @@ Referer 白名单。写法同`referer`。
 2020/01/02 03:04:05 [alert] 1526#0: *2 ngx_waf: URL, client: 0.0.0.0, server: www.example.com, request: "GET /www.bak HTTP/1.1", host: "www.example.com"
 ```
 
-## 性能
-
-### 内存管理
-
-本模块在在开始了 CC 防御功能的情况下会在合适的时机集中释放一次内存，被释放的内存大小不超过 50 MB。下面是两个典型是的时机：
-
 ## 感谢
 
 + [uthash](https://github.com/troydhanson/uthash): 本项目使用了版本为 v2.1.0 的 uthash 的源代码。uthash 源代码以及开源许可位于`inc/uthash/`。
