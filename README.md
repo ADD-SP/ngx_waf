@@ -36,9 +36,25 @@ git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 
 ```bash
 ./configure xxxxxx --add-module=/usr/local/src/ngx_waf
-make && make install
+make
 ```
 > xxxxxx 为其它的编译参数，一般来说是将 xxxxxx 替换为`nginx -V`显示的编译参数。
+
+如果您已经安装了 nginx 则可以直接替换二进制文件（假设原有的二进制文件的全路径为`/usr/local/nginx/sbin/nginx`）
+
+```bash
+nginx -s stop
+mv /usr/local/nginx/sbin/nginx /usr/local/nginx/sbin/nginx.old
+cp objs/nginx /usr/local/nginx/sbin/nginx
+nginx
+```
+
+> 如果不想中断 nginx 服务则可以通过热部署的方式来实现升级，热部署方法见[官方文档](https://nginx.org/en/docs/control.html)。
+
+如果您之前没有安装则直接执行下列命令
+```bash
+make install
+```
 
 #### 修改 nginx.conf
 
@@ -52,7 +68,7 @@ http {
         ngx_waf on;
         ngx_waf_rule_path /usr/local/src/ngx_waf/rules/;
         ngx_waf_cc_deny on;
-        ngx_waf_cc_deny_limit 5 1;
+        ngx_waf_cc_deny_limit 1000 60;
         ...
     }
     ...
@@ -66,7 +82,7 @@ http {
 
 > ngx_waf_cc_deny 表示是否启用 CC 防御。
 
-> ngx_waf_cc_deny_limit 包含两个参数，第一个参数表示每分钟的最多请求次数（大于零），第二个参数表示第一个参数的限制后拉黑 IP 多少分钟（大于零）。
+> ngx_waf_cc_deny_limit 包含两个参数，第一个参数表示每分钟的最多请求次数（大于零的整数），第二个参数表示超出第一个参数的限制后拉黑 IP 多少分钟（大于零的整数）。
 
 #### 测试
 
@@ -84,19 +100,20 @@ https://example.com/www.bak
 
 1. IP 白名单
 2. URL 白名单
-3. Referer 白名单
-4. IP 黑名单
-5. CC 防御
-6. URL 黑名单
-7. 参数黑名单
-8. Referer 黑名单
-9. UserAgent 黑名单
+3. IP 黑名单
+4. CC 防御
+5. URL 黑名单
+6. 参数黑名单
+7. UserAgent 黑名单
+8. Referer 白名单
+9. Referer 黑名单
+
 
 ### rules/ipv4
 
 IPV4 黑名单
 
-每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP。
+每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
 
 ### rules/url
 

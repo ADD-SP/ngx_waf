@@ -212,12 +212,6 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
         return NGX_DECLINED;
     }
 
-    if (r->headers_in.referer != NULL
-        && ngx_regex_exec_array(srv_conf->white_referer, &r->headers_in.referer->value, r->connection->log) == NGX_OK) {
-        return NGX_DECLINED;
-    }
-
-
     switch (r->connection->sockaddr->sa_family) {
     case AF_INET:
         if (check_ipv4(ipv4, srv_conf->block_ipv4) == SUCCESS) {
@@ -243,14 +237,18 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
         return NGX_HTTP_FORBIDDEN;
     }
 
-    if (r->headers_in.referer != NULL
-        && ngx_regex_exec_array(srv_conf->block_referer, &r->headers_in.referer->value, r->connection->log) == NGX_OK) {
-        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: REFERER");
+    if (ngx_regex_exec_array(srv_conf->block_ua, &r->headers_in.user_agent->value, r->connection->log) == NGX_OK) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: USER-AGENT");
         return NGX_HTTP_FORBIDDEN;
     }
 
-    if (ngx_regex_exec_array(srv_conf->block_ua, &r->headers_in.user_agent->value, r->connection->log) == NGX_OK) {
-        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: USER-AGENT");
+    if (r->headers_in.referer != NULL
+        && ngx_regex_exec_array(srv_conf->white_referer, &r->headers_in.referer->value, r->connection->log) == NGX_OK) {
+        return NGX_DECLINED;
+    }
+    if (r->headers_in.referer != NULL
+        && ngx_regex_exec_array(srv_conf->block_referer, &r->headers_in.referer->value, r->connection->log) == NGX_OK) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: REFERER");
         return NGX_HTTP_FORBIDDEN;
     }
 
