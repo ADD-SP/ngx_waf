@@ -24,6 +24,8 @@
 #define TRUE (1)
 #define FALSE (0)
 
+
+#define RULE_MAX_LEN (256 * 4 * 8)
 #define INITIAL_SIZE (sizeof(hash_table_item_int_ulong_t) * 60000)
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中 */
