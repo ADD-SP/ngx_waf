@@ -123,7 +123,7 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
     srv_conf->ngx_waf_cc_deny_limit = ngx_atoi((p_str + 1)->data, (p_str + 1)->len);
     srv_conf->ngx_waf_cc_deny_duration = ngx_atoi((p_str + 2)->data, (p_str + 2)->len);
     if (srv_conf->ngx_waf_cc_deny_limit <= 0 || srv_conf->ngx_waf_cc_deny_duration <= 0) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Cannot be converted to an integer greater than zero %d %d", 
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Cannot be converted to an integer greater than zero %d %d",
             srv_conf->ngx_waf_cc_deny_limit,
             srv_conf->ngx_waf_cc_deny_duration);
         return NGX_CONF_ERROR;
@@ -238,7 +238,8 @@ static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
         return NGX_HTTP_FORBIDDEN;
     }
 
-    if (ngx_regex_exec_array(srv_conf->block_ua, &r->headers_in.user_agent->value, r->connection->log) == NGX_OK) {
+    if (r->headers_in.user_agent != NULL
+        && ngx_regex_exec_array(srv_conf->block_ua, &r->headers_in.user_agent->value, r->connection->log) == NGX_OK) {
         ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: USER-AGENT");
         return NGX_HTTP_FORBIDDEN;
     }
@@ -323,7 +324,7 @@ static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t*
         if (srv_conf->ipv4_times_old_cur == NULL) {
             srv_conf->ipv4_times_old_cur = srv_conf->ipv4_times_old;
         }
-        for (;srv_conf->ipv4_times_old_cur != NULL && count < 100; srv_conf->ipv4_times_old_cur = p->hh.next) {
+        for (; srv_conf->ipv4_times_old_cur != NULL && count < 100; srv_conf->ipv4_times_old_cur = p->hh.next) {
             /* 判断当前的记录是否过期 */
             if (difftime(now, srv_conf->ipv4_times_old_cur->start_time) < srv_conf->ngx_waf_cc_deny_duration * 60.0) {
                 /* 在新的哈希表中查找是否存在当前记录 */
