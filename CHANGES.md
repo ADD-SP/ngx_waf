@@ -5,6 +5,7 @@
 ### Added
 
 + 支持 CC 防御功能。
++ 新配置项`ngx_waf_mult_mount`用于增加拦截面，典型的应用场景是存在`rewrite`的情况下重写前后均会对 URL 进行一次检测。
 
 ### Changed
 
@@ -21,4 +22,5 @@
 
 ### Fixed
 + 启用 CC 防御后会有内存泄漏。
++ 当 User-agent 为空时会触发 segmentation fault。
 

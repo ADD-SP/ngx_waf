@@ -10,9 +10,18 @@
 #include <sys/io.h>
 #endif
 
+static ngx_int_t ngx_waf_mult_mount = 0;
 
 static ngx_command_t ngx_http_waf_commands[] = {
 
+   {
+        ngx_string("ngx_waf_mult_mount"),
+        NGX_HTTP_MAIN_CONF | NGX_CONF_FLAG,
+        ngx_http_waf_mult_mount,
+        NGX_HTTP_MAIN_CONF_OFFSET,
+        offsetof(ngx_http_waf_main_conf_t, ngx_waf_mult_mount),
+        NULL
+   },
    {
         ngx_string("ngx_waf"),
         NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
@@ -52,7 +61,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
 static ngx_http_module_t ngx_http_waf_module_ctx = {
     NULL,
     ngx_http_waf_init_after_load_config,
-    NULL,
+    ngx_http_waf_create_main_conf,
     NULL,
     ngx_http_waf_create_srv_conf,
     NULL,
@@ -75,6 +84,16 @@ ngx_module_t ngx_http_waf_module = {
     NULL,                          /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+
+static char* ngx_http_waf_mult_mount(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_main_conf_t* main_conf = conf;
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    ngx_waf_mult_mount = main_conf->ngx_waf_mult_mount;
+    return NGX_CONF_OK;
+}
 
 
 static char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
@@ -132,6 +151,17 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
 }
 
 
+static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
+    ngx_http_waf_main_conf_t* main_conf = NULL;
+    main_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_main_conf_t));
+    if (main_conf == NULL) {
+        return NULL;
+    }
+    main_conf->ngx_waf_mult_mount = NGX_CONF_UNSET;
+    return main_conf;
+}
+
+
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
     srv_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_srv_conf_t));
@@ -179,17 +209,48 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_core_main_conf_t* cmcf;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
-    *h = ngx_http_waf_handler;
+    *h = ngx_http_waf_handler_url_args;
+
+    if (ngx_waf_mult_mount != 0) {
+        h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
+        *h = ngx_http_waf_handler_ip_url_referer_ua_args;
+    }
 
     return NGX_OK;
 }
 
 
-static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
+    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+
+    if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
+        return NGX_DECLINED;
+    }
+
+    if (ngx_regex_exec_array(srv_conf->white_url, &r->uri, r->connection->log) == NGX_OK) {
+        return NGX_DECLINED;
+    }
+
+    if (ngx_regex_exec_array(srv_conf->block_url, &r->uri, r->connection->log) == NGX_OK) {
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: URL");
+        return NGX_HTTP_FORBIDDEN;
+    }
+
+    if (r->args.len != 0
+        && ngx_regex_exec_array(srv_conf->block_args, &r->args, r->connection->log) == NGX_OK) {
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ARGS");
+        return NGX_HTTP_FORBIDDEN;
+    }
+
+    return NGX_DECLINED;
+}
+
+
+static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
     if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
