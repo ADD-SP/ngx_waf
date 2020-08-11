@@ -48,6 +48,10 @@ typedef struct {
 } hash_table_item_int_ulong_t;
 
 typedef struct {
+    ngx_int_t ngx_waf_mult_mount;
+} ngx_http_waf_main_conf_t;
+
+typedef struct {
     ngx_log_t                      *ngx_log;                    /* 记录内存池在进行操作时的错误日志 */
     ngx_pool_t                     *ngx_pool;                   /* 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                /* 当前已经从内存池中申请过多少次内存 */
@@ -78,6 +82,9 @@ typedef struct {
 }ipv4_t;
 
 
+static char* ngx_http_waf_mult_mount(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
 static char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
@@ -93,10 +100,16 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
 static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 
 
+static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
+
+
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
 
-static ngx_int_t ngx_http_waf_handler(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
+
+
+static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args(ngx_http_request_t* r);
 
 /*
 * 将一个字符串形式的 IPV4 地址转化为 ngx_ipv4_t

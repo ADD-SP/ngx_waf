@@ -64,6 +64,7 @@ make install
 
 ```text
 http {
+    ngx_waf_mult_mount off;
     ...
     server {
         ...
@@ -77,6 +78,8 @@ http {
 }
 
 ```
+
+> ngx_waf_mult_mount 当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
 
 > ngx_waf 表示是否启用模块。
 
