@@ -432,7 +432,7 @@ static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t*
 static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     size_t prefix = 0;
     size_t num = 0;
-    size_t suffix = ~(size_t)0;
+    size_t suffix = 32;
     u_char c;
     int is_in_suffix = FALSE;
     for (size_t i = 0; i < text.len; i++) {
@@ -455,7 +455,14 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
         }
     }
     prefix = (num << 24) | (prefix >> 8);
-    ipv4->prefix = prefix;
+    size_t i = suffix, j = 1;
+    suffix = 0;
+    while (i > 0) {
+        suffix |= j;
+        j <<= 1;
+        --i;
+    }
+    ipv4->prefix = prefix & suffix;
     ipv4->suffix = suffix;
     return SUCCESS;
 }
@@ -464,7 +471,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
 static ngx_int_t check_ipv4(unsigned long ip, ngx_array_t* a) {
     ipv4_t* ipv4 = NULL;
     size_t i;
-    for (ipv4 = a->elts, i = 0; i < a->nelts; i++) {
+    for (ipv4 = a->elts, i = 0; i < a->nelts; i++, ++ipv4) {
         size_t prefix = ip & ipv4->suffix;
         if (prefix == ipv4->prefix) {
             return SUCCESS;

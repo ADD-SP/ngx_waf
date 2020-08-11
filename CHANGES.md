@@ -21,6 +21,8 @@
     9. Referer 黑名单
 
 ### Fixed
+
 + 启用 CC 防御后会有内存泄漏。
 + 当 User-agent 为空时会触发 segmentation fault。
++ IPV4 黑白名单功能失效
 
