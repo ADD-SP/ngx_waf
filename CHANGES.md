@@ -9,6 +9,7 @@
 
 ### Changed
 
++ 更新默认规则（[55f0a48](https://github.com/ADD-SP/ngx_waf/commit/55f0a4824bafb67f562909bdb58292cfce1059ae)）。
 + 修改规则优先级（[3c388c8](https://github.com/ADD-SP/ngx_waf/commit/3c388c85e30528b66306ca780524c7d663277f07)）（[248958d](https://github.com/ADD-SP/ngx_waf/commit/248958d3a0ef27dd14acc63a503e97931841f18a)），现在的优先级为（靠上的优先生效）：
     1. IP 白名单
     2. IP 黑名单
