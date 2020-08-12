@@ -119,6 +119,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     CHECK_AND_LOAD_CONF(cf, full_path, end, ARGS_FILE, srv_conf->block_args, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, UA_FILE, srv_conf->block_ua, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, REFERER_FILE, srv_conf->block_referer, 0);
+    CHECK_AND_LOAD_CONF(cf, full_path, end, POST_FILE, srv_conf->block_post, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_IPV4_FILE, srv_conf->white_ipv4, 1);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_URL_FILE, srv_conf->white_url, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_REFERER_FILE, srv_conf->white_referer, 0);
@@ -181,6 +182,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->block_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->block_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->block_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
+    srv_conf->block_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -213,7 +215,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     if (h == NULL) {
         return NGX_ERROR;
     }
-    *h = ngx_http_waf_handler_url_args;
+    *h = ngx_http_waf_handler_url_args_post;
 
     if (ngx_waf_mult_mount != 0) {
         h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
@@ -224,7 +226,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 }
 
 
-static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_handler_url_args_post(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
     if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
@@ -244,6 +246,14 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
         && ngx_regex_exec_array(srv_conf->block_args, &r->args, r->connection->log) == NGX_OK) {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ARGS");
         return NGX_HTTP_FORBIDDEN;
+    }
+
+    if ((r->method & NGX_HTTP_POST) == r->method) {
+        ngx_int_t rc = ngx_http_read_client_request_body(r, check_post);
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf_debug: %d", rc);
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+            return rc;
+        }
     }
 
     return NGX_DECLINED;
@@ -278,7 +288,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args(ngx_http_request_t*
         }
         if (check_cc_ipv4(r, srv_conf, ipv4) == SUCCESS) {
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: CC-DENY");
-            return NGX_HTTP_FORBIDDEN;
+            return NGX_HTTP_SERVICE_UNAVAILABLE;
         }
         break;
 
@@ -364,6 +374,41 @@ static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* s
         }
     }
     return FAIL;
+}
+
+void check_post(ngx_http_request_t* r)
+{
+    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    
+    if (r->request_body == NULL) {
+        return;
+    }
+    ngx_chain_t* buf_chain = r->request_body->bufs;
+    ngx_buf_t* body_buf = NULL;
+    ngx_str_t body_str;
+
+
+    while (buf_chain != NULL) {
+        body_buf = buf_chain->buf;
+
+        if (body_buf == NULL) {
+            break;
+        }
+
+        body_str.data = body_buf->pos;
+        body_str.len = body_buf->last - body_buf->pos;
+
+        if (!ngx_buf_in_memory(body_buf)) {
+            continue;
+        }
+        if (ngx_regex_exec_array(srv_conf->block_post, &body_str, r->connection->log) == NGX_OK) {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: POST");
+            ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+            break;
+        }
+        buf_chain = buf_chain->next;
+    }
+
 }
 
 

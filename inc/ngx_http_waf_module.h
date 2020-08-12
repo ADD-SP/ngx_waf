@@ -14,6 +14,7 @@
 #define ARGS_FILE ("args")
 #define UA_FILE ("user-agent")
 #define REFERER_FILE ("referer")
+#define POST_FILE ("post")
 #define WHITE_IPV4_FILE ("white-ipv4")
 #define WHITE_URL_FILE ("white-url")
 #define WHITE_REFERER_FILE ("white-referer")
@@ -65,6 +66,7 @@ typedef struct {
     ngx_array_t                    *block_args;                 /* args 黑名单 */
     ngx_array_t                    *block_ua;                   /* user-agent 黑名单 */
     ngx_array_t                    *block_referer;              /* Referer 黑名单 */
+    ngx_array_t                    *block_post;
     ngx_array_t                    *white_ipv4;                 /* IPV4 白名单 */
     ngx_array_t                    *white_url;                  /* URL 白名单 */
     ngx_array_t                    *white_referer;              /* Referer 白名单 */
@@ -106,7 +108,7 @@ static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
 
-static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_url_args_post(ngx_http_request_t* r);
 
 
 static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args(ngx_http_request_t* r);
@@ -154,5 +156,8 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
 */
 static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf, unsigned long ipv4);
 
+/*
+*/
+void check_post(ngx_http_request_t* r);
 
 #endif // !NGX_HTTP_WAF_MODULE
