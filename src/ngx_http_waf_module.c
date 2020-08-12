@@ -250,7 +250,6 @@ static ngx_int_t ngx_http_waf_handler_url_args_post(ngx_http_request_t* r) {
 
     if ((r->method & NGX_HTTP_POST) == r->method) {
         ngx_int_t rc = ngx_http_read_client_request_body(r, check_post);
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf_debug: %d", rc);
         if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
             return rc;
         }
