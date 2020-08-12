@@ -340,7 +340,7 @@ static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* s
     if (srv_conf->alloc_times > 55000) {
         ngx_int_t ret = free_hash_table(r, srv_conf);
         if (ret == SUCCESS || ret == FAIL) {
-            srv_conf->alloc_times = 0;
+            srv_conf->alloc_times -= 55000;
         }
     }
 
