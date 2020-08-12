@@ -146,6 +146,12 @@ UserAgent 黑名单
 
 每条规则独占一行。每行一个正则表达式，当 user-agent 被任意一个规则匹配到就返回 403。
 
+### rules/post
+
+POST 黑名单
+
+每条规则独占一行。每行一个正则表达式，当请求体中的内容被任意一个规则匹配到就返回 403。
+
 ### rules/white-ipv4
 
 IPV4 白名单，写法同`ipv4`。
@@ -166,9 +172,15 @@ Referer 白名单。写法同`referer`。
 2020/01/02 03:04:05 [alert] 1526#0: *2 ngx_waf: URL, client: 0.0.0.0, server: www.example.com, request: "GET /www.bak HTTP/1.1", host: "www.example.com"
 ```
 
+## 性能
+
+### 内存管理
+
+本模块在启用了 CC 防御功能时会周期性地释放一次内存和申请一次内存，但是并不会一次性全部释放，而是逐步释放，每次请求释放一小部分，逐渐地完成释放，期间会小幅度拖慢处理时间.
+
 ## 感谢
 
 + [uthash](https://github.com/troydhanson/uthash): 本项目使用了版本为 v2.1.0 的 uthash 的源代码。uthash 源代码以及开源许可位于`inc/uthash/`。
-+ [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此
-+ [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程
-+ [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程
++ [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
++ [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
++ [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。
