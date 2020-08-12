@@ -8,6 +8,7 @@
 
 + CC 防御，超出限制后自动拉黑一段时间。
 + IPV4 黑白名单，支持 CIDR 表示法。
++ POST 黑名单
 + URL 黑白名单
 + GET 参数黑名单
 + UserAgent 黑名单
@@ -108,10 +109,11 @@ https://example.com/www.bak
 3. CC 防御
 4. URL 白名单
 5. URL 黑名单
-6. 参数黑名单
+6. Args 黑名单
 7. UserAgent 黑名单
 8. Referer 白名单
 9. Referer 黑名单
+10. POST 黑名单
 
 
 ### rules/ipv4
