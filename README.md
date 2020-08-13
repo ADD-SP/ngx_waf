@@ -24,6 +24,8 @@
 
 nginx 添加新的模块必须要重新编译，所以先[下载 nginx 源码](http://nginx.org/en/download.html)。
 
+> 推荐 1.18.0 版本的 nginx 源码，若使用低版本的 nginx 源码则不保证本模块可以正常使用。
+
 #### 下载 ngx-waf 源码
 
 ```bash
