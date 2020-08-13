@@ -61,12 +61,12 @@ typedef struct {
     ngx_int_t                       ngx_waf_cc_deny;            /* 是否启用 CC 防御 */
     ngx_int_t                       ngx_waf_cc_deny_limit;      /* CC 防御的限制频率 */
     ngx_int_t                       ngx_waf_cc_deny_duration;   /* CC 防御的拉黑时长 */
-    ngx_array_t                    *block_ipv4;                 /* IPV4 黑名单 */
-    ngx_array_t                    *block_url;                  /* URL 黑名单 */
-    ngx_array_t                    *block_args;                 /* args 黑名单 */
-    ngx_array_t                    *block_ua;                   /* user-agent 黑名单 */
-    ngx_array_t                    *block_referer;              /* Referer 黑名单 */
-    ngx_array_t                    *block_post;
+    ngx_array_t                    *black_ipv4;                 /* IPV4 黑名单 */
+    ngx_array_t                    *black_url;                  /* URL 黑名单 */
+    ngx_array_t                    *black_args;                 /* args 黑名单 */
+    ngx_array_t                    *black_ua;                   /* user-agent 黑名单 */
+    ngx_array_t                    *black_referer;              /* Referer 黑名单 */
+    ngx_array_t                    *black_post;                 /* 请求体内容黑名单 */
     ngx_array_t                    *white_ipv4;                 /* IPV4 白名单 */
     ngx_array_t                    *white_url;                  /* URL 白名单 */
     ngx_array_t                    *white_referer;              /* Referer 白名单 */
@@ -76,6 +76,9 @@ typedef struct {
     hash_table_item_int_ulong_t    *ipv4_times_old;             /* 执行函数 free_hash_table 时用于备份旧的 IPV4 访问频率统计表 */
     hash_table_item_int_ulong_t    *ipv4_times_old_cur;         /* 执行函数 free_hash_table 时用于记录当前处理到旧的 IPV4 访问频率统计表的哪一项 */
     ngx_int_t                       free_hash_table_step;       /* 记录 free_hash_table 执行到哪一阶段 */
+
+    ngx_int_t                       read_body_done;             /* 请求体是否读取完毕 */
+    ngx_int_t                       waiting_more_body;          /* 是否需要接受更多请求体 */
 }ngx_http_waf_srv_conf_t;
 
 typedef struct {
@@ -108,10 +111,10 @@ static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
 
-static ngx_int_t ngx_http_waf_handler_url_args_post(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
 
 
-static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_post(ngx_http_request_t* r);
 
 /*
 * 将一个字符串形式的 IPV4 地址转化为 ngx_ipv4_t
@@ -157,6 +160,8 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
 static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf, unsigned long ipv4);
 
 /*
+* 检查请求体内容是否存在于黑名单中
+* 存在则拦截，反之放行。
 */
 void check_post(ngx_http_request_t* r);
 
