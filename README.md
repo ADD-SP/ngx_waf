@@ -6,12 +6,14 @@
 
 ## 功能
 
++ 灵活的日志格式。
 + CC 防御，超出限制后自动拉黑一段时间。
 + IPV4 黑白名单，支持 CIDR 表示法。
 + POST 黑名单。
 + URL 黑白名单
 + GET 参数黑名单
-+ UserAgent 黑名单
++ UserAgent 黑名单。
++ Cookie 黑名单。
 + Referer 黑白名单。
 
 [更新日志](CHANGES.md)
@@ -100,7 +102,7 @@ https://example.com/www.bak
 
 如果返回 403 则表示安装成功。
 
-## 规则文件说明
+## 规则文件
 
 规则中的正则表达式均遵循[PCRE 标准](http://www.pcre.org/current/doc/html/pcre2syntax.html)。
 
@@ -118,61 +120,80 @@ https://example.com/www.bak
 10. POST 黑名单
 
 
-### rules/ipv4
++ rules/ipv4：IPV4 黑名单，每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
++ rules/url：URL 黑名单，每条规则独占一行。每行一个正则表达式，当 URL 被任意一个规则匹配到就返回 403。
++ rules/args：GET 参数黑名单，每条规则独占一行。每行一个正则表达式，当 GET 参数（如test=0&test1=）被任意一个规则匹配到就返回 403。
++ rules/referer：Referer 黑名单，每条规则独占一行。每行一个正则表达式，当 referer 被任意一个规则匹配到就返回 403。
++ rules/user-agent：UserAgent 黑名单，每条规则独占一行。每行一个正则表达式，当 user-agent 被任意一个规则匹配到就返回 403。
++ rules/post：POST 黑名单，每条规则独占一行。每行一个正则表达式，当请求体中的内容被任意一个规则匹配到就返回 403。
++ rules/white-ipv4：IPV4 白名单，写法同`rules/ipv4`。
++ rules/white-url：URL 白名单。写法同`rules/url`。
++ rules/white-referer：Referer 白名单。写法同`rules/referer`。
 
-IPV4 黑名单
 
-每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
 
-### rules/url
+## 变量
 
-URL 黑名单
+在书写 nginx.conf 文件的时候不可避免地需要用到一些变量，如`$remote_addr`可以用来获取客户端 IP 地址。
 
-每条规则独占一行。每行一个正则表达式，当 URL 被任意一个规则匹配到就返回 403。
+本模块增加了三个可用的变量。
 
-### rules/args
-
-GET 参数黑名单
-
-每条规则独占一行。每行一个正则表达式，当 GET 参数（如test=0&test1=）被任意一个规则匹配到就返回 403。
-
-### rules/referer
-
-Referer 黑名单
-
-每条规则独占一行。每行一个正则表达式，当 referer 被任意一个规则匹配到就返回 403。
-
-### rules/user-agent
-
-UserAgent 黑名单
-
-每条规则独占一行。每行一个正则表达式，当 user-agent 被任意一个规则匹配到就返回 403。
-
-### rules/post
-
-POST 黑名单
-
-每条规则独占一行。每行一个正则表达式，当请求体中的内容被任意一个规则匹配到就返回 403。
-
-### rules/white-ipv4
-
-IPV4 白名单，写法同`ipv4`。
-
-### rules/white-url
-
-URL 白名单。写法同`url`。
-
-### rules/white-referer
-
-Referer 白名单。写法同`referer`。
++ `$waf_blocked`: 本次请求是否被本模块拦截，如果拦截了则其的值为`'true'`,反之则为`'false'`。
++ `$waf_rule_type`：如果本次请求被本模块生效（黑白名单），则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
+    + `'WHITE-IPV4'`
+    + `'BLACK-IPV4'`
+    + `'WHITE-URL'`
+    + `'BLACK-URL'`
+    + `'BLACK-ARGS'`
+    + `'BLACK-USER-AGENT'`
+    + `'WHITE-REFERER'`
+    + `'BLACK-REFERER'`
+    + `'BLACK-COOKIE'`
+    <!-- + `'BLACK-POST'` -->
++ `'$waf_rule_details'`：如果本次请求被本模块生效（黑白名单），则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
 
 ## 日志
 
-日志存储在 error.log 中。拦截记录的日志等级时 ALERT，如果模块内部出现预计中的错误其日志等级是 ERROR。
+### 基本日志
+
+基本日志存储在 error.log 中。拦截记录的日志等级为 ALERT，如果模块内部出现预计中的错误其日志等级是 ERROR。基本日志只会记录请求相关的信息和触发的拦截规则的类型，而不会具体到某条规则。
 
 ```text
 2020/01/02 03:04:05 [alert] 1526#0: *2 ngx_waf: URL, client: 0.0.0.0, server: www.example.com, request: "GET /www.bak HTTP/1.1", host: "www.example.com"
 ```
+
+### 高级日志
+
+因为本模块增加了三个可用变量，所以可以比较灵活地定制 access.log 的格式。
+
+```text
+http {
+    ...
+    log_format  json    escape=json '{"blocked":$waf_blocked,'
+                                    '"rule_type":"$waf_rule_type",'
+                                    '"rule_deatails":"$waf_rule_deatails",'
+                                    '"remote_addr":"$remote_addr",'
+                                    '"remote_user":"$remote_user",'
+                                    '"time_local":"$time_local",'
+                                    '"request": "$request",'
+                                    '"status":"$status",'
+                                    '"body_bytes_sent":"$body_bytes_sent",'
+                                    '"http_referer":"$http_referer",'
+                                    '"http_user_agent":"$http_user_agent",'
+                                    '"http_x_forwarded_for":"$http_x_forwarded_for"}';
+    ...
+    server {
+        ...
+        access_log logs/access_json.log json;
+        ...
+    }
+
+}
+```
+
+这样的话就可以输出 JSON 日志，但是整个文件的内容并不是合法的 JSON 字符串，但是每一行都是合法的 JSON 字符串，所以如果打算处理的话一行一行地读取，或者使用脚本将整个文件的内容转化为合法的 JSON 字符串之后再统一处理。
+
+> 由于 nginx 默认不记录 POST 请求的日志，所以对于 POST 请求的拦截的信息只能去 error.log 里找。
 
 ## 常见问题
 
