@@ -1,12 +1,12 @@
-#ifndef NGX_HTTP_WAF_MODULE
-#define NGX_HTTP_WAF_MODULE
-
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
 #include "uthash/src/uthash.h"
+
+#ifndef NGX_HTTP_WAF_MODULE_CORE
+#define NGX_HTTP_WAF_MODULE_CORE
 
 /* 对应配置文件的文件名 */
 #define IPV4_FILE ("ipv4")
@@ -25,6 +25,8 @@
 #define FAIL (0)
 #define TRUE (1)
 #define FALSE (0)
+#define MATCHED (1)
+#define NOT_MATCHED (0)
 
 
 #define RULE_MAX_LEN (256 * 4 * 8)
@@ -54,6 +56,14 @@ typedef struct {
 } ngx_http_waf_main_conf_t;
 
 typedef struct {
+    ngx_int_t                       blocked;                    /* 是否拦截了本次请求 */
+    u_char                          rule_type[128];             /* 触发的规则类型 */
+    u_char                          rule_deatils[RULE_MAX_LEN]; /* 触发的规则内容 */
+    ngx_int_t                       read_body_done;
+    ngx_int_t                       waiting_more_body;
+} ngx_http_waf_ctx_t;
+
+typedef struct {
     ngx_log_t                      *ngx_log;                    /* 记录内存池在进行操作时的错误日志 */
     ngx_pool_t                     *ngx_pool;                   /* 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                /* 当前已经从内存池中申请过多少次内存 */
@@ -79,13 +89,12 @@ typedef struct {
     hash_table_item_int_ulong_t    *ipv4_times_old_cur;         /* 执行函数 free_hash_table 时用于记录当前处理到旧的 IPV4 访问频率统计表的哪一项 */
     ngx_int_t                       free_hash_table_step;       /* 记录 free_hash_table 执行到哪一阶段 */
 
-    ngx_int_t                       read_body_done:1;           /* 请求体是否读取完毕 */
-    ngx_int_t                       waiting_more_body:1;        /* 是否需要接受更多请求体 */
 }ngx_http_waf_srv_conf_t;
 
 typedef struct {
-    size_t prefix;  /* 相当于 192.168.1.0/24 中的 192.168.1.0 的整数形式 */
-    size_t suffix;  /* 相当于 192.168.1.0/24 中的 24 的整数形式 */
+    u_char text[32];    /* 点分十进制表示法 */
+    size_t prefix;      /* 相当于 192.168.1.0/24 中的 192.168.1.0 的整数形式 */
+    size_t suffix;      /* 相当于 192.168.1.0/24 中的 24 的整数形式 */
 }ipv4_t;
 
 
@@ -113,10 +122,19 @@ static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
 
+ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
 static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
 
 
-static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_post(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r);
 
 /*
 * 将一个字符串形式的 IPV4 地址转化为 ngx_ipv4_t
@@ -125,22 +143,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_post(ngx_http_reque
 */
 static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4);
 
-/*
-* 检查 ip 是否属于数组中的某个 ipv4 地址
-* 第二个参数是一个元素类型为 ngx_ipv4_t 的数组
-* 如果匹配到返回 SUCCESS，反之返回 FAIL
-*/
-static ngx_int_t check_ipv4(unsigned long ip, ngx_array_t* a);
 
-/*
-* 逐渐释放旧的哈希表所占用的内存
-* 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池
-* 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
-* 第三阶段：清空旧的哈希表
-* 第四阶段：销毁旧的内存池，完成释放。
-* 如果成功返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL
-*/
-static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
 
 
 /* 将 ngx_str 转化为 C 风格的字符串 */
@@ -156,15 +159,58 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
 
 
 /*
-* 检查当前的 ip 地址是否超出频率限制
-* 如果超出则返回 SUCCESS，反之返回 FAIL
-*/
-static ngx_int_t check_cc_ipv4(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf, unsigned long ipv4);
-
-/*
 * 检查请求体内容是否存在于黑名单中
 * 存在则拦截，反之放行。
 */
 void check_post(ngx_http_request_t* r);
 
-#endif // !NGX_HTTP_WAF_MODULE
+
+static ngx_int_t check_white_ipv4(ngx_http_request_t* r);
+
+
+static ngx_int_t check_black_ipv4(ngx_http_request_t* r);
+
+
+static ngx_int_t check_cc_ipv4(ngx_http_request_t* r);
+
+
+static ngx_int_t check_white_url(ngx_http_request_t* r);
+
+
+static ngx_int_t check_black_url(ngx_http_request_t* r);
+
+
+static ngx_int_t check_black_args(ngx_http_request_t* r);
+
+
+static ngx_int_t check_black_user_agent(ngx_http_request_t* r);
+
+
+static ngx_int_t check_white_referer(ngx_http_request_t* r);
+
+
+static ngx_int_t check_black_referer(ngx_http_request_t* r);
+
+
+static ngx_int_t check_black_cookie(ngx_http_request_t* r);
+
+
+/*
+* 检查 ip 是否属于数组中的某个 ipv4 地址
+* 第二个参数是一个元素类型为 ngx_ipv4_t 的数组
+* 如果匹配到返回 SUCCESS，反之返回 FAIL
+*/
+static ngx_int_t check_ipv4(unsigned long ip, const ipv4_t* ipv4);
+
+
+/*
+* 逐渐释放旧的哈希表所占用的内存
+* 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池
+* 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
+* 第三阶段：清空旧的哈希表
+* 第四阶段：销毁旧的内存池，完成释放。
+* 如果成功返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL
+*/
+static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
+
+#endif // !NGX_HTTP_WAF_MODULE_CORE
