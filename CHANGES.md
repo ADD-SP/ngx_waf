@@ -4,6 +4,20 @@
 
 ### Added
 
++ 新增三个内置变量
+    + `$waf_blocked`: 本次请求是否被本模块拦截，如果拦截了则其的值为`'true'`,反之则为`'false'`。
+    + `$waf_rule_type`：如果本次请求被本模块生效（黑白名单），则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
+        + `'WHITE-IPV4'`
+        + `'BLACK-IPV4'`
+        + `'WHITE-URL'`
+        + `'BLACK-URL'`
+        + `'BLACK-ARGS'`
+        + `'BLACK-USER-AGENT'`
+        + `'WHITE-REFERER'`
+        + `'BLACK-REFERER'`
+        + `'BLACK-COOKIE'`
+        <!-- + `'BLACK-POST'` -->
+    + `'$waf_rule_details'`：如果本次请求被本模块生效（黑白名单），则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
 + 支持过滤 POST 请求（[b46641e](https://github.com/ADD-SP/ngx_waf/commit/b46641eb8473c6dcb6afe9ed73f94712300d176f)）。
 + 新配置项`ngx_waf_mult_mount`用于增加拦截面（[e1b500d](https://github.com/ADD-SP/ngx_waf/commit/e1b500de349e017b67f334878342bdd6a34d22b8)），典型的应用场景是存在`rewrite`的情况下重写前后均会对 URL 进行一次检测。
 + 支持 CC 防御功能（[3a93e19](https://github.com/ADD-SP/ngx_waf/commit/3a93e190b8cb78fcd7a0197f76298c010169d113)）。
