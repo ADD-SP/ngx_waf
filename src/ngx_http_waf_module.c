@@ -119,6 +119,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     CHECK_AND_LOAD_CONF(cf, full_path, end, ARGS_FILE, srv_conf->black_args, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, UA_FILE, srv_conf->black_ua, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, REFERER_FILE, srv_conf->black_referer, 0);
+    CHECK_AND_LOAD_CONF(cf, full_path, end, COOKIE_FILE, srv_conf->black_cookie, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, POST_FILE, srv_conf->black_post, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_IPV4_FILE, srv_conf->white_ipv4, 1);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_URL_FILE, srv_conf->white_url, 0);
@@ -182,6 +183,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
+    srv_conf->black_cookie = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -213,7 +215,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_core_main_conf_t* cmcf;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
@@ -313,7 +315,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_post(ngx_http_reque
 
     if (r->headers_in.user_agent != NULL
         && ngx_regex_exec_array(srv_conf->black_ua, &r->headers_in.user_agent->value, r->connection->log) == NGX_OK) {
-        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: USER-AGENT");
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: USER-AGENT");
         return NGX_HTTP_FORBIDDEN;
     }
 
@@ -323,8 +325,19 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_post(ngx_http_reque
     }
     if (r->headers_in.referer != NULL
         && ngx_regex_exec_array(srv_conf->black_referer, &r->headers_in.referer->value, r->connection->log) == NGX_OK) {
-        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: REFERER");
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: REFERER");
         return NGX_HTTP_FORBIDDEN;
+    }
+
+    if (r->headers_in.cookies.nelts != 0) {
+        ngx_table_elt_t** p = r->headers_in.cookies.elts;
+        size_t i = 0;
+        for (; i < r->headers_in.cookies.nelts; i++, p++) {
+            if (ngx_regex_exec_array(srv_conf->black_cookie, &((*p)->value), r->connection->log) == NGX_OK) {
+                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: COOKIE");
+                return NGX_HTTP_FORBIDDEN;
+            }
+        }
     }
 
     if (((r->method & NGX_HTTP_POST) != 0) && srv_conf->read_body_done == FALSE) {
@@ -420,9 +433,6 @@ void check_post(ngx_http_request_t* r)
             buf_chain = buf_chain->next;
             continue;
         }
-
-        u_char str[4096];
-        to_c_str(str, body_str);
 
         if (ngx_regex_exec_array(srv_conf->black_post, &body_str, r->connection->log) == NGX_OK) {
             is_blocked = TRUE;
