@@ -14,6 +14,7 @@
 #define ARGS_FILE ("args")
 #define UA_FILE ("user-agent")
 #define REFERER_FILE ("referer")
+#define COOKIE_FILE ("cookie")
 #define POST_FILE ("post")
 #define WHITE_IPV4_FILE ("white-ipv4")
 #define WHITE_URL_FILE ("white-url")
@@ -66,6 +67,7 @@ typedef struct {
     ngx_array_t                    *black_args;                 /* args 黑名单 */
     ngx_array_t                    *black_ua;                   /* user-agent 黑名单 */
     ngx_array_t                    *black_referer;              /* Referer 黑名单 */
+    ngx_array_t                    *black_cookie;               /* Cookie 黑名单 */
     ngx_array_t                    *black_post;                 /* 请求体内容黑名单 */
     ngx_array_t                    *white_ipv4;                 /* IPV4 白名单 */
     ngx_array_t                    *white_url;                  /* URL 白名单 */
@@ -77,8 +79,8 @@ typedef struct {
     hash_table_item_int_ulong_t    *ipv4_times_old_cur;         /* 执行函数 free_hash_table 时用于记录当前处理到旧的 IPV4 访问频率统计表的哪一项 */
     ngx_int_t                       free_hash_table_step;       /* 记录 free_hash_table 执行到哪一阶段 */
 
-    ngx_int_t                       read_body_done;             /* 请求体是否读取完毕 */
-    ngx_int_t                       waiting_more_body;          /* 是否需要接受更多请求体 */
+    ngx_int_t                       read_body_done:1;           /* 请求体是否读取完毕 */
+    ngx_int_t                       waiting_more_body:1;        /* 是否需要接受更多请求体 */
 }ngx_http_waf_srv_conf_t;
 
 typedef struct {
