@@ -6,7 +6,6 @@
 
 ## 功能
 
-+ 灵活的日志格式。
 + CC 防御，超出限制后自动拉黑一段时间。
 + IPV4 黑白名单，支持 CIDR 表示法。
 + POST 黑名单。
@@ -139,61 +138,25 @@ https://example.com/www.bak
 本模块增加了三个可用的变量。
 
 + `$waf_blocked`: 本次请求是否被本模块拦截，如果拦截了则其的值为`'true'`,反之则为`'false'`。
-+ `$waf_rule_type`：如果本次请求被本模块生效（黑白名单），则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
-    + `'WHITE-IPV4'`
++ `$waf_rule_type`：如果本次请求被本模块拦截，则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
     + `'BLACK-IPV4'`
-    + `'WHITE-URL'`
     + `'BLACK-URL'`
     + `'BLACK-ARGS'`
     + `'BLACK-USER-AGENT'`
-    + `'WHITE-REFERER'`
     + `'BLACK-REFERER'`
     + `'BLACK-COOKIE'`
-    <!-- + `'BLACK-POST'` -->
-+ `'$waf_rule_details'`：如果本次请求被本模块生效（黑白名单），则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
+    + `'BLACK-POST'`
++ `'$waf_rule_details'`：如果本次请求被本模块拦截，则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
 
 ## 日志
 
-### 基本日志
-
-基本日志存储在 error.log 中。拦截记录的日志等级为 ALERT，如果模块内部出现预计中的错误其日志等级是 ERROR。基本日志只会记录请求相关的信息和触发的拦截规则的类型，而不会具体到某条规则。
+拦截日志日志存储在 error.log 中。拦截记录的日志等级为 ALERT。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
 
 ```text
-2020/01/02 03:04:05 [alert] 1526#0: *2 ngx_waf: URL, client: 0.0.0.0, server: www.example.com, request: "GET /www.bak HTTP/1.1", host: "www.example.com"
+2020/01/20 22:56:30 [alert] 24289#0: *30 ngx_waf: [BLACK-URL][(?i)(?:/\.env$)], client: 192.168.1.1, server: example.com, request: "GET /v1/.env HTTP/1.1", host: "example.com", referrer: "http:/example.com/v1/.env"
+
+2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.+(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"
 ```
-
-### 高级日志
-
-因为本模块增加了三个可用变量，所以可以比较灵活地定制 access.log 的格式。
-
-```text
-http {
-    ...
-    log_format  json    escape=json '{"blocked":$waf_blocked,'
-                                    '"rule_type":"$waf_rule_type",'
-                                    '"rule_deatails":"$waf_rule_deatails",'
-                                    '"remote_addr":"$remote_addr",'
-                                    '"remote_user":"$remote_user",'
-                                    '"time_local":"$time_local",'
-                                    '"request": "$request",'
-                                    '"status":"$status",'
-                                    '"body_bytes_sent":"$body_bytes_sent",'
-                                    '"http_referer":"$http_referer",'
-                                    '"http_user_agent":"$http_user_agent",'
-                                    '"http_x_forwarded_for":"$http_x_forwarded_for"}';
-    ...
-    server {
-        ...
-        access_log logs/access_json.log json;
-        ...
-    }
-
-}
-```
-
-这样的话就可以输出 JSON 日志，但是整个文件的内容并不是合法的 JSON 字符串，但是每一行都是合法的 JSON 字符串，所以如果打算处理的话一行一行地读取，或者使用脚本将整个文件的内容转化为合法的 JSON 字符串之后再统一处理。
-
-> 由于 nginx 默认不记录 POST 请求的日志，所以对于 POST 请求的拦截的信息只能去 error.log 里找。
 
 ## 常见问题
 
@@ -203,7 +166,8 @@ http {
 
 ### 为什么 POST 过滤失效？
 
-尝试修改`nginx.conf`
+本模块出于性能原因在检查请求体内容的之前会检测其是否在内存中，如果在则正常检查，反之跳过检查。可以尝试修改`nginx.conf`
+
 ```text
 http {
     ...
@@ -214,8 +178,6 @@ http {
     ...
 }
 ```
-
-本模块出于性能原因在检查请求体内容的之前会检测其是否在内存中，如果在则正常检查，反之跳过检查。
 
 ## 性能
 

@@ -4,20 +4,23 @@
 
 ### Added
 
++ 改进日志格式。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
+    ```text
+    2020/01/20 22:56:30 [alert] 24289#0: *30 ngx_waf: [BLACK-URL][(?i)(?:/\.env$)], client: 192.168.1.1, server: example.com, request: "GET /v1/.env HTTP/1.1", host: "example.com", referrer: "http:/example.com/v1/.env"
+
+    2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.+(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"
+    ```
 + 新增三个内置变量
     + `$waf_blocked`: 本次请求是否被本模块拦截，如果拦截了则其的值为`'true'`,反之则为`'false'`。
-    + `$waf_rule_type`：如果本次请求被本模块生效（黑白名单），则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
-        + `'WHITE-IPV4'`
+    + `$waf_rule_type`：如果本次请求被本模块拦截，则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
         + `'BLACK-IPV4'`
-        + `'WHITE-URL'`
         + `'BLACK-URL'`
         + `'BLACK-ARGS'`
         + `'BLACK-USER-AGENT'`
-        + `'WHITE-REFERER'`
         + `'BLACK-REFERER'`
         + `'BLACK-COOKIE'`
-        <!-- + `'BLACK-POST'` -->
-    + `'$waf_rule_details'`：如果本次请求被本模块生效（黑白名单），则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
+        + `'BLACK-POST'`
+    + `'$waf_rule_details'`：如果本次请求被本模块拦截，则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
 + 支持过滤 POST 请求（[b46641e](https://github.com/ADD-SP/ngx_waf/commit/b46641eb8473c6dcb6afe9ed73f94712300d176f)）。
 + 新配置项`ngx_waf_mult_mount`用于增加拦截面（[e1b500d](https://github.com/ADD-SP/ngx_waf/commit/e1b500de349e017b67f334878342bdd6a34d22b8)），典型的应用场景是存在`rewrite`的情况下重写前后均会对 URL 进行一次检测。
 + 支持 CC 防御功能（[3a93e19](https://github.com/ADD-SP/ngx_waf/commit/3a93e190b8cb78fcd7a0197f76298c010169d113)）。
