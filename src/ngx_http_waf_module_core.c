@@ -9,6 +9,7 @@
 #else
 #include <sys/io.h>
 #endif
+#include "../inc/ngx_http_waf_module_check.h"
 
 static ngx_int_t ngx_waf_mult_mount = 0;
 
@@ -243,7 +244,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 }
 
 
-ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
 
     v->valid = 1;
@@ -270,7 +271,7 @@ ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_varia
 }
 
 
-ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
 
     v->valid = 1;
@@ -298,7 +299,7 @@ ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_var
 }
 
 
-ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
 
     v->valid = 1;
@@ -321,7 +322,7 @@ ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_vari
             strcpy((char*)v->data, "null");
         }
     }
-    
+
     return NGX_OK;
 }
 
@@ -329,133 +330,150 @@ ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_vari
 static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_int_t rc = NGX_DECLINED;
 
     if (ctx == NULL) {
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
-        if (ctx == NULL)
-            return NGX_ERROR;
-        ctx->read_body_done = FALSE;
-        ctx->waiting_more_body = TRUE;
-        ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+        if (ctx == NULL) {
+            rc = NGX_ERROR;
+            goto END;
+        }
+        else {
+            ctx->read_body_done = FALSE;
+            ctx->waiting_more_body = TRUE;
+            ctx->blocked = FALSE;
+            ctx->rule_type[0] = '\0';
+            ctx->rule_deatils[0] = '\0';
+            ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+        }
     }
 
     if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+        rc = NGX_DECLINED;
+        goto END;
     }
 
     if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+        rc = NGX_DECLINED;
+        goto END;
     }
 
-    if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+    if (ngx_http_waf_check_white_url(r) == MATCHED) {
+        rc = NGX_DECLINED;
+        goto END;
     }
 
-    if (check_white_url(r) == MATCHED) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+    if (ngx_http_waf_check_black_url(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_black_url(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: URL");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_args(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_black_args(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ARGS");
-        return NGX_HTTP_FORBIDDEN;
+    END:
+    if (rc != NGX_DECLINED && rc != NGX_DONE) {
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
     }
-    return NGX_DECLINED;
+    return rc;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_int_t rc = NGX_DECLINED;
 
     if (ctx == NULL) {
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
-        if (ctx == NULL)
-            return NGX_ERROR;
-        ctx->read_body_done = FALSE;
-        ctx->waiting_more_body = TRUE;
-        ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+        if (ctx == NULL) {
+            rc = NGX_ERROR;
+            goto END;
+        }
+        else {
+            ctx->read_body_done = FALSE;
+            ctx->waiting_more_body = TRUE;
+            ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+        }
     }
 
     if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+        rc = NGX_DECLINED;
+        goto END;
     }
 
     if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+        rc = NGX_DECLINED;
+        goto END;
     }
 
-    if (check_white_ipv4(r) == MATCHED) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+    if (ngx_http_waf_check_white_ipv4(r) == MATCHED) {
+        rc = NGX_DECLINED;
+        goto END;
     }
 
-    if (check_black_ipv4(r) == MATCHED) {
-        ctx->blocked = TRUE;
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: IP");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_ipv4(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_cc_ipv4(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: CC-DENY");
-        return NGX_HTTP_SERVICE_UNAVAILABLE;
+    if (ngx_http_waf_check_cc_ipv4(r) == MATCHED) {
+        rc = NGX_HTTP_SERVICE_UNAVAILABLE;
+        goto END;
     }
 
-    if (check_white_url(r) == MATCHED) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+    if (ngx_http_waf_check_white_url(r) == MATCHED) {
+        rc = NGX_DECLINED;
+        goto END;
     }
 
-    if (check_black_url(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: URL");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_url(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_black_args(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ARGS");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_args(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_black_user_agent(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: USER-AGENT");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_user_agent(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_white_referer(r) == MATCHED) {
-        ctx->blocked = FALSE;
-        return NGX_DECLINED;
+    if (ngx_http_waf_check_white_referer(r) == MATCHED) {
+        rc = NGX_DECLINED;
+        goto END;
     }
 
-    if (check_black_referer(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: REFERER");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_referer(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
-    if (check_black_cookie(r) == MATCHED) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: COOKIE");
-        return NGX_HTTP_FORBIDDEN;
+    if (ngx_http_waf_check_black_cookie(r) == MATCHED) {
+        rc = NGX_HTTP_FORBIDDEN;
+        goto END;
     }
 
     if ((r->method & NGX_HTTP_POST) != 0 && ctx->read_body_done == FALSE) {
         r->request_body_in_persistent_file = 0;
         r->request_body_in_clean_file = 0;
-        ngx_int_t rc = ngx_http_read_client_request_body(r, check_post);
-        if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
-            return rc;
+        rc = ngx_http_read_client_request_body(r, check_post);
+        if (rc != NGX_ERROR && rc < NGX_HTTP_SPECIAL_RESPONSE) {
+            rc = NGX_DONE;
         }
-        return NGX_DONE;
+        goto END;
     }
-    return NGX_DECLINED;
+
+    END:
+    if (rc != NGX_DECLINED && rc != NGX_DONE) {
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
+    }
+    return rc;
 }
 
 
@@ -489,10 +507,10 @@ void check_post(ngx_http_request_t* r) {
         for (size_t i = 0; i < srv_conf->black_post->nelts; i++, p++) {
             rc = ngx_regex_exec(p->regex, &body_str, NULL, 0);
             if (rc >= 0) {
-                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: POST");
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-POST");
                 strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
                 ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
                 return;
             }
@@ -510,6 +528,8 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     size_t suffix = 32;
     u_char c;
     int is_in_suffix = FALSE;
+    memcpy(ipv4->text, text.data, text.len);
+    ipv4->text[text.len + 1] = '\0';
     for (size_t i = 0; i < text.len; i++) {
         c = text.data[i];
         if (c >= '0' && c <= '9') {
@@ -598,347 +618,4 @@ static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
     }
     destination[ngx_str.len] = '\0';
     return (char*)destination + ngx_str.len;
-}
-
-
-static ngx_int_t check_white_ipv4(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-
-    if (r->connection->sockaddr->sa_family == AF_INET) {
-        unsigned long ipv4 = sin->sin_addr.s_addr;
-        ipv4_t* p = srv_conf->white_ipv4->elts;
-        size_t index = 0;
-        for (; index < srv_conf->white_ipv4->nelts; index++, p++) {
-            if (check_ipv4(ipv4, p) == MATCHED) {
-                ctx->blocked = FALSE;
-                strcpy((char*)ctx->rule_type, "WHITE-IPV4");
-                strcpy((char*)ctx->rule_deatils, (char*)p->text);
-                return MATCHED;
-            }
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_black_ipv4(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-
-    if (r->connection->sockaddr->sa_family == AF_INET) {
-        unsigned long ipv4 = sin->sin_addr.s_addr;
-        ipv4_t* p = srv_conf->black_ipv4->elts;
-        size_t index = 0;
-        for (; index < srv_conf->black_ipv4->nelts; index++, p++) {
-            if (check_ipv4(ipv4, p) == MATCHED) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "BLACK-IPV4");
-                strcpy((char*)ctx->rule_deatils, (char*)p->text);
-                return MATCHED;
-            }
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_cc_ipv4(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-
-    if (r->connection->sockaddr->sa_family != AF_INET) {
-        return NOT_MATCHED;
-    }
-
-    unsigned long ipv4 = sin->sin_addr.s_addr;
-
-    if (srv_conf->ngx_waf_cc_deny == 0 || srv_conf->ngx_waf_cc_deny == NGX_CONF_UNSET) {
-        return NOT_MATCHED;
-    }
-    if (srv_conf->ngx_waf_cc_deny_limit == NGX_CONF_UNSET
-        || srv_conf->ngx_waf_cc_deny_duration == NGX_CONF_UNSET) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
-        return NOT_MATCHED;
-    }
-    if (srv_conf->alloc_times > 55000) {
-        ngx_int_t ret = free_hash_table(r, srv_conf);
-        if (ret == SUCCESS || ret == FAIL) {
-            srv_conf->alloc_times -= 55000;
-        }
-    }
-
-    hash_table_item_int_ulong_t* hash_item = NULL;
-    time_t now = time(NULL);
-    HASH_FIND_INT(srv_conf->ipv4_times, (int*)(&ipv4), hash_item);
-    if (hash_item == NULL) {
-        hash_item = ngx_palloc(srv_conf->ngx_pool, sizeof(hash_table_item_int_ulong_t));
-        if (hash_item == NULL) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: MEM-ALLOC-ERROR");
-            return NOT_MATCHED;
-        }
-        ++(srv_conf->alloc_times);
-        hash_item->times = 1;
-        hash_item->start_time = now;
-        hash_item->key = ipv4;
-        HASH_ADD_INT(srv_conf->ipv4_times, key, hash_item);
-    }
-    else {
-        if (difftime(now, hash_item->start_time) >= srv_conf->ngx_waf_cc_deny_duration * 60.0) {
-            HASH_DEL(srv_conf->ipv4_times, hash_item);
-        }
-        else {
-            if (hash_item->times > (ngx_uint_t)srv_conf->ngx_waf_cc_deny_limit) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "CC-DENY");
-                strcpy((char*)ctx->rule_deatils, "");
-                return MATCHED;
-            }
-            else {
-                ++(hash_item->times);
-            }
-        }
-    }
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_white_url(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_str_t* puri = &r->uri;
-    ngx_regex_elt_t* p = srv_conf->white_url->elts;
-
-    for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, puri, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-URL");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_black_url(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_str_t* puri = &r->uri;
-    ngx_regex_elt_t* p = srv_conf->black_url->elts;
-
-    for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, puri, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-URL");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_black_args(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-
-    if (r->args.len == 0) {
-        return NOT_MATCHED;
-    }
-
-    ngx_str_t* pargs = &r->args;
-    ngx_regex_elt_t* p = srv_conf->black_args->elts;
-
-    for (size_t i = 0; i < srv_conf->black_args->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, pargs, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-ARGS");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_black_user_agent(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-
-    if (r->headers_in.user_agent == NULL) {
-        return NOT_MATCHED;
-    }
-
-    ngx_str_t* pua = &r->headers_in.user_agent->value;
-    ngx_regex_elt_t* p = srv_conf->black_ua->elts;
-
-    for (size_t i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, pua, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_white_referer(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-
-    if (r->headers_in.referer == NULL) {
-        return NOT_MATCHED;
-    }
-
-    ngx_str_t* preferer = &r->headers_in.referer->value;
-    ngx_regex_elt_t* p = srv_conf->white_referer->elts;
-
-    for (size_t i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, preferer, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-REFERER");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_black_referer(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-
-    if (r->headers_in.referer == NULL) {
-        return NOT_MATCHED;
-    }
-
-    ngx_str_t* preferer = &r->headers_in.referer->value;
-    ngx_regex_elt_t* p = srv_conf->black_referer->elts;
-
-    for (size_t i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, preferer, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "BLACK-REFERER");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_black_cookie(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-
-    if (r->headers_in.cookies.nelts != 0) {
-        ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
-        ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
-        size_t i = 0;
-        for (; i < r->headers_in.cookies.nelts; i++, p++) {
-            ngx_int_t rc = ngx_regex_exec(p->regex, &((*ppcookie)->value), NULL, 0);
-            if (rc >= 0) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
-                strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                return MATCHED;
-            }
-        }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t check_ipv4(unsigned long ip, const ipv4_t* ipv4) {
-    size_t prefix = ip & ipv4->suffix;
-
-    if (prefix == ipv4->prefix) {
-        return MATCHED;
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf) {
-    hash_table_item_int_ulong_t* p = NULL;
-    int count = 0;
-    time_t now;
-    switch (srv_conf->free_hash_table_step) {
-    case 0:
-        srv_conf->ipv4_times_old = srv_conf->ipv4_times;
-        srv_conf->ipv4_times = NULL;
-        srv_conf->ngx_pool_old = srv_conf->ngx_pool;
-        srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
-        ++(srv_conf->free_hash_table_step);
-        return PROCESSING;
-        break;
-    case 1:
-        now = time(NULL);
-        if (srv_conf->ipv4_times_old_cur == NULL) {
-            srv_conf->ipv4_times_old_cur = srv_conf->ipv4_times_old;
-        }
-        for (; srv_conf->ipv4_times_old_cur != NULL && count < 100; srv_conf->ipv4_times_old_cur = p->hh.next) {
-            /* 判断当前的记录是否过期 */
-            if (difftime(now, srv_conf->ipv4_times_old_cur->start_time) < srv_conf->ngx_waf_cc_deny_duration * 60.0) {
-                /* 在新的哈希表中查找是否存在当前记录 */
-                HASH_FIND_INT(srv_conf->ipv4_times, &srv_conf->ipv4_times_old_cur->key, p);
-                if (p == NULL) {
-                    /* 如果不存在则拷贝后插入到新的哈希表中 */
-                    p = ngx_palloc(srv_conf->ngx_pool, sizeof(hash_table_item_int_ulong_t));
-                    if (p == NULL) {
-                        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: MEM-ALLOC-ERROR");
-                        return FAIL;
-                    }
-                    p->key = srv_conf->ipv4_times_old_cur->key;
-                    p->start_time = srv_conf->ipv4_times_old_cur->start_time;
-                    p->times = srv_conf->ipv4_times_old_cur->times;
-                    HASH_ADD_INT(srv_conf->ipv4_times, key, p);
-                }
-                else {
-                    /* 如果存在则合并更改 */
-                    p->times += srv_conf->ipv4_times_old_cur->start_time;
-                }
-            }
-        }
-        if (p == NULL) {
-            ++(srv_conf->free_hash_table_step);
-        }
-        return PROCESSING;
-        break;
-    case 2:
-        HASH_CLEAR(hh, srv_conf->ipv4_times_old);
-        ++(srv_conf->free_hash_table_step);
-        return PROCESSING;
-        break;
-    case 3:
-        ngx_destroy_pool(srv_conf->ngx_pool_old);
-        srv_conf->ngx_pool_old = NULL;
-        srv_conf->free_hash_table_step = 0;
-        return PROCESSING;
-        break;
-    }
-    return SUCCESS;
 }
