@@ -4,13 +4,13 @@
 
 ### Added
 
-+ 改进日志格式。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
++ 改进日志格式（[bd112ec](https://github.com/ADD-SP/ngx_waf/commit/bd112ecacd9356ee1e0731634cfc197034d25c88)）。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
     ```text
     2020/01/20 22:56:30 [alert] 24289#0: *30 ngx_waf: [BLACK-URL][(?i)(?:/\.env$)], client: 192.168.1.1, server: example.com, request: "GET /v1/.env HTTP/1.1", host: "example.com", referrer: "http:/example.com/v1/.env"
 
     2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.+(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"
     ```
-+ 新增三个内置变量
++ 新增三个内置变量（[92d6d84](https://github.com/ADD-SP/ngx_waf/commit/92d6d847840ada57bbc54ffe2c0980b118a37a30)）
     + `$waf_blocked`: 本次请求是否被本模块拦截，如果拦截了则其的值为`'true'`,反之则为`'false'`。
     + `$waf_rule_type`：如果本次请求被本模块拦截，则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
         + `'BLACK-IPV4'`
