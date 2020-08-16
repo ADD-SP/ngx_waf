@@ -29,7 +29,7 @@
 
 + 增加默认的 POST 过滤规则（[68dd102](https://github.com/ADD-SP/ngx_waf/commit/68dd102e011acfd819669d60a35d315365d26a16)）
 + 更新默认规则（[55f0a48](https://github.com/ADD-SP/ngx_waf/commit/55f0a4824bafb67f562909bdb58292cfce1059ae)）。
-+ 修改规则优先级（[3c388c8](https://github.com/ADD-SP/ngx_waf/commit/3c388c85e30528b66306ca780524c7d663277f07)）（[248958d](https://github.com/ADD-SP/ngx_waf/commit/248958d3a0ef27dd14acc63a503e97931841f18a)）（[b46641e](https://github.com/ADD-SP/ngx_waf/commit/b46641eb8473c6dcb6afe9ed73f94712300d176f)），现在的优先级为（靠上的优先生效）：
++ 修改规则优先级（[3c388c8](https://github.com/ADD-SP/ngx_waf/commit/3c388c85e30528b66306ca780524c7d663277f07)）（[248958d](https://github.com/ADD-SP/ngx_waf/commit/248958d3a0ef27dd14acc63a503e97931841f18a)）（[b46641e](https://github.com/ADD-SP/ngx_waf/commit/b46641eb8473c6dcb6afe9ed73f94712300d176f)）（(92447a3)[https://github.com/ADD-SP/ngx_waf/commit/92447a39d6a36ab027b0ead0daa0fe2b3b74ff29]），现在的优先级为（靠上的优先生效）：
     1. IP 白名单
     2. IP 黑名单
     3. CC 防御
@@ -39,6 +39,7 @@
     7. UserAgent 黑名单
     8. Referer 白名单
     9. Referer 黑名单
+    11. Cookie 黑名单
     10. POST 黑名单
 
 ### Fixed
