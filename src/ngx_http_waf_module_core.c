@@ -340,7 +340,6 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
         }
         else {
             ctx->read_body_done = FALSE;
-            ctx->waiting_more_body = TRUE;
             ctx->blocked = FALSE;
             ctx->rule_type[0] = '\0';
             ctx->rule_deatils[0] = '\0';
@@ -394,7 +393,9 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         }
         else {
             ctx->read_body_done = FALSE;
-            ctx->waiting_more_body = TRUE;
+            ctx->blocked = FALSE;
+            ctx->rule_type[0] = '\0';
+            ctx->rule_deatils[0] = '\0';
             ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
         }
     }
