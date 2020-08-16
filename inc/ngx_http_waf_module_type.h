@@ -13,22 +13,21 @@
 typedef unsigned char u_char;
 
 typedef struct {
-    int key;
-    unsigned long times;
-    time_t start_time;
-    UT_hash_handle hh;
+    int                             key;                        /* IPV4 的整数形式 */
+    unsigned long                   times;                      /* 该地址的请求次数 */
+    time_t                          start_time;                 /* 首次记录本 IP 的时间 */
+    UT_hash_handle                  hh;
 } hash_table_item_int_ulong_t;
 
 typedef struct {
-    ngx_int_t ngx_waf_mult_mount;
+    ngx_int_t                       ngx_waf_mult_mount;
 } ngx_http_waf_main_conf_t;
 
 typedef struct {
     ngx_int_t                       blocked;                    /* 是否拦截了本次请求 */
     u_char                          rule_type[128];             /* 触发的规则类型 */
     u_char                          rule_deatils[RULE_MAX_LEN]; /* 触发的规则内容 */
-    ngx_int_t                       read_body_done;
-    ngx_int_t                       waiting_more_body;
+    ngx_int_t                       read_body_done;             /* 是否已经读取完请求体 */
 } ngx_http_waf_ctx_t;
 
 typedef struct {
@@ -60,9 +59,9 @@ typedef struct {
 }ngx_http_waf_srv_conf_t;
 
 typedef struct {
-    u_char text[32];    /* 点分十进制表示法 */
-    size_t prefix;      /* 相当于 192.168.1.0/24 中的 192.168.1.0 的整数形式 */
-    size_t suffix;      /* 相当于 192.168.1.0/24 中的 24 的整数形式 */
+    u_char                          text[32];    /* 点分十进制表示法 */
+    size_t                          prefix;      /* 相当于 192.168.1.0/24 中的 192.168.1.0 的整数形式 */
+    size_t                          suffix;      /* 相当于 192.168.1.0/24 中的 24 的整数形式 */
 }ipv4_t;
 
 #endif // !NGX_HTTP_WAF_MODULE_TYPE_H

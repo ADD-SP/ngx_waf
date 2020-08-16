@@ -23,16 +23,16 @@
 
 
 #define RULE_MAX_LEN (256 * 4 * 8)
-#define INITIAL_SIZE (sizeof(hash_table_item_int_ulong_t) * 60000)
+#define INITIAL_SIZE (1024 * 1024 * 20)
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中 */
-#define CHECK_AND_LOAD_CONF(cf, buf, end, filename, ngx_array, mode) { \
-strcat(buf, filename); \
-    if (access(buf, 2) != 0 || load_into_array(cf, buf, ngx_array, mode) == FAIL) { \
-        ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "ngx_waf: %s: %s", buf, "No such file or directory"); \
-        return NGX_CONF_ERROR; \
-    } \
-    *end = '\0'; \
+#define CHECK_AND_LOAD_CONF(cf, buf, end, filename, ngx_array, mode) {                                      \
+strcat((buf), (filename));                                                                                  \
+    if (access((buf), 2) != 0 || load_into_array((cf), (buf), (ngx_array), (mode)) == FAIL) {               \
+        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (buf), "No such file or directory");    \
+        return NGX_CONF_ERROR;                                                                              \
+    }                                                                                                       \
+    *(end) = '\0';                                                                                          \
 }
 
 

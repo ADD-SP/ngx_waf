@@ -18,40 +18,91 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
-
+/*
+* 检查客户端 IPV4 地址是否在白名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r);
 
 
+/*
+* 检查客户端 IPV4 地址是否在黑名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r);
 
 
+/*
+* 检查客户端 IPV4 的访问频次是否超出了限制
+* 如果超出限制返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r);
 
 
+/*
+* 检查 URL 是否在白名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r);
 
 
+/*
+* 检查 URL 是否在黑名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r);
 
 
+/*
+* 检查请求参数是否在黑名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r);
 
 
+/*
+* 检查 UserAgent 参数是否在黑名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r);
 
 
+/*
+* 检查 Referer 参数是否在白名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r);
 
 
+/*
+* 检查 Referer 参数是否在黑名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r);
 
 
+/*
+* 检查 Cookie 参数是否在黑名单中
+* 如果在返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r);
 
 
+/*
+* 检查两个 IPV4 是否属于同一网段
+* 如果属于返回 MATCHED，返回 NOT_MATCHED
+*/
 static ngx_int_t ngx_http_waf_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
 
 
+/*
+* 逐渐释放旧的哈希表所占用的内存
+* 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池
+* 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
+* 第三阶段：清空旧的哈希表
+* 第四阶段：销毁旧的内存池，完成释放。
+* 如果成功返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL
+*/
 static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
 
 
