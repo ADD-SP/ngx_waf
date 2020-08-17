@@ -125,6 +125,7 @@ https://example.com/www.bak
 + rules/args：GET 参数黑名单，每条规则独占一行。每行一个正则表达式，当 GET 参数（如test=0&test1=）被任意一个规则匹配到就返回 403。
 + rules/referer：Referer 黑名单，每条规则独占一行。每行一个正则表达式，当 referer 被任意一个规则匹配到就返回 403。
 + rules/user-agent：UserAgent 黑名单，每条规则独占一行。每行一个正则表达式，当 user-agent 被任意一个规则匹配到就返回 403。
++ rules/cookie：Cookie 黑名单，每条规则独占一行。每行一个正则表达式，当 Cookie 中的内容被任意一个规则匹配到就返回 403。
 + rules/post：POST 黑名单，每条规则独占一行。每行一个正则表达式，当请求体中的内容被任意一个规则匹配到就返回 403。
 + rules/white-ipv4：IPV4 白名单，写法同`rules/ipv4`。
 + rules/white-url：URL 白名单。写法同`rules/url`。
