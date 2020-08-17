@@ -116,7 +116,8 @@ https://example.com/www.bak
 7. UserAgent 黑名单
 8. Referer 白名单
 9. Referer 黑名单
-10. POST 黑名单
+10. Cookie 黑名单
+11. POST 黑名单
 
 
 + rules/ipv4：IPV4 黑名单，每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
