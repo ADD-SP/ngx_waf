@@ -18,74 +18,77 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
+
+typedef ngx_int_t (*ngx_http_waf_check)(ngx_http_request_t* r, ngx_int_t* out_http_status);
+
 /*
 * 检查客户端 IPV4 地址是否在白名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查客户端 IPV4 地址是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查客户端 IPV4 的访问频次是否超出了限制
 * 如果超出限制返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 URL 是否在白名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 URL 是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查请求参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 UserAgent 参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 Referer 参数是否在白名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 Referer 参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 Cookie 参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
@@ -106,7 +109,7 @@ static ngx_int_t ngx_http_waf_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
 static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
 
 
-static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
@@ -120,6 +123,7 @@ static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r) {
                 ctx->blocked = FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)p->text);
+                *out_http_status = NGX_DECLINED;
                 return MATCHED;
             }
         }
@@ -129,7 +133,7 @@ static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
@@ -143,6 +147,7 @@ static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)p->text);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
                 return MATCHED;
             }
         }
@@ -152,7 +157,7 @@ static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
@@ -202,6 +207,7 @@ static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "CC-DENY");
                 strcpy((char*)ctx->rule_deatils, "");
+                *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
                 return MATCHED;
             }
             else {
@@ -213,7 +219,7 @@ static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     ngx_str_t* puri = &r->uri;
@@ -225,6 +231,7 @@ static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r) {
             ctx->blocked = FALSE;
             strcpy((char*)ctx->rule_type, "WHITE-URL");
             strcpy((char*)ctx->rule_deatils, (char*)p->name);
+            *out_http_status = NGX_DECLINED;
             return MATCHED;
         }
     }
@@ -233,7 +240,7 @@ static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     ngx_str_t* puri = &r->uri;
@@ -245,6 +252,7 @@ static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "BLACK-URL");
             strcpy((char*)ctx->rule_deatils, (char*)p->name);
+            *out_http_status = NGX_HTTP_FORBIDDEN;
             return MATCHED;
         }
     }
@@ -253,7 +261,7 @@ static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
@@ -270,6 +278,7 @@ static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "BLACK-ARGS");
             strcpy((char*)ctx->rule_deatils, (char*)p->name);
+            *out_http_status = NGX_HTTP_FORBIDDEN;
             return MATCHED;
         }
     }
@@ -278,7 +287,7 @@ static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
@@ -295,6 +304,7 @@ static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
             strcpy((char*)ctx->rule_deatils, (char*)p->name);
+            *out_http_status = NGX_HTTP_FORBIDDEN;
             return MATCHED;
         }
     }
@@ -303,7 +313,7 @@ static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
@@ -320,6 +330,7 @@ static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r) {
             ctx->blocked = FALSE;
             strcpy((char*)ctx->rule_type, "WHITE-REFERER");
             strcpy((char*)ctx->rule_deatils, (char*)p->name);
+            *out_http_status = NGX_DECLINED;
             return MATCHED;
         }
     }
@@ -328,7 +339,7 @@ static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
@@ -345,6 +356,7 @@ static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r) {
             ctx->blocked = FALSE;
             strcpy((char*)ctx->rule_type, "BLACK-REFERER");
             strcpy((char*)ctx->rule_deatils, (char*)p->name);
+            *out_http_status = NGX_HTTP_FORBIDDEN;
             return MATCHED;
         }
     }
@@ -353,7 +365,7 @@ static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r) {
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
@@ -367,6 +379,7 @@ static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
                 strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
                 return MATCHED;
             }
         }
