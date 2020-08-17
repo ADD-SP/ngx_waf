@@ -23,7 +23,7 @@
 
 
 #define RULE_MAX_LEN (256 * 4 * 8)
-#define INITIAL_SIZE (1024 * 1024 * 20)
+#define INITIAL_SIZE (1024 * 1024 * 5)
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中 */
 #define CHECK_AND_LOAD_CONF(cf, buf, end, filename, ngx_array, mode) {                                      \
