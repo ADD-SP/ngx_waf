@@ -39,8 +39,8 @@
     7. UserAgent 黑名单
     8. Referer 白名单
     9. Referer 黑名单
-    11. Cookie 黑名单
-    10. POST 黑名单
+    10. Cookie 黑名单
+    11. POST 黑名单
 
 ### Fixed
 
