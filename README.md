@@ -6,7 +6,7 @@
 
 ## 功能
 
-+ CC 防御，超出限制后自动拉黑一段时间。
++ CC 防御，超出限制后自动拉黑对应 IP 一段时间（仅限 IPV4）。
 + IPV4 黑白名单，支持 CIDR 表示法。
 + POST 黑名单。
 + URL 黑白名单
@@ -14,8 +14,6 @@
 + UserAgent 黑名单。
 + Cookie 黑名单。
 + Referer 黑白名单。
-
-[更新日志](CHANGES.md)
 
 ## 安装
 
@@ -64,7 +62,7 @@ make install
 
 #### 修改 nginx.conf
 
-在需要启用模块的 server 块添加两行，例如
+在需要启用模块的 server 块添加下列配置，例如
 
 ```text
 http {
@@ -83,15 +81,31 @@ http {
 
 ```
 
-> ngx_waf_mult_mount 当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
-
-> ngx_waf 表示是否启用模块。
-
-> ngx_waf_rule_path 表示规则文件所在的文件夹，且必须以`/`结尾。
-
-> ngx_waf_cc_deny 表示是否启用 CC 防御。
-
-> ngx_waf_cc_deny_limit 包含两个参数，第一个参数表示每分钟的最多请求次数（大于零的整数），第二个参数表示超出第一个参数的限制后拉黑 IP 多少分钟（大于零的整数）。
++ ngx_waf_mult_mount:
+    + 配置语法: `ngx_waf_mult_mount [ on | off ];`
+    + 默认值：`off`
+    + 配置段: http
+    + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
++ ngx_waf:
+    + 配置语法: `ngx_waf [ on | off ];`
+    + 默认值：`off`
+    + 配置段: server
+    + 作用：是否启用本模块。
++ ngx_waf_rule_path:
+    + 配置语法: `ngx_waf_rule_path dir;`
+    + 默认值：无
+    + 配置段: server
+    + 作用：规则文件所在目录，且必须以`/`结尾。
++ ngx_waf_cc_deny:
+    + 配置语法: `ngx_waf_cc_deny [ on | off ];`
+    + 默认值：`off`
+    + 配置段: server
+    + 作用：是否启用 CC 防御。
++ ngx_waf_cc_deny_limit:
+    + 配置语法: `ngx_waf_cc_deny_limit rate duration;`
+    + 默认值：无
+    + 配置段: server
+    + 作用：包含两个参数，第一个参数`rate`表示每分钟的最多请求次数（大于零的整数），第二个参数`duration`表示超出第一个参数`rate`的限制后拉黑 IP 多少分钟（大于零的整数）。
 
 #### 测试
 
@@ -190,6 +204,11 @@ http {
 ### 内存管理
 <span id='性能-内存管理'></span>
 本模块在启用了 CC 防御功能时会周期性地释放一次内存和申请一次内存，但是并不会一次性全部释放，而是逐步释放，每次请求释放一小部分，逐渐地完成释放，期间会小幅度拖慢处理时间。
+
+## 项目进度
+
++ [开发进度](https://github.com/ADD-SP/ngx_waf/projects/2)
++ [更新日志](CHANGES.md)
 
 ## 感谢
 
