@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2020-08-18
+
 ### Added
 
 + 改进日志格式（[bd112ec](https://github.com/ADD-SP/ngx_waf/commit/bd112ecacd9356ee1e0731634cfc197034d25c88)）。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
