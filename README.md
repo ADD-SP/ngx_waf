@@ -1,5 +1,8 @@
 # ngx_waf
 
+[![build-master](https://github.com/ADD-SP/ngx_waf/workflows/build-master/badge.svg?branch=master)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Abuild-master)
+[![build-dev](https://github.com/ADD-SP/ngx_waf/workflows/build-dev/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Abuild-dev)
+
 用于 nginx 的防火墙模块。
 
 ## 功能
