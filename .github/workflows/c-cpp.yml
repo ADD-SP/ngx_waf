@@ -29,8 +29,12 @@ jobs:
         cd /usr/local/src/nginx-1.18.0
         sudo ./configure --add-module=/usr/local/src/ngx_waf
     - name: make
-      run: sudo make
+      run: |
+        cd /usr/local/src/nginx-1.18.0
+        sudo make
     - name: make check
-      run: sudo make check
+      run: |
+        cd /usr/local/src/nginx-1.18.0 
+        sudo make check
 #    - name: make distcheck
 #      run: make distcheck
