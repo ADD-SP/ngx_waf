@@ -15,18 +15,18 @@ jobs:
         
     - name: wget nginx
       run: | 
-        sudo cd /usr/local/src
+        cd /usr/local/src
         sudo wget http://nginx.org/download/nginx-1.18.0.tar.gz
         sudo tar -zxf nginx-1.18.0.tar.gz
     - name: git clone 
       run: |
-        sudo cd /usr/local/src
+        cd /usr/local/src
         sudo git clone -b ADD-SP-patch-1 https://github.com/ADD-SP/ngx_waf.git
-        sudo cd ngx_waf
+        cd ngx_waf
         sudo git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
     - name: configure
       run: |
-        sudo cd /usr/local/src/nginx-1.18.0
+        cd /usr/local/src/nginx-1.18.0
         sudo ./configure --add-module=../
     - name: make
       run: sudo make
