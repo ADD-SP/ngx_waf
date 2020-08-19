@@ -1,0 +1,6 @@
+(?i)(?:\.(?:svn|htaccess|bash_history))
+(?i)(?:\.(?:bak|inc|old|mdb|sql|backup|java|class))$
+(?i)(?:vhost|bbs|host|wwwroot|www|site|root|hytop|flashfxp).*\.rar
+(?i)(?:phpmyadmin|jmx-console|jmxinvokerservlet)
+(?i)(?:java\.lang)
+(?i)(?:/(?:attachments|upimg|images|css|uploadfiles|html|uploads|templets|static|template|data|inc|forumdata|upload|includes|cache|avatar)/(?:\\w+).(?:php|jsp))
