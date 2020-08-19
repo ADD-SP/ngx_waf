@@ -1,0 +1,29 @@
+name: C/C++ CI
+
+on: push
+#  pull_request:
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install Dependencies
+      run: |
+        apt-get update
+        apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev
+        git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
+    - name: wget nginx
+      run: | 
+        wget http://nginx.org/download/nginx-1.18.0.tar.gz
+        tar -zxf nginx-1.18.0.tar.gz
+    - name: configure
+      run: |
+        cd nginx-1.18.0
+        ./configure --add-module=../
+    - name: make
+      run: make
+    - name: make check
+      run: make check
+#    - name: make distcheck
+#      run: make distcheck
