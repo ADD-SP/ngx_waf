@@ -7,23 +7,31 @@ on: push
 jobs:
   build:
     runs-on: ubuntu-latest
+    uses: actions/checkout@v2
     steps:
     - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev
-        git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
+        
     - name: wget nginx
       run: | 
-        wget http://nginx.org/download/nginx-1.18.0.tar.gz
-        tar -zxf nginx-1.18.0.tar.gz
+        sudo cd /usr/local/src
+        sudo wget http://nginx.org/download/nginx-1.18.0.tar.gz
+        sudo tar -zxf nginx-1.18.0.tar.gz
+    - name: git clone 
+      run: |
+        sudo cd /usr/local/src
+        sudo git clone -b ADD-SP-patch-1 https://github.com/ADD-SP/ngx_waf.git
+        sudo cd ngx_waf
+        sudo git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
     - name: configure
       run: |
-        cd nginx-1.18.0
-        ./configure --add-module=../
+        sudo cd /usr/local/src/nginx-1.18.0
+        sudo ./configure --add-module=../
     - name: make
-      run: make
+      run: sudo make
     - name: make check
-      run: make check
+      run: sudo make check
 #    - name: make distcheck
 #      run: make distcheck
