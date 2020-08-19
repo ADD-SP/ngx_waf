@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
++ 更新 referer 的默认规则，具体一点就是拷贝`rules/url`的内容到`rules/referer`中（[55f5e26](https://github.com/ADD-SP/ngx_waf/commit/55f5e26b6135af382b1db88057f5143631848ae7)）。
+
+### Fixed
+
 ## [1.0.0] - 2020-08-18
 
 ### Added
