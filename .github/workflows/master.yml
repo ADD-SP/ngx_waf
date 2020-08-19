@@ -1,24 +1,28 @@
 name: C/C++ CI
 
-on: push
-#  pull_request:
+on: 
+  push:
+    branches:
+      - ADD-SP-patch-1
+  pull_request:
+    branches:
+      - ADD-SP-patch-1
 
 
 jobs:
-  build:
+  build-master:
     runs-on: ubuntu-latest
     steps:
-    - name: Install Dependencies
+    - name: install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev
-        
-    - name: wget nginx
+    - name: download nginx
       run: | 
         cd /usr/local/src
         sudo wget http://nginx.org/download/nginx-1.18.0.tar.gz
         sudo tar -zxf nginx-1.18.0.tar.gz
-    - name: git clone 
+    - name: download ngx_waf
       run: |
         cd /usr/local/src
         sudo git clone -b ADD-SP-patch-1 https://github.com/ADD-SP/ngx_waf.git
@@ -32,9 +36,3 @@ jobs:
       run: |
         cd /usr/local/src/nginx-1.18.0
         sudo make
-    - name: make check
-      run: |
-        cd /usr/local/src/nginx-1.18.0 
-        sudo make check
-#    - name: make distcheck
-#      run: make distcheck
