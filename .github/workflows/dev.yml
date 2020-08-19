@@ -1,0 +1,38 @@
+name: build-dev
+
+on: 
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+
+
+jobs:
+  build-dev:
+    runs-on: ubuntu-latest
+    steps:
+    - name: install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev
+    - name: download nginx
+      run: | 
+        cd /usr/local/src
+        sudo wget http://nginx.org/download/nginx-1.18.0.tar.gz
+        sudo tar -zxf nginx-1.18.0.tar.gz
+    - name: download ngx_waf
+      run: |
+        cd /usr/local/src
+        sudo git clone -b dev https://github.com/ADD-SP/ngx_waf.git
+        cd ngx_waf
+        sudo git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
+    - name: configure
+      run: |
+        cd /usr/local/src/nginx-1.18.0
+        sudo ./configure --add-module=/usr/local/src/ngx_waf
+    - name: make
+      run: |
+        cd /usr/local/src/nginx-1.18.0
+        sudo make
