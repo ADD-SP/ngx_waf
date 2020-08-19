@@ -10,8 +10,8 @@ jobs:
     steps:
     - name: Install Dependencies
       run: |
-        apt-get update
-        apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev
+        sudo apt-get update
+        sudo apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev
         git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
     - name: wget nginx
       run: | 
