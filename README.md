@@ -84,12 +84,6 @@ http {
 }
 
 ```
-
-+ waf_mult_mount:
-    + 配置语法: `waf_mult_mount [ on | off ];`
-    + 默认值：`off`
-    + 配置段: http
-    + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
 + waf:
     + 配置语法: `waf [ on | off ];`
     + 默认值：`off`
@@ -100,6 +94,11 @@ http {
     + 默认值：无
     + 配置段: server
     + 作用：规则文件所在目录，且必须以`/`结尾。
++ waf_mult_mount:
+    + 配置语法: `waf_mult_mount [ on | off ];`
+    + 默认值：`off`
+    + 配置段: server
+    + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
 + waf_check_ipv4:
     + 配置语法: `waf_check_ipv4 [ on | off ];`
     + 默认值：`on`
