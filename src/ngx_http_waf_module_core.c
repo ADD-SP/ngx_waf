@@ -11,16 +11,14 @@
 #endif
 #include "../inc/ngx_http_waf_module_check.h"
 
-static ngx_int_t ngx_waf_mult_mount = 0;
-
 static ngx_command_t ngx_http_waf_commands[] = {
 
    {
         ngx_string("waf_mult_mount"),
-        NGX_HTTP_MAIN_CONF | NGX_CONF_FLAG,
+        NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
         ngx_http_waf_mult_mount,
-        NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_waf_main_conf_t, waf_mult_mount),
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_mult_mount),
         NULL
    },
    {
@@ -62,7 +60,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
 static ngx_http_module_t ngx_http_waf_module_ctx = {
     NULL,
     ngx_http_waf_init_after_load_config,
-    ngx_http_waf_create_main_conf,
+    NULL,
     NULL,
     ngx_http_waf_create_srv_conf,
     NULL,
@@ -88,11 +86,9 @@ ngx_module_t ngx_http_waf_module = {
 
 
 static char* ngx_http_waf_mult_mount(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    ngx_http_waf_main_conf_t* main_conf = conf;
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
         return NGX_CONF_ERROR;
     }
-    ngx_waf_mult_mount = main_conf->waf_mult_mount;
     return NGX_CONF_OK;
 }
 
@@ -154,17 +150,6 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
 }
 
 
-static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
-    ngx_http_waf_main_conf_t* main_conf = NULL;
-    main_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_main_conf_t));
-    if (main_conf == NULL) {
-        return NULL;
-    }
-    main_conf->waf_mult_mount = NGX_CONF_UNSET;
-    return main_conf;
-}
-
-
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
     srv_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_srv_conf_t));
@@ -176,6 +161,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
+    srv_conf->waf_mult_mount = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
@@ -220,10 +206,8 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     }
     *h = ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post;
 
-    if (ngx_waf_mult_mount != 0) {
-        h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
-        *h = ngx_http_waf_handler_url_args;
-    }
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
+    *h = ngx_http_waf_handler_url_args;
 
     ngx_str_t waf_blocked_name = ngx_string("waf_blocked");
     ngx_http_variable_t* waf_blocked = ngx_http_add_variable(cf, &waf_blocked_name, NGX_HTTP_VAR_NOCACHEABLE);
@@ -356,6 +340,9 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
     if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
+    else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
+        http_status = NGX_DECLINED;
+    }
     else  if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
         http_status = NGX_DECLINED;
     }
@@ -422,6 +409,9 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
     if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     } 
+    else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
+        http_status = NGX_DECLINED;
+    }
     else  if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
         http_status = NGX_DECLINED;
     }
