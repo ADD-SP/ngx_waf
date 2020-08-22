@@ -207,25 +207,24 @@ static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_i
         HASH_ADD_INT(srv_conf->ipv4_times, key, hash_item);
     }
     else {
-        if (difftime(now, hash_item->start_time) >= srv_conf->waf_cc_deny_duration * 60.0) {
-            HASH_DEL(srv_conf->ipv4_times, hash_item);
-        }
-        else {
-            if (hash_item->times > (ngx_uint_t)srv_conf->waf_cc_deny_limit) {
+        if (hash_item->times > (ngx_uint_t)srv_conf->waf_cc_deny_limit) {
+            if (difftime(now, hash_item->start_time) > srv_conf->waf_cc_deny_duration * 60.0) {
+                HASH_DEL(srv_conf->ipv4_times, hash_item);
+            }
+            else {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "CC-DENY");
                 strcpy((char*)ctx->rule_deatils, "");
                 *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
                 return MATCHED;
             }
-            else {
-                ++(hash_item->times);
-            }
+        }
+        else {
+            ++(hash_item->times);
         }
     }
     return NOT_MATCHED;
 }
-
 
 static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
