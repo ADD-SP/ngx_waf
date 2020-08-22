@@ -220,7 +220,12 @@ static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_i
             }
         }
         else {
-            ++(hash_item->times);
+            if (difftime(now, hash_item->start_time) > 60.0) {
+                HASH_DEL(srv_conf->ipv4_times, hash_item);
+            }
+            else {
+                ++(hash_item->times);
+            }
         }
     }
     return NOT_MATCHED;
