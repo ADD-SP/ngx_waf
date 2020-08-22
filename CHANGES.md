@@ -4,11 +4,77 @@
 
 ### Added
 
-### Changed
++ 增加了新的配置项（[3214fc8](https://github.com/ADD-SP/ngx_waf/commit/3214fc88d565ed47daa4bdac4f0edb7d1785ed75)）
+    + waf_check_ipv4:
+        + 配置语法: `waf_check_ipv4 [ on | off ];`
+        + 默认值：`on`
+        + 配置段: server
+        + 作用：是否启用 IPV4 检查。
+    + waf_check_url:
+        + 配置语法: `waf_check_url [ on | off ];`
+        + 默认值：`on`
+        + 配置段: server
+        + 作用：是否启用 URL 检查。
+    + waf_check_args:
+        + 配置语法: `waf_check_args [ on | off ];`
+        + 默认值：`on`
+        + 配置段: server
+        + 作用：是否启用 Args 检查。
+    + waf_check_ua:
+        + 配置语法: `waf_check_ua [ on | off ];`
+        + 默认值：`on`
+        + 配置段: server
+        + 作用：是否启用 User-Agent 检查。
+    + waf_check_referer:
+        + 配置语法: `waf_check_referer [ on | off ];`
+        + 默认值：`on`
+        + 配置段: server
+        + 作用：是否启用 Referer 检查。
+    + waf_check_cookie:
+        + 配置语法: `waf_check_cookie [ on | off ];`
+        + 默认值：`on`
+        + 配置段: server
+        + 作用：是否启用 Cookie 检查。
+    + waf_check_post:
+        + 配置语法: `waf_check_post [ on | off ];`
+        + 默认值：`off`
+        + 配置段: server
+        + 作用：是否启用 POST 检查。
+    + waf_cc_deny:
+        + 配置语法: `waf_cc_deny [ on | off ];`
+        + 默认值：`off`
+        + 配置段: server
+        + 作用：是否启用 CC 防御。
 
+
+### Changed
++ `waf_mult_mount`现在只允许写在`server`段中（[3214fc8](https://github.com/ADD-SP/ngx_waf/commit/3214fc88d565ed47daa4bdac4f0edb7d1785ed75)）。
+    + waf_mult_mount:
+        + 配置语法: `waf_mult_mount [ on | off ];`
+        + 默认值：`off`
+        + 配置段: server
+        + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
++ 更改现有的配置项关键字，删除了`ngx_`前缀（[8b3e416](https://github.com/ADD-SP/ngx_waf/commit/8b3e416cdfdc7e073a3392fc9ec027a4138af453)）。
+    + waf:
+        + 配置语法: `waf [ on | off ];`
+        + 默认值：`off`
+        + 配置段: server
+        + 作用：是否启用本模块。
+    + waf_rule_path:
+        + 配置语法: `waf_rule_path dir;`
+        + 默认值：无
+        + 配置段: server
+        + 作用：规则文件所在目录，且必须以`/`结尾。
+    + waf_mult_mount:
+        + 配置语法: `waf_mult_mount [ on | off ];`
+        + 默认值：`off`
+        + 配置段: http
+        + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
 + 更新 referer 的默认规则，具体一点就是拷贝`rules/url`的内容到`rules/referer`中（[55f5e26](https://github.com/ADD-SP/ngx_waf/commit/55f5e26b6135af382b1db88057f5143631848ae7)）。
 
 ### Fixed
+
++ 现在会检查 rules/ipv4 和 rules/white-ipv4 这两个文件中的 IPV4 地址或地址块是否合法（[fc09f04](https://github.com/ADD-SP/ngx_waf/commit/fc09f045d1e9ac774a919181a15c20a6c777a276)）（[2e7f624](https://github.com/ADD-SP/ngx_waf/commit/2e7f624581d8d85a23d6470acced9acc3e2840b2)）。
 
 ## [1.0.0] - 2020-08-18
 
