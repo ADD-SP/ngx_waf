@@ -168,11 +168,11 @@ static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* ou
 
     unsigned long ipv4 = sin->sin_addr.s_addr;
 
-    if (srv_conf->ngx_waf_cc_deny == 0 || srv_conf->ngx_waf_cc_deny == NGX_CONF_UNSET) {
+    if (srv_conf->waf_cc_deny == 0 || srv_conf->waf_cc_deny == NGX_CONF_UNSET) {
         return NOT_MATCHED;
     }
-    if (srv_conf->ngx_waf_cc_deny_limit == NGX_CONF_UNSET
-        || srv_conf->ngx_waf_cc_deny_duration == NGX_CONF_UNSET) {
+    if (srv_conf->waf_cc_deny_limit == NGX_CONF_UNSET
+        || srv_conf->waf_cc_deny_duration == NGX_CONF_UNSET) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
         return NOT_MATCHED;
     }
@@ -199,11 +199,11 @@ static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* ou
         HASH_ADD_INT(srv_conf->ipv4_times, key, hash_item);
     }
     else {
-        if (difftime(now, hash_item->start_time) >= srv_conf->ngx_waf_cc_deny_duration * 60.0) {
+        if (difftime(now, hash_item->start_time) >= srv_conf->waf_cc_deny_duration * 60.0) {
             HASH_DEL(srv_conf->ipv4_times, hash_item);
         }
         else {
-            if (hash_item->times > (ngx_uint_t)srv_conf->ngx_waf_cc_deny_limit) {
+            if (hash_item->times > (ngx_uint_t)srv_conf->waf_cc_deny_limit) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "CC-DENY");
                 strcpy((char*)ctx->rule_deatils, "");
@@ -420,7 +420,7 @@ static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_wa
         }
         for (; srv_conf->ipv4_times_old_cur != NULL && count < 100; srv_conf->ipv4_times_old_cur = p->hh.next) {
             /* 判断当前的记录是否过期 */
-            if (difftime(now, srv_conf->ipv4_times_old_cur->start_time) < srv_conf->ngx_waf_cc_deny_duration * 60.0) {
+            if (difftime(now, srv_conf->ipv4_times_old_cur->start_time) < srv_conf->waf_cc_deny_duration * 60.0) {
                 /* 在新的哈希表中查找是否存在当前记录 */
                 HASH_FIND_INT(srv_conf->ipv4_times, &srv_conf->ipv4_times_old_cur->key, p);
                 if (p == NULL) {
