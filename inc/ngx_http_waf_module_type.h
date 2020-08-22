@@ -20,7 +20,7 @@ typedef struct {
 } hash_table_item_int_ulong_t;
 
 typedef struct {
-    ngx_int_t                       ngx_waf_mult_mount;
+    ngx_int_t                       waf_mult_mount;
 } ngx_http_waf_main_conf_t;
 
 typedef struct {
@@ -34,11 +34,11 @@ typedef struct {
     ngx_log_t                      *ngx_log;                    /* 记录内存池在进行操作时的错误日志 */
     ngx_pool_t                     *ngx_pool;                   /* 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                /* 当前已经从内存池中申请过多少次内存 */
-    ngx_int_t                       ngx_waf;                    /* 是否启用本模块 */
-    ngx_str_t                       ngx_waf_rule_path;          /* 配置文件所在目录 */
-    ngx_int_t                       ngx_waf_cc_deny;            /* 是否启用 CC 防御 */
-    ngx_int_t                       ngx_waf_cc_deny_limit;      /* CC 防御的限制频率 */
-    ngx_int_t                       ngx_waf_cc_deny_duration;   /* CC 防御的拉黑时长 */
+    ngx_int_t                       waf;                        /* 是否启用本模块 */
+    ngx_str_t                       waf_rule_path;              /* 配置文件所在目录 */
+    ngx_int_t                       waf_cc_deny;                /* 是否启用 CC 防御 */
+    ngx_int_t                       waf_cc_deny_limit;          /* CC 防御的限制频率 */
+    ngx_int_t                       waf_cc_deny_duration;       /* CC 防御的拉黑时长 */
     ngx_array_t                    *black_ipv4;                 /* IPV4 黑名单 */
     ngx_array_t                    *black_url;                  /* URL 黑名单 */
     ngx_array_t                    *black_args;                 /* args 黑名单 */
