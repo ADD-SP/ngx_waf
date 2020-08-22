@@ -48,6 +48,7 @@
 
 
 ### Changed
+
 + `waf_mult_mount`现在只允许写在`server`段中（[3214fc8](https://github.com/ADD-SP/ngx_waf/commit/3214fc88d565ed47daa4bdac4f0edb7d1785ed75)）。
     + waf_mult_mount:
         + 配置语法: `waf_mult_mount [ on | off ];`
@@ -74,6 +75,7 @@
 
 ### Fixed
 
++ 修复 CC 防御功能检测逻辑的错误，该错误会导致实际的频率限制要远小于用户指定的限制，容易将正常访问识别为 CC 攻击（[9cb51bb](https://github.com/ADD-SP/ngx_waf/commit/9cb51bba0cdf10c2fd1ac0a482d7435dcfdee93d)）。
 + 现在会检查 rules/ipv4 和 rules/white-ipv4 这两个文件中的 IPV4 地址或地址块是否合法（[fc09f04](https://github.com/ADD-SP/ngx_waf/commit/fc09f045d1e9ac774a919181a15c20a6c777a276)）（[2e7f624](https://github.com/ADD-SP/ngx_waf/commit/2e7f624581d8d85a23d6470acced9acc3e2840b2)）。
 
 ## [1.0.0] - 2020-08-18
