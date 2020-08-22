@@ -25,77 +25,77 @@ typedef ngx_int_t (*ngx_http_waf_check)(ngx_http_request_t* r, ngx_int_t* out_ht
 * 检查客户端 IPV4 地址是否在白名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查客户端 IPV4 地址是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查客户端 IPV4 的访问频次是否超出了限制
 * 如果超出限制返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 URL 是否在白名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 URL 是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查请求参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 UserAgent 参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 Referer 参数是否在白名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 Referer 参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查 Cookie 参数是否在黑名单中
 * 如果在返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /*
 * 检查两个 IPV4 是否属于同一网段
 * 如果属于返回 MATCHED，返回 NOT_MATCHED
 */
-static ngx_int_t ngx_http_waf_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
+static ngx_int_t ngx_http_waf_handler_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
 
 
 /*
@@ -109,17 +109,21 @@ static ngx_int_t ngx_http_waf_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
 static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
 
 
-static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+
+    if (srv_conf->waf_check_ipv4 == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->connection->sockaddr->sa_family == AF_INET) {
         unsigned long ipv4 = sin->sin_addr.s_addr;
         ipv4_t* p = srv_conf->white_ipv4->elts;
         size_t index = 0;
         for (; index < srv_conf->white_ipv4->nelts; index++, p++) {
-            if (ngx_http_waf_check_ipv4(ipv4, p) == MATCHED) {
+            if (ngx_http_waf_handler_check_ipv4(ipv4, p) == MATCHED) {
                 ctx->blocked = FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)p->text);
@@ -133,17 +137,21 @@ static ngx_int_t ngx_http_waf_check_white_ipv4(ngx_http_request_t* r, ngx_int_t*
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+
+    if (srv_conf->waf_check_ipv4 == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->connection->sockaddr->sa_family == AF_INET) {
         unsigned long ipv4 = sin->sin_addr.s_addr;
         ipv4_t* p = srv_conf->black_ipv4->elts;
         size_t index = 0;
         for (; index < srv_conf->black_ipv4->nelts; index++, p++) {
-            if (ngx_http_waf_check_ipv4(ipv4, p) == MATCHED) {
+            if (ngx_http_waf_handler_check_ipv4(ipv4, p) == MATCHED) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)p->text);
@@ -157,7 +165,7 @@ static ngx_int_t ngx_http_waf_check_black_ipv4(ngx_http_request_t* r, ngx_int_t*
 }
 
 
-static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
@@ -219,11 +227,15 @@ static ngx_int_t ngx_http_waf_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* ou
 }
 
 
-static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     ngx_str_t* puri = &r->uri;
     ngx_regex_elt_t* p = srv_conf->white_url->elts;
+
+    if (srv_conf->waf_check_url == 0) {
+        return NOT_MATCHED;
+    }
 
     for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
         ngx_int_t rc = ngx_regex_exec(p->regex, puri, NULL, 0);
@@ -240,11 +252,15 @@ static ngx_int_t ngx_http_waf_check_white_url(ngx_http_request_t* r, ngx_int_t* 
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     ngx_str_t* puri = &r->uri;
     ngx_regex_elt_t* p = srv_conf->black_url->elts;
+
+    if (srv_conf->waf_check_url == 0) {
+        return NOT_MATCHED;
+    }
 
     for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
         ngx_int_t rc = ngx_regex_exec(p->regex, puri, NULL, 0);
@@ -261,9 +277,14 @@ static ngx_int_t ngx_http_waf_check_black_url(ngx_http_request_t* r, ngx_int_t* 
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+
+
+    if (srv_conf->waf_check_args == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->args.len == 0) {
         return NOT_MATCHED;
@@ -287,9 +308,13 @@ static ngx_int_t ngx_http_waf_check_black_args(ngx_http_request_t* r, ngx_int_t*
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+
+    if (srv_conf->waf_check_ua == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->headers_in.user_agent == NULL) {
         return NOT_MATCHED;
@@ -313,9 +338,13 @@ static ngx_int_t ngx_http_waf_check_black_user_agent(ngx_http_request_t* r, ngx_
 }
 
 
-static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+
+    if (srv_conf->waf_check_referer == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->headers_in.referer == NULL) {
         return NOT_MATCHED;
@@ -339,9 +368,13 @@ static ngx_int_t ngx_http_waf_check_white_referer(ngx_http_request_t* r, ngx_int
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+
+    if (srv_conf->waf_check_referer == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->headers_in.referer == NULL) {
         return NOT_MATCHED;
@@ -365,9 +398,13 @@ static ngx_int_t ngx_http_waf_check_black_referer(ngx_http_request_t* r, ngx_int
 }
 
 
-static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+
+    if (srv_conf->waf_check_cookie == 0) {
+        return NOT_MATCHED;
+    }
 
     if (r->headers_in.cookies.nelts != 0) {
         ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
@@ -389,7 +426,7 @@ static ngx_int_t ngx_http_waf_check_black_cookie(ngx_http_request_t* r, ngx_int_
 }
 
 
-static ngx_int_t ngx_http_waf_check_ipv4(unsigned long ip, const ipv4_t* ipv4) {
+static ngx_int_t ngx_http_waf_handler_check_ipv4(unsigned long ip, const ipv4_t* ipv4) {
     size_t prefix = ip & ipv4->suffix;
 
     if (prefix == ipv4->prefix) {

@@ -33,6 +33,13 @@ typedef struct {
     ngx_int_t                       waf;                        /* 是否启用本模块 */
     ngx_str_t                       waf_rule_path;              /* 配置文件所在目录 */
     ngx_int_t                       waf_mult_mount;
+    ngx_int_t                       waf_check_ipv4;
+    ngx_int_t                       waf_check_url;
+    ngx_int_t                       waf_check_referer;
+    ngx_int_t                       waf_check_args;
+    ngx_int_t                       waf_check_ua;
+    ngx_int_t                       waf_check_cookie;
+    ngx_int_t                       waf_check_post;
     ngx_int_t                       waf_cc_deny;                /* 是否启用 CC 防御 */
     ngx_int_t                       waf_cc_deny_limit;          /* CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;       /* CC 防御的拉黑时长 */
