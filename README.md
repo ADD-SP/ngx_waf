@@ -70,14 +70,14 @@ make install
 
 ```text
 http {
-    ngx_waf_mult_mount off;
     ...
     server {
         ...
-        ngx_waf on;
-        ngx_waf_rule_path /usr/local/src/ngx_waf/rules/;
-        ngx_waf_cc_deny on;
-        ngx_waf_cc_deny_limit 1000 60;
+        waf on;
+        waf_rule_path /usr/local/src/ngx_waf/rules/;
+        waf_mult_mount off;
+        waf_cc_deny on;
+        waf_cc_deny_limit 1000 60;
         ...
     }
     ...
@@ -85,28 +85,63 @@ http {
 
 ```
 
-+ ngx_waf_mult_mount:
-    + 配置语法: `ngx_waf_mult_mount [ on | off ];`
++ waf_mult_mount:
+    + 配置语法: `waf_mult_mount [ on | off ];`
     + 默认值：`off`
     + 配置段: http
     + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
-+ ngx_waf:
-    + 配置语法: `ngx_waf [ on | off ];`
++ waf:
+    + 配置语法: `waf [ on | off ];`
     + 默认值：`off`
     + 配置段: server
     + 作用：是否启用本模块。
-+ ngx_waf_rule_path:
-    + 配置语法: `ngx_waf_rule_path dir;`
++ waf_rule_path:
+    + 配置语法: `waf_rule_path dir;`
     + 默认值：无
     + 配置段: server
     + 作用：规则文件所在目录，且必须以`/`结尾。
-+ ngx_waf_cc_deny:
-    + 配置语法: `ngx_waf_cc_deny [ on | off ];`
++ waf_check_ipv4:
+    + 配置语法: `waf_check_ipv4 [ on | off ];`
+    + 默认值：`on`
+    + 配置段: server
+    + 作用：是否启用 IPV4 检查。
++ waf_check_url:
+    + 配置语法: `waf_check_url [ on | off ];`
+    + 默认值：`on`
+    + 配置段: server
+    + 作用：是否启用 URL 检查。
++ waf_check_args:
+    + 配置语法: `waf_check_args [ on | off ];`
+    + 默认值：`on`
+    + 配置段: server
+    + 作用：是否启用 Args 检查。
++ waf_check_ua:
+    + 配置语法: `waf_check_ua [ on | off ];`
+    + 默认值：`on`
+    + 配置段: server
+    + 作用：是否启用 User-Agent 检查。
++ waf_check_referer:
+    + 配置语法: `waf_check_referer [ on | off ];`
+    + 默认值：`on`
+    + 配置段: server
+    + 作用：是否启用 Referer 检查。
++ waf_check_cookie:
+    + 配置语法: `waf_check_cookie [ on | off ];`
+    + 默认值：`on`
+    + 配置段: server
+    + 作用：是否启用 Cookie 检查。
++ waf_check_post:
+    + 配置语法: `waf_check_post [ on | off ];`
+    + 默认值：`off`
+    + 配置段: server
+    + 作用：是否启用 POST 检查。
++ waf_cc_deny:
+    + 配置语法: `waf_cc_deny [ on | off ];`
     + 默认值：`off`
     + 配置段: server
     + 作用：是否启用 CC 防御。
-+ ngx_waf_cc_deny_limit:
-    + 配置语法: `ngx_waf_cc_deny_limit rate duration;`
++ waf_cc_deny_limit:
+    + 配置语法: `waf_cc_deny_limit rate duration;`
     + 默认值：无
     + 配置段: server
     + 作用：包含两个参数，第一个参数`rate`表示每分钟的最多请求次数（大于零的整数），第二个参数`duration`表示超出第一个参数`rate`的限制后拉黑 IP 多少分钟（大于零的整数）。
