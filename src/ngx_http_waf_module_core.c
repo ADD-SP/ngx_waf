@@ -37,6 +37,62 @@ static ngx_command_t ngx_http_waf_commands[] = {
         offsetof(ngx_http_waf_srv_conf_t, waf_rule_path),
         NULL
    },
+   {
+        ngx_string("waf_check_ipv4"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_ipv4,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_ipv4),
+        NULL
+   },
+   {
+        ngx_string("waf_check_url"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_url,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_url),
+        NULL
+   },
+   {
+        ngx_string("waf_check_referer"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_referer,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_referer),
+        NULL
+   },
+   {
+        ngx_string("waf_check_args"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_args,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_args),
+        NULL
+   },
+   {
+        ngx_string("waf_check_cookie"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_cookie,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_cookie),
+        NULL
+   },
+   {
+        ngx_string("waf_check_ua"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_ua,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_ua),
+        NULL
+   },
+   {
+        ngx_string("waf_check_post"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_check_post,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        offsetof(ngx_http_waf_srv_conf_t, waf_check_post),
+        NULL
+   },
     {
         ngx_string("waf_cc_deny"),
         NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
@@ -127,6 +183,62 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
 }
 
 
+static char* ngx_http_waf_check_ipv4(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_check_url(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_check_args(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_check_cookie(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_check_ua(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_check_referer(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_check_post(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+
 static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
         return NGX_CONF_ERROR;
@@ -162,6 +274,13 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mult_mount = NGX_CONF_UNSET;
+    srv_conf->waf_check_ipv4 = NGX_CONF_UNSET;
+    srv_conf->waf_check_url = NGX_CONF_UNSET;
+    srv_conf->waf_check_args = NGX_CONF_UNSET;
+    srv_conf->waf_check_cookie = NGX_CONF_UNSET;
+    srv_conf->waf_check_ua = NGX_CONF_UNSET;
+    srv_conf->waf_check_referer = NGX_CONF_UNSET;
+    srv_conf->waf_check_post = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
@@ -313,9 +432,9 @@ static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_ht
 
 static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
     static ngx_http_waf_check check_proc[] = {
-        ngx_http_waf_check_white_url,
-        ngx_http_waf_check_black_url,
-        ngx_http_waf_check_black_args,
+        ngx_http_waf_handler_check_white_url,
+        ngx_http_waf_handler_check_black_url,
+        ngx_http_waf_handler_check_black_args,
         NULL
     };
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
@@ -375,16 +494,16 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
 
 static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r) {
     static ngx_http_waf_check check_proc[] = {
-        ngx_http_waf_check_white_ipv4,
-        ngx_http_waf_check_black_ipv4,
-        ngx_http_waf_check_cc_ipv4,
-        ngx_http_waf_check_white_url,
-        ngx_http_waf_check_black_url,
-        ngx_http_waf_check_black_args,
-        ngx_http_waf_check_black_user_agent,
-        ngx_http_waf_check_white_referer,
-        ngx_http_waf_check_black_referer,
-        ngx_http_waf_check_black_cookie,
+        ngx_http_waf_handler_check_white_ipv4,
+        ngx_http_waf_handler_check_black_ipv4,
+        ngx_http_waf_handler_check_cc_ipv4,
+        ngx_http_waf_handler_check_white_url,
+        ngx_http_waf_handler_check_black_url,
+        ngx_http_waf_handler_check_black_args,
+        ngx_http_waf_handler_check_black_user_agent,
+        ngx_http_waf_handler_check_white_referer,
+        ngx_http_waf_handler_check_black_referer,
+        ngx_http_waf_handler_check_black_cookie,
         NULL
     };
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
@@ -404,11 +523,11 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
             ctx->rule_deatils[0] = '\0';
             ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
         }
-    } 
-    
+    }
+
     if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
-    } 
+    }
     else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
@@ -424,9 +543,11 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         }
     }
 
-    if ((r->method & NGX_HTTP_POST) != 0 
-        && ctx->read_body_done == FALSE 
-        && is_matched != MATCHED) {
+    if ((r->method & NGX_HTTP_POST) != 0
+        && ctx->read_body_done == FALSE
+        && is_matched != MATCHED
+        && srv_conf->waf_check_post != NGX_CONF_UNSET
+        && srv_conf->waf_check_post != 0) {
         r->request_body_in_persistent_file = 0;
         r->request_body_in_clean_file = 0;
         http_status = ngx_http_read_client_request_body(r, check_post);
@@ -495,7 +616,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     int is_in_suffix = FALSE;
     memcpy(ipv4->text, text.data, text.len);
     ipv4->text[text.len] = '\0';
-    for (size_t i = 0; i < text.len; i++) {
+    for (size_t i = 0; i < text.len - 1; i++) {
         c = text.data[i];
         if (c >= '0' && c <= '9') {
             if (is_in_suffix == TRUE) {
@@ -513,7 +634,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
             prefix = (num << 24) | (prefix >> 8);
             num = 0;
         }
-        else {
+        else if (c != '\r' && c != '\n') {
             return FAIL;
         }
     }
@@ -568,7 +689,7 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
             break;
         case 1:
             ipv4 = ngx_array_push(ngx_array);
-            if (parse_ipv4(line, ipv4) == FAIL) {
+            if (parse_ipv4(line, ipv4) != SUCCESS) {
                 return FAIL;
             }
             break;
