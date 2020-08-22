@@ -523,6 +523,9 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
             prefix = (num << 24) | (prefix >> 8);
             num = 0;
         }
+        else {
+            return FAIL;
+        }
     }
     prefix = (num << 24) | (prefix >> 8);
     size_t i = suffix, j = 1;
@@ -540,17 +543,18 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
 
 static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
+    ngx_int_t line_number = 0;
     ngx_str_t line;
     char* str = ngx_palloc(cf->pool, sizeof(char) * RULE_MAX_LEN);
     if (fp == NULL) {
         return FAIL;
     }
     while (fgets(str, RULE_MAX_LEN - 16, fp) != NULL) {
-        ngx_regex_compile_t   rc;
+        ngx_regex_compile_t   regex_compile;
         u_char                errstr[NGX_MAX_CONF_ERRSTR];
         ngx_regex_elt_t* ngx_regex_elt;
         ipv4_t* ipv4;
-
+        ++line_number;
         line.data = (u_char*)str;
         line.len = strlen((char*)str);
         if (line.data[line.len - 1] == '\n') {
@@ -561,20 +565,22 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
         }
         switch (mode) {
         case 0:
-            ngx_memzero(&rc, sizeof(ngx_regex_compile_t));
-            rc.pattern = line;
-            rc.pool = cf->pool;
-            rc.err.len = NGX_MAX_CONF_ERRSTR;
-            rc.err.data = errstr;
-            ngx_regex_compile(&rc);
+            ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
+            regex_compile.pattern = line;
+            regex_compile.pool = cf->pool;
+            regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
+            regex_compile.err.data = errstr;
+            ngx_regex_compile(&regex_compile);
             ngx_regex_elt = ngx_array_push(ngx_array);
             ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * RULE_MAX_LEN);
             to_c_str(ngx_regex_elt->name, line);
-            ngx_regex_elt->regex = rc.regex;
+            ngx_regex_elt->regex = regex_compile.regex;
             break;
         case 1:
             ipv4 = ngx_array_push(ngx_array);
-            parse_ipv4(line, ipv4);
+            if (parse_ipv4(line, ipv4) == FAIL) {
+                return FAIL;
+            }
             break;
         }
     }
