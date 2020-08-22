@@ -29,9 +29,6 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
 static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 
 
-static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
-
-
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
 
