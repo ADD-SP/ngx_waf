@@ -16,39 +16,39 @@ static ngx_int_t ngx_waf_mult_mount = 0;
 static ngx_command_t ngx_http_waf_commands[] = {
 
    {
-        ngx_string("ngx_waf_mult_mount"),
+        ngx_string("waf_mult_mount"),
         NGX_HTTP_MAIN_CONF | NGX_CONF_FLAG,
         ngx_http_waf_mult_mount,
         NGX_HTTP_MAIN_CONF_OFFSET,
-        offsetof(ngx_http_waf_main_conf_t, ngx_waf_mult_mount),
+        offsetof(ngx_http_waf_main_conf_t, waf_mult_mount),
         NULL
    },
    {
-        ngx_string("ngx_waf"),
+        ngx_string("waf"),
         NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
         ngx_http_waf_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, ngx_waf),
+        offsetof(ngx_http_waf_srv_conf_t, waf),
         NULL
    },
    {
-        ngx_string("ngx_waf_rule_path"),
+        ngx_string("waf_rule_path"),
         NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
         ngx_http_waf_rule_path_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, ngx_waf_rule_path),
+        offsetof(ngx_http_waf_srv_conf_t, waf_rule_path),
         NULL
    },
     {
-        ngx_string("ngx_waf_cc_deny"),
+        ngx_string("waf_cc_deny"),
         NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
         ngx_http_waf_cc_deny_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, ngx_waf_cc_deny),
+        offsetof(ngx_http_waf_srv_conf_t, waf_cc_deny),
         NULL
    },
     {
-        ngx_string("ngx_waf_cc_deny_limit"),
+        ngx_string("waf_cc_deny_limit"),
         NGX_HTTP_SRV_CONF | NGX_CONF_TAKE2,
         ngx_http_waf_cc_deny_limit_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
@@ -92,7 +92,7 @@ static char* ngx_http_waf_mult_mount(ngx_conf_t* cf, ngx_command_t* cmd, void* c
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
         return NGX_CONF_ERROR;
     }
-    ngx_waf_mult_mount = main_conf->ngx_waf_mult_mount;
+    ngx_waf_mult_mount = main_conf->waf_mult_mount;
     return NGX_CONF_OK;
 }
 
@@ -113,7 +113,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     }
 
     char* full_path = ngx_palloc(cf->pool, sizeof(char) * RULE_MAX_LEN);
-    char* end = to_c_str((u_char*)full_path, srv_conf->ngx_waf_rule_path);
+    char* end = to_c_str((u_char*)full_path, srv_conf->waf_rule_path);
 
     CHECK_AND_LOAD_CONF(cf, full_path, end, IPV4_FILE, srv_conf->black_ipv4, 1);
     CHECK_AND_LOAD_CONF(cf, full_path, end, URL_FILE, srv_conf->black_url, 0);
@@ -142,12 +142,12 @@ static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void*
 static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_srv_conf_t* srv_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
-    srv_conf->ngx_waf_cc_deny_limit = ngx_atoi((p_str + 1)->data, (p_str + 1)->len);
-    srv_conf->ngx_waf_cc_deny_duration = ngx_atoi((p_str + 2)->data, (p_str + 2)->len);
-    if (srv_conf->ngx_waf_cc_deny_limit <= 0 || srv_conf->ngx_waf_cc_deny_duration <= 0) {
+    srv_conf->waf_cc_deny_limit = ngx_atoi((p_str + 1)->data, (p_str + 1)->len);
+    srv_conf->waf_cc_deny_duration = ngx_atoi((p_str + 2)->data, (p_str + 2)->len);
+    if (srv_conf->waf_cc_deny_limit <= 0 || srv_conf->waf_cc_deny_duration <= 0) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Cannot be converted to an integer greater than zero %d %d",
-            srv_conf->ngx_waf_cc_deny_limit,
-            srv_conf->ngx_waf_cc_deny_duration);
+            srv_conf->waf_cc_deny_limit,
+            srv_conf->waf_cc_deny_duration);
         return NGX_CONF_ERROR;
     }
     return NGX_CONF_OK;
@@ -160,7 +160,7 @@ static void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
     if (main_conf == NULL) {
         return NULL;
     }
-    main_conf->ngx_waf_mult_mount = NGX_CONF_UNSET;
+    main_conf->waf_mult_mount = NGX_CONF_UNSET;
     return main_conf;
 }
 
@@ -171,14 +171,14 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     if (srv_conf == NULL) {
         return NULL;
     }
-    ngx_str_null(&srv_conf->ngx_waf_rule_path);
+    ngx_str_null(&srv_conf->waf_rule_path);
     srv_conf->ngx_log = ngx_log_init(NULL);
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
     srv_conf->alloc_times = 0;
-    srv_conf->ngx_waf = NGX_CONF_UNSET;
-    srv_conf->ngx_waf_cc_deny = NGX_CONF_UNSET;
-    srv_conf->ngx_waf_cc_deny_limit = NGX_CONF_UNSET;
-    srv_conf->ngx_waf_cc_deny_duration = NGX_CONF_UNSET;
+    srv_conf->waf = NGX_CONF_UNSET;
+    srv_conf->waf_cc_deny = NGX_CONF_UNSET;
+    srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
+    srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     srv_conf->black_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
     srv_conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -353,7 +353,7 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
         }
     }
 
-    if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
+    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
     else  if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
@@ -419,7 +419,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         }
     } 
     
-    if (srv_conf->ngx_waf == 0 || srv_conf->ngx_waf == NGX_CONF_UNSET) {
+    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     } 
     else  if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
