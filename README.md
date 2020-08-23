@@ -6,7 +6,11 @@
 ![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
 
+简体中文 | [English](README-EN.md)
+
 用于 nginx 的防火墙模块。
+
+[开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES-CN.md)
 
 ## 功能
 
@@ -242,11 +246,6 @@ http {
 ### 内存管理
 <span id='性能-内存管理'></span>
 本模块在启用了 CC 防御功能时会周期性地释放一次内存和申请一次内存，但是并不会一次性全部释放，而是逐步释放，每次请求释放一小部分，逐渐地完成释放，期间会小幅度拖慢处理时间。
-
-## 项目进度
-
-+ [开发进度](https://github.com/ADD-SP/ngx_waf/projects/2)
-+ [更新日志](CHANGES.md)
 
 ## 感谢
 
