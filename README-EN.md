@@ -263,7 +263,7 @@ It may be because the 'Anti Challenge Collapsar' is enabled, see[Performance-Mem
 
 ### Why not check the request body?
 
-For performance reasons, this module will check whether it is in the memory before checking the request body. If it is, it will check normally, otherwise skip the check. You can try to edit `nginx.conf`
+For performance reasons, this module will check whether it is in the memory before checking the request body. If it is, it will check normally, otherwise skip the check. You can try to edit `nginx.conf`.
 
 ```text
 http {
@@ -278,9 +278,9 @@ http {
 
 ### fork() failed while spawning "worker process" (12: Cannot allocate memory)
 
-It may be caused by frequent run  `nginx -s reload`. This module will allocate some memory when reading the `nginx.conf`, but some memory will not be released immediately after run `nginx -s reload`, so it is frequently` nginx -s reload` is very likely to cause this error.
+It may be caused by frequent run  `nginx -s reload`. This module will allocate some memory when reading the `nginx.conf`, but some memory will not be free immediately after run `nginx -s reload`, so it is frequent in a short time running `nginx -s reload` will most likely cause this error.
 
-You can kill all of nginx‘s processes and restart nginx.
+You can kill all of nginx's processes and restart nginx.
 
 ## Performance
 
