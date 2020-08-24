@@ -6,7 +6,7 @@
 ![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
 
-[简体中文](README-CN.md) | English
+[简体中文](README.md) | English
 
 A web application firewall module for nginx.
 
