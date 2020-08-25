@@ -4,6 +4,8 @@
 
 ### 新增
 
++ 支持以动态模块安装到 nginx 上，感谢 [dvershinin](https://github.com/dvershinin)的 PR（https://github.com/ADD-SP/ngx_waf/pull/4）。
+
 ### 改动
 
 ### 修复
