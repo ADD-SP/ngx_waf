@@ -25,15 +25,21 @@
 
 ## 安装
 
-### On Unix Like
+On Unix Like
 
-#### 下载 nginx 源码
+### 下载 nginx 源码
 
 nginx 添加新的模块必须要重新编译，所以先[下载 nginx 源码](http://nginx.org/en/download.html)。
 
+```bash
+cd /usr/local/src
+wget http://nginx.org/download/nginx-1.18.0.tar.gz
+tar -zxf nginx-1.18.0.tar.gz
+```
+
 > 推荐 1.18.0 版本的 nginx 源码，若使用低版本的 nginx 源码则不保证本模块可以正常使用。
 
-#### 下载 ngx-waf 源码
+### 下载 ngx-waf 源码
 
 ```bash
 cd /usr/local/src
@@ -42,11 +48,20 @@ cd ngx_waf
 git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 ```
 
-#### 编译 nginx
+### 编译和安装模块
 
-进入 nginx 源代码目录
+从 nginx-1.9.11 开始，nginx 开始支持动态模块。
+
+静态模块将所有模块编译进一个二进制文件中，所以增删改模块都需要重新编译 nginx 并替换。
+
+动态模块则动态加载 `.so` 文件，无需重新编译整个 nginx。只需要将模块编译成 `.so` 文件然后修改`nginx.conf`即可加载对应的模块。
+
+***
+
+**使用静态模块**
 
 ```bash
+cd /usr/local/src/nginx-1.18.0
 ./configure xxxxxx --add-module=/usr/local/src/ngx_waf
 make
 ```
@@ -68,7 +83,29 @@ nginx
 make install
 ```
 
-#### 修改 nginx.conf
+***
+
+**使用动态模块**
+
+```bash
+cd /usr/local/src/nginx-1.18.0
+./configure xxxxxx --add-dynamic-module=/usr/local/src/ngx_waf
+make modules
+```
+> xxxxxx 为其它的编译参数，一般来说是将 xxxxxx 替换为`nginx -V`显示的编译参数。
+
+此时你需要找到一个目录用来存放模块的 .so 文件，本文假设存储在`/usr/local/nginx/modules`下
+
+```bash
+cp objs/ngx_http_waf_module.so /usr/local/nginx/modules/ngx_http_waf_module.so
+```
+
+然后修改`nginx.conf`，在最顶部添加一行。
+```text
+load_module "/usr/local/nginx/modules/ngx_http_waf_module.so";
+```
+
+## 使用
 
 在需要启用模块的 server 块添加下列配置，例如
 
@@ -88,68 +125,104 @@ http {
 }
 
 ```
-+ waf:
-    + 配置语法: `waf [ on | off ];`
-    + 默认值：`off`
-    + 配置段: server
-    + 作用：是否启用本模块。
-+ waf_rule_path:
-    + 配置语法: `waf_rule_path dir;`
-    + 默认值：无
-    + 配置段: server
-    + 作用：规则文件所在目录，且必须以`/`结尾。
-+ waf_mult_mount:
-    + 配置语法: `waf_mult_mount [ on | off ];`
-    + 默认值：`off`
-    + 配置段: server
-    + 作用：进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
-+ waf_check_ipv4:
-    + 配置语法: `waf_check_ipv4 [ on | off ];`
-    + 默认值：`on`
-    + 配置段: server
-    + 作用：是否启用 IPV4 检查。
-+ waf_check_url:
-    + 配置语法: `waf_check_url [ on | off ];`
-    + 默认值：`on`
-    + 配置段: server
-    + 作用：是否启用 URL 检查。
-+ waf_check_args:
-    + 配置语法: `waf_check_args [ on | off ];`
-    + 默认值：`on`
-    + 配置段: server
-    + 作用：是否启用 Args 检查。
-+ waf_check_ua:
-    + 配置语法: `waf_check_ua [ on | off ];`
-    + 默认值：`on`
-    + 配置段: server
-    + 作用：是否启用 User-Agent 检查。
-+ waf_check_referer:
-    + 配置语法: `waf_check_referer [ on | off ];`
-    + 默认值：`on`
-    + 配置段: server
-    + 作用：是否启用 Referer 检查。
-+ waf_check_cookie:
-    + 配置语法: `waf_check_cookie [ on | off ];`
-    + 默认值：`on`
-    + 配置段: server
-    + 作用：是否启用 Cookie 检查。
-+ waf_check_post:
-    + 配置语法: `waf_check_post [ on | off ];`
-    + 默认值：`off`
-    + 配置段: server
-    + 作用：是否启用 POST 检查。
-+ waf_cc_deny:
-    + 配置语法: `waf_cc_deny [ on | off ];`
-    + 默认值：`off`
-    + 配置段: server
-    + 作用：是否启用 CC 防御。
-+ waf_cc_deny_limit:
-    + 配置语法: `waf_cc_deny_limit rate duration;`
-    + 默认值：无
-    + 配置段: server
-    + 作用：包含两个参数，第一个参数`rate`表示每分钟的最多请求次数（大于零的整数），第二个参数`duration`表示超出第一个参数`rate`的限制后拉黑 IP 多少分钟（大于零的整数）。
+### `waf`
 
-#### 测试
++ 配置语法: `waf [ on | off ];`
++ 默认值：`off`
++ 配置段: server
+
+是否启用本模块。
+
+### `waf_rule_path`
+
++ 配置语法: `waf_rule_path dir;`
++ 默认值：无
++ 配置段: server
+
+规则文件所在目录，且必须以`/`结尾。
+
+
+### `waf_mult_mount`
+
++ 配置语法: `waf_mult_mount [ on | off ];`
++ 默认值：`off`
++ 配置段: server
+
+进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
+
+### `waf_check_ipv4`
+
++ 配置语法: `waf_check_ipv4 [ on | off ];`
++ 默认值：`on`
++ 配置段: server
+
+是否启用 IPV4 检查。
+
+### `waf_check_url`
+
++ 配置语法: `waf_check_url [ on | off ];`
++ 默认值：`on`
++ 配置段: server
+
+是否启用 URL 检查。
+
+### `waf_check_args`
+
++ 配置语法: `waf_check_args [ on | off ];`
++ 默认值：`on`
++ 配置段: server
+
+是否启用 Args 检查。
+
+### `waf_check_ua`
+
++ 配置语法: `waf_check_ua [ on | off ];`
++ 默认值：`on`
++ 配置段: server
+
+是否启用 User-Agent 检查。
+
+### `waf_check_referer`
+
++ 配置语法: `waf_check_referer [ on | off ];`
++ 默认值：`on`
++ 配置段: server
+
+是否启用 Referer 检查。
+
+### `waf_check_cookie`
+
++ 配置语法: `waf_check_cookie [ on | off ];`
++ 默认值：`on`
++ 配置段: server
+
+是否启用 Cookie 检查。
+
+### `waf_check_post`
+
++ 配置语法: `waf_check_post [ on | off ];`
++ 默认值：`off`
++ 配置段: server
+
+是否启用 POST 检查。
+
+### `waf_cc_deny`
+
++ 配置语法: `waf_cc_deny [ on | off ];`
++ 默认值：`off`
++ 配置段: server
+
+是否启用 CC 防御。
+
+### `waf_cc_deny_limit`
+
++ 配置语法: `waf_cc_deny_limit rate duration;`
++ 默认值：无
++ 配置段: server
+
+包含两个参数，第一个参数`rate`表示每分钟的最多请求次数（大于零的整数），第二个参数`duration`表示超出第一个参数`rate`的限制后拉黑 IP 多少分钟（大于零的整数）。
+
+### 测试
 
 ```text
 https://example.com/www.bak
