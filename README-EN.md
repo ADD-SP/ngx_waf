@@ -50,7 +50,17 @@ cd ngx_waf
 git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 ```
 
-### compile
+### compile and install
+
+Starting from nginx-1.9.11, nginx began to support dynamic modules.
+
+The static module compiles all modules into a binary file, so adding, deleting and updating modules requires recompiling nginx and replacing the old binary file
+
+The dynamic module dynamically loads the `.so` file without recompiling the entire nginx. Just compile the module into a `.so` file and edit `nginx.conf` to load the corresponding module.
+
+***
+
+**use static modules**
 
 ```bash
 cd /usr/local/src/nginx-1.18.0
@@ -58,10 +68,6 @@ cd /usr/local/src/nginx-1.18.0
 make
 ```
 > If you have already installed nginx, it is recommended to run `nginx -V` to get the compilation parameters, and then replace `xxx` with it.
-
-### install
-
-If you have installed nginx, you can directly replace the binary file (assuming the full path of the original binary file is `/usr/local/nginx/sbin/nginx`).
 
 ```bash
 nginx -s stop
@@ -72,13 +78,35 @@ nginx
 
 > If you don’t want to stop the nginx service, you can upgrade through hot deployment, see [Official Document](https://nginx.org/en/docs/control.html) for hot deployment method.
 
-***
 
 If nginx is not installed.
 
 ```bash
 make install
 ```
+
+***
+
+**use dynamic modules**
+
+```bash
+cd /usr/local/src/nginx-1.18.0
+./configure xxx --add-dynamic-module=/usr/local/src/ngx_waf
+make modules
+```
+> If you have already installed nginx, it is recommended to run `nginx -V` to get the compilation parameters, and then replace `xxx` with it.
+
+Now you need to find a directory to store the `.so` file of the module, this doc assumes it is stored under `/usr/local/nginx/modules`
+
+```bash
+cp objs/ngx_http_waf_module.so /usr/local/nginx/modules/ngx_http_waf_module.so
+```
+
+Then edit `nginx.conf` and add a line at the top.
+```text
+load_module "/usr/local/nginx/modules/ngx_http_waf_module.so";
+```
+
 
 ## How to use?
 
