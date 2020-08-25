@@ -151,7 +151,7 @@ The directory where the rule file is located, must end with `/`.
 + default: `off`
 + context: server
 
-Multi-stage inspection. When `rewrite` exists in `nginx.conf`, it is recommended to enable it, otherwise it is recommended to disable it.
+Multi-stage inspection. When address rewriting exists in `nginx.conf` (such as `rewrite`), it is recommended to enable it, otherwise it is recommended to disable it.
 
 
 ### `waf_check_ipv4`
