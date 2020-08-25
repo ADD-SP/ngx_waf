@@ -54,9 +54,9 @@ git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 
 Starting from nginx-1.9.11, nginx began to support dynamic modules.
 
-The static module compiles all modules into a binary file, so adding, deleting and updating modules requires recompiling nginx and replacing the old binary file
+Using static modules requires all modules to be compiled into binary files, so adding, deleting and updating modules requires recompiling nginx and replacing the old binary files.
 
-The dynamic module dynamically loads the `.so` file without recompiling the entire nginx. Just compile the module into a `.so` file and edit `nginx.conf` to load the corresponding module.
+Using dynamic modules only needs to load the `.so` at runtime, without recompiling the entire nginx. Just compile the module into a `.so`, and then edit `nginx.conf` to load the corresponding module.
 
 ***
 
