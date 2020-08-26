@@ -11,45 +11,6 @@
 #define NGX_HTTP_WAF_MODULE_CORE_H
 
 
-static char* ngx_http_waf_mult_mount(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_ipv4(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_url(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_args(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_cookie(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_ua(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_referer(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_post(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
-
-
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
 
