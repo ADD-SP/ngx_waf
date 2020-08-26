@@ -10,6 +10,8 @@
 
 ### 修复
 
++ 现在可以正确处理规则文件中的空行了（[955cf2d](https://github.com/ADD-SP/ngx_waf/commit/955cf2d240c4d66f815890e3ee9b88ccf906cf1d)）。
+
 ## [1.0.1] - 2020-08-22
 
 ### 新增
