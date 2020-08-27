@@ -39,6 +39,14 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NULL
    },
    {
+        ngx_string("waf_method"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_1MORE,
+        ngx_http_waf_method_conf,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        0,
+        NULL
+   },
+   {
         ngx_string("waf_check_ipv4"),
         NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
         ngx_http_waf_check_ipv4_conf,
@@ -257,7 +265,7 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
     else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
-    else  if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
+    else  if ((r->method & srv_conf->waf_method) == 0) {
         http_status = NGX_DECLINED;
     }
     else {
@@ -291,7 +299,6 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
     static ngx_http_waf_check check_proc[] = {
         ngx_http_waf_handler_check_white_ipv4,
         ngx_http_waf_handler_check_black_ipv4,
-        ngx_http_waf_handler_check_cc_ipv4,
         ngx_http_waf_handler_check_white_url,
         ngx_http_waf_handler_check_black_url,
         ngx_http_waf_handler_check_black_args,
@@ -326,28 +333,32 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
     else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
-    else  if (!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
-        http_status = NGX_DECLINED;
-    }
     else {
-        for (size_t i = 0; check_proc[i] != NULL; i++) {
-            is_matched = check_proc[i](r, &http_status);
-            if (is_matched == MATCHED) {
-                break;
+        if (ngx_http_waf_handler_check_cc_ipv4(r, &http_status) != MATCHED) {
+            if ((r->method & srv_conf->waf_method) == 0) {
+                http_status = NGX_DECLINED;
             }
-        }
-    }
-
-    if ((r->method & NGX_HTTP_POST) != 0
-        && ctx->read_body_done == FALSE
-        && is_matched != MATCHED
-        && srv_conf->waf_check_post != NGX_CONF_UNSET
-        && srv_conf->waf_check_post != 0) {
-        r->request_body_in_persistent_file = 0;
-        r->request_body_in_clean_file = 0;
-        http_status = ngx_http_read_client_request_body(r, check_post);
-        if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
-            http_status = NGX_DONE;
+            else {
+                for (size_t i = 0; check_proc[i] != NULL; i++) {
+                    is_matched = check_proc[i](r, &http_status);
+                    if (is_matched == MATCHED) {
+                        break;
+                    }
+                }
+                /* 如果请求方法为 POST 且 本模块还未读取过请求体 且 配置中未关闭请求体检查 */
+                if ((r->method & NGX_HTTP_POST) != 0
+                    && ctx->read_body_done == FALSE
+                    && is_matched != MATCHED
+                    && srv_conf->waf_check_post != NGX_CONF_UNSET
+                    && srv_conf->waf_check_post != 0) {
+                    r->request_body_in_persistent_file = 0;
+                    r->request_body_in_clean_file = 0;
+                    http_status = ngx_http_read_client_request_body(r, check_post);
+                    if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
+                        http_status = NGX_DONE;
+                    }
+                }
+            }
         }
     }
 
