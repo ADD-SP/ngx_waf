@@ -97,6 +97,8 @@ static char* ngx_http_waf_method_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* 
     ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)conf;
     ngx_str_t* methods = cf->args->elts;
 
+    srv_conf->waf_method = 0;
+
     for (size_t i = 1; i < cf->args->nelts && methods != NULL; i++) {
         if (ngx_strncasecmp(methods[i].data, (u_char*)"GET", min(methods[i].len, 5)) == 0) {
             srv_conf->waf_method |= NGX_HTTP_GET;
@@ -156,10 +158,6 @@ static char* ngx_http_waf_method_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* 
             ngx_log_error(NGX_LOG_ERR, cf->log, 0, info);
             return NGX_CONF_ERROR;
         }
-    }
-
-    if (srv_conf->waf_method == 0) {
-        srv_conf->waf_method = NGX_HTTP_GET | NGX_HTTP_POST;
     }
 
     return NGX_CONF_OK;
@@ -257,7 +255,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mult_mount = NGX_CONF_UNSET;
-    srv_conf->waf_method = 0;
+    srv_conf->waf_method = NGX_HTTP_GET | NGX_HTTP_POST;
     srv_conf->waf_check_ipv4 = NGX_CONF_UNSET;
     srv_conf->waf_check_url = NGX_CONF_UNSET;
     srv_conf->waf_check_args = NGX_CONF_UNSET;

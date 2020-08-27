@@ -422,7 +422,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     int is_in_suffix = FALSE;
     memcpy(ipv4->text, text.data, text.len);
     ipv4->text[text.len] = '\0';
-    for (size_t i = 0; i < text.len - 1; i++) {
+    for (size_t i = 0; i < text.len; i++) {
         c = text.data[i];
         if (c >= '0' && c <= '9') {
             if (is_in_suffix == TRUE) {
