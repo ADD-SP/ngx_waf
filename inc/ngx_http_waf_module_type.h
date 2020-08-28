@@ -32,16 +32,8 @@ typedef struct {
     ngx_uint_t                      alloc_times;                /* 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                        /* 是否启用本模块 */
     ngx_str_t                       waf_rule_path;              /* 配置文件所在目录 */
-    ngx_int_t                       waf_method;                 /* 需要检查的 HTTP Mehtod */
     ngx_int_t                       waf_mult_mount;             /* 是否执行多阶段检查 */
-    ngx_int_t                       waf_check_ipv4;             /* 是否检查 IP4V */
-    ngx_int_t                       waf_check_url;              /* 是否检查 URL */
-    ngx_int_t                       waf_check_referer;          /* 是否检查 Referer */
-    ngx_int_t                       waf_check_args;             /* 是否检查请求参数 */
-    ngx_int_t                       waf_check_ua;               /* 是否检查 UserAgent */
-    ngx_int_t                       waf_check_cookie;           /* 是否检查时 Cookie */
-    ngx_int_t                       waf_check_post;             /* 是否检查请求体 */
-    ngx_int_t                       waf_cc_deny;                /* 是否启用 CC 防御 */
+    ngx_uint_t                      waf_mode;                   /* 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;          /* CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;       /* CC 防御的拉黑时长 */
     ngx_array_t                    *black_ipv4;                 /* IPV4 黑名单 */

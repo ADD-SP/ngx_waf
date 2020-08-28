@@ -116,8 +116,7 @@ http {
         ...
         waf on;
         waf_rule_path /usr/local/src/ngx_waf/rules/;
-        waf_mult_mount off;
-        waf_cc_deny on;
+        waf_mode STD;
         waf_cc_deny_limit 1000 60;
         ...
     }
@@ -150,69 +149,43 @@ http {
 
 进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
 
-### `waf_check_ipv4`
 
-+ 配置语法: `waf_check_ipv4 [ on | off ];`
-+ 默认值：`on`
+### `waf_mode`
+
++ 配置语法: `waf_mode [mode_type] < mode_type>...`
++ 默认值: none
 + 配置段: server
 
-是否启用 IPV4 检查。
+指定防火墙的工作模式，至少指定一个模式，最多指定八个模式。
 
-### `waf_check_url`
+`mode_type`具有下列取值（不区分大小写）:
++ GET: 当`Http.Method=GET`时启动检查。
++ HEAD: 当`Http.Method=HEAD`时启动检查。
++ POST: 当`Http.Method=POST`时启动检查。
++ PUT: 当`Http.Method=PUT`时启动检查。
++ DELETE: 当`Http.Method=DELETE`时启动检查。
++ MKCOL: 当`Http.Method=MKCOL`时启动检查。
++ COPY: 当`Http.Method=COPY`时启动检查。
++ MOVE: 当`Http.Method=MOVE`时启动检查。
++ OPTIONS: 当`Http.Method=OPTIONS`时启动检查。
++ PROPFIN: 当`Http.Method=PROPFIN`时启动检查。
++ PROPPATCH: 当`Http.Method=PROPPATCH`时启动检查。
++ LOCK: 当`Http.Method=LOCK`时启动检查。
++ UNLOCK: 当`Http.Method=UNLOCK`时启动检查。
++ PATCH: 当`Http.Method=PATCH`时启动检查。
++ TRAC: 当`Http.Method=TRAC`时启动检查。
++ IP: 启用 IP 地址的检查规则。
++ URL: 启用 URL 的检查规则。
++ RBODY: 启用 RBODY 的检查规则。
++ ARGS: 启用 ARGS 的检查规则。
++ UA: 启用 UA 的检查规则。
++ COOKIE: 启用 COOKIE 的检查规则。
++ REFERER: 启用 REFERER 的检查规则。
++ CC: 启用 CC 防御。
++ STD: 等价于 `GET POST CC IP URL ARGS RBODY UA`。
++ FULL: 任何情况下都会启动检查并启用所有的检查规则。
 
-+ 配置语法: `waf_check_url [ on | off ];`
-+ 默认值：`on`
-+ 配置段: server
-
-是否启用 URL 检查。
-
-### `waf_check_args`
-
-+ 配置语法: `waf_check_args [ on | off ];`
-+ 默认值：`on`
-+ 配置段: server
-
-是否启用 Args 检查。
-
-### `waf_check_ua`
-
-+ 配置语法: `waf_check_ua [ on | off ];`
-+ 默认值：`on`
-+ 配置段: server
-
-是否启用 User-Agent 检查。
-
-### `waf_check_referer`
-
-+ 配置语法: `waf_check_referer [ on | off ];`
-+ 默认值：`on`
-+ 配置段: server
-
-是否启用 Referer 检查。
-
-### `waf_check_cookie`
-
-+ 配置语法: `waf_check_cookie [ on | off ];`
-+ 默认值：`on`
-+ 配置段: server
-
-是否启用 Cookie 检查。
-
-### `waf_check_post`
-
-+ 配置语法: `waf_check_post [ on | off ];`
-+ 默认值：`off`
-+ 配置段: server
-
-是否启用 POST 检查。
-
-### `waf_cc_deny`
-
-+ 配置语法: `waf_cc_deny [ on | off ];`
-+ 默认值：`off`
-+ 配置段: server
-
-是否启用 CC 防御。
+> 注意: `CC`时独立于其它模式的模式，其生效与否不受到其它模式的影响。典型情况如`URL`模式会受到`GET`模式的影响，因为如果不使用`GET`模式，那么在收到`GET`请求时就不会启动检查，自然也就不会检查 URL，但是`CC`模式不会受到类似的影响。
 
 ### `waf_cc_deny_limit`
 
