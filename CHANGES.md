@@ -8,6 +8,8 @@
 
 ### 改动
 
++ 配置指令合并 ([ba92cfd](https://github.com/ADD-SP/ngx_waf/commit/ba92cfd53ce78da8ff4ed22d2bc71a47de4cbe25))。这些配置指令将被合并：`waf_check_ipv4`，`waf_check_url`，`waf_check_args`，`waf_check_ua`，`waf_check_referer`，`waf_check_cookie`，`waf_check_post`，`waf_check_cookie`，`waf_cc_deny`。合并后的新指令为`waf_mode`，详情见[README](README.md)。
+
 ### 修复
 
 + 现在可以正确处理规则文件中的空行了（[955cf2d](https://github.com/ADD-SP/ngx_waf/commit/955cf2d240c4d66f815890e3ee9b88ccf906cf1d)）。
