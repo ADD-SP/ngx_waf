@@ -114,7 +114,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ng
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
 
-    if (srv_conf->waf_check_ipv4 == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -142,7 +142,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ipv4(ngx_http_request_t* r, ng
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
 
-    if (srv_conf->waf_check_ipv4 == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -176,7 +176,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_i
 
     unsigned long ipv4 = sin->sin_addr.s_addr;
 
-    if (srv_conf->waf_cc_deny == 0 || srv_conf->waf_cc_deny == NGX_CONF_UNSET) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_CC) == FALSE) {
         return NOT_MATCHED;
     }
     if (srv_conf->waf_cc_deny_limit == NGX_CONF_UNSET
@@ -237,7 +237,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
     ngx_str_t* puri = &r->uri;
     ngx_regex_elt_t* p = srv_conf->white_url->elts;
 
-    if (srv_conf->waf_check_url == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_URL) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -262,7 +262,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
     ngx_str_t* puri = &r->uri;
     ngx_regex_elt_t* p = srv_conf->black_url->elts;
 
-    if (srv_conf->waf_check_url == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_URL) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -286,7 +286,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
 
-    if (srv_conf->waf_check_args == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_ARGS) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -316,7 +316,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
-    if (srv_conf->waf_check_ua == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_UA) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -346,7 +346,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
-    if (srv_conf->waf_check_referer == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_REFERER) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -376,7 +376,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
-    if (srv_conf->waf_check_referer == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_REFERER) == FALSE) {
         return NOT_MATCHED;
     }
 
@@ -406,7 +406,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
-    if (srv_conf->waf_check_cookie == 0) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_COOKIE) == FALSE) {
         return NOT_MATCHED;
     }
 

@@ -39,75 +39,11 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NULL
    },
    {
-        ngx_string("waf_method"),
+        ngx_string("waf_mode"),
         NGX_HTTP_SRV_CONF | NGX_CONF_1MORE,
-        ngx_http_waf_method_conf,
+        ngx_http_waf_mode_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
         0,
-        NULL
-   },
-   {
-        ngx_string("waf_check_ipv4"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_ipv4_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_ipv4),
-        NULL
-   },
-   {
-        ngx_string("waf_check_url"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_url_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_url),
-        NULL
-   },
-   {
-        ngx_string("waf_check_referer"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_referer_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_referer),
-        NULL
-   },
-   {
-        ngx_string("waf_check_args"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_args_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_args),
-        NULL
-   },
-   {
-        ngx_string("waf_check_cookie"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_cookie_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_cookie),
-        NULL
-   },
-   {
-        ngx_string("waf_check_ua"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_ua_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_ua),
-        NULL
-   },
-   {
-        ngx_string("waf_check_post"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
-        ngx_http_waf_check_post_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_check_post),
-        NULL
-   },
-    {
-        ngx_string("waf_cc_deny"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
-        ngx_http_waf_cc_deny_conf_conf,
-        NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_cc_deny),
         NULL
    },
     {
@@ -265,7 +201,7 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
     else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
-    else  if ((r->method & srv_conf->waf_method) == 0) {
+    else if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
         http_status = NGX_DECLINED;
     }
     else {
@@ -335,7 +271,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
     }
     else {
         if (ngx_http_waf_handler_check_cc_ipv4(r, &http_status) != MATCHED) {
-            if ((r->method & srv_conf->waf_method) == 0) {
+            if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
                 http_status = NGX_DECLINED;
             }
             else {
@@ -345,12 +281,11 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
                         break;
                     }
                 }
-                /* å¦‚æžœè¯·æ±‚æ–¹æ³•ä¸º POST ä¸” æœ¬æ¨¡å—è¿˜æœªè¯»å–è¿‡è¯·æ±‚ä½“ ä¸” é…ç½®ä¸­æœªå…³é—­è¯·æ±‚ä½“æ£€æŸ¥ */
+                /* Èç¹ûÇëÇó·½·¨Îª POST ÇÒ ±¾Ä£¿é»¹Î´¶ÁÈ¡¹ýÇëÇóÌå ÇÒ ÅäÖÃÖÐÎ´¹Ø±ÕÇëÇóÌå¼ì²é */
                 if ((r->method & NGX_HTTP_POST) != 0
                     && ctx->read_body_done == FALSE
                     && is_matched != MATCHED
-                    && srv_conf->waf_check_post != NGX_CONF_UNSET
-                    && srv_conf->waf_check_post != 0) {
+                    && CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_RB) == TRUE) {
                     r->request_body_in_persistent_file = 0;
                     r->request_body_in_clean_file = 0;
                     http_status = ngx_http_read_client_request_body(r, check_post);

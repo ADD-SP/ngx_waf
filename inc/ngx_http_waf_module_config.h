@@ -18,31 +18,7 @@ static char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
-static char* ngx_http_waf_method_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_ipv4_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_url_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_args_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_cookie_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_ua_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_referer_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_check_post_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
-
-
-static char* ngx_http_waf_cc_deny_conf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
@@ -93,137 +69,92 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
 }
 
 
-static char* ngx_http_waf_method_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)conf;
-    ngx_str_t* methods = cf->args->elts;
+    ngx_str_t* modes = cf->args->elts;
 
-    srv_conf->waf_method = 0;
-
-    for (size_t i = 1; i < cf->args->nelts && methods != NULL; i++) {
-        if (ngx_strncasecmp(methods[i].data, (u_char*)"GET", min(methods[i].len, 5)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_GET;
+    for (size_t i = 1; i < cf->args->nelts && modes != NULL; i++) {
+        if (ngx_strncasecmp(modes[i].data, (u_char*)"GET", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_GET;
         } 
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"HEAD", min(methods[i].len, 5)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_HEAD;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"HEAD", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_HEAD;
         } 
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"POST", min(methods[i].len, 5)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_POST;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"POST", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_POST;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"PUT", min(methods[i].len, 4)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_PUT;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PUT", min(modes[i].len, 4)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_PUT;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"DELETE", min(methods[i].len, 7)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_DELETE;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"DELETE", min(modes[i].len, 7)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_DELETE;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"MKCOL", min(methods[i].len, 6)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_MKCOL;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"MKCOL", min(modes[i].len, 6)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_MKCOL;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"COPY", min(methods[i].len, 5)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_COPY;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"COPY", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_COPY;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"MOVE", min(methods[i].len, 5)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_MOVE;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"MOVE", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_MOVE;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"OPTIONS", min(methods[i].len, 8)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_OPTIONS;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"OPTIONS", min(modes[i].len, 8)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_OPTIONS;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"PROPFIND", min(methods[i].len, 9)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_PROPFIND;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PROPFIND", min(modes[i].len, 9)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_PROPFIND;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"PROPPATCH", min(methods[i].len, 10)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_PROPPATCH;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PROPPATCH", min(modes[i].len, 10)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_PROPPATCH;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"LOCK", min(methods[i].len, 5)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_LOCK;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"LOCK", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_LOCK;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"UNLOCK", min(methods[i].len, 7)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_UNLOCK;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"UNLOCK", min(modes[i].len, 7)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_UNLOCK;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"PATCH", min(methods[i].len, 6)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_PATCH;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PATCH", min(modes[i].len, 6)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_PATCH;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"TRACE", min(methods[i].len, 6)) == 0) {
-            srv_conf->waf_method |= NGX_HTTP_TRACE;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"TRACE", min(modes[i].len, 6)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_TRACE;
         }
-        else if (ngx_strncasecmp(methods[i].data, (u_char*)"ALL", min(methods[i].len, 4)) == 0) {
-            srv_conf->waf_method = NGX_HTTP_GET | NGX_HTTP_HEAD | NGX_HTTP_POST | NGX_HTTP_PUT
-                | NGX_HTTP_DELETE | NGX_HTTP_MKCOL | NGX_HTTP_COPY | NGX_HTTP_MOVE 
-                | NGX_HTTP_OPTIONS | NGX_HTTP_PROPFIND | NGX_HTTP_PROPPATCH 
-                | NGX_HTTP_LOCK | NGX_HTTP_UNLOCK | NGX_HTTP_PATCH | NGX_HTTP_TRACE;
-            break;
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"IP", min(modes[i].len, 3)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_IP;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"URL", min(modes[i].len, 4)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_URL;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"RBODY", min(modes[i].len, 6)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_RB;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"ARGS", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_ARGS;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"UA", min(modes[i].len, 3)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_UA;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"COOKIE", min(modes[i].len, 7)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_COOKIE;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"REFERER", min(modes[i].len, 8)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_REFERER;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"CC", min(modes[i].len, 3)) == 0) {
+            srv_conf->waf_mode |= MODE_INSPECT_CC;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"STD", min(modes[i].len, 4)) == 0) {
+            srv_conf->waf_mode |= MODE_STD;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"FULL", min(modes[i].len, 5)) == 0) {
+            srv_conf->waf_mode |= MODE_FULL;
         }
         else {
-            char info[256] = "The value can only be GET, HEAD, POST, PUT, DELETE, MKCOL, COPY, ";
-            strcat(info, " MOVE, OPTIONS, PROPFIND, PROPPATCH, LOCK, UNLOCK, PATCH and TRACE.");
-            ngx_log_error(NGX_LOG_ERR, cf->log, 0, info);
+            ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Invalid value");
             return NGX_CONF_ERROR;
         }
     }
 
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_ipv4_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_url_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_args_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_cookie_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_ua_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_referer_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_check_post_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
-    return NGX_CONF_OK;
-}
-
-
-static char* ngx_http_waf_cc_deny_conf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
-    }
     return NGX_CONF_OK;
 }
 
@@ -255,15 +186,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mult_mount = NGX_CONF_UNSET;
-    srv_conf->waf_method = NGX_HTTP_GET | NGX_HTTP_POST;
-    srv_conf->waf_check_ipv4 = NGX_CONF_UNSET;
-    srv_conf->waf_check_url = NGX_CONF_UNSET;
-    srv_conf->waf_check_args = NGX_CONF_UNSET;
-    srv_conf->waf_check_cookie = NGX_CONF_UNSET;
-    srv_conf->waf_check_ua = NGX_CONF_UNSET;
-    srv_conf->waf_check_referer = NGX_CONF_UNSET;
-    srv_conf->waf_check_post = NGX_CONF_UNSET;
-    srv_conf->waf_cc_deny = NGX_CONF_UNSET;
+    srv_conf->waf_mode = 0;
     srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     srv_conf->black_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
