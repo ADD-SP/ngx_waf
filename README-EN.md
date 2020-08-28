@@ -153,70 +153,42 @@ The directory where the rule file is located, must end with `/`.
 
 Multi-stage inspection. When address rewriting exists in `nginx.conf` (such as `rewrite`), it is recommended to enable it, otherwise it is recommended to disable it.
 
+### `waf_mode`
 
-### `waf_check_ipv4`
-
-+ syntax: `waf_check_ipv4 [ on | off ];`
-+ default: `on`
++ syntax: `waf_mode [mode_type] < mode_type>...`
++ default: none
 + context: server
 
-Whether to check IPV4.
+Set the working mode of the firewall. Specify at least one mode and specify at most eight modes.
 
-### `waf_check_url`
+`mode_type` has the following values (not case sensitive):
++ GET: Start the inspection process when `Http.Method=GET`.
++ HEAD: Start the inspection process when `Http.Method=HEAD`.
++ POST: Start the inspection process when `Http.Method=POST`.
++ PUT: Start the inspection process when `Http.Method=PUT`.
++ DELETE: Start the inspection process when `Http.Method=DELETE`.
++ MKCOL: Start the check process when `Http.Method=MKCOL`.
++ COPY: Start the inspection process when `Http.Method=COPY`.
++ MOVE: Start the inspection process when `Http.Method=MOVE`.
++ OPTIONS: Start the inspection process when `Http.Method=OPTIONS`.
++ PROPFIN: Start the inspection process when `Http.Method=PROPFIN`.
++ PROPPATCH: Start the inspection process when `Http.Method=PROPPATCH`.
++ LOCK: Start the inspection process when `Http.Method=LOCK`.
++ UNLOCK: Start the inspection process when `Http.Method=UNLOCK`.
++ PATCH: Start the inspection process when `Http.Method=PATCH`.
++ TRAC: Start the inspection process when `Http.Method=TRAC`.
++ IP: Enable IP address inspecting rules.
++ URL: Enable URL inspecting rules.
++ RBODY: Enable RBODY inspecting rules.
++ ARGS: Enable ARGS inspecting rules.
++ UA: Enable UA inspecting rules.
++ COOKIE: Enable COOKIE inspecting rules.
++ REFERER: Enable REFERER inspecting rules.
++ CC: Enable 'Anti Challenge Collapsar'.
++ STD: Equivalent to `GET POST CC IP URL ARGS RBODY UA`.
++ FULL: In any case, the inspection process will be started and all inspection rules will be enabled.
 
-+ syntax: `waf_check_url [ on | off ];`
-+ default: `on`
-+ context: server
-
-Whether to check URl.
-
-### `waf_check_args`
-
-+ syntax: `waf_check_args [ on | off ];`
-+ default: `on`
-+ context: server
-
-Whether to check request args.
-
-### `waf_check_ua`
-
-+ syntax: `waf_check_ua [ on | off ];`
-+ default: `on`
-+ context: server
-
-Whether to check UserAgent.
-
-### `waf_check_referer`
-
-+ syntax: `waf_check_referer [ on | off ];`
-+ default: `on`
-+ context: server
-
-Whether to check referer.
-
-### `waf_check_cookie`
-
-+ syntax: `waf_check_cookie [ on | off ];`
-+ default: `on`
-+ context: server
-
-Whether to check cookie.
-
-### `waf_check_post`
-
-+ syntax: `waf_check_post [ on | off ];`
-+ default: `off`
-+ context: server
-
-Whether to check request body.
-
-### `waf_cc_deny`
-
-+ syntax: `waf_cc_deny [ on | off ];`
-+ default: `off`
-+ context: server
-
-Whether to enable 'Anti Challenge Collapsar'.
+> Note: The mode of `CC` is independent of other modes, and whether it takes effect or not is not affected by other modes. A typical situation such as the `URL` mode will be affected by the `GET` mode, because if the `GET` mode is not used, the check will not be started when `Http.Method=GET`, and the URL will naturally not be inspected, but ` CC` mode will not be similarly affected.
 
 ### `waf_cc_deny_limit`
 
