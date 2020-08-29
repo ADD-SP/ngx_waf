@@ -179,7 +179,7 @@ Set the working mode of the firewall. Specify at least one mode and specify at m
 + TRAC: Start the inspection process when `Http.Method=TRAC`.
 + IP: Enable IP address inspecting rules.
 + URL: Enable URL inspecting rules.
-+ RBODY: Enable RBODY inspecting rules.
++ RBODY: Enable request body inspecting rules.
 + ARGS: Enable ARGS inspecting rules.
 + UA: Enable UA inspecting rules.
 + COOKIE: Enable COOKIE inspecting rules.

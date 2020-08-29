@@ -176,7 +176,7 @@ http {
 + TRAC: 当`Http.Method=TRAC`时启动检查。
 + IP: 启用 IP 地址的检查规则。
 + URL: 启用 URL 的检查规则。
-+ RBODY: 启用 RBODY 的检查规则。
++ RBODY: 启用请求体的检查规则。
 + ARGS: 启用 ARGS 的检查规则。
 + UA: 启用 UA 的检查规则。
 + COOKIE: 启用 COOKIE 的检查规则。
