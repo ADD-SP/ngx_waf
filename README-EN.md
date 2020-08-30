@@ -119,15 +119,14 @@ http {
         ...
         waf on;
         waf_rule_path /usr/local/src/ngx_waf/rules/;
-        waf_mult_mount off;
-        waf_cc_deny on;
+        waf_mode STD;
         waf_cc_deny_limit 1000 60;
         ...
     }
     ...
 }
-
 ```
+
 ### `waf`
 
 + syntax: `waf [ on | off ];`
