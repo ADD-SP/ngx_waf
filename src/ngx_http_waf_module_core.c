@@ -213,17 +213,6 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
         }
     }
 
-    if ((r->method & NGX_HTTP_POST) != 0
-        && ctx->read_body_done == FALSE
-        && is_matched != MATCHED) {
-        r->request_body_in_persistent_file = 0;
-        r->request_body_in_clean_file = 0;
-        http_status = ngx_http_read_client_request_body(r, check_post);
-        if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
-            http_status = NGX_DONE;
-        }
-    }
-
     if (http_status != NGX_DECLINED && http_status != NGX_DONE) {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
     }
@@ -281,7 +270,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
                         break;
                     }
                 }
-                /* Èç¹ûÇëÇó·½·¨Îª POST ÇÒ ±¾Ä£¿é»¹Î´¶ÁÈ¡¹ýÇëÇóÌå ÇÒ ÅäÖÃÖÐÎ´¹Ø±ÕÇëÇóÌå¼ì²é */
+                /* å¦‚æžœè¯·æ±‚æ–¹æ³•ä¸º POST ä¸” æœ¬æ¨¡å—è¿˜æœªè¯»å–è¿‡è¯·æ±‚ä½“ ä¸” é…ç½®ä¸­æœªå…³é—­è¯·æ±‚ä½“æ£€æŸ¥ */
                 if ((r->method & NGX_HTTP_POST) != 0
                     && ctx->read_body_done == FALSE
                     && is_matched != MATCHED
