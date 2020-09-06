@@ -192,7 +192,7 @@ Set the working mode of the firewall. Specify at least one mode and specify at m
 ### `waf_cc_deny_limit`
 
 + syntax: `waf_cc_deny_limit rate duration;`
-+ default: 无
++ default: —
 + context: server
 
 Declare the maximum request rate of the same IP and the blocking time after the rate is exceeded.
@@ -234,7 +234,7 @@ When writing `nginx.conf`, some variables are inevitably needed. For example, `$
 This module adds three available variables.
 
 + `$waf_blocked`: Whether this request is intercepted by this module, if intercepted, its value is `'true'`, otherwise it is `'false'`.
-+ `$waf_rule_type`：If this request is block by this module, its value is the triggered rule type. The following are possible values. If not block , its value is `'null'`.
++ `$waf_rule_type`：If current request was blocked by this module, this variable is set to the triggered rule type, otherwise `'null'`. The following are possible values.
     + `'BLACK-IPV4'`
     + `'BLACK-URL'`
     + `'BLACK-ARGS'`
