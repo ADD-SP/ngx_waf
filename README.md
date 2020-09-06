@@ -6,40 +6,42 @@
 ![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
 
-简体中文 | [English](README-EN.md)
+English | [简体中文](README-ZH.md)
 
-用于 nginx 的防火墙模块。
+A web application firewall module for nginx.
 
-[开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES.md)
+[Progress](https://github.com/ADD-SP/ngx_waf/projects/2) & [Change Log](CHANGES.md)
 
-## 功能
+## Function
 
-+ CC 防御，超出限制后自动拉黑对应 IP 一段时间（仅限 IPV4）。
-+ IPV4 黑白名单，支持 CIDR 表示法。
-+ POST 黑名单。
-+ URL 黑白名单
-+ GET 参数黑名单
-+ UserAgent 黑名单。
-+ Cookie 黑名单。
-+ Referer 黑白名单。
++ Anti Challenge Collapsar(IPV4 only), it can automatically block malicious IP.
++ Exceptional allow on specific IP address(IPV4 only).
++ Block the specified IP address (IPV4 only).
++ Block the specified request body.
++ Exceptional allow on specific URL.
++ Block the specified URL.
++ Block the specified request args.
++ Block the specified UserAgent.
++ Block the specified Cookie.
++ Exceptional allow on specific Referer.
++ Block the specified Referer.
 
-## 安装
+## Install
 
 On Unix Like
 
-### 下载 nginx 源码
+### download the source code of nginx
 
-nginx 添加新的模块必须要重新编译，所以先[下载 nginx 源码](http://nginx.org/en/download.html)。
+If you want to add a new module to nginx, you need to recompile nginx.
 
 ```bash
 cd /usr/local/src
 wget http://nginx.org/download/nginx-1.18.0.tar.gz
 tar -zxf nginx-1.18.0.tar.gz
 ```
+> It is recommended to use nginx-1.18.0, otherwise this module may not work normally.
 
-> 推荐 1.18.0 版本的 nginx 源码，若使用低版本的 nginx 源码则不保证本模块可以正常使用。
-
-### 下载 ngx-waf 源码
+### download the source code of ngx_waf
 
 ```bash
 cd /usr/local/src
@@ -48,26 +50,24 @@ cd ngx_waf
 git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 ```
 
-### 编译和安装模块
+### compile and install
 
-从 nginx-1.9.11 开始，nginx 开始支持动态模块。
+Starting from nginx-1.9.11, nginx began to support dynamic modules.
 
-静态模块将所有模块编译进一个二进制文件中，所以增删改模块都需要重新编译 nginx 并替换。
+Using static modules requires all modules to be compiled into binary files, so adding, deleting and updating modules requires recompiling nginx and replacing the old binary files.
 
-动态模块则动态加载 `.so` 文件，无需重新编译整个 nginx。只需要将模块编译成 `.so` 文件然后修改`nginx.conf`即可加载对应的模块。
+Using dynamic modules only needs to load the `.so` at runtime, without recompiling the entire nginx. Just compile the module into a `.so`, and then edit `nginx.conf` to load the corresponding module.
 
 ***
 
-**使用静态模块**
+**use static modules**
 
 ```bash
 cd /usr/local/src/nginx-1.18.0
-./configure xxxxxx --add-module=/usr/local/src/ngx_waf
+./configure xxx --add-module=/usr/local/src/ngx_waf
 make
 ```
-> xxxxxx 为其它的编译参数，一般来说是将 xxxxxx 替换为`nginx -V`显示的编译参数。
-
-如果您已经安装了 nginx 则可以直接替换二进制文件（假设原有的二进制文件的全路径为`/usr/local/nginx/sbin/nginx`）
+> If you have already installed nginx, it is recommended to run `nginx -V` to get the compilation parameters, and then replace `xxx` with it.
 
 ```bash
 nginx -s stop
@@ -76,38 +76,41 @@ cp objs/nginx /usr/local/nginx/sbin/nginx
 nginx
 ```
 
-> 如果不想中断 nginx 服务则可以通过热部署的方式来实现升级，热部署方法见[官方文档](https://nginx.org/en/docs/control.html)。
+> If you don’t want to stop the nginx service, you can upgrade through hot deployment, see [Official Document](https://nginx.org/en/docs/control.html) for hot deployment method.
 
-如果您之前没有安装则直接执行下列命令
+
+If nginx is not installed.
+
 ```bash
 make install
 ```
 
 ***
 
-**使用动态模块**
+**use dynamic modules**
 
 ```bash
 cd /usr/local/src/nginx-1.18.0
-./configure xxxxxx --add-dynamic-module=/usr/local/src/ngx_waf
+./configure xxx --add-dynamic-module=/usr/local/src/ngx_waf
 make modules
 ```
-> xxxxxx 为其它的编译参数，一般来说是将 xxxxxx 替换为`nginx -V`显示的编译参数。
+> If you have already installed nginx, it is recommended to run `nginx -V` to get the compilation parameters, and then replace `xxx` with it.
 
-此时你需要找到一个目录用来存放模块的 .so 文件，本文假设存储在`/usr/local/nginx/modules`下
+Now you need to find a directory to store the `.so` file of the module, this doc assumes it is stored under `/usr/local/nginx/modules`
 
 ```bash
 cp objs/ngx_http_waf_module.so /usr/local/nginx/modules/ngx_http_waf_module.so
 ```
 
-然后修改`nginx.conf`，在最顶部添加一行。
+Then edit `nginx.conf` and add a line at the top.
 ```text
 load_module "/usr/local/nginx/modules/ngx_http_waf_module.so";
 ```
 
-## 使用
 
-在需要启用模块的 server 块添加下列配置，例如
+## How to use?
+
+You should edit nginx.conf as follow.
 
 ```text
 http {
@@ -122,127 +125,116 @@ http {
     }
     ...
 }
-
 ```
+
 ### `waf`
 
-+ 配置语法: `waf [ on | off ];`
-+ 默认值：`off`
-+ 配置段: server
++ syntax: `waf [ on | off ];`
++ default: `off`
++ context: server
 
-是否启用本模块。
+Whether to enable this module.
 
 ### `waf_rule_path`
 
-+ 配置语法: `waf_rule_path dir;`
-+ 默认值：无
-+ 配置段: server
++ syntax: `waf_rule_path dir;`
++ default: -
++ context: server
 
-规则文件所在目录，且必须以`/`结尾。
+The directory where the rule file is located, must end with `/`.
 
 
 ### `waf_mult_mount`
 
-+ 配置语法: `waf_mult_mount [ on | off ];`
-+ 默认值：`off`
-+ 配置段: server
++ syntax: `waf_mult_mount [ on | off ];`
++ default: `off`
++ context: server
 
-进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
-
+Multi-stage inspection. When address rewriting exists in `nginx.conf` (such as `rewrite`), it is recommended to enable it, otherwise it is recommended to disable it.
 
 ### `waf_mode`
 
-+ 配置语法: `waf_mode [mode_type] < mode_type>...`
-+ 默认值: none
-+ 配置段: server
++ syntax: `waf_mode [mode_type] < mode_type>...`
++ default: -
++ context: server
 
-指定防火墙的工作模式，至少指定一个模式，最多指定八个模式。
+Set the working mode of the firewall. Specify at least one mode and specify at most eight modes.
 
-`mode_type`具有下列取值（不区分大小写）:
-+ GET: 当`Http.Method=GET`时启动检查。
-+ HEAD: 当`Http.Method=HEAD`时启动检查。
-+ POST: 当`Http.Method=POST`时启动检查。
-+ PUT: 当`Http.Method=PUT`时启动检查。
-+ DELETE: 当`Http.Method=DELETE`时启动检查。
-+ MKCOL: 当`Http.Method=MKCOL`时启动检查。
-+ COPY: 当`Http.Method=COPY`时启动检查。
-+ MOVE: 当`Http.Method=MOVE`时启动检查。
-+ OPTIONS: 当`Http.Method=OPTIONS`时启动检查。
-+ PROPFIN: 当`Http.Method=PROPFIN`时启动检查。
-+ PROPPATCH: 当`Http.Method=PROPPATCH`时启动检查。
-+ LOCK: 当`Http.Method=LOCK`时启动检查。
-+ UNLOCK: 当`Http.Method=UNLOCK`时启动检查。
-+ PATCH: 当`Http.Method=PATCH`时启动检查。
-+ TRAC: 当`Http.Method=TRAC`时启动检查。
-+ IP: 启用 IP 地址的检查规则。
-+ URL: 启用 URL 的检查规则。
-+ RBODY: 启用请求体的检查规则。
-+ ARGS: 启用 ARGS 的检查规则。
-+ UA: 启用 UA 的检查规则。
-+ COOKIE: 启用 COOKIE 的检查规则。
-+ REFERER: 启用 REFERER 的检查规则。
-+ CC: 启用 CC 防御。
-+ STD: 等价于 `GET POST CC IP URL ARGS RBODY UA`。
-+ FULL: 任何情况下都会启动检查并启用所有的检查规则。
+`mode_type` has the following values (not case sensitive):
++ GET: Start the inspection process when `Http.Method=GET`.
++ HEAD: Start the inspection process when `Http.Method=HEAD`.
++ POST: Start the inspection process when `Http.Method=POST`.
++ PUT: Start the inspection process when `Http.Method=PUT`.
++ DELETE: Start the inspection process when `Http.Method=DELETE`.
++ MKCOL: Start the check process when `Http.Method=MKCOL`.
++ COPY: Start the inspection process when `Http.Method=COPY`.
++ MOVE: Start the inspection process when `Http.Method=MOVE`.
++ OPTIONS: Start the inspection process when `Http.Method=OPTIONS`.
++ PROPFIN: Start the inspection process when `Http.Method=PROPFIN`.
++ PROPPATCH: Start the inspection process when `Http.Method=PROPPATCH`.
++ LOCK: Start the inspection process when `Http.Method=LOCK`.
++ UNLOCK: Start the inspection process when `Http.Method=UNLOCK`.
++ PATCH: Start the inspection process when `Http.Method=PATCH`.
++ TRAC: Start the inspection process when `Http.Method=TRAC`.
++ IP: Enable IP address inspecting rules.
++ URL: Enable URL inspecting rules.
++ RBODY: Enable request body inspecting rules.
++ ARGS: Enable ARGS inspecting rules.
++ UA: Enable UA inspecting rules.
++ COOKIE: Enable COOKIE inspecting rules.
++ REFERER: Enable REFERER inspecting rules.
++ CC: Enable 'Anti Challenge Collapsar'.
++ STD: Equivalent to `GET POST CC IP URL ARGS RBODY UA`.
++ FULL: In any case, the inspection process will be started and all inspection rules will be enabled.
 
-> 注意: `CC`是独立于其它模式的模式，其生效与否不受到其它模式的影响。典型情况如`URL`模式会受到`GET`模式的影响，因为如果不使用`GET`模式，那么在收到`GET`请求时就不会启动检查，自然也就不会检查 URL，但是`CC`模式不会受到类似的影响。
+> Note: The mode of `CC` is independent of other modes, and whether it takes effect or not is not affected by other modes. A typical situation such as the `URL` mode will be affected by the `GET` mode, because if the `GET` mode is not used, the check will not be started when `Http.Method=GET`, and the URL will naturally not be inspected, but ` CC` mode will not be similarly affected.
 
 ### `waf_cc_deny_limit`
 
-+ 配置语法: `waf_cc_deny_limit rate duration;`
-+ 默认值：无
-+ 配置段: server
++ syntax: `waf_cc_deny_limit rate duration;`
++ default: —
++ context: server
 
-包含两个参数，第一个参数`rate`表示每分钟的最多请求次数（大于零的整数），第二个参数`duration`表示超出第一个参数`rate`的限制后拉黑 IP 多少分钟（大于零的整数）。
+Declare the maximum request rate of the same IP and the blocking time after the rate is exceeded.
 
-### 测试
+`rate`: The maximum number of requests per minute for the same IP.
+`duration`: The number of minutes to block after exceeding the `rate`.
+
+
+### test
 
 ```text
 https://example.com/www.bak
 ```
 
-如果返回 403 则表示安装成功。
+If the http status code is 403, it means this module is working normally.
 
-## 规则文件
+### Rule file
 
-规则中的正则表达式均遵循[PCRE 标准](http://www.pcre.org/current/doc/html/pcre2syntax.html)。
+All regular expressions follow the [PCRE Standard](http://www.pcre.org/current/doc/html/pcre2syntax.html).
 
-规则生效顺序（靠上的优先生效）
+The effective order of rule files (from top to bottom, the priority gradually decreases):
 
-1. IP 白名单
-2. IP 黑名单
-3. CC 防御
-4. URL 白名单
-5. URL 黑名单
-6. Args 黑名单
-7. UserAgent 黑名单
-8. Referer 白名单
-9. Referer 黑名单
-10. Cookie 黑名单
-11. POST 黑名单
-
-
-+ rules/ipv4：IPV4 黑名单，每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
-+ rules/url：URL 黑名单，每条规则独占一行。每行一个正则表达式，当 URL 被任意一个规则匹配到就返回 403。
-+ rules/args：GET 参数黑名单，每条规则独占一行。每行一个正则表达式，当 GET 参数（如test=0&test1=）被任意一个规则匹配到就返回 403。
-+ rules/referer：Referer 黑名单，每条规则独占一行。每行一个正则表达式，当 referer 被任意一个规则匹配到就返回 403。
-+ rules/user-agent：UserAgent 黑名单，每条规则独占一行。每行一个正则表达式，当 user-agent 被任意一个规则匹配到就返回 403。
-+ rules/cookie：Cookie 黑名单，每条规则独占一行。每行一个正则表达式，当 Cookie 中的内容被任意一个规则匹配到就返回 403。
-+ rules/post：POST 黑名单，每条规则独占一行。每行一个正则表达式，当请求体中的内容被任意一个规则匹配到就返回 403。
-+ rules/white-ipv4：IPV4 白名单，写法同`rules/ipv4`。
-+ rules/white-url：URL 白名单。写法同`rules/url`。
-+ rules/white-referer：Referer 白名单。写法同`rules/referer`。
++ rules/white-ipv4：IPV4 whitelist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Allow matched IPV4 address.
++ rules/ipv4：IPV4 blacklist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Block the matched IPV4 address and return 403.
++ rules/white-url：URL whitelist, each rule has its own line. One regular expression per line, when the URL is matched by any rule, it will be allowed.
++ rules/url：URL blacklist, each rule has its own line. There is a regular expression per line, and 403 is returned when the URL is matched by any rule.
++ rules/args：Request args blacklist, each rule has its own line. There is one regular expression per line, and 403 is returned when the request args is matched by any rule.
++ rules/user-agent：UserAgent blacklist, each rule has its own line. There is one regular expression per line, and 403 is returned when the user-agent is matched by any rule.
++ rules/white-referer：Referer whitelist, each rule has its own line. One regular expression per line, when the referer is matched by any rule, it will be allowed.
++ rules/referer：Referer blacklist, each rule has its own line. There is a regular expression per line, and 403 is returned when the referer is matched by any rule.
++ rules/cookie：Cookie blacklist, each rule has its own line. There is a regular expression per line, and 403 is returned when the cookie is matched by any rule.
++ rules/post：Request body blacklist, each rule has its own line. There is a regular expression per line, and 403 is returned when the request body is matched by any rule.
 
 
+### Variable
 
-## 变量
+When writing `nginx.conf`, some variables are inevitably needed. For example, `$remote_addr` can be used to get the client IP address.
 
-在书写 nginx.conf 文件的时候不可避免地需要用到一些变量，如`$remote_addr`可以用来获取客户端 IP 地址。
+This module adds three available variables.
 
-本模块增加了三个可用的变量。
-
-+ `$waf_blocked`: 本次请求是否被本模块拦截，如果拦截了则其的值为`'true'`,反之则为`'false'`。
-+ `$waf_rule_type`：如果本次请求被本模块拦截，则其值为触发的规则类型。下面是可能的取值。若没有生效则其值为`'null'`。
++ `$waf_blocked`: Whether this request is intercepted by this module, if intercepted, its value is `'true'`, otherwise it is `'false'`.
++ `$waf_rule_type`：If current request was blocked by this module, this variable is set to the triggered rule type, otherwise `'null'`. The following are possible values.
     + `'BLACK-IPV4'`
     + `'BLACK-URL'`
     + `'BLACK-ARGS'`
@@ -250,11 +242,11 @@ https://example.com/www.bak
     + `'BLACK-REFERER'`
     + `'BLACK-COOKIE'`
     + `'BLACK-POST'`
-+ `'$waf_rule_details'`：如果本次请求被本模块拦截，则其值为触发的具体的规则的内容。若没有生效则其值为`'null'`。
++ `'$waf_rule_details'`：If this request is blocked by this module, its value is the content of the specific rule triggered. If it is not blocked, its value is `'null'`.
 
-## 日志
+## Log
 
-拦截日志日志存储在 error.log 中。拦截记录的日志等级为 ALERT。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
+The block log is stored in `error.log`. The log level of the block record is ALERT. The basic format is `xxxxx, ngx_waf: [Type][Rule], xxxxx`, see the following example for details.
 
 ```text
 2020/01/20 22:56:30 [alert] 24289#0: *30 ngx_waf: [BLACK-URL][(?i)(?:/\.env$)], client: 192.168.1.1, server: example.com, request: "GET /v1/.env HTTP/1.1", host: "example.com", referrer: "http:/example.com/v1/.env"
@@ -262,22 +254,22 @@ https://example.com/www.bak
 2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.+(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"
 ```
 
-## 常见问题
+## FAQ
 
-### 为什么有一段时间请求速度会变慢
+### Why does the request speed slow down for a while?
 
-可能是因为开启了 CC 防御功能，详情见[性能-内存管理](#性能-内存管理)。
+It may be because the 'Anti Challenge Collapsar' is enabled, see[Performance-Memory Management](#性能-内存管理)for details.
 
-### 为什么 POST 过滤失效？
+### Why not check the request body?
 
-本模块出于性能原因在检查请求体内容的之前会检测其是否在内存中，如果在则正常检查，反之跳过检查。可以尝试修改`nginx.conf`
+For performance reasons, this module will check whether it is in the memory before checking the request body. If it is, it will check normally, otherwise skip the check. You can try to edit `nginx.conf`.
 
 ```text
 http {
     ...
-    # 当请求体不大于这个数值时会将其写入内存，反之则写入临时文件。
+    # https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_buffer_size
     client_body_buffer_size: 10M;
-    # 是否总是将请求体保存在临时文件中
+    # https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_in_file_only
     client_body_in_file_only: off;
     ...
 }
@@ -285,17 +277,21 @@ http {
 
 ### fork() failed while spawning "worker process" (12: Cannot allocate memory)
 
-可能是过多地使用`nginx -s reload`导致的，本模块会在读取配置的时候申请一些内存，但是不知为何`nginx -s reload`之后这些内存不会立即释放，所以短时间内频繁`nginx -s reload`就极可能导致这个错误。
+It may be caused by frequent run  `nginx -s reload`. This module will allocate some memory when reading the `nginx.conf`, but some memory will not be free immediately after run `nginx -s reload`, so it is frequent in a short time running `nginx -s reload` will most likely cause this error.
 
-## 性能
+You can kill all of nginx's processes and restart nginx.
 
-### 内存管理
+## Performance
+
+### Memory management
+
 <span id='性能-内存管理'></span>
-本模块在启用了 CC 防御功能时会周期性地释放一次内存和申请一次内存，但是并不会一次性全部释放，而是逐步释放，每次请求释放一小部分，逐渐地完成释放，期间会小幅度拖慢处理时间。
 
-## 感谢
+When the 'Anti Challenge Collapsar' enabled, this module will free some memory periodically and allocate some memory once, but it will not free all at once, but gradually free. Each request will release a small part of the memory until all the memory is free. Slow down processing time slightly.
 
-+ [uthash](https://github.com/troydhanson/uthash): 本项目使用了版本为 v2.1.0 的 uthash 的源代码。uthash 源代码以及开源许可位于`inc/uthash/`。
-+ [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
-+ [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
-+ [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。
+## Thanks
+
++ [uthash](https://github.com/troydhanson/uthash): ngx_waf uses the source code of uthash v2.1.0. The uthash source code and open source license are located at `inc/uthash/`.
++ [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): Most of the default rules of this module come from this.
++ [nginx-book](https://github.com/taobao/nginx-book): Thanks for the tutorial provided by the author.
++ [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): Thanks for the tutorial provided by the author.
