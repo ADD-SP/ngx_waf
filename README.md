@@ -154,7 +154,7 @@ Multi-stage inspection. When address rewriting exists in `nginx.conf` (such as `
 
 ### `waf_mode`
 
-+ syntax: `waf_mode [mode_type] < mode_type>...`
++ syntax: `waf_mode mode_type ...;`
 + default: —
 + context: server
 
@@ -258,7 +258,7 @@ The block log is stored in `error.log`. The log level of the block record is ALE
 
 ### Why does the request speed slow down for a while?
 
-It may be because the 'Anti Challenge Collapsar' is enabled, see [Performance-Memory Management](#性能-内存管理) for details.
+It may be because the 'Anti Challenge Collapsar' is enabled, see [Performance-Memory Management](#Performance-Memory_management) for details.
 
 ### Why not check the request body?
 
@@ -285,7 +285,7 @@ You can kill all of nginx's processes and restart nginx.
 
 ### Memory management
 
-<span id='性能-内存管理'></span>
+<span id='Performance-Memory_management'></span>
 
 When the 'Anti Challenge Collapsar' enabled, this module will free some memory periodically and allocate some memory once, but it will not free all at once, but gradually free. Each request will release a small part of the memory until all the memory is free. Slow down processing time slightly.
 

@@ -10,7 +10,7 @@
 
 用于 nginx 的防火墙模块。
 
-[开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES.md)
+[开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES-ZH.md)
 
 ## 功能
 
@@ -152,7 +152,7 @@ http {
 
 ### `waf_mode`
 
-+ 配置语法: `waf_mode [mode_type] < mode_type>...`
++ 配置语法: `waf_mode mode_type ...;`
 + 默认值: 无
 + 配置段: server
 
