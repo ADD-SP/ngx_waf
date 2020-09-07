@@ -138,7 +138,7 @@ Whether to enable this module.
 ### `waf_rule_path`
 
 + syntax: `waf_rule_path dir;`
-+ default: -
++ default: —
 + context: server
 
 The directory where the rule file is located, must end with `/`.
@@ -155,7 +155,7 @@ Multi-stage inspection. When address rewriting exists in `nginx.conf` (such as `
 ### `waf_mode`
 
 + syntax: `waf_mode [mode_type] < mode_type>...`
-+ default: -
++ default: —
 + context: server
 
 Set the working mode of the firewall. Specify at least one mode and specify at most eight modes.
@@ -258,7 +258,7 @@ The block log is stored in `error.log`. The log level of the block record is ALE
 
 ### Why does the request speed slow down for a while?
 
-It may be because the 'Anti Challenge Collapsar' is enabled, see[Performance-Memory Management](#性能-内存管理)for details.
+It may be because the 'Anti Challenge Collapsar' is enabled, see [Performance-Memory Management](#性能-内存管理) for details.
 
 ### Why not check the request body?
 
