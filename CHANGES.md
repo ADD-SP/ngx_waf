@@ -8,6 +8,7 @@
 
 ### Changed
 
++ Remove a default User-Agent rule that is `(?i)(? :Sogou web spider)`, as it will block non-malicious web spider.
 + Merge directives([ba92cfd](https://github.com/ADD-SP/ngx_waf/commit/ba92cfd53ce78da8ff4ed22d2bc71a47de4cbe25)). These directives will be merged: `waf_check_ipv4`, `waf_check_url`, `waf_check_args`, `waf_check_ua`, `waf_check_referer`, `waf_check_cookie`, `waf_check_post`, `waf_check_cookie`, `waf_cc_deny`. The merged new directive is `waf_mode`, see [README](README-EN.md).
 
 ### Fixed
