@@ -32,7 +32,7 @@ On Unix Like
 
 ### download the source code of nginx
 
-If you want to add a new module to nginx, you need to recompile nginx.
+If you want to add a new nginx module, you'll need the nginx source code
 
 ```bash
 cd /usr/local/src
@@ -103,6 +103,7 @@ cp objs/ngx_http_waf_module.so /usr/local/nginx/modules/ngx_http_waf_module.so
 ```
 
 Then edit `nginx.conf` and add a line at the top.
+
 ```text
 load_module "/usr/local/nginx/modules/ngx_http_waf_module.so";
 ```
