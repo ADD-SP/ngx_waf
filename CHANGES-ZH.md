@@ -2,6 +2,8 @@
 
 ## [未发布]
 
+## [2.0.0] - 2020-09-29
+
 ### 新增
 
 + 支持以动态模块安装到 nginx 上，感谢 [dvershinin](https://github.com/dvershinin)的 PR（https://github.com/ADD-SP/ngx_waf/pull/4）。
@@ -12,7 +14,7 @@
 
 ### 修复
 
-+ 删除一个默认的 User-Agent 规则，规则内容为`(?i)(?:Sogou web spider)`，原因是会拦截非恶意的网络爬虫。
++ 删除一个默认的 User-Agent 规则，规则内容为`(?i)(?:Sogou web spider)`，原因是会拦截非恶意的网络爬虫（[827d4e5](https://github.com/ADD-SP/ngx_waf/commit/827d4e5bc48894ff9147e49799d3a9656fe7dd8a)）。
 + 现在可以正确处理规则文件中的空行了（[955cf2d](https://github.com/ADD-SP/ngx_waf/commit/955cf2d240c4d66f815890e3ee9b88ccf906cf1d)）。
 
 ## [1.0.1] - 2020-08-22
