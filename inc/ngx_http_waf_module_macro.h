@@ -13,11 +13,16 @@
 #define WHITE_URL_FILE          ("white-url")
 #define WHITE_REFERER_FILE      ("white-referer")
 
+#ifndef FALSE
+#define FALSE                   (0)
+#endif
+#ifndef TRUE
+#define TRUE                    (1)
+#endif
+
 #define SUCCESS                 (1)
 #define PROCESSING              (2)
 #define FAIL                    (0)
-#define TRUE                    (1)
-#define FALSE                   (0)
 #define MATCHED                 (1)
 #define NOT_MATCHED             (0)
 
