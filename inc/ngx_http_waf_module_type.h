@@ -3,7 +3,8 @@
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
-#include "uthash/src/uthash.h"
+// #include "uthash/src/uthash.h"
+#include <uthash.h>
 #include "ngx_http_waf_module_macro.h"
 
 
