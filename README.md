@@ -47,7 +47,6 @@ tar -zxf nginx-1.18.0.tar.gz
 cd /usr/local/src
 git clone https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
-git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
 ```
 
 ### compile and install
