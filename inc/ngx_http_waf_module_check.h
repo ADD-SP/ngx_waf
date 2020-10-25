@@ -5,7 +5,8 @@
 #include <ngx_inet.h>
 #include "ngx_http_waf_module_macro.h"
 #include "ngx_http_waf_module_type.h"
-#include "uthash/src/uthash.h"
+// #include "uthash/src/uthash.h"
+#include <uthash.h>
 #ifndef __linux__
 #include <io.h>
 #include <winsock.h>
