@@ -13,19 +13,33 @@
 #define WHITE_URL_FILE          ("white-url")
 #define WHITE_REFERER_FILE      ("white-referer")
 
-#ifndef FALSE
-#define FALSE                   (0)
-#endif
 #ifndef TRUE
 #define TRUE                    (1)
 #endif
 
-#define SUCCESS                 (1)
-#define PROCESSING              (2)
-#define FAIL                    (0)
-#define MATCHED                 (1)
-#define NOT_MATCHED             (0)
+#ifndef FALSE
+#define FALSE                   (0)
+#endif
 
+#ifndef SUCCESS
+#define SUCCESS                 (1)
+#endif
+
+#ifndef FAIL
+#define FAIL                    (0)
+#endif
+
+#ifndef PROCESSING
+#define PROCESSING              (2)
+#endif
+
+#ifndef MATCHED
+#define MATCHED                 (1)
+#endif
+
+#ifndef NOT_MATCHED
+#define NOT_MATCHED             (0)
+#endif
 
 #define RULE_MAX_LEN            (256 * 4 * 8)
 #define INITIAL_SIZE            (1024 * 1024 * 5)
