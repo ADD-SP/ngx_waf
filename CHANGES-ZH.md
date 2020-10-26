@@ -10,6 +10,8 @@
 
 ### 修复
 
++ 修复了因为宏的重定义导致的在 CentOS/RHEL 6 or 7 下编译失败的错误（[28e1c8a](https://github.com/ADD-SP/ngx_waf/commit/28e1c8aca03375089c75df21c5db3c38013edde7) & [566ae4a](https://github.com/ADD-SP/ngx_waf/commit/566ae4a50f855674b256db84305a24e1b2a6bc6d)）。
+
 ## [2.0.0] - 2020-09-29
 
 ### 新增
@@ -18,7 +20,7 @@
 
 ### 改动
 
-+ 配置指令合并 ([ba92cfd](https://github.com/ADD-SP/ngx_waf/commit/ba92cfd53ce78da8ff4ed22d2bc71a47de4cbe25))。这些配置指令将被合并：`waf_check_ipv4`，`waf_check_url`，`waf_check_args`，`waf_check_ua`，`waf_check_referer`，`waf_check_cookie`，`waf_check_post`，`waf_check_cookie`，`waf_cc_deny`。合并后的新指令为`waf_mode`，详情见[README](README.md)。
++ 配置指令合并 ([ba92cfd](https://github.com/ADD-SP/ngx_waf/commit/ba92cfd53ce78da8ff4ed22d2bc71a47de4cbe25))。这些配置指令将被合并：`waf_check_ipv4`，`waf_check_url`，`waf_check_args`，`waf_check_ua`，`waf_check_referer`，`waf_check_cookie`，`waf_check_post`，`waf_check_cookie`，`waf_cc_deny`。合并后的新指令为`waf_mode`，详情见[README](README-ZH.md)。
 
 ### 修复
 

@@ -206,20 +206,6 @@ https://example.com/www.bak
 
 规则中的正则表达式均遵循[PCRE 标准](http://www.pcre.org/current/doc/html/pcre2syntax.html)。
 
-规则生效顺序（靠上的优先生效）
-
-1. IP 白名单
-2. IP 黑名单
-3. CC 防御
-4. URL 白名单
-5. URL 黑名单
-6. Args 黑名单
-7. UserAgent 黑名单
-8. Referer 白名单
-9. Referer 黑名单
-10. Cookie 黑名单
-11. POST 黑名单
-
 
 + rules/ipv4：IPV4 黑名单，每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
 + rules/url：URL 黑名单，每条规则独占一行。每行一个正则表达式，当 URL 被任意一个规则匹配到就返回 403。
