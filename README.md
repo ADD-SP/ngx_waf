@@ -213,8 +213,6 @@ If the http status code is 403, it means this module is working normally.
 
 All regular expressions follow the [PCRE Standard](http://www.pcre.org/current/doc/html/pcre2syntax.html).
 
-The effective order of rule files (from top to bottom, the priority gradually decreases):
-
 + rules/white-ipv4：IPV4 whitelist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Allow matched IPV4 address.
 + rules/ipv4：IPV4 blacklist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Block the matched IPV4 address and return 403.
 + rules/white-url：URL whitelist, each rule has its own line. One regular expression per line, when the URL is matched by any rule, it will be allowed.
