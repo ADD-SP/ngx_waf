@@ -26,8 +26,6 @@ jobs:
       run: |
         cd /usr/local/src
         sudo git clone -b master https://github.com/ADD-SP/ngx_waf.git
-        cd ngx_waf
-        sudo git clone -b v2.1.0 https://github.com/troydhanson/uthash.git inc/uthash
     - name: Configure
       run: |
         cd /usr/local/src/nginx-1.18.0
