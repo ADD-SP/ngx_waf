@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "../inc/ngx_http_waf_module_core.h"
-#include "../inc/uthash/src/uthash.h"
+#include <uthash.h>
 #include <time.h>
 #include <math.h>
 #ifndef __linux__
