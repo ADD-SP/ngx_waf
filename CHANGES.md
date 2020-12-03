@@ -6,6 +6,15 @@
 
 ### Changed
 
+### Fixed
+
+
+## [2.0.1] - 2020-12-03
+
+### Added
+
+### Changed
+
 + Instead of downloading the uthash dependency manually, you can install the system library with `yum install uthash-devel` or `apt-get install uthash-dev`([7cfc94b](https://github.com/ADD-SP/ngx_waf/commit/7cfc94bc64fa4f2c29bdf3b24e21aeb1ba412054)).
 
 ### Fixed

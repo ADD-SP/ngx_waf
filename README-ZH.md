@@ -280,7 +280,6 @@ http {
 
 ## 感谢
 
-+ [uthash](https://github.com/troydhanson/uthash): 本项目使用了版本为 v2.1.0 的 uthash 的源代码。uthash 源代码以及开源许可位于`inc/uthash/`。
 + [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
 + [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
 + [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。
