@@ -6,6 +6,14 @@
 
 ### 改动
 
+### 修复
+
+## [2.0.1] - 2020-12-03
+
+### 新增
+
+### 改动
+
 + 不再手动下载 uthash 依赖，改用 system library。可以使用 `yum install uthash-devel` 或 `apt-get install uthash-dev` 安装 system library（[7cfc94b](https://github.com/ADD-SP/ngx_waf/commit/7cfc94bc64fa4f2c29bdf3b24e21aeb1ba412054)）。
 
 ### 修复

@@ -289,7 +289,6 @@ When the 'Anti Challenge Collapsar' enabled, this module will free some memory p
 
 ## Thanks
 
-+ [uthash](https://github.com/troydhanson/uthash): ngx_waf uses the source code of uthash v2.1.0. The uthash source code and open source license are located at `inc/uthash/`.
 + [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): Most of the default rules of this module come from this.
 + [nginx-book](https://github.com/taobao/nginx-book): Thanks for the tutorial provided by the author.
 + [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): Thanks for the tutorial provided by the author.
