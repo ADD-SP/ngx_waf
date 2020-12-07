@@ -8,6 +8,14 @@
 
 ### 修复
 
+## [2.0.2] - 2020-12-07
+
+### 新增
+
+### 改动
+
+### 修复
+
 + 修复了一个 CC 防御失效的 bug。此 bug 会导致当 `waf_mult_mount` 未启用时，CC 防御会失效（[048fe5c](https://github.com/ADD-SP/ngx_waf/commit/048fe5c15863d9a3106387225774305aa5564726)）。
 
 + 修复了一个因错误的 `#include` 指令而导致编译失败的 bug（[3fa298c](https://github.com/ADD-SP/ngx_waf/commit/3fa298c6184618ea0cd6336783a4d7a2ed27469c)）。
