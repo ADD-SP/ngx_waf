@@ -8,6 +8,14 @@
 
 ### Fixed
 
+## [2.0.2] - 2020-12-07
+
+### Added
+
+### Changed
+
+### Fixed
+
 + Fix for Anti Challenge Collapsar failing when `waf_mult_mount` is disabled([048fe5c](https://github.com/ADD-SP/ngx_waf/commit/048fe5c15863d9a3106387225774305aa5564726)).
 
 + Fixed compile error caused by incorrect `#include`([3fa298c](https://github.com/ADD-SP/ngx_waf/commit/3fa298c6184618ea0cd6336783a4d7a2ed27469c)).
