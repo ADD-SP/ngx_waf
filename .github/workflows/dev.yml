@@ -12,25 +12,27 @@ on:
 jobs:
   build-dev:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nginx: [stable, mainline]
+    container: centos:8
     steps:
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev
-    - name: Download nginx
-      run: | 
-        cd /usr/local/src
-        sudo wget http://nginx.org/download/nginx-1.18.0.tar.gz
-        sudo tar -zxf nginx-1.18.0.tar.gz
-    - name: Download ngx_waf
-      run: |
-        cd /usr/local/src
-        sudo git clone -b dev https://github.com/ADD-SP/ngx_waf.git
-    - name: Configure
-      run: |
-        cd /usr/local/src/nginx-1.18.0
-        sudo ./configure --add-module=/usr/local/src/ngx_waf
-    - name: Make
-      run: |
-        cd /usr/local/src/nginx-1.18.0
-        sudo make
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          dnf -y install https://extras.getpagespeed.com/release-latest.rpm
+          dnf -y --enablerepo=powertools install lastversion make gcc openssl-devel zlib-devel pcre-devel uthash-devel
+      - name: Download NGINX ${{ matrix.nginx }}
+        run: |
+          lastversion download nginx:${{ matrix.nginx }}
+          mkdir nginx-src
+          tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
+      - name: Configure
+        run: |
+          cd nginx-src
+          ./configure --add-module=..
+      - name: Make
+        run: |
+          cd nginx-src
+          make
+
