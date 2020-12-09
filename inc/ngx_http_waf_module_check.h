@@ -1,3 +1,8 @@
+/**
+ * @file ngx_http_waf_module_check.h
+ * @brief 检查诸如 IP，URL 等是否命中规则。
+*/
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -6,107 +11,159 @@
 #include "ngx_http_waf_module_macro.h"
 #include "ngx_http_waf_module_type.h"
 #include <uthash.h>
-#ifndef __linux__
-#include <io.h>
-#include <winsock.h>
-#else
 #include <sys/io.h>
-#endif
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
 #define NGX_HTTP_WAF_MODLULE_CHECK_H
 
-extern ngx_module_t ngx_http_waf_module;
+extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
+/**
+ * @defgroup check 规则匹配模块
+ * @brief 检查诸如 IP，URL 等是否命中规则。
+ * @addtogroup check 规则匹配模块
+ * @{
+*/
 
+/**
+ * @typedef ngx_http_waf_check
+ * @brief 请求检查函数的函数指针
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+*/
 typedef ngx_int_t (*ngx_http_waf_check)(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
-/*
-* 检查客户端 IPV4 地址是否在白名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查客户端 IPV4 地址是否在白名单中。
+ * @param[out] out_http_status 当出发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED IPV4 地址在白名单中。
+ * @retval NOT_MATCHED IPV4 地址不在白名单中。
 */
 static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查客户端 IPV4 地址是否在黑名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查客户端 IPV4 地址是否在黑名单中。
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED IPV4 地址在黑名单中。
+ * @retval NOT_MATCHED IPV4 地址不在黑名单中。
 */
 static ngx_int_t ngx_http_waf_handler_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查客户端 IPV4 的访问频次是否超出了限制
-* 如果超出限制返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查客户端 IPV4 地址的访问频次（60 秒内）是否超出了限制。
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果超出 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 超出限制。
+ * @retval NOT_MATCHED 未超出限制。
 */
 static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查 URL 是否在白名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查 URL 是否在白名单中。
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查 URL 是否在黑名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查 URL 是否在黑名单中
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查请求参数是否在黑名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查请求参数是否在黑名单中
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查 UserAgent 参数是否在黑名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查 UserAgent 是否在黑名单中
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查 Referer 参数是否在白名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查 Referer 是否在白名单中
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白黑名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查 Referer 参数是否在黑名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查 Referer 是否在黑名单中
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查 Cookie 参数是否在黑名单中
-* 如果在返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查 Cookie 是否在黑名单中
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
 */
 static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
-/*
-* 检查两个 IPV4 是否属于同一网段
-* 如果属于返回 MATCHED，返回 NOT_MATCHED
+/**
+ * @brief 检查两个 IPV4 是否属于同一网段
+ * @param[in] ip 整型格式的 IPV4
+ * @param[in] ipv4 格式化后的 IPV4
+ * @return 如果属于同一网段返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 属于同一网段。
+ * @retval NOT_MATCHED 不属于同一网段。
 */
 static ngx_int_t ngx_http_waf_handler_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
 
 
-/*
-* 逐渐释放旧的哈希表所占用的内存
-* 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池
-* 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
-* 第三阶段：清空旧的哈希表
-* 第四阶段：销毁旧的内存池，完成释放。
-* 如果成功返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL
+/**
+ * @brief 逐渐释放旧的哈希表所占用的内存
+ * @li 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池。
+ * @li 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
+ * @li 第三阶段：清空旧的哈希表。
+ * @li 第四阶段：销毁旧的内存池，完成释放。
+ * @return 如果正常走完了四个阶段返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL。
+ * @retval SUCCESS 正常走完了四个阶段。
+ * @retval PROCESSING 正在进行某个阶段，还未完成释放。
+ * @retval FAIL 出现错误，未能完成释放。
 */
 static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
+
+/**
+* @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
+*/
+static void check_post(ngx_http_request_t* r);
+
+/**
+ * @}
+*/
 
 
 static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
@@ -230,6 +287,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_i
     }
     return NOT_MATCHED;
 }
+
 
 static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
@@ -500,6 +558,51 @@ static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_wa
         break;
     }
     return SUCCESS;
+}
+
+
+static void check_post(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
+    ngx_buf_t* body_buf = NULL;
+    ngx_str_t body_str;
+
+    ctx->read_body_done = TRUE;
+
+    while (buf_chain != NULL) {
+        body_buf = buf_chain->buf;
+
+        if (body_buf == NULL) {
+            break;
+        }
+
+        body_str.data = body_buf->pos;
+        body_str.len = body_buf->last - body_buf->pos;
+
+
+        if (!ngx_buf_in_memory(body_buf)) {
+            buf_chain = buf_chain->next;
+            continue;
+        }
+
+        ngx_regex_elt_t* p = srv_conf->black_post->elts;
+        ngx_int_t rc;
+        for (size_t i = 0; i < srv_conf->black_post->nelts; i++, p++) {
+            rc = ngx_regex_exec(p->regex, &body_str, NULL, 0);
+            if (rc >= 0) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "BLACK-POST");
+                strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
+                ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+                return;
+            }
+        }
+        buf_chain = buf_chain->next;
+    }
+    ngx_http_finalize_request(r, NGX_DONE);
+    ngx_http_core_run_phases(r);
 }
 
 
