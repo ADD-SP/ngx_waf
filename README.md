@@ -59,18 +59,6 @@ Using dynamic modules only needs to load the `.so` at runtime, without recompili
 
 ***
 
-**Compatible with mainline nginx**
-
-If you plan to install this module on the Mainline version of nginx, you need to execute the following commands before compiling and installing it.
-
-```bash
-cd /usr/local/src/ngx_waf
-export NGX_WAF_COMPATIBLE_WITH_MAINLINE=TRUE
-bash scripts/compatible-with-mainline.sh
-```
-
-***
-
 **use static modules**
 
 ```bash

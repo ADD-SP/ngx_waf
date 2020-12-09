@@ -57,18 +57,6 @@ cd ngx_waf
 
 ***
 
-**兼容 Mainline 版本的 nginx**
-
-如果你打算将本模块安装到 Mainline 版本的 nginx 上，你需要在编译和安装之前执行下列命令。
-
-```bash
-cd /usr/local/src/ngx_waf
-export NGX_WAF_COMPATIBLE_WITH_MAINLINE=TRUE
-bash scripts/compatible-with-mainline.sh
-```
-
-***
-
 **使用静态模块**
 
 ```bash
