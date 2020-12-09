@@ -16,11 +16,6 @@
 #define NGX_HTTP_WAF_MODULE_TYPE_H
 
 /**
- * @typedef u_char
-*/
-// typedef unsigned char u_char;
-
-/**
  * @struct hash_table_item_int_ulong_t
  * @brief 哈希表项
 */
