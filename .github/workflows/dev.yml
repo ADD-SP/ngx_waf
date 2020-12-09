@@ -35,4 +35,3 @@ jobs:
         run: |
           cd nginx-src
           make
-
