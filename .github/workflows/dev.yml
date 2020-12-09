@@ -17,6 +17,8 @@ jobs:
         nginx: [stable, mainline]
     container: centos:8
     steps:
+      env:
+        MAINLINE: ${{ 'mainline' }}
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
@@ -28,7 +30,7 @@ jobs:
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
       - name: Compatibility handling
-        if: ${{ matrix.nginx == "mainline" }}
+        if: ${{ matrix.nginx == MAINLINE }}
         run: |
           export NGX_WAF_COMPATIBLE_WITH_MAINLINE=TRUE
           bash scripts/compatible-with-mainline.sh
