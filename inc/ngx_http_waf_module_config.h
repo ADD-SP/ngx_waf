@@ -65,6 +65,7 @@ static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_ht
 
 /**
  * @brief 初始化配置存储块的结构体
+ * @warning 本函数中存在兼容 Mainline 版本的 nginx 的代码。当 nginx-1.18.0 不再是最新的 stable 版本的时候可能需要改动。 
 */
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 
@@ -247,7 +248,9 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
         return NULL;
     }
     ngx_str_null(&srv_conf->waf_rule_path);
-    #if (nginx_version == 1018000)
+
+    /* 条件为真时说明编译时 nginx 的版本小于等于 stable。反之则为 Mainline 版本。 */
+    #if (nginx_version <= 1018000)
         srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ");
     #else
         srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ", NULL);
