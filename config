@@ -1,12 +1,26 @@
+ngx_feature="uthash library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs="#include <uthash.h>"
+ngx_feature_libs=
+. auto/feature
+
 ngx_addon_name=ngx_http_waf_module
 
-if test -n "$ngx_module_link"; then
-    ngx_module_type=HTTP
-    ngx_module_name=ngx_http_waf_module
-    ngx_module_srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
+if [ $ngx_found = yes ]; then
+    if test -n "$ngx_module_link"; then
+        ngx_module_type=HTTP
+        ngx_module_name=ngx_http_waf_module
+        ngx_module_srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
 
-    . auto/module
+        . auto/module
+    else
+        HTTP_MODULES="$HTTP_MODULES ngx_http_waf_module"
+        NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_waf_module_core.c"
+    fi
 else
-    HTTP_MODULES="$HTTP_MODULES ngx_http_waf_module"
-    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_waf_module_core.c"
+	cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+END
+	exit 1
 fi
