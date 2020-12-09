@@ -37,7 +37,7 @@ wget http://nginx.org/download/nginx-version.tar.gz
 tar -zxf nginx-version.tar.gz
 ```
 
-> 推荐 1.18.0 版本的 nginx 源码，若使用低版本的 nginx 源码则不保证本模块可以正常使用。
+> 推荐使用 nginx-1.18.0 的源码，若使用低版本的 nginx 源码则不保证本模块可以正常使用。本模块对 Mainline 版本的 nginx 做了兼容性处理，但考虑到 Mainline 版本仍在开发中，所以不保证一直可以兼容。如果遇到了兼容性问题请提 issue。
 
 ### 下载 ngx-waf 源码
 
@@ -294,6 +294,10 @@ http {
 ### 内存管理
 <span id='性能-内存管理'></span>
 本模块在启用了 CC 防御功能时会周期性地释放一次内存和申请一次内存，但是并不会一次性全部释放，而是逐步释放，每次请求释放一小部分，逐渐地完成释放，期间会小幅度拖慢处理时间。
+
+## 其它
+
++ 本项目遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)
 
 ## 感谢
 

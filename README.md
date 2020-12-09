@@ -39,7 +39,7 @@ cd /usr/local/src
 wget http://nginx.org/download/nginx-1.18.0.tar.gz
 tar -zxf nginx-1.18.0.tar.gz
 ```
-> It is recommended to use nginx-1.18.0, otherwise this module may not work normally.
+> The nginx-1.18.0 source code is recommended, but using a lower version of the nginx source code does not guarantee that this module will work. This module is compatible with the Mainline version of nginx, but since the Mainline version is still under development, there is no guarantee that it will always work. If you encounter compatibility issues, please create an issue.
 
 ### download the source code of ngx_waf
 
@@ -286,6 +286,10 @@ You can kill all of nginx's processes and restart nginx.
 <span id='Performance-Memory_management'></span>
 
 When the 'Anti Challenge Collapsar' enabled, this module will free some memory periodically and allocate some memory once, but it will not free all at once, but gradually free. Each request will release a small part of the memory until all the memory is free. Slow down processing time slightly.
+
+## Other
+
++ This project follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 ## Thanks
 
