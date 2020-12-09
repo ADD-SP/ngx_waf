@@ -4,7 +4,7 @@
 
 ### Added
 
-+ Compatible with the mainline version of NGINX ([f31f906](https://github.com/ADD-SP/ngx_waf/commit/f31f906b11fb00f54bfea504ca7c8c147a0be1d8)).
++ Compatible with the mainline version of NGINX ([f31f906](https://github.com/ADD-SP/ngx_waf/commit/f31f906b11fb00f54bfea504ca7c8c147a0be1d8) & [65277d1](https://github.com/ADD-SP/ngx_waf/commit/7b4f897a4a332b43bf94de874f8ba8c3098aaee4)).
 
 ### Changed
 
