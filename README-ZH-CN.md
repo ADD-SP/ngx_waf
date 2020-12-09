@@ -251,10 +251,7 @@ https://example.com/www.bak
 
 ### 安装依赖
 
-请确保已经安装 `doxygen` 和 `graphviz`。Ubunut 下可以使用下面的命令安装。
-```bash
-sudo apt-get install doxygen graphviz
-```
+请确保已经安装 `doxygen` 和 `graphviz`，且 `graphviz` 至少要为 1.8.17。
 
 ### 生成文档
 
