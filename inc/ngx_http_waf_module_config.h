@@ -1,31 +1,97 @@
+/**
+ * @file ngx_http_waf_module_config.h
+ * @brief 读取 nginx.conf 内的配置以及规则文件。
+*/
+
 #include "ngx_http_waf_module_macro.h"
 #include "ngx_http_waf_module_type.h"
+#include "ngx_http_waf_module_util.h"
 #include <stdio.h>
-
-#ifndef min
-#define min(a,b)            (((a) < (b)) ? (a) : (b))
-#endif
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
 
+static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
+
+static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r);
+
+/**
+ * @defgroup config 配置读取和处理模块
+ * @brief 读取 nginx.conf 内的配置以及规则文件。
+ * @addtogroup config 配置读取和处理模块
+ * @{
+*/
+
+/**
+ * @brief 读取配置项 waf_mult_mount，该项表示是否将检测过程挂载到两个阶段以应对 rewrite 导致的 URL 和 ARGS 前后不一致的情况。
+*/
 static char* ngx_http_waf_mult_mount_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
-
+/**
+ * @brief 读取配置项 waf，该项表示是否启用模块。
+*/
 static char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
-
+/**
+ * @brief 读取配置项 waf_rule_path，该项表示存有配置文件的文件夹的绝对路径，必须以 '/' 结尾。
+*/
 static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
-
+/**
+ * @brief 读取配置项 waf_mode，该项表示拦截模式。
+*/
 static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
-
+/**
+ * @brief 读取配置项 _waf_cc_deny_limit，该项表示最高的访问频次以及超出后的拉黑时间。
+*/
 static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
+/**
+ * @brief 当读取 waf_blocked 变量时的回调函数，这个变量当请求被拦截的时候是 "true"，反之是 "false"。
+*/
+static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
+/**
+ * @brief 当读取 waf_rule_type 变量时的回调函数，这个变量会显示触发了的规则类型。
+*/
+static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+/**
+ * @brief 当读取 waf_rule_deatils 变量时的回调函数，这个变量会显示触发了的规则。
+*/
+static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 初始化配置存储块的结构体
+*/
+static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
+
+
+/**
+ * @brief 在读取完全部配置后进行一些操作。
+ * @li 将处理函数挂载到对应的请求处理阶段。
+ * @li 初始化相关的 nginx 变量。
+*/
 static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 
+/**
+ * @brief 读取指定文件的内容到数组中
+ * @param[in] file_name 要读取的配置文件完整路径
+ * @param[out] ngx_array 存放读取结果的数组
+ * @param[in] mode 读取模式
+ * @li 当 mode = 0 时会将读取到文本编译成正则表达式再存储
+ * @li 当 mode = 1 时会将读取到的文本转化为 ngx_ipv4_t 再存储
+ * @return 读取操作的结果
+ * @retval SUCCESS 读取成功
+ * @retval FAIL 读取中发生错误
+*/
+static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode);
+
+/**
+ * @}
+*/
 
 static char* ngx_http_waf_mult_mount_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
@@ -216,6 +282,89 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     }
 
     return srv_conf;
+}
+
+
+static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+    v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+
+    if (ctx == NULL) {
+        v->len = 0;
+        v->data = NULL;
+    }
+    else {
+        if (ctx->blocked == TRUE) {
+            v->len = 4;
+            strcpy((char*)v->data, "true");
+        }
+        else {
+            v->len = 5;
+            strcpy((char*)v->data, "false");
+        }
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+
+    if (ctx == NULL) {
+        v->len = 0;
+        v->data = NULL;
+    }
+    else {
+        if (ctx->blocked == TRUE) {
+            v->len = strlen((char*)ctx->rule_type);
+            v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
+            strcpy((char*)v->data, (char*)ctx->rule_type);
+        }
+        else {
+            v->len = 4;
+            v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+            strcpy((char*)v->data, "null");
+        }
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+
+    if (ctx == NULL) {
+        v->len = 0;
+        v->data = NULL;
+    }
+    else {
+        if (ctx->blocked == TRUE) {
+            v->len = strlen((char*)ctx->rule_deatils);
+            v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
+            strcpy((char*)v->data, (char*)ctx->rule_deatils);
+        }
+        else {
+            v->len = 4;
+            v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+            strcpy((char*)v->data, "null");
+        }
+    }
+
+    return NGX_OK;
 }
 
 
