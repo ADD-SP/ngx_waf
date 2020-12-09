@@ -247,10 +247,10 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
         return NULL;
     }
     ngx_str_null(&srv_conf->waf_rule_path);
-    #ifdef COMPATIBLE_WITH_MAINLINE
-        srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ", NULL);
-    #else
+    #if (nginx_version == 1018000)
         srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ");
+    #else
+        srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ", NULL);
     #endif
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
     srv_conf->alloc_times = 0;
