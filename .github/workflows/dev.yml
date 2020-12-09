@@ -27,6 +27,11 @@ jobs:
           lastversion download nginx:${{ matrix.nginx }}
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
+      - name: Compatibility handling
+        if: ${{ matrix.nginx == mainline }}
+        run: |
+          export NGX_WAF_COMPATIBLE_WITH_MAINLINE=TRUE
+          bash scripts/compatible-with-mainline.sh
       - name: Configure
         run: |
           cd nginx-src
