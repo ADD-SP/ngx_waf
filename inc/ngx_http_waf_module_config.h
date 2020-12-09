@@ -3,10 +3,11 @@
  * @brief 读取 nginx.conf 内的配置以及规则文件。
 */
 
+#include <stdio.h>
 #include "ngx_http_waf_module_macro.h"
 #include "ngx_http_waf_module_type.h"
 #include "ngx_http_waf_module_util.h"
-#include <stdio.h>
+
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
