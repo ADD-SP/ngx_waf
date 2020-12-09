@@ -33,8 +33,8 @@ nginx 添加新的模块必须要重新编译，所以先[下载 nginx 源码](h
 
 ```bash
 cd /usr/local/src
-wget http://nginx.org/download/nginx-1.18.0.tar.gz
-tar -zxf nginx-1.18.0.tar.gz
+wget http://nginx.org/download/nginx-version.tar.gz
+tar -zxf nginx-version.tar.gz
 ```
 
 > 推荐 1.18.0 版本的 nginx 源码，若使用低版本的 nginx 源码则不保证本模块可以正常使用。
@@ -57,10 +57,22 @@ cd ngx_waf
 
 ***
 
+**兼容 Mainline 版本的 nginx**
+
+如果你打算将本模块安装到 Mainline 版本的 nginx 上，你需要在编译和安装之前执行下列命令。
+
+```bash
+cd /usr/local/src/ngx_waf
+export NGX_WAF_COMPATIBLE_WITH_MAINLINE=TRUE
+bash scripts/compatible-with-mainline.sh
+```
+
+***
+
 **使用静态模块**
 
 ```bash
-cd /usr/local/src/nginx-1.18.0
+cd /usr/local/src/nginx-version
 ./configure xxxxxx --add-module=/usr/local/src/ngx_waf
 make
 ```
@@ -87,7 +99,7 @@ make install
 **使用动态模块**
 
 ```bash
-cd /usr/local/src/nginx-1.18.0
+cd /usr/local/src/nginx-version
 ./configure xxxxxx --add-dynamic-module=/usr/local/src/ngx_waf
 make modules
 ```
