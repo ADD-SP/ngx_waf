@@ -18,7 +18,7 @@
 /**
  * @typedef u_char
 */
-typedef unsigned char u_char;
+// typedef unsigned char u_char;
 
 /**
  * @struct hash_table_item_int_ulong_t
