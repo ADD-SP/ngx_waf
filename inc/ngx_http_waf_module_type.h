@@ -3,12 +3,12 @@
  * @brief 相关结构体的定义
 */
 
+#include <uthash.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
-#include <uthash.h>
 #include "ngx_http_waf_module_macro.h"
 
 

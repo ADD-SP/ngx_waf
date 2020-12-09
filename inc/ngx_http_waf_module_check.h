@@ -3,6 +3,7 @@
  * @brief 检查诸如 IP，URL 等是否命中规则。
 */
 
+#include <uthash.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -10,8 +11,7 @@
 #include <ngx_inet.h>
 #include "ngx_http_waf_module_macro.h"
 #include "ngx_http_waf_module_type.h"
-#include <uthash.h>
-#include <sys/io.h>
+
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
 #define NGX_HTTP_WAF_MODLULE_CHECK_H
