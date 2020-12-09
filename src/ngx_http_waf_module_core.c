@@ -1,19 +1,6 @@
-#include <stdio.h>
 #include "../inc/ngx_http_waf_module_core.h"
-#include <uthash.h>
-#include <time.h>
-#include <math.h>
-#ifndef __linux__
-#include <io.h>
-#include <winsock.h>
-#else
-#include <sys/io.h>
-#endif
-#include "../inc/ngx_http_waf_module_check.h"
-#include "../inc/ngx_http_waf_module_config.h"
 
 static ngx_command_t ngx_http_waf_commands[] = {
-
    {
         ngx_string("waf_mult_mount"),
         NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
@@ -84,89 +71,6 @@ ngx_module_t ngx_http_waf_module = {
     NULL,                          /* exit master */
     NGX_MODULE_V1_PADDING
 };
-
-
-static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    v->not_found = 0;
-    v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
-
-    if (ctx == NULL) {
-        v->len = 0;
-        v->data = NULL;
-    }
-    else {
-        if (ctx->blocked == TRUE) {
-            v->len = 4;
-            strcpy((char*)v->data, "true");
-        }
-        else {
-            v->len = 5;
-            strcpy((char*)v->data, "false");
-        }
-    }
-
-    return NGX_OK;
-}
-
-
-static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    v->not_found = 0;
-
-    if (ctx == NULL) {
-        v->len = 0;
-        v->data = NULL;
-    }
-    else {
-        if (ctx->blocked == TRUE) {
-            v->len = strlen((char*)ctx->rule_type);
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
-            strcpy((char*)v->data, (char*)ctx->rule_type);
-        }
-        else {
-            v->len = 4;
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
-            strcpy((char*)v->data, "null");
-        }
-    }
-
-    return NGX_OK;
-}
-
-
-static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    v->not_found = 0;
-
-    if (ctx == NULL) {
-        v->len = 0;
-        v->data = NULL;
-    }
-    else {
-        if (ctx->blocked == TRUE) {
-            v->len = strlen((char*)ctx->rule_deatils);
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
-            strcpy((char*)v->data, (char*)ctx->rule_deatils);
-        }
-        else {
-            v->len = 4;
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
-            strcpy((char*)v->data, "null");
-        }
-    }
-
-    return NGX_OK;
-}
 
 
 static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
@@ -290,95 +194,6 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
 }
 
 
-void check_post(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
-    ngx_buf_t* body_buf = NULL;
-    ngx_str_t body_str;
-
-    ctx->read_body_done = TRUE;
-
-    while (buf_chain != NULL) {
-        body_buf = buf_chain->buf;
-
-        if (body_buf == NULL) {
-            break;
-        }
-
-        body_str.data = body_buf->pos;
-        body_str.len = body_buf->last - body_buf->pos;
-
-
-        if (!ngx_buf_in_memory(body_buf)) {
-            buf_chain = buf_chain->next;
-            continue;
-        }
-
-        ngx_regex_elt_t* p = srv_conf->black_post->elts;
-        ngx_int_t rc;
-        for (size_t i = 0; i < srv_conf->black_post->nelts; i++, p++) {
-            rc = ngx_regex_exec(p->regex, &body_str, NULL, 0);
-            if (rc >= 0) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "BLACK-POST");
-                strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
-                ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
-                return;
-            }
-        }
-        buf_chain = buf_chain->next;
-    }
-    ngx_http_finalize_request(r, NGX_DONE);
-    ngx_http_core_run_phases(r);
-}
-
-
-static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
-    size_t prefix = 0;
-    size_t num = 0;
-    size_t suffix = 32;
-    u_char c;
-    int is_in_suffix = FALSE;
-    memcpy(ipv4->text, text.data, text.len);
-    ipv4->text[text.len] = '\0';
-    for (size_t i = 0; i < text.len; i++) {
-        c = text.data[i];
-        if (c >= '0' && c <= '9') {
-            if (is_in_suffix == TRUE) {
-                suffix = suffix * 10 + (c - '0');
-            }
-            else {
-                num = num * 10 + (c - '0');
-            }
-        }
-        else if (c == '/') {
-            is_in_suffix = TRUE;
-            suffix = 0;
-        }
-        else if (c == '.') {
-            prefix = (num << 24) | (prefix >> 8);
-            num = 0;
-        }
-        else if (c != '\r' && c != '\n') {
-            return FAIL;
-        }
-    }
-    prefix = (num << 24) | (prefix >> 8);
-    size_t i = suffix, j = 1;
-    suffix = 0;
-    while (i > 0) {
-        suffix |= j;
-        j <<= 1;
-        --i;
-    }
-    ipv4->prefix = prefix & suffix;
-    ipv4->suffix = suffix;
-    return SUCCESS;
-}
-
-
 static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
     ngx_int_t line_number = 0;
@@ -440,14 +255,4 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
     fclose(fp);
     ngx_pfree(cf->pool, str);
     return SUCCESS;
-}
-
-
-static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
-    if (ngx_str.len > RULE_MAX_LEN) {
-        return NULL;
-    }
-    memcpy(destination, ngx_str.data, ngx_str.len);
-    destination[ngx_str.len] = '\0';
-    return (char*)destination + ngx_str.len;
 }
