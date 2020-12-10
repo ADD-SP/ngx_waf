@@ -10,7 +10,7 @@ on:
 
 
 jobs:
-  build-dev:
+  build-master:
     runs-on: ubuntu-latest
     strategy:
       matrix:
