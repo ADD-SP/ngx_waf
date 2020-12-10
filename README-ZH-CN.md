@@ -10,7 +10,7 @@
 
 用于 nginx 的防火墙模块。
 
-[开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES-ZH.md)
+[开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES-ZH-CN.md)
 
 ## 功能
 
