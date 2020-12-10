@@ -8,6 +8,16 @@
 
 ### Fixed
 
+## [2.1.1] - 2020-12.10
+
+### Added
+
+### Changed
+
+### Fixed
+
++ Fixed a module startup failure error. The error message for this error is `nginx: [alert] could not open error log file: open() "ngx_waf: /logs/error.log" failed (2: No such file or directory)` ([0dfc46f](https://github.com/ADD-SP/ngx_waf/commit/0dfc46f2dfc7ed91977b501c868abf961966d4e1)).
+
 ## [2.1.0] - 2020-12-09
 
 ### Added
