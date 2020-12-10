@@ -8,6 +8,7 @@
 
 /* 对应配置文件的文件名 */
 #define IPV4_FILE               ("ipv4")
+#define IPV6_FILE               ("ipv6")
 #define URL_FILE                ("url")
 #define ARGS_FILE               ("args")
 #define UA_FILE                 ("user-agent")
@@ -15,6 +16,7 @@
 #define COOKIE_FILE             ("cookie")
 #define POST_FILE               ("post")
 #define WHITE_IPV4_FILE         ("white-ipv4")
+#define WHITE_IPV6_FILE         ("white-ipv6")
 #define WHITE_URL_FILE          ("white-url")
 #define WHITE_REFERER_FILE      ("white-referer")
 

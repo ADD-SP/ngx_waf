@@ -122,6 +122,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     char* end = to_c_str((u_char*)full_path, srv_conf->waf_rule_path);
 
     CHECK_AND_LOAD_CONF(cf, full_path, end, IPV4_FILE, srv_conf->black_ipv4, 1);
+    CHECK_AND_LOAD_CONF(cf, full_path, end, IPV6_FILE, srv_conf->black_ipv6, 2);
     CHECK_AND_LOAD_CONF(cf, full_path, end, URL_FILE, srv_conf->black_url, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, ARGS_FILE, srv_conf->black_args, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, UA_FILE, srv_conf->black_ua, 0);
@@ -129,6 +130,7 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     CHECK_AND_LOAD_CONF(cf, full_path, end, COOKIE_FILE, srv_conf->black_cookie, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, POST_FILE, srv_conf->black_post, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_IPV4_FILE, srv_conf->white_ipv4, 1);
+    CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_IPV6_FILE, srv_conf->white_ipv6, 2);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_URL_FILE, srv_conf->white_url, 0);
     CHECK_AND_LOAD_CONF(cf, full_path, end, WHITE_REFERER_FILE, srv_conf->white_referer, 0);
 
@@ -264,6 +266,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     srv_conf->black_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
+    srv_conf->black_ipv6 = ngx_array_create(cf->pool, 10, sizeof(ipv6_t));
     srv_conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -271,6 +274,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->black_cookie = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
+    srv_conf->white_ipv6 = ngx_array_create(cf->pool, 10, sizeof(ipv6_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->ipv4_times = NULL;
@@ -406,6 +410,75 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     waf_rule_details->set_handler = NULL;
 
     return NGX_OK;
+}
+
+static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode) {
+    FILE* fp = fopen(file_name, "r");
+    ngx_int_t line_number = 0;
+    ngx_str_t line;
+    char* str = ngx_palloc(cf->pool, sizeof(char) * RULE_MAX_LEN);
+    if (fp == NULL) {
+        return FAIL;
+    }
+    while (fgets(str, RULE_MAX_LEN - 16, fp) != NULL) {
+        ngx_regex_compile_t   regex_compile;
+        u_char                errstr[NGX_MAX_CONF_ERRSTR];
+        ngx_regex_elt_t* ngx_regex_elt;
+        ipv4_t* ipv4;
+        ipv6_t* ipv6;
+        ++line_number;
+        line.data = (u_char*)str;
+        line.len = strlen((char*)str);
+
+        if (line.len <= 0) {
+            continue;
+        }
+
+        if (line.data[line.len - 1] == '\n') {
+            line.data[line.len - 1] = '\0';
+            --(line.len);
+            if (line.len <= 0) {
+                continue;
+            }
+            if (line.data[line.len - 1] == '\r') {
+                line.data[line.len - 1] = '\0';
+                --(line.len);
+            }
+        }
+
+        if (line.len <= 0) {
+            continue;
+        }
+
+        switch (mode) {
+        case 0:
+            ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
+            regex_compile.pattern = line;
+            regex_compile.pool = cf->pool;
+            regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
+            regex_compile.err.data = errstr;
+            ngx_regex_compile(&regex_compile);
+            ngx_regex_elt = ngx_array_push(ngx_array);
+            ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * RULE_MAX_LEN);
+            to_c_str(ngx_regex_elt->name, line);
+            ngx_regex_elt->regex = regex_compile.regex;
+            break;
+        case 1:
+            ipv4 = ngx_array_push(ngx_array);
+            if (parse_ipv4(line, ipv4) != SUCCESS) {
+                return FAIL;
+            }
+            break;
+        case 2:
+            ipv6 = ngx_array_push(ngx_array);
+            if (parse_ipv6(line, ipv6) != SUCCESS) {
+                return FAIL;
+            }
+        }
+    }
+    fclose(fp);
+    ngx_pfree(cf->pool, str);
+    return SUCCESS;
 }
 
 #endif // !NGX_HTTP_WAF_MODULE_CONFIG_H

@@ -11,6 +11,7 @@
 #include <ngx_inet.h>
 #include "ngx_http_waf_module_macro.h"
 #include "ngx_http_waf_module_type.h"
+#include "ngx_http_waf_module_util.h"
 
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
@@ -33,23 +34,23 @@ extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 typedef ngx_int_t (*ngx_http_waf_check)(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 /**
- * @brief 检查客户端 IPV4 地址是否在白名单中。
+ * @brief 检查客户端 IP 地址是否在白名单中。
  * @param[out] out_http_status 当出发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
- * @retval MATCHED IPV4 地址在白名单中。
- * @retval NOT_MATCHED IPV4 地址不在白名单中。
+ * @retval MATCHED IP 地址在白名单中。
+ * @retval NOT_MATCHED IP 地址不在白名单中。
 */
-static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /**
- * @brief 检查客户端 IPV4 地址是否在黑名单中。
+ * @brief 检查客户端 IP 地址是否在黑名单中。
  * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
- * @retval MATCHED IPV4 地址在黑名单中。
- * @retval NOT_MATCHED IPV4 地址不在黑名单中。
+ * @retval MATCHED IP 地址在黑名单中。
+ * @retval NOT_MATCHED IP 地址不在黑名单中。
 */
-static ngx_int_t ngx_http_waf_handler_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /**
@@ -133,17 +134,6 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
 
 
 /**
- * @brief 检查两个 IPV4 是否属于同一网段
- * @param[in] ip 整型格式的 IPV4
- * @param[in] ipv4 格式化后的 IPV4
- * @return 如果属于同一网段返回 MATCHED，反之返回 NOT_MATCHED。
- * @retval MATCHED 属于同一网段。
- * @retval NOT_MATCHED 不属于同一网段。
-*/
-static ngx_int_t ngx_http_waf_handler_check_ipv4(unsigned long ip, const ipv4_t* ipv4);
-
-
-/**
  * @brief 逐渐释放旧的哈希表所占用的内存
  * @li 第一阶段：备份现有的哈希表和现有的内存池，然后创建新的哈希表和内存池。
  * @li 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
@@ -166,23 +156,36 @@ static void check_post(ngx_http_request_t* r);
 */
 
 
-static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
         return NOT_MATCHED;
     }
 
     if (r->connection->sockaddr->sa_family == AF_INET) {
-        unsigned long ipv4 = sin->sin_addr.s_addr;
+        struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+        uint32_t ipv4 = sin->sin_addr.s_addr;
         ipv4_t* p = srv_conf->white_ipv4->elts;
         size_t index = 0;
         for (; index < srv_conf->white_ipv4->nelts; index++, p++) {
-            if (ngx_http_waf_handler_check_ipv4(ipv4, p) == MATCHED) {
+            if (ipv4_netcmp(ipv4, p) == MATCHED) {
                 ctx->blocked = FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
+                strcpy((char*)ctx->rule_deatils, (char*)p->text);
+                *out_http_status = NGX_DECLINED;
+                return MATCHED;
+            }
+        }
+    } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
+        ipv6_t* p = srv_conf->white_ipv6->elts;
+        size_t index = 0;
+        for (; index < srv_conf->white_ipv6->nelts; index++, p++) {
+            if (ipv6_netcmp(sin6->sin6_addr.__in6_u.__u6_addr8, p) == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "WHITE-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)p->text);
                 *out_http_status = NGX_DECLINED;
                 return MATCHED;
@@ -194,23 +197,36 @@ static ngx_int_t ngx_http_waf_handler_check_white_ipv4(ngx_http_request_t* r, ng
 }
 
 
-static ngx_int_t ngx_http_waf_handler_check_black_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
         return NOT_MATCHED;
     }
 
     if (r->connection->sockaddr->sa_family == AF_INET) {
-        unsigned long ipv4 = sin->sin_addr.s_addr;
+        struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+        uint32_t ipv4 = sin->sin_addr.s_addr;
         ipv4_t* p = srv_conf->black_ipv4->elts;
         size_t index = 0;
         for (; index < srv_conf->black_ipv4->nelts; index++, p++) {
-            if (ngx_http_waf_handler_check_ipv4(ipv4, p) == MATCHED) {
+            if (ipv4_netcmp(ipv4, p) == MATCHED) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
+                strcpy((char*)ctx->rule_deatils, (char*)p->text);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
+                return MATCHED;
+            }
+        }
+    } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
+        ipv6_t* p = srv_conf->black_ipv6->elts;
+        size_t index = 0;
+        for (; index < srv_conf->black_ipv6->nelts; index++, p++) {
+            if (ipv6_netcmp(sin6->sin6_addr.__in6_u.__u6_addr8, p) == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "BLACK-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)p->text);
                 *out_http_status = NGX_HTTP_FORBIDDEN;
                 return MATCHED;
@@ -482,17 +498,6 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                 return MATCHED;
             }
         }
-    }
-
-    return NOT_MATCHED;
-}
-
-
-static ngx_int_t ngx_http_waf_handler_check_ipv4(unsigned long ip, const ipv4_t* ipv4) {
-    size_t prefix = ip & ipv4->suffix;
-
-    if (prefix == ipv4->prefix) {
-        return MATCHED;
     }
 
     return NOT_MATCHED;
