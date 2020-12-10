@@ -15,8 +15,8 @@ A web application firewall module for nginx.
 ## Function
 
 + Anti Challenge Collapsar(IPV4 only), it can automatically block malicious IP.
-+ Exceptional allow on specific IP address(IPV4 only).
-+ Block the specified IP address (IPV4 only).
++ Exceptional allow on specific IP address.
++ Block the specified IP address.
 + Block the specified request body.
 + Exceptional allow on specific URL.
 + Block the specified URL.
