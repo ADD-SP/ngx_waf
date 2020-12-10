@@ -8,6 +8,16 @@
 
 ### 修复
 
+## [2.1.1] - 2020-12-10
+
+### 新增
+
+### 改动
+
+### 修复
+
++ 修复了模块启动失败的 bug。此 bug 的报错信息为 `nginx: [alert] could not open error log file: open() "ngx_waf: /logs/error.log" failed (2: No such file or directory)`（[0dfc46f](https://github.com/ADD-SP/ngx_waf/commit/0dfc46f2dfc7ed91977b501c868abf961966d4e1)）。
+
 
 ## [2.1.0] - 2020-12-09
 
