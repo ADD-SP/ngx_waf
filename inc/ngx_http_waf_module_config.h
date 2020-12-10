@@ -252,9 +252,9 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
 
     /* 条件为真时说明编译时 nginx 的版本小于等于 stable。反之则为 Mainline 版本。 */
     #if (nginx_version <= 1018000)
-        srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ");
+        srv_conf->ngx_log = ngx_log_init(NULL);
     #else
-        srv_conf->ngx_log = ngx_log_init((u_char *)"ngx_waf: ", NULL);
+        srv_conf->ngx_log = ngx_log_init(NULL, NULL);
     #endif
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
     srv_conf->alloc_times = 0;
