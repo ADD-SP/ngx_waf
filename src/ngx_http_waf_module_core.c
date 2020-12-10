@@ -126,8 +126,8 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
 
 static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r) {
     static ngx_http_waf_check check_proc[] = {
-        ngx_http_waf_handler_check_white_ipv4,
-        ngx_http_waf_handler_check_black_ipv4,
+        ngx_http_waf_handler_check_white_ip,
+        ngx_http_waf_handler_check_black_ip,
         ngx_http_waf_handler_check_white_url,
         ngx_http_waf_handler_check_black_url,
         ngx_http_waf_handler_check_black_args,
@@ -191,68 +191,4 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
     }
     return http_status;
-}
-
-
-static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode) {
-    FILE* fp = fopen(file_name, "r");
-    ngx_int_t line_number = 0;
-    ngx_str_t line;
-    char* str = ngx_palloc(cf->pool, sizeof(char) * RULE_MAX_LEN);
-    if (fp == NULL) {
-        return FAIL;
-    }
-    while (fgets(str, RULE_MAX_LEN - 16, fp) != NULL) {
-        ngx_regex_compile_t   regex_compile;
-        u_char                errstr[NGX_MAX_CONF_ERRSTR];
-        ngx_regex_elt_t* ngx_regex_elt;
-        ipv4_t* ipv4;
-        ++line_number;
-        line.data = (u_char*)str;
-        line.len = strlen((char*)str);
-
-        if (line.len <= 0) {
-            continue;
-        }
-
-        if (line.data[line.len - 1] == '\n') {
-            line.data[line.len - 1] = '\0';
-            --(line.len);
-            if (line.len <= 0) {
-                continue;
-            }
-            if (line.data[line.len - 1] == '\r') {
-                line.data[line.len - 1] = '\0';
-                --(line.len);
-            }
-        }
-
-        if (line.len <= 0) {
-            continue;
-        }
-
-        switch (mode) {
-        case 0:
-            ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
-            regex_compile.pattern = line;
-            regex_compile.pool = cf->pool;
-            regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
-            regex_compile.err.data = errstr;
-            ngx_regex_compile(&regex_compile);
-            ngx_regex_elt = ngx_array_push(ngx_array);
-            ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * RULE_MAX_LEN);
-            to_c_str(ngx_regex_elt->name, line);
-            ngx_regex_elt->regex = regex_compile.regex;
-            break;
-        case 1:
-            ipv4 = ngx_array_push(ngx_array);
-            if (parse_ipv4(line, ipv4) != SUCCESS) {
-                return FAIL;
-            }
-            break;
-        }
-    }
-    fclose(fp);
-    ngx_pfree(cf->pool, str);
-    return SUCCESS;
 }
