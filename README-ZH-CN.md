@@ -14,8 +14,9 @@
 
 ## 功能
 
-+ CC 防御，超出限制后自动拉黑对应 IP 一段时间（仅限 IPV4）。
-+ IP 黑白名单，支持 IPV4 和 IPV6。同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
++ 支持 IPV4 和 IPV6。
++ CC 防御，超出限制后自动拉黑对应 IP 一段时间。
++ IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
 + POST 黑名单。
 + URL 黑白名单
 + GET 参数黑名单
@@ -207,7 +208,8 @@ https://example.com/www.bak
 规则中的正则表达式均遵循[PCRE 标准](http://www.pcre.org/current/doc/html/pcre2syntax.html)。
 
 
-+ rules/ipv4：IPV4 黑名单，每条规则独占一行。每行只能是一个 IPV4 地址或者一个 CIDR 地址块。拦截匹配到的 IP 并返回 403。
++ rules/ipv4：IPV4 黑名单，每条规则独占一行。每行只能是一个由点分十进制表示的 IPV4 地址，允许通过类似 `192.168.0.0/16` 的方式划分网段。拦截匹配到的 IP 并返回 403。
++ rules/ipv6：IPV6 黑名单，每条规则独占一行。每行只能是一个由冒号十六进制表示的 IPV6 地址，通过类似 `fe80::/10` 的方式划分网段。拦截匹配到的 IP 并返回 403。
 + rules/url：URL 黑名单，每条规则独占一行。每行一个正则表达式，当 URL 被任意一个规则匹配到就返回 403。
 + rules/args：GET 参数黑名单，每条规则独占一行。每行一个正则表达式，当 GET 参数（如test=0&test1=）被任意一个规则匹配到就返回 403。
 + rules/referer：Referer 黑名单，每条规则独占一行。每行一个正则表达式，当 referer 被任意一个规则匹配到就返回 403。
@@ -215,6 +217,7 @@ https://example.com/www.bak
 + rules/cookie：Cookie 黑名单，每条规则独占一行。每行一个正则表达式，当 Cookie 中的内容被任意一个规则匹配到就返回 403。
 + rules/post：POST 黑名单，每条规则独占一行。每行一个正则表达式，当请求体中的内容被任意一个规则匹配到就返回 403。
 + rules/white-ipv4：IPV4 白名单，写法同`rules/ipv4`。
++ rules/white-ipv6：IPV6 白名单，写法同`rules/ipv6`。
 + rules/white-url：URL 白名单。写法同`rules/url`。
 + rules/white-referer：Referer 白名单。写法同`rules/referer`。
 

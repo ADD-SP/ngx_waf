@@ -14,7 +14,8 @@ A web application firewall module for nginx.
 
 ## Function
 
-+ Anti Challenge Collapsar(IPV4 only), it can automatically block malicious IP.
++ IPV4 and IPV6 support.
++ Anti Challenge Collapsar, it can automatically block malicious IP.
 + Exceptional allow on specific IP address.
 + Block the specified IP address.
 + Block the specified request body.
@@ -213,8 +214,10 @@ If the http status code is 403, it means this module is working normally.
 
 All regular expressions follow the [PCRE Standard](http://www.pcre.org/current/doc/html/pcre2syntax.html).
 
-+ rules/white-ipv4：IPV4 whitelist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Allow matched IPV4 address.
-+ rules/ipv4：IPV4 blacklist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Block the matched IPV4 address and return 403.
++ rules/white-ipv4：IPV4 whitelist, each rule has its own row.Each line can be only one IPV4 address or one CIDR address block. Matching IPV4 addresses are not blocked.
++ rules/ipv4：IPV4 blacklist, each rule has its own line. Each line can only be an IPV4 address or a CIDR address block. Matched IPV4 addresses are blocked and 403 is returned.
++ rules/white-ipv6：IPV6 whitelist, each rule has its own line. Each line can only be an IPV6 address or a string like `fe80::/10`. Matching IPV6 addresses are not blocked.
++ rules/ipv6：IPV6 blacklist, each rule has its own row. Each line can only be an IPV6 address or a string like `fe80::/10`. Matched IPV6 addresses are blocked and 403 is returned.
 + rules/white-url：URL whitelist, each rule has its own line. One regular expression per line, when the URL is matched by any rule, it will be allowed.
 + rules/url：URL blacklist, each rule has its own line. There is a regular expression per line, and 403 is returned when the URL is matched by any rule.
 + rules/args：Request args blacklist, each rule has its own line. There is one regular expression per line, and 403 is returned when the request args is matched by any rule.
