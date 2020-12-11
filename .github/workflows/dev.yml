@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         nginx: [stable, mainline]
-        module-type: [-add-module, --add-dynamic-module]
+        module-type: [--add-module, --add-dynamic-module]
     container: centos:8
     steps:
       - uses: actions/checkout@v2
