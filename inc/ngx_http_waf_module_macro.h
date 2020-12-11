@@ -60,6 +60,8 @@
 */
 #define INITIAL_SIZE            (1024 * 1024 * 5)
 
+#define MAX_ALLOC_TIMES         (100000)
+
 
 /**
  * @def MODE_INSPECT_GET

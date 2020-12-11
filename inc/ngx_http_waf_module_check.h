@@ -4,6 +4,7 @@
 */
 
 #include <uthash.h>
+#include <math.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -12,6 +13,7 @@
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
+#include <ngx_http_waf_module_ip_hash_table.h>
 
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
@@ -139,12 +141,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
  * @li 第二阶段：逐渐将旧的哈希表中有用的内容转移到新的哈希表中。
  * @li 第三阶段：清空旧的哈希表。
  * @li 第四阶段：销毁旧的内存池，完成释放。
- * @return 如果正常走完了四个阶段返回 SUCCESS，如果还在释放中（第四阶段之前）返回 PROCESSING，如果出现错误返回 FAIL。
- * @retval SUCCESS 正常走完了四个阶段。
- * @retval PROCESSING 正在进行某个阶段，还未完成释放。
- * @retval FAIL 出现错误，未能完成释放。
 */
-static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf);
+static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_waf_srv_conf_t* srv_conf, time_t now);
 
 /**
 * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
@@ -241,14 +239,10 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
 static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-
-    if (r->connection->sockaddr->sa_family != AF_INET) {
-        return NOT_MATCHED;
-    }
-
-    unsigned long ipv4 = sin->sin_addr.s_addr;
-
+    ngx_int_t ip_type = r->connection->sockaddr->sa_family;
+    time_t now = time(NULL);
+    time_t time_diff_minute = 0;
+    
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_CC) == FALSE) {
         return NOT_MATCHED;
     }
@@ -257,51 +251,52 @@ static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_i
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
         return NOT_MATCHED;
     }
-    if (srv_conf->alloc_times > 55000) {
-        ngx_int_t ret = ngx_http_waf_free_hash_table(r, srv_conf);
-        if (ret == SUCCESS || ret == FAIL) {
-            srv_conf->alloc_times -= 55000;
+
+    ip_hash_table_item_t* hash_item = NULL;
+    struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+    struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
+
+    if (ip_type == AF_INET) {
+        if (ip_hash_table_find(srv_conf->ipv4_times_table, &(sin->sin_addr), &hash_item) != SUCCESS) {
+            ip_hash_table_add(srv_conf->ipv4_times_table, &sin->sin_addr, 1, now);
+            ++(srv_conf->alloc_times);
+        }
+    }
+    else if (ip_type == AF_INET6) {
+        if (ip_hash_table_find(srv_conf->ipv6_times_table, &(sin6->sin6_addr), &hash_item) != SUCCESS) {
+            ip_hash_table_add(srv_conf->ipv6_times_table, &sin6->sin6_addr, 1, now);
+            ++(srv_conf->alloc_times);
+        }
+    } else {
+        return NOT_MATCHED;
+    }
+
+    ngx_int_t ret = NOT_MATCHED;
+
+    if (hash_item != NULL) {
+        ++(hash_item->times);
+        time_diff_minute = difftime(now, hash_item->start_time) / 60;
+        if (time_diff_minute > srv_conf->waf_cc_deny_duration) {
+            hash_item->start_time = now;
+            hash_item->times = 1;
+        }
+        else if (hash_item->times >= (ngx_uint_t)(srv_conf->waf_cc_deny_limit)) {
+            ctx->blocked = TRUE;
+            strcpy((char*)ctx->rule_type, "CC-DNEY");
+            strcpy((char*)ctx->rule_deatils, (char*)"");
+            *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
+            ret = MATCHED;
         }
     }
 
-    hash_table_item_int_ulong_t* hash_item = NULL;
-    time_t now = time(NULL);
-    HASH_FIND_INT(srv_conf->ipv4_times, (int*)(&ipv4), hash_item);
-    if (hash_item == NULL) {
-        hash_item = ngx_palloc(srv_conf->ngx_pool, sizeof(hash_table_item_int_ulong_t));
-        if (hash_item == NULL) {
-            // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: MEM-ALLOC-ERROR");
-            return NOT_MATCHED;
+    if (srv_conf->alloc_times > MAX_ALLOC_TIMES) {
+        if (ngx_http_waf_free_hash_table(srv_conf, now) != SUCCESS) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: Unable to free the memory of the hash table.");
         }
-        ++(srv_conf->alloc_times);
-        hash_item->times = 1;
-        hash_item->start_time = now;
-        hash_item->key = ipv4;
-        HASH_ADD_INT(srv_conf->ipv4_times, key, hash_item);
+        srv_conf->alloc_times = 0;
     }
-    else {
-        if (hash_item->times > (ngx_uint_t)srv_conf->waf_cc_deny_limit) {
-            if (difftime(now, hash_item->start_time) > srv_conf->waf_cc_deny_duration * 60.0) {
-                HASH_DEL(srv_conf->ipv4_times, hash_item);
-            }
-            else {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "CC-DENY");
-                strcpy((char*)ctx->rule_deatils, "");
-                *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-                return MATCHED;
-            }
-        }
-        else {
-            if (difftime(now, hash_item->start_time) > 60.0) {
-                HASH_DEL(srv_conf->ipv4_times, hash_item);
-            }
-            else {
-                ++(hash_item->times);
-            }
-        }
-    }
-    return NOT_MATCHED;
+
+    return ret;
 }
 
 
@@ -504,64 +499,44 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
 }
 
 
-static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_request_t* r, ngx_http_waf_srv_conf_t* srv_conf) {
-    hash_table_item_int_ulong_t* p = NULL;
-    int count = 0;
-    time_t now;
-    switch (srv_conf->free_hash_table_step) {
-    case 0:
-        srv_conf->ipv4_times_old = srv_conf->ipv4_times;
-        srv_conf->ipv4_times = NULL;
-        srv_conf->ngx_pool_old = srv_conf->ngx_pool;
-        srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
-        ++(srv_conf->free_hash_table_step);
-        return PROCESSING;
-        break;
-    case 1:
-        now = time(NULL);
-        if (srv_conf->ipv4_times_old_cur == NULL) {
-            srv_conf->ipv4_times_old_cur = srv_conf->ipv4_times_old;
-        }
-        for (; srv_conf->ipv4_times_old_cur != NULL && count < 100; srv_conf->ipv4_times_old_cur = p->hh.next) {
-            /* 判断当前的记录是否过期 */
-            if (difftime(now, srv_conf->ipv4_times_old_cur->start_time) < srv_conf->waf_cc_deny_duration * 60.0) {
-                /* 在新的哈希表中查找是否存在当前记录 */
-                HASH_FIND_INT(srv_conf->ipv4_times, &srv_conf->ipv4_times_old_cur->key, p);
-                if (p == NULL) {
-                    /* 如果不存在则拷贝后插入到新的哈希表中 */
-                    p = ngx_palloc(srv_conf->ngx_pool, sizeof(hash_table_item_int_ulong_t));
-                    if (p == NULL) {
-                        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: MEM-ALLOC-ERROR");
-                        return FAIL;
-                    }
-                    p->key = srv_conf->ipv4_times_old_cur->key;
-                    p->start_time = srv_conf->ipv4_times_old_cur->start_time;
-                    p->times = srv_conf->ipv4_times_old_cur->times;
-                    HASH_ADD_INT(srv_conf->ipv4_times, key, p);
-                }
-                else {
-                    /* 如果存在则合并更改 */
-                    p->times += srv_conf->ipv4_times_old_cur->start_time;
-                }
-            }
-        }
-        if (p == NULL) {
-            ++(srv_conf->free_hash_table_step);
-        }
-        return PROCESSING;
-        break;
-    case 2:
-        HASH_CLEAR(hh, srv_conf->ipv4_times_old);
-        ++(srv_conf->free_hash_table_step);
-        return PROCESSING;
-        break;
-    case 3:
-        ngx_destroy_pool(srv_conf->ngx_pool_old);
-        srv_conf->ngx_pool_old = NULL;
-        srv_conf->free_hash_table_step = 0;
-        return PROCESSING;
-        break;
+static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_waf_srv_conf_t* srv_conf, time_t now) {
+    ngx_pool_t* ngx_pool_for_times_table_old = srv_conf->ngx_pool_for_times_table;
+    ngx_pool_t* ngx_pool_for_times_table = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
+    srv_conf->ngx_pool_for_times_table = ngx_pool_for_times_table;
+
+    ip_hash_table_t* ipv4_times_table_old = srv_conf->ipv4_times_table;
+    ip_hash_table_t* ipv4_times_table = NULL;
+    if (ip_hash_table_init(&ipv4_times_table, ngx_pool_for_times_table, IP_HASH_TABLE_TYPE_IPV4) != SUCCESS) {
+        return FAIL;
     }
+    srv_conf->ipv4_times_table = ipv4_times_table;
+
+    ip_hash_table_t* ipv6_times_table_old = srv_conf->ipv6_times_table;
+    ip_hash_table_t* ipv6_times_table = NULL;
+    if (ip_hash_table_init(&ipv6_times_table, ngx_pool_for_times_table, IP_HASH_TABLE_TYPE_IPV6) != SUCCESS) {
+        return FAIL;
+    }
+    srv_conf->ipv6_times_table = ipv6_times_table;
+
+    for (ip_hash_table_item_t* p = ipv4_times_table_old->head; p != NULL; p = p->hh.next) {
+        struct in_addr* addr = &(p->key.ipv4);
+
+        /* 如果当前项没有过期 */
+        if (difftime(now, p->start_time) * 60 <= srv_conf->waf_cc_deny_duration) {
+            ip_hash_table_add(ipv4_times_table, addr, p->times, p->start_time);
+        }
+    }
+
+    for (ip_hash_table_item_t* p = ipv6_times_table_old->head; p != NULL; p = p->hh.next) {
+        struct in6_addr* addr = &(p->key.ipv6);
+
+        /* 如果当前项没有过期 */
+        if (difftime(now, p->start_time) * 60 <= srv_conf->waf_cc_deny_duration) {
+            ip_hash_table_add(ipv6_times_table, addr, p->times, p->start_time);
+        }
+    }
+
+    ngx_destroy_pool(ngx_pool_for_times_table_old);
     return SUCCESS;
 }
 

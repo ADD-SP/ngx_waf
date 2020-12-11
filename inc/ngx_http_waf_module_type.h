@@ -16,17 +16,31 @@
 #define NGX_HTTP_WAF_MODULE_TYPE_H
 
 
-
 /**
- * @struct hash_table_item_int_ulong_t
+ * @struct ip_hash_table_item_t
  * @brief 哈希表项
 */
 typedef struct {
-    int                             key;                        /**< IPV4 的整数形式 */
-    uint32_t                        times;                      /**< 该地址的请求次数 */
-    time_t                          start_time;                 /**< 首次记录本 IP 的时间 */
-    UT_hash_handle                  hh;                         /**< uthash 关键成员 */
-} hash_table_item_int_ulong_t;
+    union {
+        struct in_addr ipv4;
+        struct in6_addr ipv6;
+    } key;
+    ngx_uint_t times; /**< 访问频次（一分钟） */
+    time_t start_time; /**< 开始统计的时间 */
+    UT_hash_handle hh; /**< uthash 关键成员 */
+} ip_hash_table_item_t;
+
+/**
+ * @struct ip_hash_table_item_t
+ * @brief IP 哈希表
+*/
+typedef struct {
+    uint32_t ip_type; /**< 作为 key 的 ip 类型 */
+    ip_hash_table_item_t *head; /**< 哈希表头 */
+    uint32_t length; /**< 哈希表长度 */
+    ngx_pool_t *memory_pool; /**< 用于初始化、添加和删除节点的内存池 */
+} ip_hash_table_t;
+
 
 /**
  * @struct ngx_http_waf_ctx_t
@@ -44,34 +58,32 @@ typedef struct {
  * @brief 每个 server 块的配置块
 */
 typedef struct {
-    ngx_log_t                      *ngx_log;                    /**< 记录内存池在进行操作时的错误日志 */
-    ngx_pool_t                     *ngx_pool;                   /**< 模块所使用的内存池 */
-    ngx_uint_t                      alloc_times;                /**< 当前已经从内存池中申请过多少次内存 */
-    ngx_int_t                       waf;                        /**< 是否启用本模块 */
-    ngx_str_t                       waf_rule_path;              /**< 配置文件所在目录 */
-    ngx_int_t                       waf_mult_mount;             /**< 是否执行多阶段检查 */
-    ngx_uint_t                      waf_mode;                   /**< 检测模式 */
-    ngx_int_t                       waf_cc_deny_limit;          /**< CC 防御的限制频率 */
-    ngx_int_t                       waf_cc_deny_duration;       /**< CC 防御的拉黑时长（分钟） */
-    ngx_array_t                    *black_ipv4;                 /**< IPV4 黑名单 */
-    ngx_array_t                    *black_ipv6;                 /**< IPV6 黑名单 */
-    ngx_array_t                    *black_url;                  /**< URL 黑名单 */
-    ngx_array_t                    *black_args;                 /**< args 黑名单 */
-    ngx_array_t                    *black_ua;                   /**< user-agent 黑名单 */
-    ngx_array_t                    *black_referer;              /**< Referer 黑名单 */
-    ngx_array_t                    *black_cookie;               /**< Cookie 黑名单 */
-    ngx_array_t                    *black_post;                 /**< 请求体内容黑名单 */
-    ngx_array_t                    *white_ipv4;                 /**< IPV4 白名单 */
-    ngx_array_t                    *white_ipv6;                 /**< IPV6 白名单 */
-    ngx_array_t                    *white_url;                  /**< URL 白名单 */
-    ngx_array_t                    *white_referer;              /**< Referer 白名单 */
-    hash_table_item_int_ulong_t    *ipv4_times;                 /**< IPV4 访问频率统计表 */
+    ngx_log_t                      *ngx_log;                        /**< 记录内存池在进行操作时的错误日志 */
+    ngx_pool_t                     *ngx_pool;                       /**< 模块所使用的内存池 */
+    ngx_uint_t                      alloc_times;                    /**< 当前已经从内存池中申请过多少次内存 */
+    ngx_int_t                       waf;                            /**< 是否启用本模块 */
+    ngx_str_t                       waf_rule_path;                  /**< 配置文件所在目录 */
+    ngx_int_t                       waf_mult_mount;                 /**< 是否执行多阶段检查 */
+    ngx_uint_t                      waf_mode;                       /**< 检测模式 */
+    ngx_int_t                       waf_cc_deny_limit;              /**< CC 防御的限制频率 */
+    ngx_int_t                       waf_cc_deny_duration;           /**< CC 防御的拉黑时长（分钟） */
+    ngx_array_t                    *black_ipv4;                     /**< IPV4 黑名单 */
+    ngx_array_t                    *black_ipv6;                     /**< IPV6 黑名单 */
+    ngx_array_t                    *black_url;                      /**< URL 黑名单 */
+    ngx_array_t                    *black_args;                     /**< args 黑名单 */
+    ngx_array_t                    *black_ua;                       /**< user-agent 黑名单 */
+    ngx_array_t                    *black_referer;                  /**< Referer 黑名单 */
+    ngx_array_t                    *black_cookie;                   /**< Cookie 黑名单 */
+    ngx_array_t                    *black_post;                     /**< 请求体内容黑名单 */
+    ngx_array_t                    *white_ipv4;                     /**< IPV4 白名单 */
+    ngx_array_t                    *white_ipv6;                     /**< IPV6 白名单 */
+    ngx_array_t                    *white_url;                      /**< URL 白名单 */
+    ngx_array_t                    *white_referer;                  /**< Referer 白名单 */
+    ngx_pool_t                     *ngx_pool_for_times_table;       /**< 访问频次表专用的内存池 */
+    ip_hash_table_t                *ipv4_times_table;               /**< IPV4 访问频率统计表 */
+    ip_hash_table_t                *ipv6_times_table;               /**< IPV6 访问频率统计表 */
 
-    ngx_pool_t                     *ngx_pool_old;               /**< 执行函数 free_hash_table 时用于备份旧的内存池 */
-    hash_table_item_int_ulong_t    *ipv4_times_old;             /**< 执行函数 free_hash_table 时用于备份旧的 IPV4 访问频率统计表 */
-    hash_table_item_int_ulong_t    *ipv4_times_old_cur;         /**< 执行函数 free_hash_table 时用于记录当前处理到旧的 IPV4 访问频率统计表的哪一项 */
-    ngx_int_t                       free_hash_table_step;       /**< 记录 free_hash_table 执行到哪一阶段 */
-
+    ngx_pool_t                     *ngx_pool_for_times_table_old;   /**< 执行函数 free_hash_table 时用于备份旧的内存池 */
 }ngx_http_waf_srv_conf_t;
 
 /**
