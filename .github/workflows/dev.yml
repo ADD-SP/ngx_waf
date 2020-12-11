@@ -15,6 +15,7 @@ jobs:
     strategy:
       matrix:
         nginx: [stable, mainline]
+        module-type: [-add-module, --add-dynamic-module]
     container: centos:8
     steps:
       - uses: actions/checkout@v2
@@ -27,10 +28,10 @@ jobs:
           lastversion download nginx:${{ matrix.nginx }}
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
-      - name: Configure
+      - name: Configure ${{ matrix.module-type }}
         run: |
           cd nginx-src
-          ./configure --add-module=..
+          ./configure ${{ matrix.module-type }}=..
       - name: Make
         run: |
           cd nginx-src
