@@ -10,6 +10,8 @@
 
 ### Fixed
 
++ Modify the `config` file to ensure that the latest module code is compiled when executing `make` or `make modules`. Before the fix, if only the files under `inc/` changed, the latest code would not be compiled because the files under `inc/` were not checked for changes.
+
 + Fixed a bug with incorrect IPV4 segment identification ([73a22eb](https://github.com/ADD-SP/ngx_waf/commit/73a22eb3538a24e9714bf8331946a5654df20cc1)). This bug could cause the subnet mask not to be generated correctly when a rule like `192.168.0.0/10`, i.e. the suffix is not a multiple of 8, appears in the rule.
 
 ## [2.1.1] - 2020-12.10
