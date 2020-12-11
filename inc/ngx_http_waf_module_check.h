@@ -9,9 +9,9 @@
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
-#include "ngx_http_waf_module_macro.h"
-#include "ngx_http_waf_module_type.h"
-#include "ngx_http_waf_module_util.h"
+#include <ngx_http_waf_module_macro.h>
+#include <ngx_http_waf_module_type.h>
+#include <ngx_http_waf_module_util.h>
 
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H

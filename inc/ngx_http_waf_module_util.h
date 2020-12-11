@@ -6,8 +6,8 @@
 #ifndef NGX_HTTP_WAF_MODULE_UTIL_H
 #define NGX_HTTP_WAF_MODULE_UTIL_H
 
-#include "../inc/ngx_http_waf_module_macro.h"
-#include "../inc/ngx_http_waf_module_type.h"
+#include <ngx_http_waf_module_macro.h>
+#include <ngx_http_waf_module_type.h>
 
 /**
  * @defgroup util 工具代码
