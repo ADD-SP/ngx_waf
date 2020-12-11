@@ -6,7 +6,7 @@
 
 + Anti Challenge Collapsar now supports IPV6 ([00fbc1c](https://github.com/ADD-SP/ngx_waf/commit/00fbc1c20ec964f6cd3bb992d756737e95b6c7ed)).
 
-+ IP black and white lists support IPV6, and can recognize IPV6 strings such as `fe80::/10`.
++ IP black and white lists support IPV6, and can recognize IPV6 strings such as `fe80::/10` ([8519b26](https://github.com/ADD-SP/ngx_waf/commit/8519b26f5fb9491ac60ae084247a0957c0931d0c)).
 
 ### Changed
 
