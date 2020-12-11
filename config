@@ -7,16 +7,29 @@ ngx_feature_libs=
 
 ngx_addon_name=ngx_http_waf_module
 
+deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_config.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_core.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_macro.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_util.h"
+
+srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
+
 if [ $ngx_found = yes ]; then
     if test -n "$ngx_module_link"; then
         ngx_module_type=HTTP
         ngx_module_name=ngx_http_waf_module
-        ngx_module_srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
+        ngx_module_deps=$deps
+        ngx_module_incs="$ngx_addon_dir/inc"
+        ngx_module_srcs=$srcs
 
         . auto/module
     else
         HTTP_MODULES="$HTTP_MODULES ngx_http_waf_module"
-        NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_waf_module_core.c"
+        HTTP_DEPS-"$HTTP_DEPS $deps"
+        NGX_ADDON_INCS="$NGX_ADDON_INCS $ngx_addon_dir/inc"
+        NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
     fi
 else
 	cat << END

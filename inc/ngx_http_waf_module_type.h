@@ -9,7 +9,7 @@
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
-#include "ngx_http_waf_module_macro.h"
+#include <ngx_http_waf_module_macro.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H

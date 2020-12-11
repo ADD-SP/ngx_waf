@@ -1,4 +1,7 @@
-#include "../inc/ngx_http_waf_module_core.h"
+#include <ngx_http_waf_module_core.h>
+#include <ngx_http_waf_module_check.h>
+#include <ngx_http_waf_module_config.h>
+#include <ngx_http_waf_module_util.h>
 
 static ngx_command_t ngx_http_waf_commands[] = {
    {
