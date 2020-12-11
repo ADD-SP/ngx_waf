@@ -4,6 +4,8 @@
 
 ### 新增
 
++ CC 防御现在也支持了 IPV6（[00fbc1c](https://github.com/ADD-SP/ngx_waf/commit/00fbc1c20ec964f6cd3bb992d756737e95b6c7ed)）。
+
 + IP 黑白名单支持了 IPV6。可以识别形如 `fe80::/10` 的 IPV6 字符串。
 
 ### 改动
