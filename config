@@ -12,7 +12,8 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_core.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_macro.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_util.h"
+    $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_ip_hash_table.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
 

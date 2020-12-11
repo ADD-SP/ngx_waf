@@ -77,27 +77,28 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     ipv4->text[text.len] = '\0';
 
     u_char* c = ipv4->text;
-    ngx_uint_t prefixLen = 0;
+    ngx_uint_t prefix_len = 0;
     while (*c !='\0' && *c != '/') {
-        ++prefixLen;
+        ++prefix_len;
         ++c;
     }
 
-    char prefixText[32];
+    char prefix_text[32];
     struct in_addr addr4;
-    if (*c =='\0' && prefixLen == text.len) {
-        memcpy(prefixText, ipv4->text, prefixLen + 1);
+    if (*c =='\0' && prefix_len == text.len) {
+        memcpy(prefix_text, ipv4->text, prefix_len);
+        prefix_text[prefix_len] = '\0';
     } 
-    else if (*c == '/' && prefixLen >= 7) {
+    else if (*c == '/' && prefix_len >= 7) {
         /* 0.0.0.0 的长度刚好是 7 */
-        memcpy(prefixText, ipv4->text, prefixLen);
-        prefixText[prefixLen] = '\0';
+        memcpy(prefix_text, ipv4->text, prefix_len);
+        prefix_text[prefix_len] = '\0';
     } 
     else {
         return FAIL;
     }
 
-    if (inet_pton(AF_INET, prefixText, &addr4) != 1) {
+    if (inet_pton(AF_INET, prefix_text, &addr4) != 1) {
         return FAIL;
     }
     prefix = addr4.s_addr;
@@ -113,7 +114,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
         suffix = 32;
     }
 
-    uint8_t tempSuffix[4] = { 0 };
+    uint8_t temp_suffix[4] = { 0 };
     for (int i = 0; i < 4; i++) {
         uint8_t temp = 0;
         if (suffix >= 8) {
@@ -126,12 +127,12 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
             }
             suffix = 0;
         }
-        tempSuffix[i] = temp;
+        temp_suffix[i] = temp;
     }
 
     suffix = 0;
     for (int i = 0; i < 4; i++) {
-        suffix |= ((uint32_t)tempSuffix[i]) << (i * 8);
+        suffix |= ((uint32_t)temp_suffix[i]) << (i * 8);
     }
 
     ipv4->prefix = prefix & suffix;
@@ -149,55 +150,55 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     ipv6->text[text.len] = '\0';
 
     u_char* c = ipv6->text;
-    ngx_uint_t prefixLen = 0;
+    ngx_uint_t prefix_len = 0;
     while (*c !='\0' && *c != '/') {
-        ++prefixLen;
+        ++prefix_len;
         ++c;
     }
 
-    char prefixText[64];
+    char prefix_text[64];
     struct in6_addr addr6;
-    if (*c =='\0' && prefixLen == text.len) {
-        memcpy(prefixText, ipv6->text, prefixLen);
-        prefixText[prefixLen] = '\0';
+    if (*c =='\0' && prefix_len == text.len) {
+        memcpy(prefix_text, ipv6->text, prefix_len);
+        prefix_text[prefix_len] = '\0';
     } 
-    else if (*c == '/' && prefixLen >= 2) {
+    else if (*c == '/' && prefix_len >= 2) {
         /* :: 的长度刚好是 2，此 IPV6 地址代表全零 */
-        memcpy(prefixText, ipv6->text, prefixLen);
-        prefixText[prefixLen] = '\0';
+        memcpy(prefix_text, ipv6->text, prefix_len);
+        prefix_text[prefix_len] = '\0';
     } 
     else {
         return FAIL;
     }
 
-    if (inet_pton(AF_INET6, prefixText, &addr6) != 1) {
+    if (inet_pton(AF_INET6, prefix_text, &addr6) != 1) {
         return FAIL;
     }
     memcpy(prefix, &addr6.__in6_u.__u6_addr8, 16);
 
-    uint32_t tempSuffix = 0;
+    uint32_t temp_suffix = 0;
     if (*c == '/') {
         ++c;
     }
     while (*c != '\0') {
-        tempSuffix = tempSuffix * 10 + (*c - '0');
+        temp_suffix = temp_suffix * 10 + (*c - '0');
         ++c;
     }
-    if (tempSuffix == 0) {
-        tempSuffix = 128;
+    if (temp_suffix == 0) {
+        temp_suffix = 128;
     }
 
     for (int i = 0; i < 16; i++) {
         uint8_t temp = 0;
-        if (tempSuffix >= 8) {
-            tempSuffix -=8;
+        if (temp_suffix >= 8) {
+            temp_suffix -=8;
             temp = ~0;
         } 
         else {
-            for (uint32_t j = 0; j < tempSuffix; j++) {
+            for (uint32_t j = 0; j < temp_suffix; j++) {
                 temp |= 0x80 >> j;
             }
-            tempSuffix = 0;
+            temp_suffix = 0;
         }
         suffix[i] = temp;
     }
@@ -223,15 +224,15 @@ static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
 }
 
 static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
-    uint8_t tempIp[16];
+    uint8_t temp_ip[16];
 
-    memcpy(tempIp, ip, 16);
+    memcpy(temp_ip, ip, 16);
 
     for (int i = 0; i < 16; i++) {
-        tempIp[i] &= ipv6->suffix[i];
+        temp_ip[i] &= ipv6->suffix[i];
     }
 
-    if (memcmp(tempIp, ipv6->prefix, 16) != 0) {
+    if (memcmp(temp_ip, ipv6->prefix, 16) != 0) {
         return NOT_MATCHED;
     }
 
