@@ -5,6 +5,7 @@
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
 ![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
+[![Semantic Versioning 2.0.0](https://img.shields.io/badge/Semantic%20Versioning-2.0.0-blue)](https://semver.org/)
 
 English | [简体中文](README-ZH-CN.md)
 
