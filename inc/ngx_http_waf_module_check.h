@@ -274,18 +274,41 @@ static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_i
     ngx_int_t ret = NOT_MATCHED;
 
     if (hash_item != NULL) {
-        ++(hash_item->times);
         time_diff_minute = difftime(now, hash_item->start_time) / 60;
+
+        /* 检查记录是否已经过期 */
         if (time_diff_minute > srv_conf->waf_cc_deny_duration) {
             hash_item->start_time = now;
             hash_item->times = 1;
         }
+        /* 如果记录没有过期且记录已经超过了一分钟 */
+        else if (time_diff_minute >= 1) {
+            /* 如果已经超出限制 */
+            if (hash_item->times >= (ngx_uint_t)(srv_conf->waf_cc_deny_limit)) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "CC-DNEY");
+                strcpy((char*)ctx->rule_deatils, (char*)"");
+                *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
+                ret = MATCHED;
+            }
+            /* 如果没有超出限制 */
+            else {
+                hash_item->start_time = now;
+                hash_item->times = 1;
+            }
+        }
+        /* 如果记录没有过期且记录没有超过一分钟且超出限制 */
         else if (hash_item->times >= (ngx_uint_t)(srv_conf->waf_cc_deny_limit)) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "CC-DNEY");
             strcpy((char*)ctx->rule_deatils, (char*)"");
             *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
             ret = MATCHED;
+        }
+        /* 如果记录没有过期且记录没有超过一分钟且没有超出限制 */
+        else {
+            /* 在此处自增是为了防止高强度 CC 攻击下整数溢出 */
+            ++(hash_item->times);
         }
     }
 
