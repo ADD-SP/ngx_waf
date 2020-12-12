@@ -251,7 +251,7 @@ https://example.com/www.bak
 
 ### 安装依赖
 
-请确保已经安装 `doxygen` 和 `graphviz`，且 `graphviz` 至少要为 1.8.17。
+请确保已经安装 `doxygen` 和 `graphviz`，且 `doxygen` 的版本至少要为 1.8.17。
 
 ### 生成文档
 
