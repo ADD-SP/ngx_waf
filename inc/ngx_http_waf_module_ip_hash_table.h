@@ -16,16 +16,6 @@
  * @{
 */
 
-/**
- * @def IP_HASH_TABLE_TYPE_IPV4
-*/
-#define IP_HASH_TABLE_TYPE_IPV4 1
-
-/**
- * @def IP_HASH_TABLE_TYPE_IPV6
-*/
-#define IP_HASH_TABLE_TYPE_IPV6 2
-
 
 /**
  * @brief 初始化一个 ip 哈希表。
@@ -114,17 +104,17 @@ ngx_int_t ip_hash_table_add(ip_hash_table_t* table, void* inx_addr, ngx_uint_t t
             return FAIL;
     }
 
-    if (table->ip_type == IP_HASH_TABLE_TYPE_IPV4) {
+    if (table->ip_type == AF_INET) {
         memcpy(&(hash_item->key.ipv4), inx_addr, sizeof(struct in_addr));
-    } else if (table->ip_type == IP_HASH_TABLE_TYPE_IPV6) {
+    } else if (table->ip_type == AF_INET6) {
         memcpy(&(hash_item->key.ipv6), inx_addr, sizeof(struct in6_addr));
     }
 
     hash_item->times = times;
     hash_item->start_time = start_time;
-    if (table->ip_type == IP_HASH_TABLE_TYPE_IPV4) {
+    if (table->ip_type == AF_INET) {
         HASH_ADD(hh, table->head, key.ipv4, sizeof(hash_item->key.ipv4), hash_item);
-    } else if (table->ip_type == IP_HASH_TABLE_TYPE_IPV6) {
+    } else if (table->ip_type == AF_INET6) {
         HASH_ADD(hh, table->head, key.ipv6, sizeof(hash_item->key.ipv6), hash_item);
     }
 
@@ -139,9 +129,9 @@ ngx_int_t ip_hash_table_find(ip_hash_table_t* table, void* inx_addr, ip_hash_tab
     }
 
     *ip_hash_table_item = NULL;
-    if (table->ip_type == IP_HASH_TABLE_TYPE_IPV4) {
+    if (table->ip_type == AF_INET) {
         HASH_FIND(hh, table->head, inx_addr, sizeof(struct in_addr), *ip_hash_table_item);
-    } else if (table->ip_type == IP_HASH_TABLE_TYPE_IPV6) {
+    } else if (table->ip_type == AF_INET6) {
         HASH_FIND(hh, table->head, inx_addr, sizeof(struct in6_addr), *ip_hash_table_item);
     }
 

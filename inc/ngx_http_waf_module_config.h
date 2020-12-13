@@ -281,11 +281,11 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->ngx_pool_for_times_table = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
 
-    if (ip_hash_table_init(&(srv_conf->ipv4_times_table), srv_conf->ngx_pool_for_times_table, IP_HASH_TABLE_TYPE_IPV4) != SUCCESS) {
+    if (ip_hash_table_init(&(srv_conf->ipv4_times_table), srv_conf->ngx_pool_for_times_table, AF_INET) != SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
     }
 
-    if (ip_hash_table_init(&(srv_conf->ipv6_times_table), srv_conf->ngx_pool_for_times_table, IP_HASH_TABLE_TYPE_IPV6) != SUCCESS) {
+    if (ip_hash_table_init(&(srv_conf->ipv6_times_table), srv_conf->ngx_pool_for_times_table, AF_INET6) != SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
     }
 
