@@ -163,7 +163,7 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         http_status = NGX_DECLINED;
     }
     else {
-        if (ngx_http_waf_handler_check_cc_ipv4(r, &http_status) != MATCHED) {
+        if (ngx_http_waf_handler_check_cc(r, &http_status) != MATCHED) {
             if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
                 http_status = NGX_DECLINED;
             }

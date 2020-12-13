@@ -56,13 +56,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
 
 
 /**
- * @brief 检查客户端 IPV4 地址的访问频次（60 秒内）是否超出了限制。
+ * @brief 检查客户端 IP 地址的访问频次（60 秒内）是否超出了限制。
  * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果超出 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 超出限制。
  * @retval NOT_MATCHED 未超出限制。
 */
-static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status);
+static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /**
@@ -236,7 +236,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
 }
 
 
-static ngx_int_t ngx_http_waf_handler_check_cc_ipv4(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     ngx_int_t ip_type = r->connection->sockaddr->sa_family;
