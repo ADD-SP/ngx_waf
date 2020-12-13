@@ -529,14 +529,14 @@ static ngx_int_t ngx_http_waf_free_hash_table(ngx_http_waf_srv_conf_t* srv_conf,
 
     ip_hash_table_t* ipv4_times_table_old = srv_conf->ipv4_times_table;
     ip_hash_table_t* ipv4_times_table = NULL;
-    if (ip_hash_table_init(&ipv4_times_table, ngx_pool_for_times_table, IP_HASH_TABLE_TYPE_IPV4) != SUCCESS) {
+    if (ip_hash_table_init(&ipv4_times_table, ngx_pool_for_times_table, AF_INET) != SUCCESS) {
         return FAIL;
     }
     srv_conf->ipv4_times_table = ipv4_times_table;
 
     ip_hash_table_t* ipv6_times_table_old = srv_conf->ipv6_times_table;
     ip_hash_table_t* ipv6_times_table = NULL;
-    if (ip_hash_table_init(&ipv6_times_table, ngx_pool_for_times_table, IP_HASH_TABLE_TYPE_IPV6) != SUCCESS) {
+    if (ip_hash_table_init(&ipv6_times_table, ngx_pool_for_times_table, AF_INET6) != SUCCESS) {
         return FAIL;
     }
     srv_conf->ipv6_times_table = ipv6_times_table;

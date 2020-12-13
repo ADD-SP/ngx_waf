@@ -35,7 +35,7 @@ typedef struct {
  * @brief IP 哈希表
 */
 typedef struct {
-    uint32_t ip_type; /**< 作为 key 的 ip 类型 */
+    int ip_type; /**< 作为 key 的 ip 类型 */
     ip_hash_table_item_t *head; /**< 哈希表头 */
     uint32_t length; /**< 哈希表长度 */
     ngx_pool_t *memory_pool; /**< 用于初始化、添加和删除节点的内存池 */
