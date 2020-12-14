@@ -1,5 +1,6 @@
 /**
  * @file ngx_http_waf_module_ip_hash_table.h
+ * @brief IP 频次统计表
 */
 
 #ifndef NGX_HTTP_WAF_MODULE_CHECK_h
@@ -22,8 +23,8 @@
  * @param[out] table 需要初始化的哈希表，调用前置空即可。
  * @param[in] memory_pool 初始化和需后续插入所需的内存池。
  * @param[in] ip_type 存储的 IP 类型。
- * @li @code ip_type == IP_HASH_TABLE_TYPE_IPV4 @endcode 表示 IPV4。
- * @li @code ip_type == IP_HASH_TABLE_TYPE_IPV6 @endcode 表示 IPV6。
+ * @li @code ip_type == AF_INET @endcode 表示 IPV4。
+ * @li @code ip_type == AF_INET6 @endcode 表示 IPV6。
  * @return 返回 SUCCESS 表示成功，反之返回 FAIL。
  * @retval SUCCESS 初始化成功。
  * @retval FAIL 初始化失败。

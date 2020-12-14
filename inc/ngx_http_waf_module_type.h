@@ -15,6 +15,37 @@
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
 #define NGX_HTTP_WAF_MODULE_TYPE_H
 
+/**
+ * @struct inx_addr_t
+ * @brief 代表 ipv4 或 ipv6 地址。
+*/
+typedef union {
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+} inx_addr_t;
+
+/**
+ * @struct ip_trie_node_t
+ * @brief 前缀树节点。
+*/
+typedef struct _ip_trie_node_t{
+    int is_ip; /**< 如果为 TRUE 则代表此节点也代表一个 IP，反之则为 FALSE */
+    struct _ip_trie_node_t* left; /**< 左子树代表当前位为零 */
+    struct _ip_trie_node_t* right; /**< 右子树代表当前位为一 */
+    u_char text[64]; /**< ip 地址的字符串形式，用于输入日志。 */
+} ip_trie_node_t;
+
+/**
+ * @struct ip_trie_t
+ * @brief 前缀树。
+*/
+typedef struct {
+    int ip_type; /**< 存储的 IP 地址的类型。 */
+    ip_trie_node_t* root; /**< 前缀树树根。 */
+    size_t size; /**< 已经存储的 IP 数量。 */
+    ngx_pool_t *memory_pool; /**< 用于初始化、添加和删除节点的内存池 */
+} ip_trie_t;
+
 
 /**
  * @struct ip_hash_table_item_t
@@ -67,16 +98,16 @@ typedef struct {
     ngx_uint_t                      waf_mode;                       /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;              /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;           /**< CC 防御的拉黑时长（分钟） */
-    ngx_array_t                    *black_ipv4;                     /**< IPV4 黑名单 */
-    ngx_array_t                    *black_ipv6;                     /**< IPV6 黑名单 */
+    ip_trie_t                      *black_ipv4;                     /**< IPV4 黑名单 */
+    ip_trie_t                      *black_ipv6;                     /**< IPV6 黑名单 */
     ngx_array_t                    *black_url;                      /**< URL 黑名单 */
     ngx_array_t                    *black_args;                     /**< args 黑名单 */
     ngx_array_t                    *black_ua;                       /**< user-agent 黑名单 */
     ngx_array_t                    *black_referer;                  /**< Referer 黑名单 */
     ngx_array_t                    *black_cookie;                   /**< Cookie 黑名单 */
     ngx_array_t                    *black_post;                     /**< 请求体内容黑名单 */
-    ngx_array_t                    *white_ipv4;                     /**< IPV4 白名单 */
-    ngx_array_t                    *white_ipv6;                     /**< IPV6 白名单 */
+    ip_trie_t                      *white_ipv4;                     /**< IPV4 白名单 */
+    ip_trie_t                      *white_ipv6;                     /**< IPV6 白名单 */
     ngx_array_t                    *white_url;                      /**< URL 白名单 */
     ngx_array_t                    *white_referer;                  /**< Referer 白名单 */
     ngx_pool_t                     *ngx_pool_for_times_table;       /**< 访问频次表专用的内存池 */
@@ -95,7 +126,8 @@ typedef struct {
     u_char                          text[32];       /**< 点分十进制表示法 */
     uint32_t                        prefix;         /**< 相当于 192.168.1.0/24 中的 192.168.1.0 的整数形式 */
     uint32_t                        suffix;         /**< 相当于 192.168.1.0/24 中的 24 */
-}ipv4_t;
+    uint32_t                        suffix_num;
+} ipv4_t;
 
 
 /**
@@ -108,6 +140,7 @@ typedef struct {
     u_char                          text[64];       /**< 冒号十六进制表示法 */
     uint8_t                         prefix[16];     /**< 相当于 ffff::ffff/64 中的 ffff::ffff 的整数形式 */
     uint8_t                         suffix[16];     /**< 相当于 ffff::ffff/64 中的 64 */
-}ipv6_t;
+    uint32_t                        suffix_num;
+} ipv6_t;
 
 #endif // !NGX_HTTP_WAF_MODULE_TYPE_H

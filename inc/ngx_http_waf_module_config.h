@@ -8,6 +8,7 @@
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_hash_table.h>
+#include <ngx_http_waf_module_ip_trie.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
@@ -80,18 +81,18 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 
 /**
- * @brief 读取指定文件的内容到数组中。
+ * @brief 读取指定文件的内容到容器中。
  * @param[in] file_name 要读取的配置文件完整路径。
- * @param[out] ngx_array 存放读取结果的数组。
+ * @param[out] container 存放读取结果的容器。
  * @param[in] mode 读取模式
- * @li 当 mode = 0 时会将读取到文本编译成正则表达式再存储。
- * @li 当 mode = 1 时会将读取到的文本转化为 ipv4_t 再存储。
- * @li 当 mode = 2 时会将读取到的文本转化为 ipv6_t 再存储。
+ * @li 当 mode = 0 时会将读取到文本编译成正则表达式再存储。容器类型为 ngx_array_t。
+ * @li 当 mode = 1 时会将读取到的文本转化为 ipv4_t 再存储。容器类型为 ip_trie_t。
+ * @li 当 mode = 2 时会将读取到的文本转化为 ipv6_t 再存储。容器类型为 ip_trie_t。
  * @return 读取操作的结果。
  * @retval SUCCESS 读取成功。
  * @retval FAIL 读取中发生错误。
 */
-static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode);
+static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode);
 
 /**
  * @}
@@ -267,19 +268,31 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->waf_mode = 0;
     srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
-    srv_conf->black_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
-    srv_conf->black_ipv6 = ngx_array_create(cf->pool, 10, sizeof(ipv6_t));
     srv_conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_cookie = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
-    srv_conf->white_ipv4 = ngx_array_create(cf->pool, 10, sizeof(ipv4_t));
-    srv_conf->white_ipv6 = ngx_array_create(cf->pool, 10, sizeof(ipv6_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->ngx_pool_for_times_table = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
+
+    if (ip_trie_init(&(srv_conf->black_ipv4), srv_conf->ngx_pool, AF_INET) != SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+    }
+
+    if (ip_trie_init(&(srv_conf->black_ipv6), srv_conf->ngx_pool, AF_INET6) != SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+    }
+
+    if (ip_trie_init(&(srv_conf->white_ipv4), srv_conf->ngx_pool, AF_INET) != SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+    }
+
+    if (ip_trie_init(&(srv_conf->white_ipv6), srv_conf->ngx_pool, AF_INET6) != SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+    }
 
     if (ip_hash_table_init(&(srv_conf->ipv4_times_table), srv_conf->ngx_pool_for_times_table, AF_INET) != SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
@@ -422,7 +435,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     return NGX_OK;
 }
 
-static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_array_t* ngx_array, ngx_int_t mode) {
+static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
     ngx_int_t line_number = 0;
     ngx_str_t line;
@@ -434,8 +447,9 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
         ngx_regex_compile_t   regex_compile;
         u_char                errstr[NGX_MAX_CONF_ERRSTR];
         ngx_regex_elt_t* ngx_regex_elt;
-        ipv4_t* ipv4;
-        ipv6_t* ipv6;
+        ipv4_t ipv4;
+        inx_addr_t inx_addr;
+        ipv6_t ipv6;
         ++line_number;
         line.data = (u_char*)str;
         line.len = strlen((char*)str);
@@ -468,22 +482,29 @@ static ngx_int_t load_into_array(ngx_conf_t* cf, const char* file_name, ngx_arra
             regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
             regex_compile.err.data = errstr;
             ngx_regex_compile(&regex_compile);
-            ngx_regex_elt = ngx_array_push(ngx_array);
+            ngx_regex_elt = ngx_array_push((ngx_array_t*)container);
             ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * RULE_MAX_LEN);
             to_c_str(ngx_regex_elt->name, line);
             ngx_regex_elt->regex = regex_compile.regex;
             break;
         case 1:
-            ipv4 = ngx_array_push(ngx_array);
-            if (parse_ipv4(line, ipv4) != SUCCESS) {
+            if (parse_ipv4(line, &ipv4) != SUCCESS) {
+                return FAIL;
+            }
+            inx_addr.ipv4.s_addr = ipv4.prefix;
+            if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv4.suffix_num, ipv4.text) != SUCCESS) {
                 return FAIL;
             }
             break;
         case 2:
-            ipv6 = ngx_array_push(ngx_array);
-            if (parse_ipv6(line, ipv6) != SUCCESS) {
+            if (parse_ipv6(line, &ipv6) != SUCCESS) {
                 return FAIL;
             }
+            memcpy(inx_addr.ipv6.__in6_u.__u6_addr8, ipv6.prefix, 16);
+            if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text) != SUCCESS) {
+                return FAIL;
+            }
+            break;
         }
     }
     fclose(fp);
