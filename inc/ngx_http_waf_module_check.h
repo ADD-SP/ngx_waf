@@ -14,6 +14,7 @@
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_hash_table.h>
+#include <ngx_http_waf_module_ip_trie.h>
 
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
@@ -162,32 +163,29 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
         return NOT_MATCHED;
     }
 
+    ip_trie_node_t* ip_trie_node = NULL;
     if (r->connection->sockaddr->sa_family == AF_INET) {
         struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-        uint32_t ipv4 = sin->sin_addr.s_addr;
-        ipv4_t* p = srv_conf->white_ipv4->elts;
-        size_t index = 0;
-        for (; index < srv_conf->white_ipv4->nelts; index++, p++) {
-            if (ipv4_netcmp(ipv4, p) == MATCHED) {
-                ctx->blocked = FALSE;
-                strcpy((char*)ctx->rule_type, "WHITE-IPV4");
-                strcpy((char*)ctx->rule_deatils, (char*)p->text);
-                *out_http_status = NGX_DECLINED;
-                return MATCHED;
-            }
+        inx_addr_t inx_addr;
+        memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
+        if (ip_trie_find(srv_conf->white_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
+            ctx->blocked = FALSE;
+            strcpy((char*)ctx->rule_type, "WHITE-IPV4");
+            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+            *out_http_status = NGX_DECLINED;
+            return MATCHED;
         }
     } else if (r->connection->sockaddr->sa_family == AF_INET6) {
         struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
-        ipv6_t* p = srv_conf->white_ipv6->elts;
-        size_t index = 0;
-        for (; index < srv_conf->white_ipv6->nelts; index++, p++) {
-            if (ipv6_netcmp(sin6->sin6_addr.__in6_u.__u6_addr8, p) == MATCHED) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "WHITE-IPV6");
-                strcpy((char*)ctx->rule_deatils, (char*)p->text);
-                *out_http_status = NGX_DECLINED;
-                return MATCHED;
-            }
+        inx_addr_t inx_addr;
+        
+        memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
+        if (ip_trie_find(srv_conf->white_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
+            ctx->blocked = FALSE;
+            strcpy((char*)ctx->rule_type, "WHITE-IPV4");
+            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+            *out_http_status = NGX_DECLINED;
+            return MATCHED;
         }
     }
 
@@ -203,32 +201,29 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
         return NOT_MATCHED;
     }
 
+    ip_trie_node_t *ip_trie_node = NULL;
     if (r->connection->sockaddr->sa_family == AF_INET) {
         struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-        uint32_t ipv4 = sin->sin_addr.s_addr;
-        ipv4_t* p = srv_conf->black_ipv4->elts;
-        size_t index = 0;
-        for (; index < srv_conf->black_ipv4->nelts; index++, p++) {
-            if (ipv4_netcmp(ipv4, p) == MATCHED) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "BLACK-IPV4");
-                strcpy((char*)ctx->rule_deatils, (char*)p->text);
-                *out_http_status = NGX_HTTP_FORBIDDEN;
-                return MATCHED;
-            }
+        inx_addr_t inx_addr;
+        
+        memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
+        if (ip_trie_find(srv_conf->black_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
+            ctx->blocked = FALSE;
+            strcpy((char*)ctx->rule_type, "BLACK-IPV4");
+            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+            *out_http_status = NGX_HTTP_FORBIDDEN;
+            return MATCHED;
         }
     } else if (r->connection->sockaddr->sa_family == AF_INET6) {
         struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
-        ipv6_t* p = srv_conf->black_ipv6->elts;
-        size_t index = 0;
-        for (; index < srv_conf->black_ipv6->nelts; index++, p++) {
-            if (ipv6_netcmp(sin6->sin6_addr.__in6_u.__u6_addr8, p) == MATCHED) {
-                ctx->blocked = TRUE;
-                strcpy((char*)ctx->rule_type, "BLACK-IPV6");
-                strcpy((char*)ctx->rule_deatils, (char*)p->text);
-                *out_http_status = NGX_HTTP_FORBIDDEN;
-                return MATCHED;
-            }
+        inx_addr_t inx_addr;
+        memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
+        if (ip_trie_find(srv_conf->black_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
+            ctx->blocked = FALSE;
+            strcpy((char*)ctx->rule_type, "BLACK-IPV6");
+            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+            *out_http_status = NGX_HTTP_FORBIDDEN;
+            return MATCHED;
         }
     }
 

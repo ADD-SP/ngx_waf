@@ -267,7 +267,7 @@
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");    \
         return NGX_CONF_ERROR;                                                                              \
     }                                                                                                       \
-    if (load_into_array((cf), (folder), (ngx_array), (mode)) == FAIL) {                                        \
+    if (load_into_container((cf), (folder), (ngx_array), (mode)) == FAIL) {                                        \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Contains illegal format");      \
     }                                                                                                       \
     *(end) = '\0';                                                                                          \

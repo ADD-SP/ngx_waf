@@ -44,7 +44,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6);
  * @retval MATCHED 属于同一网段。
  * @retval NOT_MATCHED 不属于同一网段。
 */
-static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
+// static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
 
 /**
  * @brief 检查两个 IPV6 是否属于同一网段
@@ -54,7 +54,7 @@ static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
  * @retval MATCHED 属于同一网段。
  * @retval NOT_MATCHED 不属于同一网段。
 */
-static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
+// static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
 
 /**
  * @brief 将 ngx_str 转化为 C 风格的字符串
@@ -73,6 +73,12 @@ static char* to_c_str(u_char* destination, ngx_str_t ngx_str);
 static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     uint32_t prefix = 0;
     uint32_t suffix = 0;
+    uint32_t suffix_num = 0;
+
+    if (ipv4 == NULL) {
+        return FAIL;
+    }
+
     memcpy(ipv4->text, text.data, text.len);
     ipv4->text[text.len] = '\0';
 
@@ -114,6 +120,8 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
         suffix = 32;
     }
 
+    suffix_num = suffix;
+
     uint8_t temp_suffix[4] = { 0 };
     for (int i = 0; i < 4; i++) {
         uint8_t temp = 0;
@@ -137,6 +145,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
 
     ipv4->prefix = prefix & suffix;
     ipv4->suffix = suffix;
+    ipv4->suffix_num = suffix_num;
 
     return SUCCESS;
 }
@@ -144,6 +153,11 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
 static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     uint8_t prefix[16] = { 0 };
     uint8_t suffix[16] = { 0 };
+    uint32_t suffix_num = 0;
+
+    if (ipv6 == NULL) {
+        return FAIL;
+    }
     
     memcpy(ipv6->text, text.data, text.len);
 
@@ -188,6 +202,8 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
         temp_suffix = 128;
     }
 
+    suffix_num = temp_suffix;
+
     for (int i = 0; i < 16; i++) {
         uint8_t temp = 0;
         if (temp_suffix >= 8) {
@@ -209,35 +225,36 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
 
     memcpy(ipv6->prefix, prefix, 16);
     memcpy(ipv6->suffix, suffix, 16);
+    ipv6->suffix_num = suffix_num;
 
     return SUCCESS;
 }
 
-static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
-    size_t prefix = ip & ipv4->suffix;
+// static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
+//     size_t prefix = ip & ipv4->suffix;
 
-    if (prefix == ipv4->prefix) {
-        return MATCHED;
-    }
+//     if (prefix == ipv4->prefix) {
+//         return MATCHED;
+//     }
 
-    return NOT_MATCHED;
-}
+//     return NOT_MATCHED;
+// }
 
-static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
-    uint8_t temp_ip[16];
+// static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
+//     uint8_t temp_ip[16];
 
-    memcpy(temp_ip, ip, 16);
+//     memcpy(temp_ip, ip, 16);
 
-    for (int i = 0; i < 16; i++) {
-        temp_ip[i] &= ipv6->suffix[i];
-    }
+//     for (int i = 0; i < 16; i++) {
+//         temp_ip[i] &= ipv6->suffix[i];
+//     }
 
-    if (memcmp(temp_ip, ipv6->prefix, 16) != 0) {
-        return NOT_MATCHED;
-    }
+//     if (memcmp(temp_ip, ipv6->prefix, 16) != 0) {
+//         return NOT_MATCHED;
+//     }
 
-    return MATCHED;
-}
+//     return MATCHED;
+// }
 
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
     if (ngx_str.len > RULE_MAX_LEN) {
