@@ -10,6 +10,8 @@
 
 ### Changed
 
++ Faster IP matching ([2b9e774](https://github.com/ADD-SP/ngx_waf/commit/2b9e77404826666df301c3d6b3ce07a6968de266)).
+
 ### Fixed
 
 + Modify the `config` file to ensure that the latest module code is compiled when executing `make` or `make modules`. Before the fix, if only the files under `inc/` changed, the latest code would not be compiled because the files under `inc/` were not checked for changes.
