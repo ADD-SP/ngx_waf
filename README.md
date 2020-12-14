@@ -287,6 +287,10 @@ You can kill all of nginx's processes and restart nginx.
 
 When the 'Anti Challenge Collapsar' enabled, this module will free some memory periodically and allocate some memory once, but it will not free all at once, but gradually free. Each request will release a small part of the memory until all the memory is free. Slow down processing time slightly.
 
+## License
+
+[BSD 3-Clause License](LICENSE)
+
 ## Other
 
 + This project follows [Semantic Versioning 2.0.0](https://semver.org/).
