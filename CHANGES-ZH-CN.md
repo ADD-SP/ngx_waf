@@ -10,6 +10,8 @@
 
 ### 改动
 
++ 友好的错误提示（[d1185b2](https://github.com/ADD-SP/ngx_waf/commit/d1185b26a413e45dcf5ef479b0078aa57a4b5962) & [f2b617d](https://github.com/ADD-SP/ngx_waf/commit/f2b617d5174eb1bc6982113415ddcb1f798ef703)）。当规则文件中 IP 地址无效或者 IP 地址块重叠的时候警告或者报错（并不能检测所有的重叠情况）。
+
 + 更快的 IP 地址检查速度（[2b9e774](https://github.com/ADD-SP/ngx_waf/commit/2b9e77404826666df301c3d6b3ce07a6968de266)）。改用前缀树检查 IP，现在在常数时间内即可完成 IP 的匹配，之前是一个一个地匹配，是线性时间。
 
 ### 修复
