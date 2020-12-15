@@ -282,5 +282,7 @@
 */
 #define CHECK_FLAG(origin, flag) (((origin) & (flag)) != 0 ? TRUE : FALSE)
 
+#define CHECK_BIT(origin, bit_index) (CHECK_FLAG((origin), 1 << (bit_index)))
+
 
 #endif // !NGX_HTTP_WAF_MODULE_MACRO_H
