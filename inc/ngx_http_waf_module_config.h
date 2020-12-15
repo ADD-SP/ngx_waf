@@ -450,6 +450,7 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
         ipv4_t ipv4;
         inx_addr_t inx_addr;
         ipv6_t ipv6;
+        ip_trie_node_t* ip_trie_node = NULL;
         ++line_number;
         line.data = (u_char*)str;
         line.len = strlen((char*)str);
@@ -493,20 +494,41 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
             break;
         case 1:
             if (parse_ipv4(line, &ipv4) != SUCCESS) {
-                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (ipv4.text), "Contains illegal format");
+                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                    "ngx_waf: In line %d, [%s] is not a valid IPV4 string.", line_number, ipv4.text);
                 return FAIL;
             }
             inx_addr.ipv4.s_addr = ipv4.prefix;
             if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv4.suffix_num, ipv4.text) != SUCCESS) {
+                if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == SUCCESS) {
+                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                        "ngx_waf: In line %d, the two address blocks [%s] and [%s] have overlapping parts.", 
+                        line_number, ipv4.text, ip_trie_node->text);
+                } else {
+                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                        "ngx_waf: In line %d, [%s] cannot be stored because the memory allocation failed.", 
+                        line_number, ipv4.text);
+                }
                 return FAIL;
             }
             break;
         case 2:
             if (parse_ipv6(line, &ipv6) != SUCCESS) {
+                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                    "ngx_waf: In line %d, [%s] is not a valid IPV6 string.", line_number, ipv6.text);
                 return FAIL;
             }
             memcpy(inx_addr.ipv6.__in6_u.__u6_addr8, ipv6.prefix, 16);
             if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text) != SUCCESS) {
+                if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == SUCCESS) {
+                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                        "ngx_waf: In line %d, the two address blocks [%s] and [%s] have overlapping parts.", 
+                        line_number, ipv6.text, ip_trie_node->text);
+                } else {
+                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                        "ngx_waf: In line %d, [%s] cannot be stored because the memory allocation failed.", 
+                        line_number, ipv6.text);
+                }
                 return FAIL;
             }
             break;
