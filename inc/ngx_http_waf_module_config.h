@@ -454,6 +454,10 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
         line.data = (u_char*)str;
         line.len = strlen((char*)str);
 
+        memset(&ipv4, 0, sizeof(ipv4_t));
+        memset(&inx_addr, 0, sizeof(inx_addr_t));
+        memset(&ipv6, 0, sizeof(ipv6_t));
+
         if (line.len <= 0) {
             continue;
         }
@@ -489,6 +493,7 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
             break;
         case 1:
             if (parse_ipv4(line, &ipv4) != SUCCESS) {
+                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (ipv4.text), "Contains illegal format");
                 return FAIL;
             }
             inx_addr.ipv4.s_addr = ipv4.prefix;

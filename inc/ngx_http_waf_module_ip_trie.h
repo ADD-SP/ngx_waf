@@ -105,6 +105,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
     ip_trie_node_t* cur_node = trie->root;
     uint32_t bit_index = 0;
     int uint8_index = 0;
+    int prev_bit = 0;
 
     if (trie->ip_type == AF_INET) {
         uint8_t u8_addr[4];
@@ -115,61 +116,85 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
 
         while (bit_index < suffix_num - 1) {
             uint8_index = bit_index / 8;
-            prev_node = cur_node;
-            if (CHECK_FLAG(u8_addr[uint8_index], 0x80 >> (bit_index % 8)) == TRUE) {
-                if (cur_node->left == NULL) {
-                    cur_node->left = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
-                    if (cur_node->left == NULL) {
-                        return FAIL;
-                    }
+            if (cur_node == NULL) {
+                cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+                if (cur_node == NULL) {
+                    return FAIL;
                 }
+                if (prev_bit == 0) {
+                    prev_node->left = cur_node;
+                } else {
+                    prev_node->right = cur_node;
+                }
+            }
+            prev_node = cur_node;
+            if (CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+                prev_bit = 0;
                 cur_node = cur_node->left;
             } else {
-                if (cur_node->right == NULL) {
-                    cur_node->right = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
-                    if (cur_node->right == NULL) {
-                        return FAIL;
-                    }
-                }
+                prev_bit = 1;
                 cur_node = cur_node->right;
             }
             ++bit_index;
         }
+        if (cur_node == NULL) {
+            cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+            if (cur_node == NULL) {
+                return FAIL;
+            }
+            if (prev_bit == 0) {
+                prev_node->left = cur_node;
+            } else {
+                prev_node->right = cur_node;
+            }
+        }
         uint8_index = bit_index / 8;
-        if (CHECK_FLAG(u8_addr[uint8_index], 0x80 >> (bit_index % 8)) == TRUE) {
-            prev_node->left = new_node;
+        if (CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            cur_node->left = new_node;
         } else {
-            prev_node->right = new_node;
+            cur_node->right = new_node;
         }
         
     } else if (trie->ip_type == AF_INET6) {
         while (bit_index < suffix_num - 1) {
             uint8_index = bit_index / 8;
+            if (cur_node == NULL) {
+                cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+                if (cur_node == NULL) {
+                    return FAIL;
+                }
+                if (prev_bit == 0) {
+                    prev_node->left = cur_node;
+                } else {
+                    prev_node->right = cur_node;
+                }
+            }
             prev_node = cur_node;
-            if (CHECK_FLAG(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 0x80 >> (bit_index % 8)) == TRUE) {
-                if (cur_node->left == NULL) {
-                    cur_node->left = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
-                    if (cur_node->left == NULL) {
-                        return FAIL;
-                    }
-                }
+            if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
+                prev_bit = 0;
             } else {
-                if (cur_node->right == NULL) {
-                    cur_node->right = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
-                    if (cur_node->right == NULL) {
-                        return FAIL;
-                    }
-                }
                 cur_node = cur_node->right;
+                prev_bit = 1;
             }
             ++bit_index;
         }
+        if (cur_node == NULL) {
+            cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+            if (cur_node == NULL) {
+                return FAIL;
+            }
+            if (prev_bit == 0) {
+                prev_node->left = cur_node;
+            } else {
+                prev_node->right = cur_node;
+            }
+        }
         uint8_index = bit_index / 8;
-        if (CHECK_FLAG(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 0x80 >> (bit_index % 8)) == TRUE) {
-            prev_node->left = new_node;
+        if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            cur_node->left = new_node;
         } else {
-            prev_node->right = new_node;
+            cur_node->right = new_node;
         }
     }
 
@@ -196,7 +221,7 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
 
         while (bit_index < 32 && cur_node != NULL && cur_node->is_ip != TRUE) {
             int uint8_index = bit_index / 8;
-            if (CHECK_FLAG(u8_addr[uint8_index], 0x80 >> (bit_index % 8)) == TRUE) {
+            if (CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
             } else {
                 cur_node = cur_node->right;
@@ -207,7 +232,7 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
     } else if (trie->ip_type == AF_INET6) {
         while (bit_index < 128 && cur_node != NULL && cur_node->is_ip != TRUE) {
             int uint8_index = bit_index / 8;
-            if (CHECK_FLAG(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 0x80 >> (bit_index % 8)) == TRUE) {
+            if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
             } else {
                 cur_node = cur_node->right;
