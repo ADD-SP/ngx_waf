@@ -16,9 +16,11 @@
 
 ### Fixed
 
-+ Modify the `config` file to ensure that the latest module code is compiled when executing `make` or `make modules`. Before the fix, if only the files under `inc/` changed, the latest code would not be compiled because the files under `inc/` were not checked for changes.
++ Modify the `config` file to ensure that the latest module code is compiled when executing `make` or `make modules` ([25f97f5](https://github.com/ADD-SP/ngx_waf/commit/25f97f5e7f3792b131ab0ebb1bfe4b7fe5e330ae)). Before the fix, if only the files under `inc/` changed, the latest code would not be compiled because the files under `inc/` were not checked for changes.
 
 + Fixed a bug with incorrect IPV4 segment identification ([73a22eb](https://github.com/ADD-SP/ngx_waf/commit/73a22eb3538a24e9714bf8331946a5654df20cc1)). This bug could cause the subnet mask not to be generated correctly when a rule like `192.168.0.0/10`, i.e. the suffix is not a multiple of 8, appears in the rule.
+
+***
 
 ## [2.1.1] - 2020-12.10
 
@@ -30,6 +32,8 @@
 
 + Fixed a module startup failure error. The error message for this error is `nginx: [alert] could not open error log file: open() "ngx_waf: /logs/error.log" failed (2: No such file or directory)` ([0dfc46f](https://github.com/ADD-SP/ngx_waf/commit/0dfc46f2dfc7ed91977b501c868abf961966d4e1)).
 
+***
+
 ## [2.1.0] - 2020-12-09
 
 ### Added
@@ -39,6 +43,8 @@
 ### Changed
 
 ### Fixed
+
+***
 
 ## [2.0.2] - 2020-12-07
 
@@ -52,6 +58,7 @@
 
 + Fixed compile error caused by incorrect `#include` ([3fa298c](https://github.com/ADD-SP/ngx_waf/commit/3fa298c6184618ea0cd6336783a4d7a2ed27469c)).
 
+***
 
 ## [2.0.1] - 2020-12-03
 
@@ -65,6 +72,7 @@
 
 + Fixed a bug that failed to compile under CentOS/RHEL 6 or 7 that was caused by not properly preventing macro redefinitions ([28e1c8a](https://github.com/ADD-SP/ngx_waf/commit/28e1c8aca03375089c75df21c5db3c38013edde7) & [566ae4a](https://github.com/ADD-SP/ngx_waf/commit/566ae4a50f855674b256db84305a24e1b2a6bc6d)).
 
+***
 
 ## [2.0.0] - 2020-09-29
 

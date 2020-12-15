@@ -16,9 +16,11 @@
 
 ### 修复
 
-+ 修改 `config` 文件以确保执行 `make` 或 `make modules` 时最新的模块代码能够被编译。在修复之前，如果仅仅 `inc/` 下的文件发生变化，编译时不会将最新的代码编译进去，因为没有检查 `inc/` 下的文件是否发生变化。
++ 修改 `config` 文件以确保执行 `make` 或 `make modules` 时最新的模块代码能够被编译（[25f97f5](https://github.com/ADD-SP/ngx_waf/commit/25f97f5e7f3792b131ab0ebb1bfe4b7fe5e330ae)）。在修复之前，如果仅仅 `inc/` 下的文件发生变化，编译时不会将最新的代码编译进去，因为没有检查 `inc/` 下的文件是否发生变化。
 
 + 修复了 IPV4 网段识别错误的 bug（[73a22eb](https://github.com/ADD-SP/ngx_waf/commit/73a22eb3538a24e9714bf8331946a5654df20cc1)）。这个 bug 可能会导致当规则中出现类似 `192.168.0.0/10`，即后缀不是 8 的倍数的时候无法正确生成子网掩码。
+
+***
 
 ## [2.1.1] - 2020-12-10
 
@@ -30,6 +32,7 @@
 
 + 修复了模块启动失败的 bug。此 bug 的报错信息为 `nginx: [alert] could not open error log file: open() "ngx_waf: /logs/error.log" failed (2: No such file or directory)`（[0dfc46f](https://github.com/ADD-SP/ngx_waf/commit/0dfc46f2dfc7ed91977b501c868abf961966d4e1)）。
 
+***
 
 ## [2.1.0] - 2020-12-09
 
@@ -53,6 +56,8 @@
 
 + 修复了一个因错误的 `#include` 指令而导致编译失败的 bug（[3fa298c](https://github.com/ADD-SP/ngx_waf/commit/3fa298c6184618ea0cd6336783a4d7a2ed27469c)）。
 
+***
+
 ## [2.0.1] - 2020-12-03
 
 ### 新增
@@ -64,6 +69,8 @@
 ### 修复
 
 + 修复了因为宏的重定义导致的在 CentOS/RHEL 6 or 7 下编译失败的错误（[28e1c8a](https://github.com/ADD-SP/ngx_waf/commit/28e1c8aca03375089c75df21c5db3c38013edde7) & [566ae4a](https://github.com/ADD-SP/ngx_waf/commit/566ae4a50f855674b256db84305a24e1b2a6bc6d)）。
+
+***
 
 ## [2.0.0] - 2020-09-29
 
@@ -79,6 +86,8 @@
 
 + 删除一个默认的 User-Agent 规则，规则内容为`(?i)(?:Sogou web spider)`，原因是会拦截非恶意的网络爬虫（[827d4e5](https://github.com/ADD-SP/ngx_waf/commit/827d4e5bc48894ff9147e49799d3a9656fe7dd8a)）。
 + 现在可以正确处理规则文件中的空行了（[955cf2d](https://github.com/ADD-SP/ngx_waf/commit/955cf2d240c4d66f815890e3ee9b88ccf906cf1d)）。
+
+***
 
 ## [1.0.1] - 2020-08-22
 
@@ -157,6 +166,8 @@
 
 + 修复 CC 防御功能检测逻辑的错误，该错误会导致实际的频率限制要远小于用户指定的限制，容易将正常访问识别为 CC 攻击（[9cb51bb](https://github.com/ADD-SP/ngx_waf/commit/9cb51bba0cdf10c2fd1ac0a482d7435dcfdee93d)）（[171721c](https://github.com/ADD-SP/ngx_waf/commit/171721cee861022e9f3db5fceeb16051b90a5e54)）。
 + 现在会检查 rules/ipv4 和 rules/white-ipv4 这两个文件中的 IPV4 地址或地址块是否合法（[fc09f04](https://github.com/ADD-SP/ngx_waf/commit/fc09f045d1e9ac774a919181a15c20a6c777a276)）（[2e7f624](https://github.com/ADD-SP/ngx_waf/commit/2e7f624581d8d85a23d6470acced9acc3e2840b2)）。
+
+***
 
 ## [1.0.0] - 2020-08-18
 
