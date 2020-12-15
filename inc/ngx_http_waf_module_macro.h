@@ -250,38 +250,48 @@
 #endif
 
 
-/* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中 */
+/* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */
 /** 
- * @def CHECK_AND_LOAD_CONF(cf, folder, end, filename, ngx_array, mode)
+ * @def CHECK_AND_LOAD_CONF(cf, folder, end, filename, container, mode)
  * @brief 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中。
  * @param[in] folder 配置文件所在文件夹的绝对路径。
  * @param[in] end folder 字符数组的 '\0' 的地址。
- * @param[in] filename 配置文件名
- * @param[out] ngx_array 存储配置读取结果的数组
- * @param[in] mode 配置读取模式
- * @warning 当文件不存在的时候会直接执行 \c return \c NGX_CONF_ERROR 语句。
+ * @param[in] filename 配置文件名。
+ * @param[out] container 存储配置读取结果的容器。
+ * @param[in] mode 配置读取模式。
+ * @warning 当文件不存在的时候会直接执行 @code return  NGX_CONF_ERROR; @endcode 语句。
 */
-#define CHECK_AND_LOAD_CONF(cf, folder, end, filename, ngx_array, mode) {                                      \
-    strcat((folder), (filename));                                                                              \
-    if (access((folder), 2) != 0) {                                                                            \
-        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");    \
-        return NGX_CONF_ERROR;                                                                              \
-    }                                                                                                       \
-    if (load_into_container((cf), (folder), (ngx_array), (mode)) == FAIL) {                                        \
-        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Contains illegal format");      \
-    }                                                                                                       \
-    *(end) = '\0';                                                                                          \
+#define CHECK_AND_LOAD_CONF(cf, folder, end, filename, container, mode) {                                       \
+    strcat((folder), (filename));                                                                               \
+    if (access((folder), 2) != 0) {                                                                             \
+        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
+        return NGX_CONF_ERROR;                                                                                  \
+    }                                                                                                           \
+    if (load_into_container((cf), (folder), (container), (mode)) == FAIL) {                                     \
+        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Cannot read configuration.");    \
+        return NGX_CONF_ERROR;                                                                                  \
+    }                                                                                                           \
+    *(end) = '\0';                                                                                              \
 }
 
 /**
  * @def CHECK_FLAG(origin, flag)
  * @brief 检查 flag 是否存在于 origin 中，即位操作。
  * @return 存在则返回 TRUE，反之返回 FALSE。
- * @retval TRUE 存在
- * @retval FALSE 不存在
+ * @retval TRUE 存在。
+ * @retval FALSE 不存在。
 */
 #define CHECK_FLAG(origin, flag) (((origin) & (flag)) != 0 ? TRUE : FALSE)
 
+
+/**
+ * @def CHECK_BIT(origin, bit_index)
+ * @brief 检查 origin 的某一位是否为 1。
+ * @return 如果为一则返回 TRUE，反之返回 FALSE。
+ * @retval TRUE 被测试的位为一。
+ * @retval FALSE 被测试的位为零。
+ * @note bit_index 从 0 开始计数，其中 0 代表最低位。
+*/
 #define CHECK_BIT(origin, bit_index) (CHECK_FLAG((origin), 1 << (bit_index)))
 
 
