@@ -508,8 +508,9 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
                         "ngx_waf: In line %d, [%s] cannot be stored because the memory allocation failed.", 
                         line_number, ipv4.text);
+                        return FAIL;
                 }
-                return FAIL;
+                
             }
             break;
         case 2:
@@ -528,8 +529,8 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
                         "ngx_waf: In line %d, [%s] cannot be stored because the memory allocation failed.", 
                         line_number, ipv6.text);
+                        return FAIL;
                 }
-                return FAIL;
             }
             break;
         }
