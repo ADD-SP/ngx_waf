@@ -79,6 +79,8 @@ typedef struct {
 */
 typedef struct {
     ngx_int_t                       blocked;                    /**< 是否拦截了本次请求 */
+    ngx_int_t                       checked_in_pre_access;      /**< 是否在 NGX_HTTP_PREACCESS_PHASE 阶段检查过请求 */
+    ngx_int_t                       checked_in_server_rewrite;  /**< 是否在 NGX_HTTP_SERVER_REWRITE_PHASE 阶段检查过请求 */
     u_char                          rule_type[128];             /**< 触发的规则类型 */
     u_char                          rule_deatils[RULE_MAX_LEN]; /**< 触发的规则内容 */
     ngx_int_t                       read_body_done;             /**< 是否已经读取完请求体 */
