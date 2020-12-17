@@ -92,8 +92,13 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
         if (ctx == NULL) {
             http_status = NGX_ERROR;
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, 
+                "ngx_waf: The request context could not be created because the memory allocation failed.");
+            return http_status;
         }
         else {
+            ctx->checked_in_pre_access = FALSE;
+            ctx->checked_in_server_rewrite = FALSE;
             ctx->read_body_done = FALSE;
             ctx->blocked = FALSE;
             ctx->rule_type[0] = '\0';
@@ -102,20 +107,24 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
         }
     }
 
-    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
+    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET || ctx->checked_in_server_rewrite == TRUE) {
         http_status = NGX_DECLINED;
     }
-    else if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
-        http_status = NGX_DECLINED;
-    }
-    else if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
-        http_status = NGX_DECLINED;
-    }
-    else {
-        for (size_t i = 0; check_proc[i] != NULL; i++) {
-            is_matched = check_proc[i](r, &http_status);
-            if (is_matched == MATCHED) {
-                break;
+    else 
+    {
+        ctx->checked_in_server_rewrite = TRUE;
+        if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
+            http_status = NGX_DECLINED;
+        }
+        else if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
+            http_status = NGX_DECLINED;
+        }
+        else {
+            for (size_t i = 0; check_proc[i] != NULL; i++) {
+                is_matched = check_proc[i](r, &http_status);
+                if (is_matched == MATCHED) {
+                    break;
+                }
             }
         }
     }
@@ -149,8 +158,13 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
         if (ctx == NULL) {
             http_status = NGX_ERROR;
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, 
+                "ngx_waf: The request context could not be created because the memory allocation failed.");
+            return http_status;
         }
         else {
+            ctx->checked_in_pre_access = FALSE;
+            ctx->checked_in_server_rewrite = FALSE;
             ctx->read_body_done = FALSE;
             ctx->blocked = FALSE;
             ctx->rule_type[0] = '\0';
@@ -159,10 +173,13 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
         }
     }
 
-    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
+    
+
+    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET || ctx->checked_in_pre_access == TRUE) {
         http_status = NGX_DECLINED;
     }
     else {
+        ctx->checked_in_pre_access = TRUE;
         if (ngx_http_waf_handler_check_cc(r, &http_status) != MATCHED) {
             if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
                 http_status = NGX_DECLINED;
