@@ -265,37 +265,6 @@ https://example.com/www.bak
 
 在 `docs/ZH-CN/html` 目录下会生成开发文档。你可以直接用浏览器打开 `docs/ZH-CN/html/index.html` 文件来浏览文档。
 
-## 常见问题
-
-### 为什么有一段时间请求速度会变慢
-
-可能是因为开启了 CC 防御功能，详情见[性能-内存管理](#性能-内存管理)。
-
-### 为什么 POST 过滤失效？
-
-本模块出于性能原因在检查请求体内容的之前会检测其是否在内存中，如果在则正常检查，反之跳过检查。可以尝试修改`nginx.conf`
-
-```text
-http {
-    ...
-    # 当请求体不大于这个数值时会将其写入内存，反之则写入临时文件。
-    client_body_buffer_size: 10M;
-    # 是否总是将请求体保存在临时文件中
-    client_body_in_file_only: off;
-    ...
-}
-```
-
-### fork() failed while spawning "worker process" (12: Cannot allocate memory)
-
-可能是过多地使用`nginx -s reload`导致的，本模块会在读取配置的时候申请一些内存，但是不知为何`nginx -s reload`之后这些内存不会立即释放，所以短时间内频繁`nginx -s reload`就极可能导致这个错误。
-
-## 性能
-
-### 内存管理
-<span id='性能-内存管理'></span>
-本模块在启用了 CC 防御功能时会周期性地释放一次内存和申请一次内存，但是并不会一次性全部释放，而是逐步释放，每次请求释放一小部分，逐渐地完成释放，期间会小幅度拖慢处理时间。
-
 ## 开源许可证
 
 [BSD 3-Clause License](LICENSE)
@@ -303,6 +272,7 @@ http {
 ## 其它
 
 + 本项目遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)
++ [常见问题与解答](https://github.com/ADD-SP/ngx_waf/issues/14)
 
 ## 感谢
 

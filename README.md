@@ -256,41 +256,6 @@ The block log is stored in `error.log`. The log level of the block record is ALE
 2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.+(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"
 ```
 
-## FAQ
-
-### Why does the request speed slow down for a while?
-
-It may be because the 'Anti Challenge Collapsar' is enabled, see [Performance-Memory Management](#Performance-Memory_management) for details.
-
-### Why not check the request body?
-
-For performance reasons, this module will check whether it is in the memory before checking the request body. If it is, it will check normally, otherwise skip the check. You can try to edit `nginx.conf`.
-
-```text
-http {
-    ...
-    # https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_buffer_size
-    client_body_buffer_size: 10M;
-    # https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_in_file_only
-    client_body_in_file_only: off;
-    ...
-}
-```
-
-### fork() failed while spawning "worker process" (12: Cannot allocate memory)
-
-It may be caused by frequent run  `nginx -s reload`. This module will allocate some memory when reading the `nginx.conf`, but some memory will not be free immediately after run `nginx -s reload`, so it is frequent in a short time running `nginx -s reload` will most likely cause this error.
-
-You can kill all of nginx's processes and restart nginx.
-
-## Performance
-
-### Memory management
-
-<span id='Performance-Memory_management'></span>
-
-When the 'Anti Challenge Collapsar' enabled, this module will free some memory periodically and allocate some memory once, but it will not free all at once, but gradually free. Each request will release a small part of the memory until all the memory is free. Slow down processing time slightly.
-
 ## License
 
 [BSD 3-Clause License](LICENSE)
@@ -298,6 +263,7 @@ When the 'Anti Challenge Collapsar' enabled, this module will free some memory p
 ## Other
 
 + This project follows [Semantic Versioning 2.0.0](https://semver.org/).
++ [FAQ](https://github.com/ADD-SP/ngx_waf/issues/14)
 
 ## Thanks
 
