@@ -1,0 +1,52 @@
+name: build
+
+on: 
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nginx-version: ['stable nginx', 'mainline nginx']
+        install-type:  ['static module', 'dynamic module']
+    container: centos:8
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Install dependencies
+        run: |
+          dnf -y install https://extras.getpagespeed.com/release-latest.rpm
+          dnf -y --enablerepo=powertools install lastversion make gcc openssl-devel zlib-devel pcre-devel uthash-devel
+      - name: Download ${{ matrix.nginx-version }}
+        run: |
+          if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
+            version='stable' ;\
+          else  \
+            version='mainline' ;\
+          fi
+          lastversion download nginx:${version}
+          mkdir nginx-src
+          tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
+      - name: Configure ${{ matrix.install-type }}
+        run: |
+          cd nginx-src
+          if [ ${{ matrix.install-type }} = 'static module' ] ; then \
+            opt='--add-module' ;\
+          else \
+            opt='--add-dynamic-module' ;\
+          fi
+          ./configure ${opt}=..
+      - name: Make
+        run: |
+          cd nginx-src
+          make
