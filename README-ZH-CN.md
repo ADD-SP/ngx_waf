@@ -1,7 +1,6 @@
 # ngx_waf
 
-[![build-master](https://github.com/ADD-SP/ngx_waf/workflows/build-master/badge.svg?branch=master)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Abuild-master)
-[![build-dev](https://github.com/ADD-SP/ngx_waf/workflows/build-dev/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Abuild-dev)
+[![build](https://github.com/ADD-SP/ngx_waf/workflows/build/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Abuild)
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)](https://github.com/ADD-SP/ngx_waf/releases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
