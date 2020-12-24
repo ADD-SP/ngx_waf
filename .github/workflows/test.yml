@@ -65,10 +65,18 @@ jobs:
       - name: Test urls
         run: |
           sudo ./test/test-url.sh
+      - name: Test args
+        run: |
+          sudo ./test/test-args.sh
+      - name: Test cookies
+        run: |
+          sudo ./test/test-cookie.sh
       - name: Test user-agents
         run: |
           sudo ./test/test-ua.sh
       - name: Test cc attack
         run: |
+          sudo nginx -s stop
+          sudo nginx
           sudo ./test/test-cc.sh
 
