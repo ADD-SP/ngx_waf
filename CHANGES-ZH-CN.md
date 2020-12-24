@@ -16,6 +16,8 @@
 
 ### 修复
 
++ 修复了 Cookie 检查的失效的 bug（[87beed1](https://github.com/ADD-SP/ngx_waf/commit/87beed183e404c70411a2d35ea68ebbccccf5ff6)）。
+
 + 修改 `config` 文件以确保执行 `make` 或 `make modules` 时最新的模块代码能够被编译（[25f97f5](https://github.com/ADD-SP/ngx_waf/commit/25f97f5e7f3792b131ab0ebb1bfe4b7fe5e330ae)）。在修复之前，如果仅仅 `inc/` 下的文件发生变化，编译时不会将最新的代码编译进去，因为没有检查 `inc/` 下的文件是否发生变化。
 
 + 修复了 IPV4 网段识别错误的 bug（[73a22eb](https://github.com/ADD-SP/ngx_waf/commit/73a22eb3538a24e9714bf8331946a5654df20cc1)）。这个 bug 可能会导致当规则中出现类似 `192.168.0.0/10`，即后缀不是 8 的倍数的时候无法正确生成子网掩码。
