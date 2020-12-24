@@ -1,6 +1,6 @@
 # ngx_waf
 
-![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&font=Inter&language=1&owner=1&theme=Light)
+![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=A%20web%20application%20firewall%20module%20for%20nginx&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
