@@ -1,4 +1,4 @@
-name: build
+name: test
 
 on: 
   push:
@@ -12,23 +12,24 @@ on:
 
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         nginx-version: ['stable nginx', 'mainline nginx']
         install-type:  ['static module', 'dynamic module']
-    container: centos:8
     steps:
       - uses: actions/checkout@v2
         with: 
           ref: ${{ github.ref }}
       - name: Install dependencies
         run: |
-          dnf -y install https://extras.getpagespeed.com/release-latest.rpm
-          dnf -y --enablerepo=powertools install lastversion make gcc openssl-devel zlib-devel pcre-devel uthash-devel
+          sudo apt-get update
+          sudo apt-get install build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev python python-pip
+          sudo pip install lastversion
       - name: Download ${{ matrix.nginx-version }}
         run: |
+          chmod 777 -R ${{ github.workspace }}
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
           else  \
@@ -46,7 +47,28 @@ jobs:
             opt='--add-dynamic-module' ;\
           fi
           ./configure ${opt}=..
-      - name: Make
+      - name: Install ${{ matrix.nginx-version }}
         run: |
           cd nginx-src
           make
+          sudo make install
+          sudo useradd nginx -s /sbin/nologin -M
+          sudo chmod 777 -R /usr/local/nginx
+          sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
+      - name: Initial nginx.conf
+        run: |
+          sudo chmod 777 -R test
+          sudo ./test/init-conf.sh /usr/local/nginx
+      - name: Start ${{ matrix.nginx-version }}
+        run: |
+          sudo nginx
+      - name: Test urls
+        run: |
+          sudo ./test/test-url.sh
+      - name: Test user-agents
+        run: |
+          sudo ./test/test-ua.sh
+      - name: Test cc attack
+        run: |
+          sudo ./test/test-cc.sh
+
