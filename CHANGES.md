@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [3.0.0] - 2020-12-25
 
 ### Added
 
@@ -9,6 +9,8 @@
 + IP black and white lists support IPV6, and can recognize IPV6 strings such as `fe80::/10` ([8519b26](https://github.com/ADD-SP/ngx_waf/commit/8519b26f5fb9491ac60ae084247a0957c0931d0c)).
 
 ### Changed
+
++ Delete some meaningless logs ([bd279e7](https://github.com/ADD-SP/ngx_waf/commit/bd279e7be872621fa75337722a9fae30b2ea6812)).
 
 + Friendly error alerts ([d1185b2](https://github.com/ADD-SP/ngx_waf/commit/d1185b26a413e45dcf5ef479b0078aa57a4b5962) & [f2b617d](https://github.com/ADD-SP/ngx_waf/commit/f2b617d5174eb1bc6982113415ddcb1f798ef703)). Warnings or error reporting when IP addresses in the rule file are invalid or IP address blocks overlap (does not detect all overlaps).
 
