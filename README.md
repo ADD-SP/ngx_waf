@@ -265,6 +265,7 @@ The block log is stored in `error.log`. The log level of the block record is ALE
 
 + This project follows [Semantic Versioning 2.0.0](https://semver.org/).
 + [FAQ](https://github.com/ADD-SP/ngx_waf/issues/14)
++ [Known issues](https://github.com/ADD-SP/ngx_waf/issues/1)
 
 ## Thanks
 

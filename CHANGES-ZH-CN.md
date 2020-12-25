@@ -1,6 +1,6 @@
 # 更新日志
 
-## [未发布]
+## [3.0.0] - 2020-12-25
 
 ### 新增
 
@@ -9,6 +9,8 @@
 + IP 黑白名单支持了 IPV6。可以识别形如 `fe80::/10` 的 IPV6 字符串（[8519b26](https://github.com/ADD-SP/ngx_waf/commit/8519b26f5fb9491ac60ae084247a0957c0931d0c)）。
 
 ### 改动
+
++ 删除了一些无用的日志（[bd279e7](https://github.com/ADD-SP/ngx_waf/commit/bd279e7be872621fa75337722a9fae30b2ea6812)）。
 
 + 友好的错误提示（[d1185b2](https://github.com/ADD-SP/ngx_waf/commit/d1185b26a413e45dcf5ef479b0078aa57a4b5962) & [f2b617d](https://github.com/ADD-SP/ngx_waf/commit/f2b617d5174eb1bc6982113415ddcb1f798ef703)）。当规则文件中 IP 地址无效或者 IP 地址块重叠的时候警告或者报错（并不能检测所有的重叠情况）。
 
