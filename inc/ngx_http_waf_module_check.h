@@ -243,7 +243,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
     }
     if (srv_conf->waf_cc_deny_limit == NGX_CONF_UNSET
         || srv_conf->waf_cc_deny_duration == NGX_CONF_UNSET) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
+        // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
         return NOT_MATCHED;
     }
 
