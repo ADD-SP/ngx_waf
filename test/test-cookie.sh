@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cookies=('test=base64_decode(test)')
+cookies=('test=base64_decode(test)&aaa=12&bbb=13&ccc=14')
 url="http://localhost/"
 
 for cookie in $cookies ; do
