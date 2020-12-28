@@ -498,9 +498,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
     }
 
     if (r->headers_in.cookies.nelts != 0) {
-        ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
         ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
         for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
+            ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
             for (size_t j = 0; j < srv_conf->black_cookie->nelts; j++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, &((*ppcookie)->value), NULL, 0);
                 if (rc >= 0) {
