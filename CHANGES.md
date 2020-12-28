@@ -1,5 +1,24 @@
 # Change Log
 
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+***
+
+## [3.0.1] - 2020-12-28
+
+### Fixed
+
++ Fixed a segmentation fault when inspecting cookies ([8dc2b56](https://github.com/ADD-SP/ngx_waf/commit/8dc2b56e9a8ae7c22cc5309ac0a060b0358f545b)).
+
+
+***
+
 ## [3.0.0] - 2020-12-25
 
 ### Added
