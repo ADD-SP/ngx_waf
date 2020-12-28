@@ -79,4 +79,9 @@ jobs:
           sudo nginx -s stop
           sudo nginx
           sudo ./test/test-cc.sh
+      - name: Test segmentation fault
+        run: |
+          if [ -e /usr/local/nginx/logs/core ] ; then \
+            exit 1 ; \
+          fi
 
