@@ -59,26 +59,31 @@ jobs:
         run: |
           sudo chmod 777 -R test
           sudo ./test/init-conf.sh /usr/local/nginx
-      - name: Start ${{ matrix.nginx-version }}
-        run: |
-          sudo nginx
       - name: Test urls
         run: |
+          sudo nginx
           sudo ./test/test-url.sh
+          sudo nginx -s stop
       - name: Test args
         run: |
+          sudo nginx
           sudo ./test/test-args.sh
+          sudo nginx -s stop
       - name: Test cookies
         run: |
+          sudo nginx
           sudo ./test/test-cookie.sh
+          sudo nginx -s stop
       - name: Test user-agents
         run: |
+          sudo nginx
           sudo ./test/test-ua.sh
+          sudo nginx -s stop
       - name: Test cc attack
         run: |
-          sudo nginx -s stop
           sudo nginx
           sudo ./test/test-cc.sh
+          sudo nginx -s stop
       - name: Test segmentation fault
         run: |
           if [ -e /usr/local/nginx/logs/core ] ; then \
