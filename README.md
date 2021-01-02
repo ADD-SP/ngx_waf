@@ -1,6 +1,6 @@
 # ngx_waf
 
-![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=A%20web%20application%20firewall%20module%20for%20nginx&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
+![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=A%20web%20application%20firewall%20module%20for%20nginx%20without%20complex%20configuration.&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
@@ -10,7 +10,7 @@
 
 English | [简体中文](README-ZH-CN.md)
 
-A web application firewall module for nginx.
+A web application firewall module for nginx without complex configuration.
 
 [Progress](https://github.com/ADD-SP/ngx_waf/projects/2) & [Change Log](CHANGES.md)
 

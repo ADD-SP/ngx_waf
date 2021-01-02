@@ -1,6 +1,6 @@
 # ngx_waf
 
-![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=nginx%20%E9%98%B2%E7%81%AB%E5%A2%99%E6%A8%A1%E5%9D%97%20&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
+![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=%E7%94%A8%E4%BA%8E%20nginx%20%E7%9A%84%E6%B2%A1%E6%9C%89%E5%A4%8D%E6%9D%82%E9%85%8D%E7%BD%AE%E7%9A%84%20Web%20%E5%BA%94%E7%94%A8%E9%98%B2%E7%81%AB%E5%A2%99%E6%A8%A1%E5%9D%97%E3%80%82&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
@@ -10,7 +10,7 @@
 
 [English](README.md) | 简体中文
 
-用于 nginx 的防火墙模块。
+一个用于 nginx 的没有复杂配置的 Web 应用防火墙模块。
 
 [开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES-ZH-CN.md)
 
