@@ -6,6 +6,7 @@
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)](https://github.com/ADD-SP/ngx_waf/releases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
+[![Discussions](https://img.shields.io/badge/Discussions-open-success)](https://github.com/ADD-SP/ngx_waf/discussions)
 [![Semantic Versioning 2.0.0](https://img.shields.io/badge/Semantic%20Versioning-2.0.0-blue)](https://semver.org/)
 
 English | [简体中文](README-ZH-CN.md)
@@ -264,8 +265,8 @@ The block log is stored in `error.log`. The log level of the block record is ALE
 ## Other
 
 + This project follows [Semantic Versioning 2.0.0](https://semver.org/).
-+ [FAQ](https://github.com/ADD-SP/ngx_waf/issues/14)
-+ [Known issues](https://github.com/ADD-SP/ngx_waf/issues/1)
++ [FAQ](https://github.com/ADD-SP/ngx_waf/discussions/15)
++ [Known issues](https://github.com/ADD-SP/ngx_waf/discussions/16)
 
 ## Thanks
 

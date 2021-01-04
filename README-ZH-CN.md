@@ -6,6 +6,7 @@
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)](https://github.com/ADD-SP/ngx_waf/releases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
+[![讨论](https://img.shields.io/badge/%E8%AE%A8%E8%AE%BA-open-success)](https://github.com/ADD-SP/ngx_waf/discussions)
 [![语义化版本 2.0.0](https://img.shields.io/badge/%E8%AF%AD%E4%B9%89%E5%8C%96%E7%89%88%E6%9C%AC-2.0.0-blue)](https://semver.org/lang/zh-CN/)
 
 [English](README.md) | 简体中文
@@ -273,8 +274,8 @@ https://example.com/www.bak
 ## 其它
 
 + 本项目遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)
-+ [常见问题与解答](https://github.com/ADD-SP/ngx_waf/issues/14)
-+ [已知 Bug](https://github.com/ADD-SP/ngx_waf/issues/1)
++ [常见问题与解答](https://github.com/ADD-SP/ngx_waf/discussions/15)
++ [已知 Bug](https://github.com/ADD-SP/ngx_waf/discussions/16)
 + [开发总结](https://www.addesp.com/archives/2876)
 
 ## 感谢
