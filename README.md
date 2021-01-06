@@ -15,6 +15,17 @@ A web application firewall module for nginx without complex configuration.
 
 [Progress](https://github.com/ADD-SP/ngx_waf/projects/2) & [Change Log](CHANGES.md)
 
+## Quick jump
+
++ [Function](#function)
++ [Install](#install)
++ [How to use?](#how-to-use)
++ [Rule file](#rule-file)
++ [Variable](#variable)
++ [Log](#log)
++ [FAQ](https://github.com/ADD-SP/ngx_waf/discussions/15)
++ [known issues](https://github.com/ADD-SP/ngx_waf/discussions/16)
+
 ## Function
 
 + IPV4 and IPV6 support.
