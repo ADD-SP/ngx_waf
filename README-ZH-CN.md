@@ -15,6 +15,19 @@
 
 [开发进度](https://github.com/ADD-SP/ngx_waf/projects/2) & [更新日志](CHANGES-ZH-CN.md)
 
+## 快捷跳转
+
++ [功能](#功能)
++ [安装](#安装)
++ [使用](#使用)
++ [规则文件](#规则文件)
++ [变量](#变量)
++ [开发文档](#开发文档)
++ [拦截日志](#日志)
++ [常见问题与解答](https://github.com/ADD-SP/ngx_waf/discussions/15)
++ [已知问题](https://github.com/ADD-SP/ngx_waf/discussions/16)
+
+
 ## 功能
 
 + 支持 IPV4 和 IPV6。
@@ -275,7 +288,7 @@ https://example.com/www.bak
 
 + 本项目遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)
 + [常见问题与解答](https://github.com/ADD-SP/ngx_waf/discussions/15)
-+ [已知 Bug](https://github.com/ADD-SP/ngx_waf/discussions/16)
++ [已知问题](https://github.com/ADD-SP/ngx_waf/discussions/16)
 + [开发总结](https://www.addesp.com/archives/2876)
 
 ## 感谢
