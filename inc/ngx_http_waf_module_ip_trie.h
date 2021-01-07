@@ -63,7 +63,7 @@ static ngx_int_t ip_trie_init(ip_trie_t** trie, ngx_pool_t* memory_pool, int ip_
 
     *trie = (ip_trie_t*)ngx_pcalloc(memory_pool, sizeof(ip_trie_t));
     if (*trie == NULL) {
-        return FAIL;
+        return MALLOC_ERROR;
     }
 
     (*trie)->ip_type = ip_type;
@@ -72,7 +72,7 @@ static ngx_int_t ip_trie_init(ip_trie_t** trie, ngx_pool_t* memory_pool, int ip_
     (*trie)->size = 0;
 
     if ((*trie)->root == NULL) {
-        return FAIL;
+        return MALLOC_ERROR;
     }
 
     return SUCCESS;
@@ -91,7 +91,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
 
     new_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
     if (new_node == NULL) {
-        return FAIL;
+        return MALLOC_ERROR;
     }
     
     new_node->is_ip = TRUE;
@@ -119,7 +119,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             if (cur_node == NULL) {
                 cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
-                    return FAIL;
+                    return MALLOC_ERROR;
                 }
                 if (prev_bit == 0) {
                     prev_node->left = cur_node;
@@ -140,7 +140,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         if (cur_node == NULL) {
             cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
-                return FAIL;
+                return MALLOC_ERROR;
             }
             if (prev_bit == 0) {
                 prev_node->left = cur_node;
@@ -161,7 +161,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             if (cur_node == NULL) {
                 cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
-                    return FAIL;
+                    return MALLOC_ERROR;
                 }
                 if (prev_bit == 0) {
                     prev_node->left = cur_node;
@@ -170,7 +170,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
                 }
             }
             prev_node = cur_node;
-            if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
                 prev_bit = 0;
             } else {
@@ -182,7 +182,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         if (cur_node == NULL) {
             cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
-                return FAIL;
+                return MALLOC_ERROR;
             }
             if (prev_bit == 0) {
                 prev_node->left = cur_node;
@@ -191,7 +191,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             }
         }
         uint8_index = bit_index / 8;
-        if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+        if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
             cur_node->left = new_node;
         } else {
             cur_node->right = new_node;
@@ -232,7 +232,7 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
     } else if (trie->ip_type == AF_INET6) {
         while (bit_index < 128 && cur_node != NULL && cur_node->is_ip != TRUE) {
             int uint8_index = bit_index / 8;
-            if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
             } else {
                 cur_node = cur_node->right;

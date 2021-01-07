@@ -188,7 +188,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     if (inet_pton(AF_INET6, prefix_text, &addr6) != 1) {
         return FAIL;
     }
-    memcpy(prefix, &addr6.__in6_u.__u6_addr8, 16);
+    memcpy(prefix, &addr6.s6_addr, 16);
 
     uint32_t temp_suffix = 0;
     if (*c == '/') {
