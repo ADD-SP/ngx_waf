@@ -6,6 +6,8 @@
 
 ### Changed
 
+* More accurate visit frequency statistics ([53d3b14](https://github.com/ADD-SP/ngx_waf/commit/53d3b149a524252dbb9b8170e31f4b1f4895a6b7)).
+
 ### Fixed
 
 ***
