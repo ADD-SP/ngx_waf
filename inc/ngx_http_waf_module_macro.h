@@ -63,6 +63,9 @@
 #define MAX_ALLOC_TIMES         (100000)
 
 
+#define SHARE_MEMORY_NAME       ("__NGX_HTTP_WAF_MODULE_TAOKEN_BUCKET_SET__")
+#define SHATE_MEMORY_SIZE       (1024 * 1024 * 10)
+
 /**
  * @def MODE_INSPECT_GET
  * @brief 对 GET 请求进行检查
