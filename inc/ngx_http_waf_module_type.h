@@ -41,6 +41,8 @@ typedef enum {
 typedef struct {
     inx_addr_t inx_addr; /**< 作为哈希表中的 key */
     ngx_uint_t count; /**< 令牌剩余量 */
+    ngx_int_t is_ban; /**< 令牌桶是否暂时被禁止 */
+    time_t last_ban_time; /**< 最后一次开始禁止令牌桶的时间 */
     UT_hash_handle hh; /**< uthash 关键成员 */
 } token_bucket_t;
 
@@ -52,8 +54,10 @@ typedef struct {
 typedef struct {
     memory_pool_type_e memory_pool_type; /**< 内存池类型 */
     void* memory_pool; /**< 创建令牌桶和释放令牌桶所用的内存池 */
-    time_t prev_put; /**< 上次集中添加令牌的时间 */
-    time_t prev_clear; /**< 上次清空令牌桶的时间 */
+    ngx_uint_t ban_duration; /**< 当令牌桶为空时自动禁止该桶一段时间（分钟）*/
+    time_t last_put; /**< 上次集中添加令牌的时间 */
+    time_t last_clear; /**< 上次清空令牌桶的时间 */
+    ngx_uint_t init_count; /**< 令牌桶内初始的令牌数量 */
     ngx_uint_t bucket_count; /**< 已经有多少个令牌桶 */
     token_bucket_t *head; /**< 哈希表标头 */
 } token_bucket_set_t;

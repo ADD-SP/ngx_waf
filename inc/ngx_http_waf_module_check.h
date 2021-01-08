@@ -250,35 +250,21 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
     ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone->shm.addr;
     ngx_shmtx_lock(&shpool->mutex);
 
-    if (srv_conf->ip_token_bucket_set == NULL) {
-        srv_conf->ip_token_bucket_set = ngx_slab_calloc_locked(shpool, sizeof(token_bucket_set_t));
-        if (srv_conf->ip_token_bucket_set == NULL) {
-            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: Unable to initialize token bucket using shared memory.");
-            ngx_shmtx_unlock(&shpool->mutex);
-            return NOT_MATCHED;
-        }
-        else if (token_bucket_set_init(srv_conf->ip_token_bucket_set, slab_pool, shpool) != SUCCESS) {
-            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf: Unable to initialize the token bucket.");
-            ngx_shmtx_unlock(&shpool->mutex);
-            return NOT_MATCHED;
-        }
-    }
-
     token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
-    double diff_put_minute = difftime(now, set->prev_put) / 60;
-    double diff_clear_minute = difftime(now, set->prev_put) / 60;
+    double diff_put_minute = difftime(now, set->last_put) / 60;
+    double diff_clear_minute = difftime(now, set->last_clear) / 60;
 
-    if (diff_clear_minute > 60) {
+    if (diff_clear_minute > max(60, srv_conf->waf_cc_deny_duration * 5)) {
         token_bucket_set_clear(set);
-        set->prev_clear = now;
+        set->last_clear = now;
     } else if (diff_put_minute >= 1) {
-        token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit);
-        set->prev_put = now;
+        token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit, now);
+        set->last_put = now;
     }
 
 
     
-    if (token_bucket_set_take(set, &inx_addr, 1, srv_conf->waf_cc_deny_limit) != SUCCESS) {
+    if (token_bucket_set_take(set, &inx_addr, 1, now) != SUCCESS) {
         ctx->blocked = FALSE;
         strcpy((char*)ctx->rule_type, "CC-DNEY");
         strcpy((char*)ctx->rule_deatils, "");

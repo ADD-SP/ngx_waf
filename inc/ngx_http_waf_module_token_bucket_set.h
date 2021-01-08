@@ -21,13 +21,17 @@
  * @param[out] set 要操作的令牌桶集合
  * @param[in] memory_pool_type_e 内存池类型
  * @param[in] memory_pool 内存池
+ * @param[in] init_count 令牌桶初始令牌数
+ * @param[in] ban_duration 令牌桶为空后令牌桶的拉黑时间（分钟）
  * @return 如果成功返回 SUCCESS，反之则不是。
  * @retval SUCCESS 成功
  * @retval 其它 失败
 */
 ngx_int_t token_bucket_set_init(token_bucket_set_t* set, 
                                 memory_pool_type_e pool_type, 
-                                void* memory_pool);
+                                void* memory_pool,
+                                ngx_uint_t init_count,
+                                ngx_uint_t ban_duration);
 
 
 /**
@@ -41,7 +45,7 @@ ngx_int_t token_bucket_set_init(token_bucket_set_t* set,
  * @retval 其它 失败
  * @note 时间复杂度 O(1)。
 */
-ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, ngx_uint_t init_count);
+ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, time_t now);
 
 
 /**
@@ -54,7 +58,7 @@ ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, n
  * @retval 其它 失败
  * @note 时间复杂度当 inx_addr 不为 NULL 时为 O(1)，反之为 O(n)。
 */
-ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count);
+ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, time_t now);
 
 
 /**
@@ -95,7 +99,9 @@ ngx_int_t _token_bucket_set_free(token_bucket_set_t* set, void* addr);
 
 ngx_int_t token_bucket_set_init(token_bucket_set_t* set, 
                                 memory_pool_type_e pool_type, 
-                                void* memory_pool) {
+                                void* memory_pool,
+                                ngx_uint_t init_count,
+                                ngx_uint_t ban_duration) {
     if (set == NULL || memory_pool == NULL) {
         return FAIL;
     }
@@ -104,13 +110,15 @@ ngx_int_t token_bucket_set_init(token_bucket_set_t* set,
     set->memory_pool = memory_pool;
     set->bucket_count = 0;
     set->head = NULL;
-    set->prev_clear = time(NULL);
-    set->prev_put = time(NULL);
+    set->last_clear = time(NULL);
+    set->last_put = time(NULL);
+    set->init_count = init_count;
+    set->ban_duration = ban_duration;
     
     return SUCCESS;
 }
 
-ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, ngx_uint_t init_count) {
+ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, time_t now) {
     token_bucket_t* bucket = NULL;
     ngx_int_t ret_status = SUCCESS;
     HASH_FIND(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
@@ -121,23 +129,29 @@ ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, n
             ret_status = FAIL;
         }
         memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
-        bucket->count = init_count;
+        bucket->count = set->init_count;
+        bucket->is_ban = FALSE;
+        bucket->last_ban_time = 0;
         HASH_ADD(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
     }
 
-    if (ret_status == SUCCESS) {
+    if (ret_status == SUCCESS && bucket->is_ban == FALSE) {
         if (bucket->count >= count) {
             bucket->count -= count;
         } else {
+            bucket->is_ban = TRUE;
+            bucket->last_ban_time = now;
             ret_status = FAIL;
         }
+    } else {
+        ret_status = FAIL;
     }
 
     return ret_status;
 }
 
 
-ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count) {
+ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, time_t now) {
     token_bucket_t* bucket = NULL;
     ngx_int_t ret_status = SUCCESS;
 
@@ -150,16 +164,34 @@ ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ng
                 ret_status = FAIL;
             }
             memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
+            bucket->is_ban = FALSE;
+            bucket->last_ban_time = 0;
             bucket->count = count;
             HASH_ADD(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
         }
 
         if (ret_status == SUCCESS) {
-            bucket->count += count;
+           if (bucket->is_ban == TRUE) {
+                double diff_time_minute = difftime(now, bucket->last_ban_time) / 60;
+                if (diff_time_minute > set->ban_duration) {
+                    bucket->is_ban = FALSE;
+                    bucket->count = count;
+                }
+            } else {
+                bucket->count += count;
+            }
         }
     } else {
         for (bucket = set->head; bucket != NULL; bucket = (token_bucket_t*)(bucket->hh.next)) {
-            bucket->count = count;
+            if (bucket->is_ban == TRUE) {
+                double diff_time_minute = difftime(now, bucket->last_ban_time) / 60;
+                if (diff_time_minute > set->ban_duration) {
+                    bucket->is_ban = FALSE;
+                    bucket->count = count;
+                }
+            } else {
+                bucket->count = count;
+            }
         }
     }
 

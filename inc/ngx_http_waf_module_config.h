@@ -285,25 +285,6 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->ip_token_bucket_set = NULL;
 
-    u_char str[1024] = { 0 };
-    memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
-    ngx_uint_t id = (ngx_uint_t)shm_id++;
-    int index = cf->conf_file->file.name.len;
-    while (id != 0) {
-        str[index++] = (id % 10) + '0';
-        id /= 10;
-    }
-    str[index] = '\0';
-    strcat((char*)str, SHARE_MEMORY_NAME);
-    // ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf_test: %s", str);
-    ngx_str_t name;
-    name.data = str;
-    name.len = strlen((char*)str);
-    srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, SHATE_MEMORY_SIZE, &ngx_http_waf_module);
-    srv_conf->shm_zone->init = ngx_http_waf_share_memory_init;
-    srv_conf->shm_zone->data = srv_conf;
-
-
     if (ip_trie_init(&(srv_conf->black_ipv4), srv_conf->ngx_pool, AF_INET) != SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
     }
@@ -333,6 +314,24 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
         return NULL;
     }
+
+    u_char* str = ngx_pcalloc(srv_conf->ngx_pool, sizeof(u_char) * 1025);
+    memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
+    ngx_uint_t id = (ngx_uint_t)shm_id++;
+    int index = cf->conf_file->file.name.len;
+    while (id != 0) {
+        str[index++] = (id % 10) + '0';
+        id /= 10;
+    }
+    str[index] = '\0';
+    strcat((char*)str, SHARE_MEMORY_NAME);
+    ngx_str_t name;
+    name.data = str;
+    name.len = strlen((char*)str);
+    srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, SHATE_MEMORY_SIZE, &ngx_http_waf_module);
+    srv_conf->shm_zone->init = ngx_http_waf_share_memory_init;
+    srv_conf->shm_zone->data = srv_conf;
+
 
     return srv_conf;
 }
@@ -455,13 +454,19 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 
 
 static ngx_int_t ngx_http_waf_share_memory_init(ngx_shm_zone_t *zone, void *data) {
-    // ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
-    // ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)(zone->data);
-    // srv_conf->ip_token_bucket_set = ngx_slab_calloc(shpool, sizeof(token_bucket_set_t));
-    // if (token_bucket_set_init(srv_conf->ip_token_bucket_set, slab_pool, shpool) == SUCCESS) {
-    //     return NGX_OK;
-    // }
-    return NGX_OK;
+    ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
+    ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)(zone->data);
+    srv_conf->ip_token_bucket_set = ngx_slab_calloc(shpool, sizeof(token_bucket_set_t));
+    if (srv_conf->ip_token_bucket_set == NULL) {
+        return NGX_ERROR;
+    }
+    if (token_bucket_set_init(srv_conf->ip_token_bucket_set, 
+                              slab_pool, shpool, 
+                              srv_conf->waf_cc_deny_limit, 
+                              srv_conf->waf_cc_deny_duration) == SUCCESS) {
+        return NGX_OK;
+    }
+    return NGX_ERROR;
 }
 
 

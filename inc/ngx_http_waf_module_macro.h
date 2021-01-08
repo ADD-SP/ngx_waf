@@ -63,7 +63,7 @@
 #define MAX_ALLOC_TIMES         (100000)
 
 
-#define SHARE_MEMORY_NAME       ("__NGX_HTTP_WAF_MODULE_TAOKEN_BUCKET_SET__")
+#define SHARE_MEMORY_NAME       ("__NGX_WAF__")
 #define SHATE_MEMORY_SIZE       (1024 * 1024 * 10)
 
 /**
@@ -250,6 +250,13 @@
  * @def min(a,b)
 */
 #define min(a,b)            (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef max
+/**
+ * @def max(a,b)
+*/
+#define max(a,b)            (((a) > (b)) ? (a) : (b))
 #endif
 
 
