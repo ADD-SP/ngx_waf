@@ -204,9 +204,11 @@ ngx_int_t token_bucket_set_clear(token_bucket_set_t* set) {
         prev = p;
         p = (token_bucket_t*)(p->hh.next);
         if (_token_bucket_set_free(set, prev) != SUCCESS) {
+            set->head = NULL;
             return FAIL;
         }
     }
+    set->head = NULL;
     return SUCCESS;
 }
 
