@@ -8,6 +8,11 @@
 
 ### 修复
 
+
+***
+
+## [3.0.2] - 2021-01-10
+
 * 修复一个了在 `Alpine Linux` 下的编译错误（[e989aa3](https://github.com/ADD-SP/ngx_waf/commit/e989aa34370da73f03627601188ca33844372c4f)）。
 
 ***
