@@ -519,7 +519,7 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
                     "ngx_waf: In line %d, [%s] is not a valid IPV6 string.", line_number, ipv6.text);
                 return FAIL;
             }
-            memcpy(inx_addr.ipv6.__in6_u.__u6_addr8, ipv6.prefix, 16);
+            memcpy(inx_addr.ipv6.s6_addr, ipv6.prefix, 16);
             if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text) != SUCCESS) {
                 if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == SUCCESS) {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
