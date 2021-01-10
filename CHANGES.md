@@ -8,6 +8,13 @@
 
 ### Fixed
 
+
+***
+
+## [3.0.2] - 2021-01-10
+
+### Fixed
+
 * Fixed a build error on `Alpine Linux` ([e989aa3](https://github.com/ADD-SP/ngx_waf/commit/e989aa34370da73f03627601188ca33844372c4f)).
 
 ***
