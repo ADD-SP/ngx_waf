@@ -170,7 +170,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
                 }
             }
             prev_node = cur_node;
-            if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
                 prev_bit = 0;
             } else {
@@ -191,7 +191,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             }
         }
         uint8_index = bit_index / 8;
-        if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+        if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
             cur_node->left = new_node;
         } else {
             cur_node->right = new_node;
@@ -232,7 +232,7 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
     } else if (trie->ip_type == AF_INET6) {
         while (bit_index < 128 && cur_node != NULL && cur_node->is_ip != TRUE) {
             int uint8_index = bit_index / 8;
-            if (CHECK_BIT(inx_addr->ipv6.__in6_u.__u6_addr8[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
                 cur_node = cur_node->left;
             } else {
                 cur_node = cur_node->right;

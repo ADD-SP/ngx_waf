@@ -6,9 +6,11 @@
 
 ### 改动
 
+### 修复
+
 * 更精确的访问频次统计（[53d3b14](https://github.com/ADD-SP/ngx_waf/commit/53d3b149a524252dbb9b8170e31f4b1f4895a6b7)）。
 
-### 修复
+* 修复一个了在 `Alpine Linux` 下的编译错误（[e989aa3](https://github.com/ADD-SP/ngx_waf/commit/e989aa34370da73f03627601188ca33844372c4f)）。
 
 ***
 

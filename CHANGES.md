@@ -6,9 +6,11 @@
 
 ### Changed
 
+### Fixed
+
 * More accurate visit frequency statistics ([53d3b14](https://github.com/ADD-SP/ngx_waf/commit/53d3b149a524252dbb9b8170e31f4b1f4895a6b7)).
 
-### Fixed
+* Fixed a build error on `Alpine Linux` ([e989aa3](https://github.com/ADD-SP/ngx_waf/commit/e989aa34370da73f03627601188ca33844372c4f)).
 
 ***
 
