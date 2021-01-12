@@ -257,25 +257,33 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
     if (diff_clear_minute > max(60, srv_conf->waf_cc_deny_duration * 5)) {
         token_bucket_set_clear(set);
         set->last_clear = now;
+        set->last_put = now;
     } else if (diff_put_minute >= 1) {
         token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit, now);
         set->last_put = now;
     }
 
-
-    
-    if (token_bucket_set_take(set, &inx_addr, 1, now) != SUCCESS) {
-        ctx->blocked = FALSE;
-        strcpy((char*)ctx->rule_type, "CC-DNEY");
-        strcpy((char*)ctx->rule_deatils, "");
-        *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-        ngx_shmtx_unlock(&shpool->mutex);
-        return MATCHED;
+    ngx_int_t ret = NOT_MATCHED;
+    switch (token_bucket_set_take(set, &inx_addr, 1, now)) {
+        case MALLOC_ERROR:
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, 
+                "ngx_waf: Unable to allocate shared memory, the next request will reset the shared memory pool.");
+            set->last_clear = 0;
+            set->last_put = 0;
+            break;
+        case FAIL:
+            ctx->blocked = FALSE;
+            strcpy((char*)ctx->rule_type, "CC-DNEY");
+            strcpy((char*)ctx->rule_deatils, "");
+            *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
+            ret = MATCHED;
+            break;
+        case SUCCESS:
+            break;
     }
-
-
+    
     ngx_shmtx_unlock(&shpool->mutex);
-    return NOT_MATCHED;
+    return ret;
 }
 
 

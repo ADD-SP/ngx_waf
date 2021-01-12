@@ -120,40 +120,39 @@ ngx_int_t token_bucket_set_init(token_bucket_set_t* set,
 
 ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, time_t now) {
     token_bucket_t* bucket = NULL;
-    ngx_int_t ret_status = SUCCESS;
     HASH_FIND(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
 
     if (bucket == NULL) {
         bucket = (token_bucket_t*)_token_bucket_set_malloc(set, sizeof(token_bucket_t));
         if (bucket == NULL) {
-            ret_status = FAIL;
+            return MALLOC_ERROR;
+        } else {
+            memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
+            bucket->count = set->init_count;
+            bucket->is_ban = FALSE;
+            bucket->last_ban_time = 0;
+            HASH_ADD(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
         }
-        memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
-        bucket->count = set->init_count;
-        bucket->is_ban = FALSE;
-        bucket->last_ban_time = 0;
-        HASH_ADD(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
     }
 
-    if (ret_status == SUCCESS && bucket->is_ban == FALSE) {
+    if (bucket->is_ban == FALSE) {
         if (bucket->count >= count) {
             bucket->count -= count;
         } else {
             bucket->is_ban = TRUE;
             bucket->last_ban_time = now;
-            ret_status = FAIL;
+            return FAIL;
         }
     } else {
-        ret_status = FAIL;
+        return FAIL;
     }
 
-    return ret_status;
+    return SUCCESS;
 }
 
 
 ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ngx_uint_t count, time_t now) {
     token_bucket_t* bucket = NULL;
-    ngx_int_t ret_status = SUCCESS;
 
     if (inx_addr != NULL) {
         HASH_FIND(hh, set->head, &bucket->inx_addr, sizeof(inx_addr_t), bucket);
@@ -161,26 +160,26 @@ ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ng
         if (bucket == NULL) {
             bucket = (token_bucket_t*)_token_bucket_set_malloc(set, sizeof(token_bucket_t));
             if (bucket == NULL) {
-                ret_status = FAIL;
+                return MALLOC_ERROR;
+            } else {
+                memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
+                bucket->is_ban = FALSE;
+                bucket->last_ban_time = 0;
+                bucket->count = count;
+                HASH_ADD(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);  
             }
-            memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
-            bucket->is_ban = FALSE;
-            bucket->last_ban_time = 0;
-            bucket->count = count;
-            HASH_ADD(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
         }
 
-        if (ret_status == SUCCESS) {
-           if (bucket->is_ban == TRUE) {
-                double diff_time_minute = difftime(now, bucket->last_ban_time) / 60;
-                if (diff_time_minute > set->ban_duration) {
-                    bucket->is_ban = FALSE;
-                    bucket->count = count;
-                }
-            } else {
-                bucket->count += count;
+        if (bucket->is_ban == TRUE) {
+            double diff_time_minute = difftime(now, bucket->last_ban_time) / 60;
+            if (diff_time_minute > set->ban_duration) {
+                bucket->is_ban = FALSE;
+                bucket->count = count;
             }
+        } else {
+            bucket->count += count;
         }
+
     } else {
         for (bucket = set->head; bucket != NULL; bucket = (token_bucket_t*)(bucket->hh.next)) {
             if (bucket->is_ban == TRUE) {
@@ -195,7 +194,7 @@ ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ng
         }
     }
 
-    return ret_status;
+    return SUCCESS;
 }
 
 ngx_int_t token_bucket_set_clear(token_bucket_set_t* set) {
