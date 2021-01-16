@@ -146,365 +146,592 @@ static void check_post(ngx_http_request_t* r);
 
 
 static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the IP whitelist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
-        return NOT_MATCHED;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
+
+        ip_trie_node_t* ip_trie_node = NULL;
+        if (r->connection->sockaddr->sa_family == AF_INET) {
+            struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+            inx_addr_t inx_addr;
+            memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
+            if (ip_trie_find(srv_conf->white_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
+                ctx->blocked = FALSE;
+                strcpy((char*)ctx->rule_type, "WHITE-IPV4");
+                strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+                *out_http_status = NGX_DECLINED;
+                ret_value = MATCHED;
+            }
+        } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+            struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
+            inx_addr_t inx_addr;
+            
+            memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
+            if (ip_trie_find(srv_conf->white_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
+                ctx->blocked = FALSE;
+                strcpy((char*)ctx->rule_type, "WHITE-IPV4");
+                strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+                *out_http_status = NGX_DECLINED;
+                ret_value = MATCHED;
+            }
+        }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    ip_trie_node_t* ip_trie_node = NULL;
-    if (r->connection->sockaddr->sa_family == AF_INET) {
-        struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-        if (ip_trie_find(srv_conf->white_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-IPV4");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
-            *out_http_status = NGX_DECLINED;
-            return MATCHED;
-        }
-    } else if (r->connection->sockaddr->sa_family == AF_INET6) {
-        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        
-        memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
-        if (ip_trie_find(srv_conf->white_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-IPV4");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
-            *out_http_status = NGX_DECLINED;
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The IP whitelist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the IP blacklist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+    
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
-        return NOT_MATCHED;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
+
+        ip_trie_node_t *ip_trie_node = NULL;
+        if (r->connection->sockaddr->sa_family == AF_INET) {
+            struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
+            inx_addr_t inx_addr;
+            
+            memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
+            if (ip_trie_find(srv_conf->black_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
+                ctx->blocked = FALSE;
+                strcpy((char*)ctx->rule_type, "BLACK-IPV4");
+                strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
+                ret_value = MATCHED;
+            }
+        } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+            struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
+            inx_addr_t inx_addr;
+            memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
+            if (ip_trie_find(srv_conf->black_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
+                ctx->blocked = FALSE;
+                strcpy((char*)ctx->rule_type, "BLACK-IPV6");
+                strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
+                ret_value = MATCHED;
+            }
+        }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    ip_trie_node_t *ip_trie_node = NULL;
-    if (r->connection->sockaddr->sa_family == AF_INET) {
-        struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        
-        memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-        if (ip_trie_find(srv_conf->black_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "BLACK-IPV4");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
-            *out_http_status = NGX_HTTP_FORBIDDEN;
-            return MATCHED;
-        }
-    } else if (r->connection->sockaddr->sa_family == AF_INET6) {
-        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
-        if (ip_trie_find(srv_conf->black_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "BLACK-IPV6");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
-            *out_http_status = NGX_HTTP_FORBIDDEN;
-            return MATCHED;
-        }
-    }
-
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The IP blacklist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start the CC inspection process.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+    
+    ngx_int_t ret_value = NOT_MATCHED;
     ngx_int_t ip_type = r->connection->sockaddr->sa_family;
     time_t now = time(NULL);
     
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_CC) == FALSE) {
-        return NOT_MATCHED;
-    }
-    if (srv_conf->waf_cc_deny_limit == NGX_CONF_UNSET
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (srv_conf->waf_cc_deny_limit == NGX_CONF_UNSET
         || srv_conf->waf_cc_deny_duration == NGX_CONF_UNSET) {
-        // ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_waf: CC-DENY-CONF-INVALID");
-        return NOT_MATCHED;
-    }
-
-    inx_addr_t inx_addr;
-    memset(&inx_addr, 0, sizeof(inx_addr_t));
-
-    if (ip_type == AF_INET) {
-        struct sockaddr_in* s_addr_in = (struct sockaddr_in*)(r->connection->sockaddr);
-        memcpy(&(inx_addr.ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
+        ret_value = NOT_MATCHED;
     } else {
-        struct sockaddr_in6* s_addr_in6 = (struct sockaddr_in6*)(r->connection->sockaddr);
-        memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Detection has begun.");
+
+        inx_addr_t inx_addr;
+        memset(&inx_addr, 0, sizeof(inx_addr_t));
+
+        if (ip_type == AF_INET) {
+            struct sockaddr_in* s_addr_in = (struct sockaddr_in*)(r->connection->sockaddr);
+            memcpy(&(inx_addr.ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
+        } else {
+            struct sockaddr_in6* s_addr_in6 = (struct sockaddr_in6*)(r->connection->sockaddr);
+            memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
+        }
+
+        ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone->shm.addr;
+
+        ngx_shmtx_lock(&shpool->mutex);
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Shared memory is locked.");
+
+        token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
+        double diff_put_minute = difftime(now, set->last_put) / 60;
+        double diff_clear_minute = difftime(now, set->last_clear) / 60;
+
+        if (diff_clear_minute > max(60, srv_conf->waf_cc_deny_duration * 5)) {
+            token_bucket_set_clear(set);
+            set->last_clear = now;
+            set->last_put = now;
+        } else if (diff_put_minute >= 1) {
+            token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit, now);
+            set->last_put = now;
+        }
+
+        switch (token_bucket_set_take(set, &inx_addr, 1, now)) {
+            case MALLOC_ERROR:
+                ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, 
+                    "ngx_waf_debug: Unable to allocate shared memory, the next request will reset the shared memory pool.");
+                set->last_clear = 0;
+                set->last_put = 0;
+                break;
+            case FAIL:
+                ctx->blocked = FALSE;
+                strcpy((char*)ctx->rule_type, "CC-DNEY");
+                strcpy((char*)ctx->rule_deatils, "");
+                *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
+                ret_value = MATCHED;
+                break;
+            case SUCCESS:
+                break;
+        }
+        
+        ngx_shmtx_unlock(&shpool->mutex);
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Shared memory is unlocked.");
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Detection is over.");
+
     }
 
-    ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone->shm.addr;
-    ngx_shmtx_lock(&shpool->mutex);
-
-    token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
-    double diff_put_minute = difftime(now, set->last_put) / 60;
-    double diff_clear_minute = difftime(now, set->last_clear) / 60;
-
-    if (diff_clear_minute > max(60, srv_conf->waf_cc_deny_duration * 5)) {
-        token_bucket_set_clear(set);
-        set->last_clear = now;
-        set->last_put = now;
-    } else if (diff_put_minute >= 1) {
-        token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit, now);
-        set->last_put = now;
-    }
-
-    ngx_int_t ret = NOT_MATCHED;
-    switch (token_bucket_set_take(set, &inx_addr, 1, now)) {
-        case MALLOC_ERROR:
-            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, 
-                "ngx_waf: Unable to allocate shared memory, the next request will reset the shared memory pool.");
-            set->last_clear = 0;
-            set->last_put = 0;
-            break;
-        case FAIL:
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "CC-DNEY");
-            strcpy((char*)ctx->rule_deatils, "");
-            *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-            ret = MATCHED;
-            break;
-        case SUCCESS:
-            break;
-    }
-    
-    ngx_shmtx_unlock(&shpool->mutex);
-    return ret;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The CC detection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the URL whitelist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_URL) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    ngx_str_t* p_uri = &r->uri;
-    ngx_regex_elt_t* p = srv_conf->white_url->elts;
+        ngx_str_t* p_uri = &r->uri;
+        ngx_regex_elt_t* p = srv_conf->white_url->elts;
 
-    if (p_uri->data == NULL || p_uri->len == 0) {
-        return NOT_MATCHED;
-    }
-
-    for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-URL");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            *out_http_status = NGX_DECLINED;
-            return MATCHED;
+        if (p_uri->data == NULL || p_uri->len == 0) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the URL is empty.");
+            ret_value = NOT_MATCHED;
+        } else {
+            for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
+                ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
+                if (rc >= 0) {
+                    ctx->blocked = FALSE;
+                    strcpy((char*)ctx->rule_type, "WHITE-URL");
+                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    *out_http_status = NGX_DECLINED;
+                    ret_value = MATCHED;
+                    break;
+                }
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The URL whitelist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the URL blacklist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_URL) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    ngx_str_t* p_uri = &r->uri;
-    ngx_regex_elt_t* p = srv_conf->black_url->elts;
+        ngx_str_t* p_uri = &r->uri;
+        ngx_regex_elt_t* p = srv_conf->black_url->elts;
 
-    if (p_uri->data == NULL || p_uri->len == 0) {
-        return NOT_MATCHED;
-    }
-
-    for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-URL");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            *out_http_status = NGX_HTTP_FORBIDDEN;
-            return MATCHED;
+        if (p_uri->data == NULL || p_uri->len == 0) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the URL is empty.");
+            ret_value = NOT_MATCHED;
+        } else {
+            for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
+                ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
+                if (rc >= 0) {
+                    ctx->blocked = TRUE;
+                    strcpy((char*)ctx->rule_type, "BLACK-URL");
+                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    *out_http_status = NGX_HTTP_FORBIDDEN;
+                    ret_value = MATCHED;
+                    break;
+                }
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The URL blacklist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the ARGS blacklist.");
 
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
+    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_ARGS) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (r->args.len == 0) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the ARGS is empty.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    if (r->args.len == 0) {
-        return NOT_MATCHED;
-    }
+        ngx_str_t* p_args = &r->args;
+        ngx_regex_elt_t* p = srv_conf->black_args->elts;
 
-
-    ngx_str_t* p_args = &r->args;
-    ngx_regex_elt_t* p = srv_conf->black_args->elts;
-
-    if (p_args->data == NULL || p_args->len == 0) {
-        return NOT_MATCHED;
-    }
-
-    for (size_t i = 0; i < srv_conf->black_args->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, p_args, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-ARGS");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            *out_http_status = NGX_HTTP_FORBIDDEN;
-            return MATCHED;
+        if (p_args->data == NULL || p_args->len == 0) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the ARGS is empty.");
+            ret_value = NOT_MATCHED;
+        } else {
+            for (size_t i = 0; i < srv_conf->black_args->nelts; i++, p++) {
+                ngx_int_t rc = ngx_regex_exec(p->regex, p_args, NULL, 0);
+                if (rc >= 0) {
+                    ctx->blocked = TRUE;
+                    strcpy((char*)ctx->rule_type, "BLACK-ARGS");
+                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    *out_http_status = NGX_HTTP_FORBIDDEN;
+                    ret_value = MATCHED;
+                    break;
+                }
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The ARGS blacklist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the User-Agent blacklist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_UA) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (r->headers_in.user_agent == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the User-Agent is empty.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    if (r->headers_in.user_agent == NULL) {
-        return NOT_MATCHED;
-    }
+        ngx_str_t* p_ua = &r->headers_in.user_agent->value;
+        ngx_regex_elt_t* p = srv_conf->black_ua->elts;
 
-    ngx_str_t* p_ua = &r->headers_in.user_agent->value;
-    ngx_regex_elt_t* p = srv_conf->black_ua->elts;
-
-    if (p_ua->data == NULL || p_ua->len == 0) {
-        return NOT_MATCHED;
-    }
-
-    for (size_t i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, p_ua, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            *out_http_status = NGX_HTTP_FORBIDDEN;
-            return MATCHED;
+        if (p_ua->data == NULL || p_ua->len == 0) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the User-Agent is empty.");
+            ret_value = NOT_MATCHED;
+        } else {
+            for (size_t i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
+                ngx_int_t rc = ngx_regex_exec(p->regex, p_ua, NULL, 0);
+                if (rc >= 0) {
+                    ctx->blocked = TRUE;
+                    strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
+                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    *out_http_status = NGX_HTTP_FORBIDDEN;
+                    ret_value = MATCHED;
+                    break;
+                }
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The User-Agent blacklist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the Referer whitelist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_REFERER) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (r->headers_in.referer == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    if (r->headers_in.referer == NULL) {
-        return NOT_MATCHED;
-    }
+        ngx_str_t* p_referer = &r->headers_in.referer->value;
+        ngx_regex_elt_t* p = srv_conf->white_referer->elts;
 
-    ngx_str_t* p_referer = &r->headers_in.referer->value;
-    ngx_regex_elt_t* p = srv_conf->white_referer->elts;
-
-    if (p_referer->data == NULL || p_referer->len == 0) {
-        return NOT_MATCHED;
-    }
-
-    for (size_t i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-REFERER");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            *out_http_status = NGX_DECLINED;
-            return MATCHED;
+        if (p_referer->data == NULL || p_referer->len == 0) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
+            ret_value = NOT_MATCHED;
+        } else {
+            for (size_t i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
+                ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
+                if (rc >= 0) {
+                    ctx->blocked = FALSE;
+                    strcpy((char*)ctx->rule_type, "WHITE-REFERER");
+                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    *out_http_status = NGX_DECLINED;
+                    ret_value = MATCHED;
+                    break;
+                }
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The Referer whitelist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the Referer blacklist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_REFERER) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (r->headers_in.referer == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
+        ret_value = NOT_MATCHED;
+    } else {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    if (r->headers_in.referer == NULL) {
-        return NOT_MATCHED;
-    }
+        ngx_str_t* p_referer = &r->headers_in.referer->value;
+        ngx_regex_elt_t* p = srv_conf->black_referer->elts;
 
-    ngx_str_t* p_referer = &r->headers_in.referer->value;
-    ngx_regex_elt_t* p = srv_conf->black_referer->elts;
-
-    if (p_referer->data == NULL || p_referer->len == 0) {
-        return NOT_MATCHED;
-    }
-
-    for (size_t i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
-        if (rc >= 0) {
-            ctx->blocked = FALSE;
-            strcpy((char*)ctx->rule_type, "BLACK-REFERER");
-            strcpy((char*)ctx->rule_deatils, (char*)p->name);
-            *out_http_status = NGX_HTTP_FORBIDDEN;
-            return MATCHED;
+        if (p_referer->data == NULL || p_referer->len == 0) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
+            ret_value = NOT_MATCHED;
+        } else {
+            for (size_t i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
+                ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
+                if (rc >= 0) {
+                    ctx->blocked = FALSE;
+                    strcpy((char*)ctx->rule_type, "BLACK-REFERER");
+                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    *out_http_status = NGX_HTTP_FORBIDDEN;
+                    ret_value = MATCHED;
+                    break;
+                }
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The Referer blacklist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the Cookie blacklist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    ngx_int_t ret_value = NOT_MATCHED;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_COOKIE) == FALSE) {
-        return NOT_MATCHED;
-    }
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (r->headers_in.cookies.nelts != 0) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
-    if (r->headers_in.cookies.nelts != 0) {
         ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
         for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
             ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
             for (size_t j = 0; j < srv_conf->black_cookie->nelts; j++, p++) {
+                if ((**ppcookie).value.data == NULL || (**ppcookie).value.len == 0) {
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: The Inspection is skipped because the Cookie.value is empty.");
+                    continue;
+                }
                 ngx_int_t rc = ngx_regex_exec(p->regex, &((*ppcookie)->value), NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = TRUE;
                     strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
                     strcpy((char*)ctx->rule_deatils, (char*)p->name);
                     *out_http_status = NGX_HTTP_FORBIDDEN;
-                    return MATCHED;
+                    ret_value = MATCHED;
+                    break;
+                }
+
+                if ((**ppcookie).key.data == NULL || (**ppcookie).key.len == 0) {
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: The Inspection is skipped because the Cookie.key is empty.");
+                    continue;
                 }
 
                 rc = ngx_regex_exec(p->regex, &((*ppcookie)->key), NULL, 0);
@@ -513,24 +740,45 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                     strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
                     strcpy((char*)ctx->rule_deatils, (char*)p->name);
                     *out_http_status = NGX_HTTP_FORBIDDEN;
-                    return MATCHED;
+                    ret_value = MATCHED;
+                    break;
                 }
             }
+            if (ret_value == MATCHED) {
+                break;
+            }
         }
+
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
     }
 
-    return NOT_MATCHED;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The Cookie blacklist inspection process is fully completed.");
+    return ret_value;
 }
 
 
 static void check_post(ngx_http_request_t* r) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: Start inspecting the Post-Body blacklist.");
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+    
     ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
     ngx_buf_t* body_buf = NULL;
     ngx_str_t body_str;
 
     ctx->read_body_done = TRUE;
+
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection has begun.");
 
     while (buf_chain != NULL) {
         body_buf = buf_chain->buf;
@@ -544,6 +792,8 @@ static void check_post(ngx_http_request_t* r) {
 
 
         if (!ngx_buf_in_memory(body_buf)) {
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                "ngx_waf_debug: The detection is skipped because the Post-Body is not in memory.");
             buf_chain = buf_chain->next;
             continue;
         }
@@ -556,15 +806,26 @@ static void check_post(ngx_http_request_t* r) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-POST");
                 strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
+                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf_debug: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
                 ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
-                return;
+                break;
             }
         }
+
+        if (ctx->blocked != TRUE) {
+            break;
+        }
+
         buf_chain = buf_chain->next;
     }
-    ngx_http_finalize_request(r, NGX_DONE);
-    ngx_http_core_run_phases(r);
+
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Inspection is over.");
+
+    if (ctx->blocked != TRUE) {
+        ngx_http_finalize_request(r, NGX_DONE);
+        ngx_http_core_run_phases(r);
+    }
 }
 
 

@@ -2,13 +2,31 @@
 
 ## [未发布]
 
+### 注意
+
+* 因为在 `v3.0.3` 测试过程中新增了向下兼容的功能，所以 `v3.0.3` 被跳过。
+
 ### 新增
+
+* 增加调试日志便于排障（[bac1d02](https://github.com/ADD-SP/ngx_waf/commit/bac1d026e9e902d9a49881e899cba4965f3388a4)）。
 
 ### 改动
 
 ### 修复
 
+* 修复了一个段错误（[57d7719](https://github.com/ADD-SP/ngx_waf/commit/57d7719654caddc40ee655c797f0984f42c25495)）。
+
 * 更精确的访问频次统计（[53d3b14](https://github.com/ADD-SP/ngx_waf/commit/53d3b149a524252dbb9b8170e31f4b1f4895a6b7)）。
+
+***
+
+## [3.0.2] - 2021-01-10
+
+### 注意
+
+* 因为在 `v3.0.1`上有热修复，所以 `v3.0.2` 的一切测试版本作废，请不要使用这些测试版。
+
+### 修复
 
 * 修复一个了在 `Alpine Linux` 下的编译错误（[e989aa3](https://github.com/ADD-SP/ngx_waf/commit/e989aa34370da73f03627601188ca33844372c4f)）。
 
