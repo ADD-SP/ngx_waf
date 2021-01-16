@@ -290,15 +290,20 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
 static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_str_t* puri = &r->uri;
-    ngx_regex_elt_t* p = srv_conf->white_url->elts;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_URL) == FALSE) {
         return NOT_MATCHED;
     }
 
+    ngx_str_t* p_uri = &r->uri;
+    ngx_regex_elt_t* p = srv_conf->white_url->elts;
+
+    if (p_uri->data == NULL || p_uri->len == 0) {
+        return NOT_MATCHED;
+    }
+
     for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, puri, NULL, 0);
+        ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
         if (rc >= 0) {
             ctx->blocked = FALSE;
             strcpy((char*)ctx->rule_type, "WHITE-URL");
@@ -315,15 +320,20 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
 static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_str_t* puri = &r->uri;
-    ngx_regex_elt_t* p = srv_conf->black_url->elts;
 
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_URL) == FALSE) {
         return NOT_MATCHED;
     }
 
+    ngx_str_t* p_uri = &r->uri;
+    ngx_regex_elt_t* p = srv_conf->black_url->elts;
+
+    if (p_uri->data == NULL || p_uri->len == 0) {
+        return NOT_MATCHED;
+    }
+
     for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, puri, NULL, 0);
+        ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
         if (rc >= 0) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "BLACK-URL");
@@ -350,11 +360,16 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
         return NOT_MATCHED;
     }
 
-    ngx_str_t* pargs = &r->args;
+
+    ngx_str_t* p_args = &r->args;
     ngx_regex_elt_t* p = srv_conf->black_args->elts;
 
+    if (p_args->data == NULL || p_args->len == 0) {
+        return NOT_MATCHED;
+    }
+
     for (size_t i = 0; i < srv_conf->black_args->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, pargs, NULL, 0);
+        ngx_int_t rc = ngx_regex_exec(p->regex, p_args, NULL, 0);
         if (rc >= 0) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "BLACK-ARGS");
@@ -380,11 +395,15 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
         return NOT_MATCHED;
     }
 
-    ngx_str_t* pua = &r->headers_in.user_agent->value;
+    ngx_str_t* p_ua = &r->headers_in.user_agent->value;
     ngx_regex_elt_t* p = srv_conf->black_ua->elts;
 
+    if (p_ua->data == NULL || p_ua->len == 0) {
+        return NOT_MATCHED;
+    }
+
     for (size_t i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, pua, NULL, 0);
+        ngx_int_t rc = ngx_regex_exec(p->regex, p_ua, NULL, 0);
         if (rc >= 0) {
             ctx->blocked = TRUE;
             strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
@@ -410,11 +429,15 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
         return NOT_MATCHED;
     }
 
-    ngx_str_t* preferer = &r->headers_in.referer->value;
+    ngx_str_t* p_referer = &r->headers_in.referer->value;
     ngx_regex_elt_t* p = srv_conf->white_referer->elts;
 
+    if (p_referer->data == NULL || p_referer->len == 0) {
+        return NOT_MATCHED;
+    }
+
     for (size_t i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, preferer, NULL, 0);
+        ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
         if (rc >= 0) {
             ctx->blocked = FALSE;
             strcpy((char*)ctx->rule_type, "WHITE-REFERER");
@@ -440,11 +463,15 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
         return NOT_MATCHED;
     }
 
-    ngx_str_t* preferer = &r->headers_in.referer->value;
+    ngx_str_t* p_referer = &r->headers_in.referer->value;
     ngx_regex_elt_t* p = srv_conf->black_referer->elts;
 
+    if (p_referer->data == NULL || p_referer->len == 0) {
+        return NOT_MATCHED;
+    }
+
     for (size_t i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
-        ngx_int_t rc = ngx_regex_exec(p->regex, preferer, NULL, 0);
+        ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
         if (rc >= 0) {
             ctx->blocked = FALSE;
             strcpy((char*)ctx->rule_type, "BLACK-REFERER");

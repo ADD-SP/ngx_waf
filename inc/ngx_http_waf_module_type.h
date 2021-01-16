@@ -104,7 +104,7 @@ typedef struct {
  * @brief 每个 server 块的配置块
 */
 typedef struct {
-    ngx_log_t                      *ngx_log;                        /**< 记录内存池在进行操作时的错误日志 */
+    ngx_log_t                      *debug_log;                      /**< 记录内存池在进行操作时的错误日志 */
     ngx_pool_t                     *ngx_pool;                       /**< 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                    /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                            /**< 是否启用本模块 */
