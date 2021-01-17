@@ -20,33 +20,39 @@
 #define WHITE_URL_FILE          ("white-url")
 #define WHITE_REFERER_FILE      ("white-referer")
 
-#ifndef TRUE
-#define TRUE                    (1)
-#endif
 
 #ifndef FALSE
 #define FALSE                   (0)
-#endif
-
-#ifndef SUCCESS
-#define SUCCESS                 (1)
 #endif
 
 #ifndef FAIL
 #define FAIL                    (0)
 #endif
 
-#ifndef PROCESSING
-#define PROCESSING              (2)
+#ifndef NOT_MATCHED
+#define NOT_MATCHED             (0)
+#endif
+
+#ifndef TRUE
+#define TRUE                    (1)
+#endif
+
+#ifndef SUCCESS
+#define SUCCESS                 (1)
 #endif
 
 #ifndef MATCHED
 #define MATCHED                 (1)
 #endif
 
-#ifndef NOT_MATCHED
-#define NOT_MATCHED             (0)
+#ifndef PROCESSING
+#define PROCESSING              (2)
 #endif
+
+#ifndef MALLOC_ERROR
+#define MALLOC_ERROR            (3)
+#endif
+
 
 /**
  * @def RULE_MAX_LEN
@@ -62,6 +68,9 @@
 
 #define MAX_ALLOC_TIMES         (100000)
 
+
+#define SHARE_MEMORY_NAME       ("__NGX_WAF__")
+#define SHATE_MEMORY_SIZE       (1024 * 1024 * 10)
 
 /**
  * @def MODE_INSPECT_GET
@@ -247,6 +256,13 @@
  * @def min(a,b)
 */
 #define min(a,b)            (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef max
+/**
+ * @def max(a,b)
+*/
+#define max(a,b)            (((a) > (b)) ? (a) : (b))
 #endif
 
 

@@ -7,12 +7,14 @@
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
-#include <ngx_http_waf_module_ip_hash_table.h>
 #include <ngx_http_waf_module_ip_trie.h>
+#include <ngx_http_waf_module_token_bucket_set.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
+
+extern ngx_module_t ngx_http_waf_module;
 
 static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
 
@@ -79,6 +81,10 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
  * @li 初始化相关的 nginx 变量。
 */
 static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
+
+
+static ngx_int_t ngx_http_waf_share_memory_init(ngx_shm_zone_t *zone, void *data);
+
 
 /**
  * @brief 读取指定文件的内容到容器中。
@@ -248,6 +254,7 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
 
 
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
+    static ngx_uint_t shm_id = 1;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
     srv_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_srv_conf_t));
     if (srv_conf == NULL) {
@@ -257,11 +264,11 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
 
     /* 条件为真时说明编译时 nginx 的版本小于等于 stable。反之则为 Mainline 版本。 */
     #if (nginx_version <= 1018000)
-        srv_conf->ngx_log = ngx_log_init(NULL);
+        srv_conf->debug_log = ngx_log_init(NULL);
     #else
-        srv_conf->ngx_log = ngx_log_init(NULL, NULL);
+        srv_conf->debug_log = ngx_log_init(NULL, NULL);
     #endif
-    srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
+    srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, cf->log);
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mult_mount = NGX_CONF_UNSET;
@@ -276,33 +283,29 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->black_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
-    srv_conf->ngx_pool_for_times_table = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, srv_conf->ngx_log);
+    srv_conf->ip_token_bucket_set = NULL;
 
     if (ip_trie_init(&(srv_conf->black_ipv4), srv_conf->ngx_pool, AF_INET) != SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_ipv4.");
+        return NULL;
     }
 
     if (ip_trie_init(&(srv_conf->black_ipv6), srv_conf->ngx_pool, AF_INET6) != SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_ipv6.");
+        return NULL;
     }
 
     if (ip_trie_init(&(srv_conf->white_ipv4), srv_conf->ngx_pool, AF_INET) != SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize white_ipv4.");
+        return NULL;
     }
 
     if (ip_trie_init(&(srv_conf->white_ipv6), srv_conf->ngx_pool, AF_INET6) != SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize white_ipv6.");
+        return NULL;
     }
 
-    if (ip_hash_table_init(&(srv_conf->ipv4_times_table), srv_conf->ngx_pool_for_times_table, AF_INET) != SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
-    }
-
-    if (ip_hash_table_init(&(srv_conf->ipv6_times_table), srv_conf->ngx_pool_for_times_table, AF_INET6) != SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
-    }
-
-    if (srv_conf->ngx_log == NULL
+    if (srv_conf->debug_log == NULL
         || srv_conf->ngx_pool == NULL
         || srv_conf->black_ipv4 == NULL
         || srv_conf->black_url == NULL
@@ -315,6 +318,29 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
         return NULL;
     }
+
+    u_char* str = ngx_pcalloc(srv_conf->ngx_pool, sizeof(u_char) * 1025);
+    memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
+    ngx_uint_t id = (ngx_uint_t)shm_id++;
+    int index = cf->conf_file->file.name.len;
+    while (id != 0) {
+        str[index++] = (id % 10) + '0';
+        id /= 10;
+    }
+    str[index] = '\0';
+    strcat((char*)str, SHARE_MEMORY_NAME);
+    ngx_str_t name;
+    name.data = str;
+    name.len = strlen((char*)str);
+    srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, SHATE_MEMORY_SIZE, &ngx_http_waf_module);
+
+    if (srv_conf->shm_zone == NULL) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to allocate shared memory.");
+        return NULL;
+    }
+
+    srv_conf->shm_zone->init = ngx_http_waf_share_memory_init;
+    srv_conf->shm_zone->data = srv_conf;
 
     return srv_conf;
 }
@@ -408,7 +434,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_core_main_conf_t* cmcf;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
@@ -434,6 +460,24 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 
     return NGX_OK;
 }
+
+
+static ngx_int_t ngx_http_waf_share_memory_init(ngx_shm_zone_t *zone, void *data) {
+    ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
+    ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)(zone->data);
+    srv_conf->ip_token_bucket_set = ngx_slab_calloc(shpool, sizeof(token_bucket_set_t));
+    if (srv_conf->ip_token_bucket_set == NULL) {
+        return NGX_ERROR;
+    }
+    if (token_bucket_set_init(srv_conf->ip_token_bucket_set, 
+                              slab_pool, shpool, 
+                              srv_conf->waf_cc_deny_limit, 
+                              srv_conf->waf_cc_deny_duration) == SUCCESS) {
+        return NGX_OK;
+    }
+    return NGX_ERROR;
+}
+
 
 static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
@@ -486,7 +530,13 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
             regex_compile.pool = cf->pool;
             regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
             regex_compile.err.data = errstr;
-            ngx_regex_compile(&regex_compile);
+            if (ngx_regex_compile(&regex_compile) != NGX_OK) {
+                char temp[RULE_MAX_LEN] = { 0 };
+                to_c_str((u_char*)temp, line);
+                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                    "ngx_waf: In %s:%d, [%s] is not a valid regex string.", file_name, line_number, temp);
+                return FAIL;
+            }
             ngx_regex_elt = ngx_array_push((ngx_array_t*)container);
             ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * RULE_MAX_LEN);
             to_c_str(ngx_regex_elt->name, line);
@@ -495,19 +545,19 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
         case 1:
             if (parse_ipv4(line, &ipv4) != SUCCESS) {
                 ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                    "ngx_waf: In line %d, [%s] is not a valid IPV4 string.", line_number, ipv4.text);
+                    "ngx_waf: In %s:%d, [%s] is not a valid IPV4 string.", file_name, line_number, ipv4.text);
                 return FAIL;
             }
             inx_addr.ipv4.s_addr = ipv4.prefix;
             if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv4.suffix_num, ipv4.text) != SUCCESS) {
                 if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == SUCCESS) {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In line %d, the two address blocks [%s] and [%s] have overlapping parts.", 
-                        line_number, ipv4.text, ip_trie_node->text);
+                        "ngx_waf: In %s:%d, the two address blocks [%s] and [%s] have overlapping parts.", 
+                        file_name, line_number, ipv4.text, ip_trie_node->text);
                 } else {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In line %d, [%s] cannot be stored because the memory allocation failed.", 
-                        line_number, ipv4.text);
+                        "ngx_waf: In %s:%d, [%s] cannot be stored because the memory allocation failed.", 
+                        file_name, line_number, ipv4.text);
                         return FAIL;
                 }
                 
@@ -516,19 +566,19 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
         case 2:
             if (parse_ipv6(line, &ipv6) != SUCCESS) {
                 ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                    "ngx_waf: In line %d, [%s] is not a valid IPV6 string.", line_number, ipv6.text);
+                    "ngx_waf: In %s:%d, [%s] is not a valid IPV6 string.", file_name, line_number, ipv6.text);
                 return FAIL;
             }
             memcpy(inx_addr.ipv6.s6_addr, ipv6.prefix, 16);
             if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text) != SUCCESS) {
                 if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == SUCCESS) {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In line %d, the two address blocks [%s] and [%s] have overlapping parts.", 
-                        line_number, ipv6.text, ip_trie_node->text);
+                        "ngx_waf: In %s:%d, the two address blocks [%s] and [%s] have overlapping parts.", 
+                        file_name, line_number, ipv6.text, ip_trie_node->text);
                 } else {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In line %d, [%s] cannot be stored because the memory allocation failed.", 
-                        line_number, ipv6.text);
+                        "ngx_waf: In %s:%d, [%s] cannot be stored because the memory allocation failed.", 
+                        file_name, line_number, ipv6.text);
                         return FAIL;
                 }
             }

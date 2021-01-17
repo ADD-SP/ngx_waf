@@ -11,7 +11,29 @@
 
 ***
 
+## [3.1.0] - 2021-01-17
+
+### Note
+
+* `v3.0.3` was skipped because a backward compatibility feature was added during the `v3.0.3` test.
+
+### Added
+
+* Add debug log for easy troubleshooting ([bac1d02](https://github.com/ADD-SP/ngx_waf/commit/bac1d026e9e902d9a49881e899cba4965f3388a4)).
+
+### Fixed
+
+* Fixed a segmentation fault ([57d7719](https://github.com/ADD-SP/ngx_waf/commit/57d7719654caddc40ee655c797f0984f42c25495))。
+
+* More accurate visit frequency statistics ([53d3b14](https://github.com/ADD-SP/ngx_waf/commit/53d3b149a524252dbb9b8170e31f4b1f4895a6b7)).
+
+***
+
 ## [3.0.2] - 2021-01-10
+
+### Note
+
+* Because of hotfixes performed on `v3.0.1`, all beta versions of `v3.0.2` are voided, please do not use these beta versions.
 
 ### Fixed
 

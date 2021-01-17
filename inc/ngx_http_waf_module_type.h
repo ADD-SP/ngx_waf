@@ -25,6 +25,45 @@ typedef union {
 } inx_addr_t;
 
 /**
+ * @enum memory_pool_type_e
+ * @brief 内存池类型
+*/
+typedef enum {
+    gernal_pool, /**< ngx_pool_t */
+    slab_pool /**< ngx_slab_pool_t */
+} memory_pool_type_e;
+
+
+/**
+ * @struct token_bucket_t
+ * @brief 令牌桶
+*/
+typedef struct {
+    inx_addr_t inx_addr; /**< 作为哈希表中的 key */
+    ngx_uint_t count; /**< 令牌剩余量 */
+    ngx_int_t is_ban; /**< 令牌桶是否暂时被禁止 */
+    time_t last_ban_time; /**< 最后一次开始禁止令牌桶的时间 */
+    UT_hash_handle hh; /**< uthash 关键成员 */
+} token_bucket_t;
+
+
+/**
+ * @struct token_bucket_set_t
+ * @brief 令牌桶集合
+*/
+typedef struct {
+    memory_pool_type_e memory_pool_type; /**< 内存池类型 */
+    void* memory_pool; /**< 创建令牌桶和释放令牌桶所用的内存池 */
+    ngx_uint_t ban_duration; /**< 当令牌桶为空时自动禁止该桶一段时间（分钟）*/
+    time_t last_put; /**< 上次集中添加令牌的时间 */
+    time_t last_clear; /**< 上次清空令牌桶的时间 */
+    ngx_uint_t init_count; /**< 令牌桶内初始的令牌数量 */
+    ngx_uint_t bucket_count; /**< 已经有多少个令牌桶 */
+    token_bucket_t *head; /**< 哈希表标头 */
+} token_bucket_set_t;
+
+
+/**
  * @struct ip_trie_node_t
  * @brief 前缀树节点。
 */
@@ -48,32 +87,6 @@ typedef struct {
 
 
 /**
- * @struct ip_hash_table_item_t
- * @brief 哈希表项
-*/
-typedef struct {
-    union {
-        struct in_addr ipv4;
-        struct in6_addr ipv6;
-    } key;
-    ngx_uint_t times; /**< 访问频次（一分钟） */
-    time_t start_time; /**< 开始统计的时间 */
-    UT_hash_handle hh; /**< uthash 关键成员 */
-} ip_hash_table_item_t;
-
-/**
- * @struct ip_hash_table_item_t
- * @brief IP 哈希表
-*/
-typedef struct {
-    int ip_type; /**< 作为 key 的 ip 类型 */
-    ip_hash_table_item_t *head; /**< 哈希表头 */
-    uint32_t length; /**< 哈希表长度 */
-    ngx_pool_t *memory_pool; /**< 用于初始化、添加和删除节点的内存池 */
-} ip_hash_table_t;
-
-
-/**
  * @struct ngx_http_waf_ctx_t
  * @brief 每个请求的上下文
 */
@@ -91,7 +104,7 @@ typedef struct {
  * @brief 每个 server 块的配置块
 */
 typedef struct {
-    ngx_log_t                      *ngx_log;                        /**< 记录内存池在进行操作时的错误日志 */
+    ngx_log_t                      *debug_log;                      /**< 记录内存池在进行操作时的错误日志 */
     ngx_pool_t                     *ngx_pool;                       /**< 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                    /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                            /**< 是否启用本模块 */
@@ -112,11 +125,8 @@ typedef struct {
     ip_trie_t                      *white_ipv6;                     /**< IPV6 白名单 */
     ngx_array_t                    *white_url;                      /**< URL 白名单 */
     ngx_array_t                    *white_referer;                  /**< Referer 白名单 */
-    ngx_pool_t                     *ngx_pool_for_times_table;       /**< 访问频次表专用的内存池 */
-    ip_hash_table_t                *ipv4_times_table;               /**< IPV4 访问频率统计表 */
-    ip_hash_table_t                *ipv6_times_table;               /**< IPV6 访问频率统计表 */
-
-    ngx_pool_t                     *ngx_pool_for_times_table_old;   /**< 执行函数 free_hash_table 时用于备份旧的内存池 */
+    ngx_shm_zone_t                 *shm_zone;                       /**< 共享内存 */
+    token_bucket_set_t             *ip_token_bucket_set;            /**< IP 访问令牌桶集合 */
 }ngx_http_waf_srv_conf_t;
 
 /**

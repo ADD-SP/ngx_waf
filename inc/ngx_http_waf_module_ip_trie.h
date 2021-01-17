@@ -63,7 +63,7 @@ static ngx_int_t ip_trie_init(ip_trie_t** trie, ngx_pool_t* memory_pool, int ip_
 
     *trie = (ip_trie_t*)ngx_pcalloc(memory_pool, sizeof(ip_trie_t));
     if (*trie == NULL) {
-        return FAIL;
+        return MALLOC_ERROR;
     }
 
     (*trie)->ip_type = ip_type;
@@ -72,7 +72,7 @@ static ngx_int_t ip_trie_init(ip_trie_t** trie, ngx_pool_t* memory_pool, int ip_
     (*trie)->size = 0;
 
     if ((*trie)->root == NULL) {
-        return FAIL;
+        return MALLOC_ERROR;
     }
 
     return SUCCESS;
@@ -91,7 +91,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
 
     new_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
     if (new_node == NULL) {
-        return FAIL;
+        return MALLOC_ERROR;
     }
     
     new_node->is_ip = TRUE;
@@ -119,7 +119,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             if (cur_node == NULL) {
                 cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
-                    return FAIL;
+                    return MALLOC_ERROR;
                 }
                 if (prev_bit == 0) {
                     prev_node->left = cur_node;
@@ -140,7 +140,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         if (cur_node == NULL) {
             cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
-                return FAIL;
+                return MALLOC_ERROR;
             }
             if (prev_bit == 0) {
                 prev_node->left = cur_node;
@@ -161,7 +161,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             if (cur_node == NULL) {
                 cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
-                    return FAIL;
+                    return MALLOC_ERROR;
                 }
                 if (prev_bit == 0) {
                     prev_node->left = cur_node;
@@ -182,7 +182,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         if (cur_node == NULL) {
             cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
-                return FAIL;
+                return MALLOC_ERROR;
             }
             if (prev_bit == 0) {
                 prev_node->left = cur_node;
