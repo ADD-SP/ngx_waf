@@ -151,8 +151,9 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
 static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)conf;
     ngx_str_t* modes = cf->args->elts;
+    size_t i;
 
-    for (size_t i = 1; i < cf->args->nelts && modes != NULL; i++) {
+    for (i = 1; i < cf->args->nelts && modes != NULL; i++) {
         if (ngx_strncasecmp(modes[i].data, (u_char*)"GET", min(modes[i].len, 5)) == 0) {
             srv_conf->waf_mode |= MODE_INSPECT_GET;
         } 

@@ -11,6 +11,14 @@
 
 ***
 
+## [3.1.1] - 2021-01-18
+
+### Fixed
+
+* Compatible with lower versions of gcc ([becbbe0](https://github.com/ADD-SP/ngx_waf/commit/becbbe022b9f6efa606e720d7cbcd6c5d6f22c33)).
+
+***
+
 ## [3.1.0] - 2021-01-17
 
 ### Note

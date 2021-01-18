@@ -8,6 +8,14 @@
 
 ### 修复
 
+***
+
+## [v3.1.1] - 2021-01-18
+
+### 修复
+
+* 兼容较低版本的 GCC（[becbbe0](https://github.com/ADD-SP/ngx_waf/commit/becbbe022b9f6efa606e720d7cbcd6c5d6f22c33)）。
+
 
 ***
 
