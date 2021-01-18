@@ -383,7 +383,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
             "ngx_waf_debug: The Inspection is skipped because the URL is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
+            size_t i;
+            for (i = 0; i < srv_conf->white_url->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = FALSE;
@@ -436,7 +437,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
             "ngx_waf_debug: The Inspection is skipped because the URL is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
+            size_t i;
+            for (i = 0; i < srv_conf->black_url->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = TRUE;
@@ -493,7 +495,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
             "ngx_waf_debug: The Inspection is skipped because the ARGS is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            for (size_t i = 0; i < srv_conf->black_args->nelts; i++, p++) {
+            size_t i;
+            for (i = 0; i < srv_conf->black_args->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, p_args, NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = TRUE;
@@ -550,7 +553,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
             "ngx_waf_debug: The Inspection is skipped because the User-Agent is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            for (size_t i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
+            size_t i;
+            for (i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, p_ua, NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = TRUE;
@@ -607,7 +611,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
             "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            for (size_t i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
+            size_t i;
+            for (i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = FALSE;
@@ -664,7 +669,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
             "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            for (size_t i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
+            size_t i;
+            for (i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
                 if (rc >= 0) {
                     ctx->blocked = FALSE;
@@ -710,9 +716,11 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
-        for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
+        size_t i;
+        for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
             ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
-            for (size_t j = 0; j < srv_conf->black_cookie->nelts; j++, p++) {
+            size_t j;
+            for (j = 0; j < srv_conf->black_cookie->nelts; j++, p++) {
                 if ((**ppcookie).value.data == NULL || (**ppcookie).value.len == 0) {
                     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                         "ngx_waf_debug: The Inspection is skipped because the Cookie.value is empty.");
@@ -800,7 +808,8 @@ static void check_post(ngx_http_request_t* r) {
 
         ngx_regex_elt_t* p = srv_conf->black_post->elts;
         ngx_int_t rc;
-        for (size_t i = 0; i < srv_conf->black_post->nelts; i++, p++) {
+        size_t i;
+        for (i = 0; i < srv_conf->black_post->nelts; i++, p++) {
             rc = ngx_regex_exec(p->regex, &body_str, NULL, 0);
             if (rc >= 0) {
                 ctx->blocked = TRUE;

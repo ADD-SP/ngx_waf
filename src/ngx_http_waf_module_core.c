@@ -120,7 +120,8 @@ static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
             http_status = NGX_DECLINED;
         }
         else {
-            for (size_t i = 0; check_proc[i] != NULL; i++) {
+            size_t i;
+            for (i = 0; check_proc[i] != NULL; i++) {
                 is_matched = check_proc[i](r, &http_status);
                 if (is_matched == MATCHED) {
                     break;
@@ -185,7 +186,8 @@ static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_htt
                 http_status = NGX_DECLINED;
             }
             else {
-                for (size_t i = 0; check_proc[i] != NULL; i++) {
+                size_t i;
+                for (i = 0; check_proc[i] != NULL; i++) {
                     is_matched = check_proc[i](r, &http_status);
                     if (is_matched == MATCHED) {
                         break;

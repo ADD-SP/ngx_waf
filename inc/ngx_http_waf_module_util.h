@@ -123,14 +123,16 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     suffix_num = suffix;
 
     uint8_t temp_suffix[4] = { 0 };
-    for (int i = 0; i < 4; i++) {
+    int i;
+    for (i = 0; i < 4; i++) {
         uint8_t temp = 0;
         if (suffix >= 8) {
             suffix -=8;
             temp = ~0;
         } 
         else {
-            for (uint32_t j = 0; j < suffix; j++) {
+            uint32_t j;
+            for (j = 0; j < suffix; j++) {
                 temp |= 0x80 >> j;
             }
             suffix = 0;
@@ -139,7 +141,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     }
 
     suffix = 0;
-    for (int i = 0; i < 4; i++) {
+    for (i = 0; i < 4; i++) {
         suffix |= ((uint32_t)temp_suffix[i]) << (i * 8);
     }
 
@@ -203,15 +205,16 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     }
 
     suffix_num = temp_suffix;
-
-    for (int i = 0; i < 16; i++) {
+    int i;
+    for (i = 0; i < 16; i++) {
         uint8_t temp = 0;
         if (temp_suffix >= 8) {
             temp_suffix -=8;
             temp = ~0;
         } 
         else {
-            for (uint32_t j = 0; j < temp_suffix; j++) {
+            uint32_t j;
+            for (j = 0; j < temp_suffix; j++) {
                 temp |= 0x80 >> j;
             }
             temp_suffix = 0;
@@ -219,7 +222,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
         suffix[i] = temp;
     }
 
-    for (int i = 0; i < 16; i++) {
+    for (i = 0; i < 16; i++) {
         prefix[i] &= suffix[i];
     }
 
