@@ -279,7 +279,7 @@
 */
 #define CHECK_AND_LOAD_CONF(cf, folder, end, filename, container, mode) {                                       \
     strcat((folder), (filename));                                                                               \
-    if (access((folder), 2) != 0) {                                                                             \
+    if (access((folder), R_OK) != 0) {                                                                             \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
         return NGX_CONF_ERROR;                                                                                  \
     }                                                                                                           \

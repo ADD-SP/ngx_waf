@@ -11,6 +11,14 @@
 
 ***
 
+## [3.1.2] - 2021-01-18
+
+### Fixed
+
+* Fixed a bug that caused module initialization to fail when the rule file was not writable ([20acd27](https://github.com/ADD-SP/ngx_waf/commit/20acd27815d1f266d89c1557e93848c96117b8ff)).
+
+***
+
 ## [3.1.1] - 2021-01-18
 
 ### Fixed

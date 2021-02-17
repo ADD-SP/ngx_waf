@@ -1,18 +1,21 @@
 name: test
 
 on: 
-  push:
-    branches:
-      - master
-      - dev
-  pull_request:
-    branches:
-      - master
-      - dev
+  - push
+  - pull_request
 
 
 jobs:
-  test:
+  docker:
+    runs-on: ubuntu-latest
+    needs: native
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Build image with nginx:stable-alpine
+        run: docker build -t test/nginx --build-arg=NGINX_VER=1.18.0 .
+  native:
     runs-on: ubuntu-latest
     strategy:
       matrix:
