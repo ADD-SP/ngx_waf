@@ -3,7 +3,7 @@ ARG CHANGE_SOURCE=false
 
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
-## docker build build-arg=CHANGE_SOURCE=false .
+## DOCKER_BUILDKIT=1 docker build -t test/nginx --build-arg=CHANGE_SOURCE=true .
 RUN set -xe \
     ## If you're in China, or you need to change sources, will be set CHANGE_SOURCE to true in .env.
     && if [ ${CHANGE_SOURCE} = true ]; then \
@@ -28,8 +28,10 @@ RUN set -xe \
         gd-dev \
         geoip-dev \
     && pip install lastversion \
+    # && nginx_version="$(nginx -v 2>&1| awk -F/ '{print $2}')" \
     && nginx_version="$(lastversion nginx:stable)" \
     && nginx_dir="nginx-${nginx_version}" \
+    # && wget "https://nginx.org/download/${nginx_dir}.tar.gz" -O "${nginx_dir}.tar.gz" \
     && wget "$(lastversion --format source nginx:stable)" -O "${nginx_dir}.tar.gz" \
     && tar -zxf "${nginx_dir}.tar.gz" \
     && cd "${nginx_dir}" \
