@@ -10,12 +10,19 @@
 
 ***
 
-## [v3.1.1] - 2021-01-18
+## [3.1.2] - 2021-02-17
+
+### 修复
+
+* 修复了一个 bug，这个 bug 会导致当规则文件不具有可写权限时初始化失败（[20acd27](https://github.com/ADD-SP/ngx_waf/commit/20acd27815d1f266d89c1557e93848c96117b8ff)）。
+
+***
+
+## [3.1.1] - 2021-01-18
 
 ### 修复
 
 * 兼容较低版本的 GCC（[becbbe0](https://github.com/ADD-SP/ngx_waf/commit/becbbe022b9f6efa606e720d7cbcd6c5d6f22c33)）。
-
 
 ***
 
