@@ -1,2 +1,4 @@
 inc/uthash
 .vscode
+node_modules
+docs/.vuepress/dist

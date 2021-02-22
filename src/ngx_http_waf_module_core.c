@@ -78,6 +78,8 @@ ngx_module_t ngx_http_waf_module = {
 
 static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
     static ngx_http_waf_check check_proc[] = {
+        ngx_http_waf_handler_check_white_ip,
+        ngx_http_waf_handler_check_black_ip,
         ngx_http_waf_handler_check_white_url,
         ngx_http_waf_handler_check_black_url,
         ngx_http_waf_handler_check_black_args,
