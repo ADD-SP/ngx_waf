@@ -6,7 +6,7 @@ actionText: Quick Start →
 actionLink: /guide/
 features:
 - title: Complete functionality
-  details: Includes the basic features of an application firewall, such as URL inspection, POST inspection, and CC defense.
+  details: Includes the basic functions of an application firewall, such as URL inspection, POST inspection, and CC defense.
 - title: Easy to use
   details: Configuration files and rules files are simple to write.
 - title: Guaranteed Performance

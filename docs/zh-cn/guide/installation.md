@@ -14,7 +14,7 @@ sidebarDepth: 3
 您可以运行下面的命令构建一个名为 `nginx:stable-alpine-with-ngx_waf` 的镜像。
 
 ```sh
-docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true
+docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true .
 ```
 
 ::: tip 注意

@@ -1,8 +1,11 @@
 name: docs
 
 on: 
-  - push
-  - pull_request
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
 
 
 jobs:
