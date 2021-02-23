@@ -13,7 +13,7 @@ This module adds three available variables.
 
 Whether this request is intercepted by this module, if intercepted, its value is `'true'`, otherwise it is `'false'`.
 
-## `$waf_rule_type
+## `$waf_rule_type`
 
 If current request was blocked by this module, this variable is set to the triggered rule type, otherwise `'null'`. The following are possible values.
 

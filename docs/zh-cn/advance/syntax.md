@@ -31,7 +31,7 @@ lang: zh-CN
 进行多阶段检查，当`nginx.conf`存在地址重写的情况下（如`rewrite`配置）建议启用，反之建议关闭。
 
 本配置用于兼容 [ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html) 
-模块，详见[模块兼容性](/zh-cn/guide/compatibility#ngx_http_rewrite_module)。
+模块，详见[模块兼容性](/zh-cn/guide/compatibility.md#ngx_http_rewrite_module)。
 
 ::: warning 警告
 
