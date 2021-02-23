@@ -33,5 +33,5 @@ This module is compatible with
 There is a compatibility issue. 
 When the `return` or `rewrite` directives are used, the detection process of this module may be skipped.
 
-See [waf_mult_mount](/advance/syntax#waf-mult-mount) for the imperfect solution.
+See [waf_mult_mount](/advance/syntax.md#waf-mult-mount) for the imperfect solution.
 

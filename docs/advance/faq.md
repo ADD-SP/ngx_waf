@@ -22,7 +22,7 @@ http {
 }
 ```
 [client_body_buffer_size](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_buffer_size) 
-and [client_body_in_file_only](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_in_file_only)。
+and [client_body_in_file_only](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_body_in_file_only).
 
 ## fork() failed while spawning "worker process" (12: Cannot allocate memory)
 

@@ -28,5 +28,5 @@ lang: zh-CN
 本模块与 [ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html) 
 存在兼容性问题。当使用了 `return` 或 `rewrite` 指令时可能会导致本模块的检测流程被跳过。
 
-缓解方式见 [waf_mult_mount](/zh-cn/advance/syntax#waf-mult-mount)。
+缓解方式见 [waf_mult_mount](/zh-cn/advance/syntax.md#waf-mult-mount)。
 
