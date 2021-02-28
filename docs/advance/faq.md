@@ -5,6 +5,35 @@ lang: en
 
 # FAQ
 
+## ./configure: error: the ngx_http_waf_module module requires the uthash library.
+
+This module requires the `uthash` library, which you can install via the package manager.
+
+### Ubuntu And Debian
+
+```sh
+sudo apt-get update
+sudo apt-get install uthash-dev
+```
+
+### Centos8
+
+```sh
+dnf --enablerepo=PowerTools install uthash-devel
+```
+
+### Alpine
+
+```sh
+apk update
+apk add --upgrade uthash-dev
+```
+
+### Other
+
+See [https://pkgs.org/download/uthash-devel](https://pkgs.org/download/uthash-devel) and 
+[https://pkgs.org/download/uthash-dev](https://pkgs.org/download/uthash-dev)。
+
 ## How does this module perform?
 
 The time complexity of IP inspecting and Anti Challenge Collapsar is O(1), and the other inspecting are O(nm), where n is the number of relevant rules and m is the time complexity of performing regular expression matching.

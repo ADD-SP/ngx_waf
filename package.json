@@ -7,7 +7,7 @@
     "vuepress-plugin-fulltext-search": "^2.1.0"
   },
   "scripts": {
-    "docs:dev": "vuepress dev docs",
-    "docs:build": "vuepress build docs"
+    "docs:dev": "npx vuepress dev docs",
+    "docs:build": "npx vuepress build docs"
   }
 }
