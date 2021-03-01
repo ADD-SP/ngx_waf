@@ -33,7 +33,7 @@ Perform a multi-stage check, when `nginx.conf` exists address rewriting (such as
 
 This configuration is used for compatibility with the 
 [ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html) 
-module, see [module compatibility](guide/compatibility#ngx_http_rewrite_module) for details.
+module, see [module compatibility](guide/compatibility.md#ngx_http_rewrite_module) for details.
 
 ::: warning WARNING
 
