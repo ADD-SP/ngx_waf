@@ -12,7 +12,7 @@ This module does not provide compatibility support for Windows platforms.
 
 ## Nginx Compatibility
 
-This module currently supports `nginx-1.18.0` and `nginx-1.19.6` versions.
+This module currently supports `nginx-1.18.0` and `nginx-1.19.7` versions.
 
 ::: tip NOTE
 
