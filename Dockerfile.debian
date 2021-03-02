@@ -8,6 +8,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -xe \ 
     && apt-get update --yes \
     && apt-get install --yes build-essential \
+        wget \
         make \
         gcc \
         zlib1g-dev \ 
