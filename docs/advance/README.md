@@ -10,6 +10,5 @@ lang: en
 * [Rule Priority](priority.md)
 * [Built-in Variables](variable.md)
 * [Log](log.md)
-* [FAQ](faq.md)
 * [Known Issues](issue.md)
 * [Changes](changes.md)

@@ -11,6 +11,7 @@ lang: zh-CN
 * [安装](installation.md)
 * [配置](configuration.md)
 * [测试](test.md)
+* [常见问题与解答](faq.md)
 
 
 
