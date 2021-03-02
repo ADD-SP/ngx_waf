@@ -5,7 +5,7 @@ ARG NGINX_VER=1.18.0
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
 
-SHELL ["/bin/ash", "-o", "pipefail", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ## DOCKER_BUILDKIT=1 docker build -t test/nginx --build-arg=NGINX_VER=1.18.0 --build-arg=CHANGE_SOURCE=true .
 RUN set -xe \
     ## If you're in China, or you need to change sources, will be set CHANGE_SOURCE to true in .env.
