@@ -2,6 +2,7 @@
 
 ![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=A%20web%20application%20firewall%20module%20for%20nginx%20without%20complex%20configuration.&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/b34cd96389f941af8a9b7c4f7ffb6e14)](https://app.codacy.com/gh/ADD-SP/ngx_waf?utm_source=github.com&utm_medium=referral&utm_content=ADD-SP/ngx_waf&utm_campaign=Badge_Grade_Settings)
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://add-sp.github.io/ngx_waf/)
 [![](https://img.shields.io/badge/nginx-%3E%3D1.18.0-important)](http://nginx.org/en/download.html)
