@@ -4,6 +4,7 @@
 */
 
 #include <stdio.h>
+#include <string.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
