@@ -93,7 +93,7 @@ The content of the Post body will be blocked if any of the regular expressions m
 
 ::: warning WARNING
 
-Sometimes this module does not perform Post body inspection, see [FAQ](faq.md#post-inspection-failure) for details.
+Sometimes this module does not perform Post body inspection, see [FAQ](/guide/faq.md#post-inspection-failure) for details.
 
 :::
 

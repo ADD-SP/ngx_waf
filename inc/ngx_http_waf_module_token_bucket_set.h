@@ -198,7 +198,7 @@ ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ng
 }
 
 ngx_int_t token_bucket_set_clear(token_bucket_set_t* set) {
-    token_bucket_t *p, *prev;
+    token_bucket_t *p = NULL, *prev = NULL;
     for (p = set->head; p != NULL; ) {
         prev = p;
         p = (token_bucket_t*)(p->hh.next);
