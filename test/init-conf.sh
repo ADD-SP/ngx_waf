@@ -15,4 +15,4 @@ else
     cp "${new_dynamic_module_conf}" "${ngx_root}/conf/nginx.conf"
 fi
 
-cp -r "${rules_dir}” "${ngx_root}/conf/rules"
+cp -r "${rules_dir}" "${ngx_root}/conf/rules"
