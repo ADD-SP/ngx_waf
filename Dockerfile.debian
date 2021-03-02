@@ -1,19 +1,11 @@
 FROM nginx:stable as builder
-ARG CHANGE_SOURCE=false
 ARG NGINX_VER=1.18.0
 
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-## DOCKER_BUILDKIT=1 docker build -t test/nginx --build-arg=NGINX_VER=1.18.0 --build-arg=CHANGE_SOURCE=true .
-RUN set -xe \
-    ## If you're in China, or you need to change sources, will be set CHANGE_SOURCE to true in .env.
-    && if [ ${CHANGE_SOURCE} = true ]; then \
-    # Change application source from dl-cdn.alpinelinux.org to aliyun source
-    # ssed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
-    # sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/' /etc/apk/repositories \
-    ;fi \
+RUN set -xe \ 
     && apt-get update \
     && apt-get install build-essential \
         zlib1g-dev \ 
