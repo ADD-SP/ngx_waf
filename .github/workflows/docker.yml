@@ -1,0 +1,110 @@
+name: docker
+
+on: 
+  push:
+    - master
+    - dev
+
+
+jobs:
+  debian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER_NAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+      - name: Build and push (ngx_waf:stable)
+        if: ${{ github.ref == 'refs/heads/master' }}
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.debian
+          push: true
+          tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:stable
+          platforms: |
+            linux/386
+            linux/amd64
+            linux/arm64/v8
+            linux/arm/v5
+            linux/arm/v7
+            linux/mips64le
+            linux/ppc64le
+            linux/s390x
+      - name: Build and push (ngx_waf:latest & ngx_waf:dev)
+        if: ${{ github.ref == 'refs/heads/dev' }}
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.debian
+          push: true
+          tags: | 
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:latest
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:dev
+          platforms: |
+            linux/386
+            linux/amd64
+            linux/arm64/v8
+            linux/arm/v5
+            linux/arm/v7
+            linux/mips64le
+            linux/ppc64le
+            linux/s390x
+  alpine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER_NAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+      - name: Build and push (ngx_waf:stable-alpine)
+        if: ${{ github.ref == 'refs/heads/master' }}
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.alpine
+          push: true
+          tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:stable-alpine
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
+            linux/arm/v6
+            linux/arm/v7
+            linux/386
+            linux/ppc64le
+            linux/s390x
+      - name: Build and push (ngx_waf:latest & ngx_waf:dev)
+        if: ${{ github.ref == 'refs/heads/dev' }}
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.alpine
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:latest
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:dev
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
+            linux/arm/v6
+            linux/arm/v7
+            linux/386
+            linux/ppc64le
+            linux/s390x
+
