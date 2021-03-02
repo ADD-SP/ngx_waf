@@ -6,8 +6,8 @@ COPY . ./ngx_waf
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -xe \ 
-    && apt-get update \
-    && apt-get install build-essential \
+    && apt-get update --yes \
+    && apt-get install --yes build-essential \
         zlib1g-dev \ 
         libpcre3 \ 
         libpcre3-dev \ 
