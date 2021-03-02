@@ -12,6 +12,5 @@ lang: zh-CN
 * [规则优先级](priority.md)
 * [内置变量](variable.md)
 * [日志](log.md)
-* [常见问题与解答](faq.md)
 * [已知问题](issue.md)
 * [更新日志](changes.md)

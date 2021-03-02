@@ -10,6 +10,16 @@
 
 ***
 
+## [3.1.4] - 2021-03-02
+
+### Added
+
+### Changed
+
+* Use safer string handling functions to avoid buffer overflows when conditions allow.
+
+***
+
 ## [3.1.3] - 2021-02-23
 
 ### Fixed

@@ -103,8 +103,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
 
     ip_trie_node_t* prev_node = trie->root;
     ip_trie_node_t* cur_node = trie->root;
-    uint32_t bit_index = 0;
-    int uint8_index = 0;
+    uint32_t bit_index = 0, uint8_index;
     int prev_bit = 0;
 
     if (trie->ip_type == AF_INET) {

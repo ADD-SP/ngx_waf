@@ -11,6 +11,7 @@ lang: en
 * [Installation Guide](installation.md)
 * [Configuration Guide](configuration.md)
 * [Test](test.md)
+* [FAQ](faq.md)
 
 
 
