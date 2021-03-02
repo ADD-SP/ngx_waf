@@ -11,7 +11,7 @@ while [ $i -lt 200 ] ; do
 done
 
 . test/get-http-status.sh
-if [ $http_status -ne 503 ] ; then
+if [ "$http_status" -ne 503 ] ; then
     exit 1
 fi
 
