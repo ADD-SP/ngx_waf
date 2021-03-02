@@ -28,7 +28,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: addsp/ngx_waf:dev
+          tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:dev
           platforms: |
             linux/amd64
             linux/arm/v6
