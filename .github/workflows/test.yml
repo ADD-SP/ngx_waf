@@ -84,7 +84,7 @@ jobs:
           sudo useradd nginx -s /sbin/nologin -M
           sudo chmod 777 -R /usr/local/nginx
           sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
-      - name: Initial nginx.conf
+      - name: Initialize nginx.conf
         run: |
           sudo chmod 777 -R test
           sudo ./test/init-conf.sh /usr/local/nginx
