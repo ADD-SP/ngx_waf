@@ -6,13 +6,13 @@ new_dynamic_module_conf='test/nginx-dynamic-module.conf'
 rules_dir='rules'
 
 if [ -e "${ngx_root}/conf/nginx.conf" ] ; then
-    rm -rf ${ngx_root}/conf/nginx.conf
+    rm -rf "${ngx_root}/conf/nginx.conf"
 fi
 
 if [ $opt = '--add-module' ] ; then
-    cp ${new_static_module_conf} ${ngx_root}/conf/nginx.conf
+    cp ${new_static_module_conf} "${ngx_root}/conf/nginx.conf"
 else
-    cp ${new_dynamic_module_conf} ${ngx_root}/conf/nginx.conf
+    cp ${new_dynamic_module_conf} "${ngx_root}/conf/nginx.conf"
 fi
 
-cp -r ${rules_dir} ${ngx_root}/conf/rules
+cp -r ${rules_dir} "${ngx_root}/conf/rules"
