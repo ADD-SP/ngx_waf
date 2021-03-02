@@ -332,7 +332,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     strcat((char*)str, SHARE_MEMORY_NAME);
     ngx_str_t name;
     name.data = str;
-    name.len = strlen((char*)str);
+    name.len = strlen_s((char*)str, sizeof(u_char) * 1025 - 1);
     srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, SHATE_MEMORY_SIZE, &ngx_http_waf_module);
 
     if (srv_conf->shm_zone == NULL) {
@@ -387,9 +387,9 @@ static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_h
     }
     else {
         if (ctx->blocked == TRUE) {
-            v->len = strlen((char*)ctx->rule_type);
+            v->len = strlen_s((char*)ctx->rule_type, sizeof(ctx->rule_type));
             v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
-            strcpy((char*)v->data, (char*)ctx->rule_type);
+            strcpy((char*)v->data, sizeof(u_char) * v->len, (char*)ctx->rule_type);
         }
         else {
             v->len = 4;
@@ -415,7 +415,7 @@ static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_ht
     }
     else {
         if (ctx->blocked == TRUE) {
-            v->len = strlen((char*)ctx->rule_deatils);
+            v->len = strlen_s((char*)ctx->rule_deatils, sizeof(ctx->rule_deatils));
             v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
             strcpy((char*)v->data, (char*)ctx->rule_deatils);
         }
@@ -498,7 +498,7 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
         ip_trie_node_t* ip_trie_node = NULL;
         ++line_number;
         line.data = (u_char*)str;
-        line.len = strlen((char*)str);
+        line.len = strlen_s((char*)str. sizeof(char) * RULE_MAX_LEN);
 
         memset(&ipv4, 0, sizeof(ipv4_t));
         memset(&inx_addr, 0, sizeof(inx_addr_t));
