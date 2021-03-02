@@ -1,0 +1,8 @@
+deb https://mirrors.cloud.tencent.com/debian/ buster main contrib non-free
+deb https://mirrors.cloud.tencent.com/debian/ buster-updates main contrib non-free
+deb https://mirrors.cloud.tencent.com/debian/ buster-backports main contrib non-free
+deb https://mirrors.cloud.tencent.com/debian-security buster/updates main contrib non-free
+deb-src https://mirrors.cloud.tencent.com/debian/ buster main contrib non-free
+deb-src https://mirrors.cloud.tencent.com/debian/ buster-updates main contrib non-free
+deb-src https://mirrors.cloud.tencent.com/debian/ buster-backports main contrib non-free
+deb-src https://mirrors.cloud.tencent.com/debian-security buster/updates main contrib non-free

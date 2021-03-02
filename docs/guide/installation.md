@@ -10,17 +10,55 @@ This module provides two ways of installation, Docker and compiled.
 
 ## Docker
 
+This module provides two ways to get Docker images, pulling remote images and building images locally.
 
-This module provides `Dockerfile` files in the root directory for building images.
-You can run the following command to build an image named `nginx:stable-alpine-with-ngx_waf`.
+::: tip Note
+
+Many people have less trust in non-official Docker images, and I do too. 
+If you do, it is recommended that you build the image locally.
+If you are willing to trust the author of this module, 
+it is recommended that you pull the image built by the author directly.
+
+:::
+
+### Pulling Remote Images
+
+This module will upload the corresponding Docker images each time the stable and development versions are updated.
+You can see the details on the [Docker Image Page](https://hub.docker.com/r/addsp/ngx_waf).
+
+The tag description of the image is.
+
+* `ngx_waf:latest`: stable version of `ngx_waf` built and installed based on `nginx:stable`.
+* `ngx_waf:stable`: same as `ngx_waf:latest`.
+* `ngx_waf:stable-alpine`: built and installed stable version of `ngx_waf` based on `nginx:stable-alpine`.
+* `ngx_waf:dev`: builds and installs a development version of `ngx_waf` based on `nginx:stable`.
+* `ngx_waf:dev-alpine`: builds and installs a development version of `ngx_waf` based on `nginx:stable-alpine`.
+
+You can choose one of the following two commands to pull an image that has already been built.
 
 ```sh
-docker build -t nginx:stable-alpine-with-ngx_waf
+docker pull addsp/ngx_waf
+
+docker pull addsp/ngx_waf:stable-alpine
+```
+
+### Build Locally
+
+This module provides two Dockerfile files in the root directory to guide the image build.
+They are `docker/Dockerfile.alpine` and `docker/Dockerfile.debian`, respectively.
+The former is built based on `nginx:stable-alpine` and the latter is built based on `nginx:stable`.
+
+You can choose one of the following two commands to build the image
+
+```sh
+docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.alpine .
+
+docker build -t nginx:stable-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.debian .
 ```
 
 ::: tip NOTE
 
-This image is built on the official Docker image `nginx:stable-alpine`.
+This image is built on the official Docker image.
 See the [Docker official image documentation](https://hub.docker.com/_/nginx/) for details on how to use it.
 
 :::

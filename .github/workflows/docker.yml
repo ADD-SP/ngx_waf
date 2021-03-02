@@ -28,7 +28,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: Dockerfile.debian
+          file: docker/Dockerfile.debian
           push: true
           tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:stable
           platforms: |
@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: Dockerfile.debian
+          file: docker/Dockerfile.debian
           push: true
           tags: | 
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:latest
@@ -79,7 +79,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: Dockerfile.alpine
+          file: docker/Dockerfile.alpine
           push: true
           tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:stable-alpine
           platforms: |
@@ -90,16 +90,14 @@ jobs:
             linux/386
             linux/ppc64le
             linux/s390x
-      - name: Build and push (ngx_waf:latest & ngx_waf:dev)
+      - name: Build and push (ngx_waf:dev-alpine)
         if: ${{ github.ref == 'refs/heads/dev' }}
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: Dockerfile.alpine
+          file: docker/Dockerfile.alpine
           push: true
-          tags: |
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:latest
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:dev
+          tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf:dev-alpine
           platforms: |
             linux/amd64
             linux/arm64/v8

@@ -8,6 +8,8 @@
 
 ### Fixed
 
+* Use safer string handling functions to avoid buffer overflows when conditions allow.
+
 ***
 
 ## [3.1.3] - 2021-02-23

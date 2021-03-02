@@ -11,6 +11,8 @@ lang: en
 
 ### Changed
 
+* Use safer string handling functions to avoid buffer overflows when conditions allow.
+
 ### Fixed
 
 ***

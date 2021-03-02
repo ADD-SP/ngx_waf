@@ -36,6 +36,7 @@ themeConfig:
             - /guide/installation.md
             - /guide/configuration.md
             - /guide/test.md
+            - /guide/faq.md
         - title: Advanced Guide
           path: /advance/
           children:
@@ -44,7 +45,6 @@ themeConfig:
             - /advance/priority.md
             - /advance/variable.md
             - /advance/log.md
-            - /advance/faq.md
             - /advance/issue.md
             - /advance/changes.md
     '/zh-cn/':
@@ -62,6 +62,7 @@ themeConfig:
             - /zh-cn/guide/installation.md
             - /zh-cn/guide/configuration.md
             - /zh-cn/guide/test.md
+            - /zh-cn/guide/faq.md
         - title: 进阶指南
           path: /zh-cn/advance/
           children:
@@ -70,6 +71,5 @@ themeConfig:
             - /zh-cn/advance/priority.md
             - /zh-cn/advance/variable.md
             - /zh-cn/advance/log.md
-            - /zh-cn/advance/faq.md
             - /zh-cn/advance/issue.md
             - /zh-cn/advance/changes.md
