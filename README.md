@@ -3,7 +3,7 @@
 ![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=A%20web%20application%20firewall%20module%20for%20nginx%20without%20complex%20configuration.&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
-[![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://add-sp.github.io/ngx_waf/)
+[![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)](https://github.com/ADD-SP/ngx_waf/releases)
 ![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
@@ -30,7 +30,8 @@ A web application firewall module for nginx without complex configuration.
 
 ## Docs
 
-[https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf/)
+* Recommended link: [https://docs.addesp.com/ngx_waf/](https://docs.addesp.com/ngx_waf/)
+* Alternate link: [https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf/)
 
 ## License
 
