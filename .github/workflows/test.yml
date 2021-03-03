@@ -4,6 +4,10 @@ on:
   - push
   - pull_request
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   native:
     runs-on: ubuntu-latest
@@ -105,4 +109,18 @@ jobs:
       - name: Build (alpine)
         if: ${{ matrix.os == 'alpine' }}
         run: docker build --file docker/Dockerfile.alpine .
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Install Nodejs
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14.15.5'
+      - name: Build
+        run: |
+          sudo yarn
+          sudo yarn docs:build
 

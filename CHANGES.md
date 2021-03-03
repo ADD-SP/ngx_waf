@@ -10,13 +10,19 @@
 
 ***
 
-## [3.1.4] - 2021-03-02
+## [3.1.5] - 2021-03-03
 
-### Added
+### Fixed
+
+* Fixed a bug in the `configure` script that caused dependencies to not be checked correctly.
+
+***
+
+## [3.1.4] - 2021-03-02
 
 ### Changed
 
-* Use safer string handling functions to avoid buffer overflows when conditions allow.
+* Use safer string handling functions to avoid buffer overflows when conditions allow ([177ae68](https://github.com/ADD-SP/ngx_waf/commit/177ae68cb019f47096e6065ec34aa0ef9be07567)).
 
 ***
 

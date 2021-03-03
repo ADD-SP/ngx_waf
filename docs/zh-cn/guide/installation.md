@@ -26,10 +26,10 @@ sidebarDepth: 3
 
 镜像的 tag 说明：
 
-* `ngx_waf:latest`：基于 `nginx:stable` 构建并安装了稳定版的 `ngx_waf`。
-* `ngx_waf:stable`：同 `ngx_waf:latest`。
+* `ngx_waf:stable`：基于 `nginx:stable` 构建并安装了稳定版的 `ngx_waf`。
 * `ngx_waf:stable-alpine`：基于 `nginx:stable-alpine` 构建并安装了稳定版的 `ngx_waf`。
 * `ngx_waf:dev`：基于 `nginx:stable` 构建并安装了开发版的 `ngx_waf`。
+* `ngx_waf:latest`：同 `ngx_waf:dev`。
 * `ngx_waf:dev-alpine`：基于 `nginx:stable-alpine` 构建并安装了开发版的 `ngx_waf`。
 
 您可以选择下面两条命令中的一条来拉取已经构建好的镜像。
@@ -44,7 +44,7 @@ docker pull addsp/ngx_waf:stable-alpine
 
 本模块在根目录提供了两个 Dockerfile 文件用来指导镜像的构建，
 分别是 `docker/Dockerfile.alpine` 和 `docker/Dockerfile.debian`，
-前者是基于 `nginx:stable-alpine` 构建，后者则是根据 `nginx:stable` 构建。
+前者是基于 `nginx:stable-alpine` 构建，后者则是基于 `nginx:stable` 构建。
 
 您可以选择下面两条命令中的一条构建镜像。
 

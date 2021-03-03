@@ -15,13 +15,11 @@ lang: en
 
 ***
 
-## [3.1.4] - 2021-03-02
+## [3.1.5] - 2021-03-03
 
-### Added
+### Fixed
 
-### Changed
-
-* Use safer string handling functions to avoid buffer overflows when conditions allow.
+* Fixed a bug in the `configure` script that caused dependencies to not be checked correctly.
 
 ***
 

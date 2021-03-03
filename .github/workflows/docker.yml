@@ -6,6 +6,9 @@ on:
       - master
       - dev
 
+defaults:
+  run:
+    shell: bash
 
 jobs:
   debian:
