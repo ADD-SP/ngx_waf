@@ -3,6 +3,7 @@ ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs="#include <uthash.h>"
 ngx_feature_libs=
+ngx_feature_test=
 . auto/feature
 
 ngx_addon_name=ngx_http_waf_module
@@ -36,6 +37,9 @@ if [ $ngx_found = yes ]; then
 else
 	cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
+
+Please visit https://docs.addesp.com/ngx_waf/ or https://add-sp.github.io/ngx_waf/ .
+
 END
 	exit 1
 fi
