@@ -1,10 +1,7 @@
 name: docker
 
 on:
-  push:
-    branches:
-      - master
-      - dev
+  workflow_dispatch:
 
 defaults:
   run:

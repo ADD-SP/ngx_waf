@@ -1,3 +1,4 @@
+# Check if the uthash library is installed.
 ngx_feature="uthash library"
 ngx_feature_name=
 ngx_feature_run=no
@@ -5,6 +6,7 @@ ngx_feature_incs="#include <uthash.h>"
 ngx_feature_libs=
 ngx_feature_test=
 . auto/feature
+
 
 ngx_addon_name=ngx_http_waf_module
 
@@ -20,6 +22,13 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
 
 if [ $ngx_found = yes ]; then
+    # Clear these variables to avoid affecting the installation of other modules.
+    ngx_feature=
+    ngx_feature_name=
+    ngx_feature_run=
+    ngx_feature_incs=
+    ngx_feature_libs=
+    ngx_feature_test=
     if test -n "$ngx_module_link"; then
         ngx_module_type=HTTP
         ngx_module_name=ngx_http_waf_module

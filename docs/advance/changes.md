@@ -19,7 +19,7 @@ lang: en
 
 ### Fixed
 
-* Fixed a bug in the `configure` script that caused dependencies to not be checked correctly.
+* Fixed a bug in the `config` script that caused dependencies to not be checked correctly.
 
 ***
 
