@@ -1,10 +1,7 @@
 name: docs
 
 on: 
-  push:
-    branches:
-      - master
-      - dev
+  workflow_dispatch:
 
 defaults:
   run:
@@ -13,7 +10,6 @@ defaults:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v2
         with: 

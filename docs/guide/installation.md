@@ -12,6 +12,9 @@ This module provides two ways of installation, Docker and compiled.
 
 This module provides two ways to get Docker images, pulling remote images and building images locally.
 
+The image is built based on the official Docker image, 
+see [Docker image repository](https://hub.docker.com/r/addsp/ngx_waf) for usage.
+
 ::: tip Note
 
 Many people have less trust in non-official Docker images, and I do too. 
@@ -23,8 +26,8 @@ it is recommended that you pull the image built by the author directly.
 
 ### Pulling Remote Images
 
-This module will upload the corresponding Docker images each time the stable and development versions are updated.
-You can see the details on the [Docker Image Page](https://hub.docker.com/r/addsp/ngx_waf).
+This module uploads the corresponding Docker images each time the stable and development versions are updated, 
+and rebuilds all images at 00:00:00 UTC on Sunday.
 
 You can choose one of the following two commands to pull an image that has already been built.
 
@@ -47,13 +50,6 @@ docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true 
 
 docker build -t nginx:stable-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.debian .
 ```
-
-::: tip NOTE
-
-This image is built on the official Docker image.
-See the [Docker official image documentation](https://hub.docker.com/_/nginx/) for details on how to use it.
-
-:::
 
 ## Compile And Install
 

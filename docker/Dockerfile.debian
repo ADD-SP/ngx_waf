@@ -84,4 +84,5 @@ RUN set -xe \
     &&  cp objs/nginx /usr/sbin/nginx
 
 FROM nginx:stable
+COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/

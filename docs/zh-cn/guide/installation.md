@@ -12,6 +12,9 @@ sidebarDepth: 3
 
 本模块提供了两种获取 Docker 镜像方式，拉取远程镜像和本地构建镜像。
 
+镜像基于 Docker 官方的镜像构建，默认规则文件已经拷贝到镜像中的 `/etc/nginx/waf-rules/` 中，
+使用方法同 [Docker 官方镜像文档](https://hub.docker.com/_/nginx/)。
+
 ::: tip 注意
 
 许多人对于非 Docker 官方的镜像信任度较低，我也是。如果您也是的话建议您在本地构建镜像。
@@ -21,8 +24,7 @@ sidebarDepth: 3
 
 ### 拉取远程镜像
 
-本模块会在每次更新稳定版和开发版时上传对应的 Docker 镜像。
-您可以在 [Docker 镜像页面](https://hub.docker.com/r/addsp/ngx_waf) 查看详细的信息。
+本模块会在每次更新稳定版和开发版时上传对应的 Docker 镜像，并在协调世界时（UTC）周日零点零分零秒重新构建所有的镜像。
 
 镜像的 tag 说明：
 
@@ -31,6 +33,7 @@ sidebarDepth: 3
 * `ngx_waf:dev`：基于 `nginx:stable` 构建并安装了开发版的 `ngx_waf`。
 * `ngx_waf:latest`：同 `ngx_waf:dev`。
 * `ngx_waf:dev-alpine`：基于 `nginx:stable-alpine` 构建并安装了开发版的 `ngx_waf`。
+
 
 您可以选择下面两条命令中的一条来拉取已经构建好的镜像。
 
@@ -53,13 +56,6 @@ docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true 
 
 docker build -t nginx:stable-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.debian .
 ```
-
-::: tip 注意
-
-本镜像基于 Docker 官方的镜像构建，
-其使用方法详见 [Docker 官方镜像文档](https://hub.docker.com/_/nginx/)。
-
-:::
 
 ::: tip 注意
 
