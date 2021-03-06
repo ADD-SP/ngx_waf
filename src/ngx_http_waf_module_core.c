@@ -76,70 +76,24 @@ ngx_module_t ngx_http_waf_module = {
 };
 
 
-static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r) {
-    static ngx_http_waf_check check_proc[] = {
-        ngx_http_waf_handler_check_white_ip,
-        ngx_http_waf_handler_check_black_ip,
-        ngx_http_waf_handler_check_white_url,
-        ngx_http_waf_handler_check_black_url,
-        ngx_http_waf_handler_check_black_args,
-        NULL
-    };
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_int_t is_matched;
-    ngx_int_t http_status = NGX_DECLINED;
-
-    if (ctx == NULL) {
-        ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
-        if (ctx == NULL) {
-            http_status = NGX_ERROR;
-            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, 
-                "ngx_waf: The request context could not be created because the memory allocation failed.");
-            return http_status;
-        }
-        else {
-            ctx->checked_in_pre_access = FALSE;
-            ctx->checked_in_server_rewrite = FALSE;
-            ctx->read_body_done = FALSE;
-            ctx->blocked = FALSE;
-            ctx->rule_type[0] = '\0';
-            ctx->rule_deatils[0] = '\0';
-            ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
-        }
+    if (srv_conf->waf_mult_mount != 1) {
+        return check_all(r);
     }
-
-    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET || ctx->checked_in_server_rewrite == TRUE) {
-        http_status = NGX_DECLINED;
-    }
-    else 
-    {
-        ctx->checked_in_server_rewrite = TRUE;
-        if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
-            http_status = NGX_DECLINED;
-        }
-        else if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
-            http_status = NGX_DECLINED;
-        }
-        else {
-            size_t i;
-            for (i = 0; check_proc[i] != NULL; i++) {
-                is_matched = check_proc[i](r, &http_status);
-                if (is_matched == MATCHED) {
-                    break;
-                }
-            }
-        }
-    }
-
-    if (http_status != NGX_DECLINED && http_status != NGX_DONE) {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
-    }
-    return http_status;
+    return NGX_DECLINED;
 }
 
 
-static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
+    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
+        return check_all(r);
+    }
+    return NGX_DECLINED;
+}
+
+static ngx_int_t check_all(ngx_http_request_t* r) {
     static ngx_http_waf_check check_proc[] = {
         ngx_http_waf_handler_check_white_ip,
         ngx_http_waf_handler_check_black_ip,

@@ -10,6 +10,7 @@
 #endif
 
 #include <string.h>
+#include <ngx_cycle.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
@@ -22,9 +23,9 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
-static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r);
 
-static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 /**
  * @defgroup config 配置读取和处理模块
@@ -466,10 +467,10 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     if (h == NULL) {
         return NGX_ERROR;
     }
-    *h = ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post;
+    *h = ngx_http_waf_handler_access_phase;
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
-    *h = ngx_http_waf_handler_url_args;
+    *h = ngx_http_waf_handler_server_rewrite_phase;
 
     ngx_str_t waf_blocked_name = ngx_string("waf_blocked");
     ngx_http_variable_t* waf_blocked = ngx_http_add_variable(cf, &waf_blocked_name, NGX_HTTP_VAR_NOCACHEABLE);

@@ -29,14 +29,19 @@
 */
 
 /**
- * @brief 检查 URL、ARGS 是否命中规则并决定是否拦截请求。
+ * @brief NGX_HTTP_SERVER_REWRITE_PHASE 阶段的处理函数
 */
-static ngx_int_t ngx_http_waf_handler_url_args(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r);
 
 /**
- * @brief 检查 IP、URL、REFERER、UA、ARGS、COOKIE 和 POST 内容是否命中规则并决定是否拦截请求。
+ * @brief NGX_HTTP_ACCESS_PHASE 阶段的处理函数
 */
-static ngx_int_t ngx_http_waf_handler_ip_url_referer_ua_args_cookie_post(ngx_http_request_t* r);
+static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
+
+/**
+ * @brief 执行全部的检查项目
+*/
+static ngx_int_t check_all(ngx_http_request_t* r);
 
 /**
  * @}
