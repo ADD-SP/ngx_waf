@@ -10,11 +10,17 @@
 
 ***
 
+## [3.1.6] - 2021-03-07
+
+### Fixed
+
+* Correcting the order in which rules take effect.
+
 ## [3.1.5] - 2021-03-03
 
 ### Fixed
 
-* Fixed a bug in the `config` script that caused dependencies to not be checked correctly.
+* Fixed a bug in the `config` script that caused dependencies to not be checked correctly ([075a27e](https://github.com/ADD-SP/ngx_waf/commit/075a27e4f7aaf7e78c45eac0c78c9634863be476#diff-b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910)).
 
 ***
 

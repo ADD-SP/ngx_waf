@@ -19,3 +19,4 @@ lang: zh-CN
 8. Referer 白名单检测
 9. Referer 黑名单检测
 10. Cookie 黑名单检测
+11. Post 请求体黑名单

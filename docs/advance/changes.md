@@ -15,6 +15,14 @@ lang: en
 
 ***
 
+## [3.1.6] - 2021-03-07
+
+### Fixed
+
+* Correcting the order in which rules take effect.
+
+***
+
 ## [3.1.5] - 2021-03-03
 
 ### Fixed
