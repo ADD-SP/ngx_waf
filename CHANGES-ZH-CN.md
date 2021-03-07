@@ -4,6 +4,8 @@
 
 ### 新增
 
+* 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数。
+
 ### 改动
 
 ### 修复
@@ -14,7 +16,7 @@
 
 ### 修复
 
-* 更正规则的生效顺序，
+* 更正规则的生效顺序（[51c7824](https://github.com/ADD-SP/ngx_waf/commit/51c7824786c060f4b0dcffe77a4a1e04b775e04b)）。
 
 ***
 

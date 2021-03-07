@@ -9,6 +9,8 @@ lang: zh-CN
 
 ### 新增
 
+* 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数。
+
 ### 改动
 
 ### 修复
@@ -19,7 +21,7 @@ lang: zh-CN
 
 ### 修复
 
-* 更正规则的生效顺序，
+* 更正规则的生效顺序（[51c7824](https://github.com/ADD-SP/ngx_waf/commit/51c7824786c060f4b0dcffe77a4a1e04b775e04b)）。
 
 ***
 
@@ -27,7 +29,7 @@ lang: zh-CN
 
 ### 修复
 
-* 修复了 `config` 脚本的一个错误，这个错误会导致不能正确地检查依赖项。
+* 修复了 `config` 脚本的一个错误，这个错误会导致不能正确地检查依赖项（[075a27e](https://github.com/ADD-SP/ngx_waf/commit/075a27e4f7aaf7e78c45eac0c78c9634863be476#diff-b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910)）。
 
 ***
 
@@ -240,7 +242,6 @@ lang: zh-CN
         * 配置段: server
         * 作用：是否启用 CC 防御。
 
-
 ### 改动
 
 * `waf_mult_mount`现在只允许写在`server`段中（[3214fc8](https://github.com/ADD-SP/ngx_waf/commit/3214fc88d565ed47daa4bdac4f0edb7d1785ed75)）。
@@ -279,7 +280,7 @@ lang: zh-CN
 ### 新增
 
 * 改进日志格式（[bd112ec](https://github.com/ADD-SP/ngx_waf/commit/bd112ecacd9356ee1e0731634cfc197034d25c88)）。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
-    ```
+    ```text
     2020/01/20 22:56:30 [alert] 24289#0: *30 ngx_waf: [BLACK-URL][(?i)(?:/\.env$)], client: 192.168.1.1, server: example.com, request: "GET /v1/.env HTTP/1.1", host: "example.com", referrer: "http:/example.com/v1/.env"
 
     2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.*(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"

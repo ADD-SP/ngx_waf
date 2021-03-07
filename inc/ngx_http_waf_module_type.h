@@ -113,6 +113,7 @@ typedef struct {
     ngx_uint_t                      waf_mode;                       /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;              /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;           /**< CC 防御的拉黑时长（分钟） */
+    ngx_int_t                       waf_cc_deny_shm_zone_size;      /**< CC 防御所使用的共享内存的大小（字节） */
     ip_trie_t                      *black_ipv4;                     /**< IPV4 黑名单 */
     ip_trie_t                      *black_ipv6;                     /**< IPV6 黑名单 */
     ngx_array_t                    *black_url;                      /**< URL 黑名单 */

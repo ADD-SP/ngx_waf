@@ -18,3 +18,10 @@ lang: zh-CN
 * UserAgent 黑名单。
 * Cookie 黑名单。
 * Referer 黑白名单。
+
+## 闲谈
+
+[nginx 防火墙模块开发总结](https://www.addesp.com/archives/3922)
+
+欢迎访问我的博客：[https://www.addesp.com/](https://www.addesp.com/)。
+
