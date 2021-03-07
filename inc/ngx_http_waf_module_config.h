@@ -406,7 +406,7 @@ static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 
         else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-            "Invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html .");
+            "Invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html or https://ngx-waf.pages.dev/ .");
             return NGX_CONF_ERROR;
         }
     }

@@ -31,7 +31,8 @@ A web application firewall module for nginx without complex configuration.
 ## Docs
 
 * Recommended link: [https://docs.addesp.com/ngx_waf/](https://docs.addesp.com/ngx_waf/)
-* Alternate link: [https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf/)
+* Alternate link 1: [https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf/)
+* Alternate link 2: [https://ngx-waf.pages.dev/](https://ngx-waf.pages.dev/)
 
 ## License
 

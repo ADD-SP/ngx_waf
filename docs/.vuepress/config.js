@@ -1,5 +1,10 @@
 module.exports = {
-    base: process.env.base == undefined ? "/" : process.env.docsBaseUrl,
+    head: [
+        ["script", {defer: "defer", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": "{token: \"31808613233f4695a54fa83eb9b6946c\", spa: true}"}],
+        ["script", {defer: "defer", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": "{token: \"287102ea31d144d2b99b6b85802bcc20\", spa: true}"}],
+        ["script", {defer: "defer", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": "{token: \"0877160a6e4640aebfe8eaf6a724858c\", spa: true}"}]
+    ],
+    base: process.env.docsBaseUrl == undefined ? "/" : process.env.docsBaseUrl,
     plugins: ['fulltext-search'],
     locales: {
         '/': {
