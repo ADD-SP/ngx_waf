@@ -9,7 +9,10 @@ lang: en
 
 ### Added
 
+* Added some parameters to `waf_mode` and `waf_cc_deny_limit`.
+
 ### Changed
+
 
 ### Fixed
 
@@ -19,15 +22,21 @@ lang: en
 
 ### Fixed
 
-* Correcting the order in which rules take effect.
-
-***
+* Correcting the order in which rules take effect ([51c7824](https://github.com/ADD-SP/ngx_waf/commit/51c7824786c060f4b0dcffe77a4a1e04b775e04b)).
 
 ## [3.1.5] - 2021-03-03
 
 ### Fixed
 
-* Fixed a bug in the `config` script that caused dependencies to not be checked correctly.
+* Fixed a bug in the `config` script that caused dependencies to not be checked correctly ([075a27e](https://github.com/ADD-SP/ngx_waf/commit/075a27e4f7aaf7e78c45eac0c78c9634863be476#diff-b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910)).
+
+***
+
+## [3.1.4] - 2021-03-02
+
+### Changed
+
+* Use safer string handling functions to avoid buffer overflows when conditions allow ([177ae68](https://github.com/ADD-SP/ngx_waf/commit/177ae68cb019f47096e6065ec34aa0ef9be07567)).
 
 ***
 
@@ -187,4 +196,3 @@ lang: en
 ### Fixed
 
 * The blank lines in the rules can now be read correctly ([955cf2d](https://github.com/ADD-SP/ngx_waf/commit/955cf2d240c4d66f815890e3ee9b88ccf906cf1d)).
-

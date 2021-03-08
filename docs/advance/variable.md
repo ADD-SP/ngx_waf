@@ -25,6 +25,6 @@ If current request was blocked by this module, this variable is set to the trigg
 + `'BLACK-COOKIE'`
 + `'BLACK-POST'`
 
-## `'$waf_rule_details'`
+## `$waf_rule_details`
 
 If this request is blocked by this module, its value is the content of the specific rule triggered. If it is not blocked, its value is `'null'`.

@@ -68,9 +68,17 @@
 
 #define MAX_ALLOC_TIMES         (100000)
 
+/**
+ * @def SHARE_MEMORY_NAME
+ * @brief 用于 CC 防护的共享内存的名称
+*/
+#define SHARE_MEMORY_NAME       ("__ADD-SP_NGX_WAF__")
 
-#define SHARE_MEMORY_NAME       ("__NGX_WAF__")
-#define SHATE_MEMORY_SIZE       (1024 * 1024 * 10)
+/**
+ * @def INITIAL_SIZE
+ * @brief 用于 CC 防护的共享内存的大小（字节）
+*/
+#define SHATE_MEMORY_MIN_SIZE   (1024 * 1024 * 10)
 
 /**
  * @def MODE_INSPECT_GET
@@ -219,9 +227,36 @@
                                                 | MODE_INSPECT_RB           \
                                                 | MODE_INSPECT_ARGS         \
                                                 | MODE_INSPECT_UA           \
+                                                | MODE_INSPECT_HEAD         \
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_POST         \
                                                 | MODE_INSPECT_CC)
+/**
+ * @def MODE_STD
+ * @brief 适用于静态站点的工作模式
+*/
+#define MODE_STATIC                             (MODE_INSPECT_IP            \
+                                                | MODE_INSPECT_URL          \
+                                                | MODE_INSPECT_UA           \
+                                                | MODE_INSPECT_GET          \
+                                                | MODE_INSPECT_HEAD         \
+                                                | MODE_INSPECT_CC)
+
+/**
+ * @def MODE_STD
+ * @brief 适用于动态站点的工作模式
+*/
+#define MODE_DYNAMIC                            (MODE_INSPECT_IP            \
+                                                | MODE_INSPECT_URL          \
+                                                | MODE_INSPECT_RB           \
+                                                | MODE_INSPECT_ARGS         \
+                                                | MODE_INSPECT_UA           \
+                                                | MODE_INSPECT_COOKIE       \
+                                                | MODE_INSPECT_HEAD         \
+                                                | MODE_INSPECT_GET          \
+                                                | MODE_INSPECT_POST         \
+                                                | MODE_INSPECT_CC)
+
 
 /**
  * @def MODE_FULL

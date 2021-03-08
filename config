@@ -47,7 +47,7 @@ else
 	cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
-Please visit https://docs.addesp.com/ngx_waf/ or https://add-sp.github.io/ngx_waf/ .
+Please visit https://docs.addesp.com/ngx_waf/ or https://add-sp.github.io/ngx_waf/ or https://ngx-waf.pages.dev/ .
 
 END
 	exit 1

@@ -1,9 +1,9 @@
 ---
-title: Rule Description
+title: Rule Priority
 lang: en
 ---
 
-# Rule Description
+# Rule Priority
 
 There are many inspection items in this module, so it is important to specify the inspection priority of each inspection item to avoid illogical inspection results.
 

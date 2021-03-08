@@ -10,6 +10,8 @@ defaults:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      docsBaseUrl: '/ngx_waf/'
     steps:
       - uses: actions/checkout@v2
         with: 

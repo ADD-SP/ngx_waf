@@ -28,7 +28,8 @@
 ## 使用文档
 
 * 推荐链接：[https://docs.addesp.com/ngx_waf/zh-cn/](https://docs.addesp.com/ngx_waf/zh-cn/)
-* 备用链接：[https://add-sp.github.io/ngx_waf/zh-cn/](https://add-sp.github.io/ngx_waf/zh-cn/)
+* 备用链接 1：[https://add-sp.github.io/ngx_waf/zh-cn/](https://add-sp.github.io/ngx_waf/zh-cn/)
+* 备用链接 2：[https://ngx-waf.pages.dev/zh-cn/](https://ngx-waf.pages.dev/zh-cn/)
 
 ## 开源许可证
 

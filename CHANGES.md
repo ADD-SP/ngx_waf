@@ -4,7 +4,10 @@
 
 ### Added
 
+* Added some parameters to `waf_mode` and `waf_cc_deny_limit`.
+
 ### Changed
+
 
 ### Fixed
 
@@ -14,7 +17,7 @@
 
 ### Fixed
 
-* Correcting the order in which rules take effect.
+* Correcting the order in which rules take effect ([51c7824](https://github.com/ADD-SP/ngx_waf/commit/51c7824786c060f4b0dcffe77a4a1e04b775e04b)).
 
 ## [3.1.5] - 2021-03-03
 

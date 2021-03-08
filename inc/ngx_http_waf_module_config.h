@@ -161,83 +161,252 @@ static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     size_t i;
 
     for (i = 1; i < cf->args->nelts && modes != NULL; i++) {
-        if (ngx_strncasecmp(modes[i].data, (u_char*)"GET", min(modes[i].len, 5)) == 0) {
+        if (ngx_strncasecmp(modes[i].data, (u_char*)"GET", min(modes[i].len, sizeof("GET") - 1)) == 0
+            && modes[i].len == sizeof("GET") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_GET;
         } 
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"HEAD", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!GET", min(modes[i].len, sizeof("!GET") - 1)) == 0
+            && modes[i].len == sizeof("!GET") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_HEAD;
+        } 
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"HEAD", min(modes[i].len, sizeof("HEAD") - 1)) == 0
+            && modes[i].len == sizeof("HEAD") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_HEAD;
         } 
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"POST", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!HEAD", min(modes[i].len, sizeof("!HEAD") - 1)) == 0
+            && modes[i].len == sizeof("!HEAD") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_HEAD;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"POST", min(modes[i].len, sizeof("POST") - 1)) == 0
+            && modes[i].len == sizeof("POST") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_POST;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PUT", min(modes[i].len, 4)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!POST", min(modes[i].len, sizeof("!POST") - 1)) == 0
+            && modes[i].len == sizeof("!POST") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_POST;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PUT", min(modes[i].len, sizeof("PUT") - 1)) == 0
+            && modes[i].len == sizeof("PUT") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_PUT;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"DELETE", min(modes[i].len, 7)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!PUT", min(modes[i].len, sizeof("!PUT") - 1)) == 0
+            && modes[i].len == sizeof("!PUT") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_PUT;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"DELETE", min(modes[i].len, sizeof("DELETE") - 1)) == 0
+            && modes[i].len == sizeof("DELETE") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_DELETE;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"MKCOL", min(modes[i].len, 6)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!DELETE", min(modes[i].len, sizeof("!DELETE") - 1)) == 0
+            && modes[i].len == sizeof("!DELETE") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_DELETE;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"MKCOL", min(modes[i].len, sizeof("MKCOL") - 1)) == 0
+            && modes[i].len == sizeof("MKCOL") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_MKCOL;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"COPY", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!MKCOL", min(modes[i].len, sizeof("!MKCOL") - 1)) == 0
+            && modes[i].len == sizeof("!MKCOL") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_MKCOL;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"COPY", min(modes[i].len, sizeof("COPY") - 1)) == 0
+            && modes[i].len == sizeof("COPY") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_COPY;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"MOVE", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!COPY", min(modes[i].len, sizeof("!COPY") - 1)) == 0
+            && modes[i].len == sizeof("!COPY") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_COPY;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"MOVE", min(modes[i].len, sizeof("MOVE") - 1)) == 0
+            && modes[i].len == sizeof("MOVE") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_MOVE;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"OPTIONS", min(modes[i].len, 8)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!MOVE", min(modes[i].len, sizeof("!MOVE") - 1)) == 0
+            && modes[i].len == sizeof("!MOVE") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_MOVE;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"OPTIONS", min(modes[i].len, sizeof("OPTIONS") - 1)) == 0
+            && modes[i].len == sizeof("OPTIONS") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_OPTIONS;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PROPFIND", min(modes[i].len, 9)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!OPTIONS", min(modes[i].len, sizeof("!OPTIONS") - 1)) == 0
+            && modes[i].len == sizeof("!OPTIONS") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_OPTIONS;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PROPFIND", min(modes[i].len, sizeof("PROPFIND") - 1)) == 0
+            && modes[i].len == sizeof("PROPFIND") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_PROPFIND;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PROPPATCH", min(modes[i].len, 10)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!PROPFIND", min(modes[i].len, sizeof("!PROPFIND") - 1)) == 0
+            && modes[i].len == sizeof("!PROPFIND") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_PROPFIND;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PROPPATCH", min(modes[i].len, sizeof("PROPPATCH") - 1)) == 0
+            && modes[i].len == sizeof("PROPPATCH") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_PROPPATCH;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"LOCK", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!PROPPATCH", min(modes[i].len, sizeof("!PROPPATCH") - 1)) == 0
+            && modes[i].len == sizeof("!PROPPATCH") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_PROPPATCH;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"LOCK", min(modes[i].len, sizeof("LOCK") - 1)) == 0
+            && modes[i].len == sizeof("LOCK") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_LOCK;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"UNLOCK", min(modes[i].len, 7)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!LOCK", min(modes[i].len, sizeof("!LOCK") - 1)) == 0
+            && modes[i].len == sizeof("!LOCK") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_LOCK;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"UNLOCK", min(modes[i].len, sizeof("UNLOCK") - 1)) == 0
+            && modes[i].len == sizeof("UNLOCK") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_UNLOCK;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PATCH", min(modes[i].len, 6)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!UNLOCK", min(modes[i].len, sizeof("!UNLOCK") - 1)) == 0
+            && modes[i].len == sizeof("!UNLOCK") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_UNLOCK;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"PATCH", min(modes[i].len, sizeof("PATCH") - 1)) == 0
+            && modes[i].len == sizeof("PATCH") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_PATCH;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"TRACE", min(modes[i].len, 6)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!PATCH", min(modes[i].len, sizeof("!PATCH") - 1)) == 0
+            && modes[i].len == sizeof("!PATCH") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_PATCH;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"TRACE", min(modes[i].len, sizeof("TRACE") - 1)) == 0
+            && modes[i].len == sizeof("TRACE") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_TRACE;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"IP", min(modes[i].len, 3)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!TRACE", min(modes[i].len, sizeof("!TRACE") - 1)) == 0
+            && modes[i].len == sizeof("!TRACE") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_TRACE;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"IP", min(modes[i].len, sizeof("IP") - 1)) == 0
+            && modes[i].len == sizeof("IP") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_IP;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"URL", min(modes[i].len, 4)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!IP", min(modes[i].len, sizeof("!IP") - 1)) == 0
+            && modes[i].len == sizeof("!IP") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_IP;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"URL", min(modes[i].len, sizeof("URL") - 1)) == 0
+            && modes[i].len == sizeof("URL") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_URL;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"RBODY", min(modes[i].len, 6)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!URL", min(modes[i].len, sizeof("!URL") - 1)) == 0
+            && modes[i].len == sizeof("!URL") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_URL;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"RBODY", min(modes[i].len, sizeof("RBODY") - 1)) == 0
+            && modes[i].len == sizeof("RBODY") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_RB;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"ARGS", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!RBODY", min(modes[i].len, sizeof("!RBODY") - 1)) == 0
+            && modes[i].len == sizeof("!RBODY") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_RB;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"ARGS", min(modes[i].len, sizeof("ARGS") - 1)) == 0
+            && modes[i].len == sizeof("ARGS") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_ARGS;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"UA", min(modes[i].len, 3)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!ARGS", min(modes[i].len, sizeof("!ARGS") - 1)) == 0
+            && modes[i].len == sizeof("!ARGS") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_ARGS;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"UA", min(modes[i].len, sizeof("UA") - 1)) == 0
+            && modes[i].len == sizeof("UA") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_UA;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"COOKIE", min(modes[i].len, 7)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!UA", min(modes[i].len, sizeof("!UA") - 1)) == 0
+            && modes[i].len == sizeof("!UA") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_UA;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"COOKIE", min(modes[i].len, sizeof("COOKIE") - 1)) == 0
+            && modes[i].len == sizeof("COOKIE") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_COOKIE;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"REFERER", min(modes[i].len, 8)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!COOKIE", min(modes[i].len, sizeof("!COOKIE") - 1)) == 0
+            && modes[i].len == sizeof("!COOKIE") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_COOKIE;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"REFERER", min(modes[i].len, sizeof("REFERER") - 1)) == 0
+            && modes[i].len == sizeof("REFERER") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_REFERER;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"CC", min(modes[i].len, 3)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!REFERER", min(modes[i].len, sizeof("!REFERER") - 1)) == 0
+            && modes[i].len == sizeof("!REFERER") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_REFERER;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"CC", min(modes[i].len, sizeof("CC") - 1)) == 0
+            && modes[i].len == sizeof("CC") - 1) {
             srv_conf->waf_mode |= MODE_INSPECT_CC;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"STD", min(modes[i].len, 4)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!CC", min(modes[i].len, sizeof("!CC") - 1)) == 0
+            && modes[i].len == sizeof("!CC") - 1) {
+            srv_conf->waf_mode &= ~MODE_INSPECT_CC;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"STD", min(modes[i].len, sizeof("STD") - 1)) == 0
+            && modes[i].len == sizeof("STD") - 1) {
             srv_conf->waf_mode |= MODE_STD;
         }
-        else if (ngx_strncasecmp(modes[i].data, (u_char*)"FULL", min(modes[i].len, 5)) == 0) {
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!STD", min(modes[i].len, sizeof("!STD") - 1)) == 0
+            && modes[i].len == sizeof("!STD") - 1) {
+            srv_conf->waf_mode &= ~MODE_STD;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"STATIC", min(modes[i].len, sizeof("STATIC") - 1)) == 0
+            && modes[i].len == sizeof("STATIC") - 1) {
+            srv_conf->waf_mode |= MODE_STATIC;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!STATIC", min(modes[i].len, sizeof("!STATIC") - 1)) == 0
+            && modes[i].len == sizeof("!STATIC") - 1) {
+            srv_conf->waf_mode &= ~MODE_STATIC;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"DYNAMIC", min(modes[i].len, sizeof("DYNAMIC") - 1)) == 0
+            && modes[i].len == sizeof("DYNAMIC") - 1) {
+            srv_conf->waf_mode |= MODE_DYNAMIC;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!DYNAMIC", min(modes[i].len, sizeof("!DYNAMIC") - 1)) == 0
+            && modes[i].len == sizeof("!DYNAMIC") - 1) {
+            srv_conf->waf_mode &= ~MODE_DYNAMIC;
+        }
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"FULL", min(modes[i].len, sizeof("FULL") - 1)) == 0
+            && modes[i].len == sizeof("FULL") - 1) {
             srv_conf->waf_mode |= MODE_FULL;
         }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!FULL", min(modes[i].len, sizeof("!FULL") - 1)) == 0
+            && modes[i].len == sizeof("!FULL") - 1) {
+            srv_conf->waf_mode &= ~MODE_FULL;
+        }
+
         else {
-            ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Invalid value");
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+            "Invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html or https://ngx-waf.pages.dev/ .");
             return NGX_CONF_ERROR;
         }
     }
@@ -247,22 +416,82 @@ static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 
 
 static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    static ngx_uint_t shm_id = 1;
     ngx_http_waf_srv_conf_t* srv_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
-    srv_conf->waf_cc_deny_limit = ngx_atoi((p_str + 1)->data, (p_str + 1)->len);
-    srv_conf->waf_cc_deny_duration = ngx_atoi((p_str + 2)->data, (p_str + 2)->len);
-    if (srv_conf->waf_cc_deny_limit <= 0 || srv_conf->waf_cc_deny_duration <= 0) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Cannot be converted to an integer greater than zero %d %d",
-            srv_conf->waf_cc_deny_limit,
-            srv_conf->waf_cc_deny_duration);
+    u_char error_str[256];
+
+    srv_conf->waf_cc_deny_limit = ngx_atoi(p_str[1].data, p_str[1].len);
+    if (srv_conf->waf_cc_deny_limit == NGX_ERROR || srv_conf->waf_cc_deny_limit <= 0) {
+        to_c_str(error_str, p_str[1]);
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+            "ngx_waf: Cannot convert \"%s\" to a non-zero positive integer", error_str);
         return NGX_CONF_ERROR;
     }
+
+    srv_conf->waf_cc_deny_duration = ngx_atoi(p_str[2].data, (p_str + 2)->len);
+    if (srv_conf->waf_cc_deny_duration == NGX_ERROR || srv_conf->waf_cc_deny_duration <= 0) {
+        to_c_str(error_str, p_str[2]);
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+            "ngx_waf: Cannot convert \"%s\" to a non-zero positive integer", error_str);
+        return NGX_CONF_ERROR;
+    }
+
+    
+    /* 如果有第三个参数 */
+    if (cf->args->nelts == 4) {
+        srv_conf->waf_cc_deny_shm_zone_size = ngx_parse_size(p_str + 3);
+        if (srv_conf->waf_cc_deny_duration == NGX_ERROR || srv_conf->waf_cc_deny_duration <= 0) {
+            to_c_str(error_str, p_str[3]);
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+                "ngx_waf: Invalid memory size %s", error_str);
+            return NGX_CONF_ERROR;
+        }
+
+        if (srv_conf->waf_cc_deny_shm_zone_size < SHATE_MEMORY_MIN_SIZE)
+        {
+            srv_conf->waf_cc_deny_shm_zone_size = SHATE_MEMORY_MIN_SIZE;
+            ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_ENOMOREFILES, 
+                "ngx_waf: The specified memory space is too small and is automatically set to the default size: %d Byte.", 
+                SHATE_MEMORY_MIN_SIZE);
+        }
+    }
+
+    u_char* str = ngx_pcalloc(srv_conf->ngx_pool, sizeof(u_char) * 1025);
+    memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
+    ngx_uint_t id = (ngx_uint_t)shm_id++;
+    int index = cf->conf_file->file.name.len;
+    while (id != 0) {
+        str[index++] = (id % 10) + '0';
+        id /= 10;
+    }
+    str[index] = '\0';
+    strcat((char*)str, SHARE_MEMORY_NAME);
+    ngx_str_t name;
+    name.data = str;
+    #ifdef __STDC_LIB_EXT1__
+        name.len = strnlen_s((char*)str, sizeof(u_char) * 1025 - 1);
+    #else
+        name.len = strlen((char*)str);
+    #endif
+    
+    srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, srv_conf->waf_cc_deny_shm_zone_size, &ngx_http_waf_module);
+
+    if (srv_conf->shm_zone == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+                "ngx_waf: Failed to allocate shared memory.");
+        return NULL;
+    }
+
+    srv_conf->shm_zone->init = ngx_http_waf_share_memory_init;
+    srv_conf->shm_zone->data = srv_conf;
+
     return NGX_CONF_OK;
 }
 
 
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
-    static ngx_uint_t shm_id = 1;
+    // static ngx_uint_t shm_id = 1;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
     srv_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_srv_conf_t));
     if (srv_conf == NULL) {
@@ -281,8 +510,9 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mult_mount = NGX_CONF_UNSET;
     srv_conf->waf_mode = 0;
-    srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
-    srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
+    srv_conf->waf_cc_deny_limit = 10000000;
+    srv_conf->waf_cc_deny_duration = 1;
+    srv_conf->waf_cc_deny_shm_zone_size = SHATE_MEMORY_MIN_SIZE;
     srv_conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -326,34 +556,6 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Initialization failed");
         return NULL;
     }
-
-    u_char* str = ngx_pcalloc(srv_conf->ngx_pool, sizeof(u_char) * 1025);
-    memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
-    ngx_uint_t id = (ngx_uint_t)shm_id++;
-    int index = cf->conf_file->file.name.len;
-    while (id != 0) {
-        str[index++] = (id % 10) + '0';
-        id /= 10;
-    }
-    str[index] = '\0';
-    strcat((char*)str, SHARE_MEMORY_NAME);
-    ngx_str_t name;
-    name.data = str;
-    #ifdef __STDC_LIB_EXT1__
-        name.len = strnlen_s((char*)str, sizeof(u_char) * 1025 - 1);
-    #else
-        name.len = strlen((char*)str);
-    #endif
-    
-    srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, SHATE_MEMORY_SIZE, &ngx_http_waf_module);
-
-    if (srv_conf->shm_zone == NULL) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to allocate shared memory.");
-        return NULL;
-    }
-
-    srv_conf->shm_zone->init = ngx_http_waf_share_memory_init;
-    srv_conf->shm_zone->data = srv_conf;
 
     return srv_conf;
 }
