@@ -87,7 +87,7 @@ There are two new working modes in the development version as follows.
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC`.
 * DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RB COOKIE CC`.
 
-You can turn off this mode in the development version by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
+You can turn off a mode in the development version by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
 The following is an example of using the standard working mode, but without inspecting the User-Agent.
 
 ```nginx
@@ -112,9 +112,9 @@ Declare the maximum request rate of the same IP and the blocking time after the 
 A parameter `buffer_size` has been added to the development version configuration to set the size of the memory used to record IP accesses.
 See the description below for details.
 
-* Configuration syntax: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;
-* Default configuration: `waf_cc_deny_limit 10000000 1 10m;`
-* Configuration segment: server
+* syntax: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;
+* default: `waf_cc_deny_limit 10000000 1 10m;`
+* context: server
 
 * `rate`:Indicates the maximum number of requests per minute (an integer greater than zero).
 * `duration`:Indicates how many minutes (an integer greater than zero) to pull the IP after exceeding the limit of the first parameter `rate`.
