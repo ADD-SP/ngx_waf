@@ -9,6 +9,8 @@ lang: zh-CN
 
 ### 新增
 
+* 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数。
+
 ### 改动
 
 ### 修复
@@ -19,7 +21,7 @@ lang: zh-CN
 
 ### 修复
 
-* 更正规则的生效顺序，
+* 更正规则的生效顺序（[51c7824](https://github.com/ADD-SP/ngx_waf/commit/51c7824786c060f4b0dcffe77a4a1e04b775e04b)）。
 
 ***
 
@@ -27,7 +29,7 @@ lang: zh-CN
 
 ### 修复
 
-* 修复了 `config` 脚本的一个错误，这个错误会导致不能正确地检查依赖项。
+* 修复了 `config` 脚本的一个错误，这个错误会导致不能正确地检查依赖项（[075a27e](https://github.com/ADD-SP/ngx_waf/commit/075a27e4f7aaf7e78c45eac0c78c9634863be476#diff-b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910)）。
 
 ***
 
@@ -239,7 +241,6 @@ lang: zh-CN
         * 默认值：`off`
         * 配置段: server
         * 作用：是否启用 CC 防御。
-
 
 ### 改动
 

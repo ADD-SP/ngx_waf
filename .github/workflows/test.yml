@@ -135,6 +135,8 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name	!= 'schedule' }}
+    env:
+      docsBaseUrl: '/ngx_waf/'
     steps:
       - uses: actions/checkout@v2
         with: 

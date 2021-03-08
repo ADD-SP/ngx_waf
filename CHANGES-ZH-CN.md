@@ -4,6 +4,8 @@
 
 ### 新增
 
+* 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数。
+
 ### 改动
 
 ### 修复
@@ -14,7 +16,7 @@
 
 ### 修复
 
-* 更正规则的生效顺序，
+* 更正规则的生效顺序（[51c7824](https://github.com/ADD-SP/ngx_waf/commit/51c7824786c060f4b0dcffe77a4a1e04b775e04b)）。
 
 ***
 
@@ -273,7 +275,7 @@
 ### 新增
 
 * 改进日志格式（[bd112ec](https://github.com/ADD-SP/ngx_waf/commit/bd112ecacd9356ee1e0731634cfc197034d25c88)）。基本格式为`xxxxx, ngx_waf: [拦截类型][对应规则], xxxxx`，具体可看下面的例子。
-    ```text
+    ```
     2020/01/20 22:56:30 [alert] 24289#0: *30 ngx_waf: [BLACK-URL][(?i)(?:/\.env$)], client: 192.168.1.1, server: example.com, request: "GET /v1/.env HTTP/1.1", host: "example.com", referrer: "http:/example.com/v1/.env"
 
     2020/01/20 22:58:40 [alert] 24678#0: *11 ngx_waf: [BLACK-POST][(?i)(?:select.*(?:from|limit))], client: 192.168.1.1, server: example.com, request: "POST /xmlrpc.php HTTP/1.1", host: "example.com", referrer: "https://example.com/"

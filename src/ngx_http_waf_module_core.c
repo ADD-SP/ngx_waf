@@ -38,7 +38,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
    },
     {
         ngx_string("waf_cc_deny_limit"),
-        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE2,
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE23,
         ngx_http_waf_cc_deny_limit_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
         0,

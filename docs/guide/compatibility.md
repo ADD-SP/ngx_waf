@@ -28,10 +28,9 @@ you can raise [issue](https://github.com/ADD-SP/ngx_waf/issues).
 
 ### ngx_http_rewrite_module
 
-This module is compatible with 
-[ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html) 
-There is a compatibility issue. 
-When the `return` or `rewrite` directives are used, the detection process of this module may be skipped.
+There is a compatibility issue between ngx_waf and 
+[ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html). 
+The ngx_waf inspection process may be skipped when the `return` or `rewrite` directives are used.
 
 See [waf_mult_mount](/advance/syntax.md#waf-mult-mount) for the imperfect solution.
 
