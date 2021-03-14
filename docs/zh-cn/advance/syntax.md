@@ -39,6 +39,12 @@ lang: zh-CN
 
 :::
 
+::: danger 开发版中的变动
+
+在开发版中此配置项被废弃，相关功能合并到了指令 `waf_mode` 中。
+
+:::
+
 
 ## `waf_mode`
 
@@ -79,10 +85,16 @@ lang: zh-CN
 
 ::: tip 注意：开发版中的变动
 
-在开发版中新增了下面两个工作模式。
+在开发版中新增了下面四个工作模式。
 
 * STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC`。
-* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RB COOKIE CC`。
+* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RB COOKIE CC COMPAT`。
+* COMPAT：兼容模式，用来启用一些兼容性选项去兼容其它的模块或者环境，目前用于兼容 ngx_http_rewrite_module，详见[兼容性说明](/zh-cn/guide/compatibility.md)。
+* STRICT：严格模式，牺牲一些性能进行更多的检查，目前仅在启用了 `COMPAT` 模式时生效，在 ngx_http_rewrite_module 生效前和生效后都进行一轮完整的检查。
+
+在开发版中下列工作模式发生了变动。
+
+* STD：在开发版中等价于 `IP URL RB ARGS UA HEAD GET POST CC COMPAT`。
 
 在开发版中您可以通过在某个 `mode_type` 前增加 `!` 前缀来关闭该模式，下面是一个例子。
 表示使用标准的工作模式，但是不检查 User-Agent。

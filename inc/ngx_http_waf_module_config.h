@@ -704,7 +704,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     waf_rule_type->get_handler = ngx_http_waf_rule_type_get_handler;
     waf_rule_type->set_handler = NULL;
 
-    ngx_str_t waf_rule_details_name = ngx_string("waf_rule_deatails");
+    ngx_str_t waf_rule_details_name = ngx_string("waf_rule_details");
     ngx_http_variable_t* waf_rule_details = ngx_http_add_variable(cf, &waf_rule_details_name, NGX_HTTP_VAR_NOCACHEABLE);
     waf_rule_details->get_handler = ngx_http_waf_rule_deatils_handler;
     waf_rule_details->set_handler = NULL;

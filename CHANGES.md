@@ -16,6 +16,9 @@
 
 ### Fixed
 
+* Fixed an error in the name of the built-in variable `waf_rule_details`, 
+which was set to `waf_rule_deatails` in a previous version of the code.
+
 ***
 
 ## [3.1.6] - 2021-03-07

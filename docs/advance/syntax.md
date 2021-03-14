@@ -42,6 +42,12 @@ and it is recommended to test it after enabling it.
 
 :::
 
+::: danger Changes in the development version
+
+This directive has been deprecated in the development version and the functions have been merged into the directive `waf_mode`.
+
+::: 
+
 
 ## `waf_mode`
 
@@ -86,6 +92,12 @@ There are two new working modes in the development version as follows.
 
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC`.
 * DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RB COOKIE CC`.
+* COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/zh-cn/guide/compatibility.md).
+* STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
+
+The following working modes have been changed in the development version.
+
+* STD: Equivalent to `IP URL RB ARGS UA HEAD GET POST CC COMPAT` in the development version.
 
 You can turn off a mode in the development version by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
 The following is an example of using the standard working mode, but without inspecting the User-Agent.

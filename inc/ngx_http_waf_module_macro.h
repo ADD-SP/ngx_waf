@@ -271,7 +271,8 @@
                                                 | MODE_INSPECT_HEAD         \
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_POST         \
-                                                | MODE_INSPECT_CC)
+                                                | MODE_INSPECT_CC           \
+                                                | MODE_EXTRA_COMPAT)
 
 
 /**
