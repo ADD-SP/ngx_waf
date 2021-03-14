@@ -311,7 +311,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
         double diff_put_minute = difftime(now, set->last_put) / 60;
         double diff_clear_minute = difftime(now, set->last_clear) / 60;
 
-        if (diff_clear_minute > max(60, srv_conf->waf_cc_deny_duration * 5)) {
+        if (diff_clear_minute > ngx_max(60, srv_conf->waf_cc_deny_duration * 5)) {
             token_bucket_set_clear(set);
             set->last_clear = now;
             set->last_put = now;

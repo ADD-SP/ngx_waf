@@ -9,7 +9,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NGX_HTTP_SRV_CONF | NGX_CONF_FLAG,
         ngx_http_waf_mult_mount_conf,
         NGX_HTTP_SRV_CONF_OFFSET,
-        offsetof(ngx_http_waf_srv_conf_t, waf_mult_mount),
+        0,
         NULL
    },
    {
@@ -78,7 +78,7 @@ ngx_module_t ngx_http_waf_module = {
 
 static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    if (srv_conf->waf_mult_mount != 1) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT) == TRUE) {
         return check_all(r);
     }
     return NGX_DECLINED;
@@ -87,7 +87,11 @@ static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r
 
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    if (srv_conf->waf_mult_mount == 0 || srv_conf->waf_mult_mount == NGX_CONF_UNSET) {
+    if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT) == FALSE) {
+        return check_all(r);
+    }
+    else if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT) == TRUE 
+        && CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_STRICT) == TRUE) {
         return check_all(r);
     }
     return NGX_DECLINED;

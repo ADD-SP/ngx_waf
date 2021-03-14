@@ -108,8 +108,7 @@ typedef struct {
     ngx_pool_t                     *ngx_pool;                       /**< 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                    /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                            /**< 是否启用本模块 */
-    ngx_str_t                       waf_rule_path;                  /**< 配置文件所在目录 */
-    ngx_int_t                       waf_mult_mount;                 /**< 是否执行多阶段检查 */
+    ngx_str_t                       waf_rule_path;                  /**< 配置文件所在目录 */  
     ngx_uint_t                      waf_mode;                       /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;              /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;           /**< CC 防御的拉黑时长（分钟） */

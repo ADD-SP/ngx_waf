@@ -2,12 +2,17 @@
 
 ## [Unreleased]
 
+### **WARNING**
+
+**This version contains breaking changes.**
+
 ### Added
 
-* Added some parameters to `waf_mode` and `waf_cc_deny_limit`.
+* Added some parameters to `waf_mode` and `waf_cc_deny_limit` ([368db2b](https://github.com/ADD-SP/ngx_waf/commit/368db2b26e9d2a910c06e77f892740cefe9556d3)).
 
 ### Changed
 
+* Abort instruction: `waf_mult_mount`. The function of this directive has been merged into the directive `waf_mode`.
 
 ### Fixed
 
