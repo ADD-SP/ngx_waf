@@ -2,11 +2,17 @@
 
 ## [未发布]
 
+### **警告**
+
+**此版本包含不兼容的更新（breaking changes）。**
+
 ### 新增
 
-* 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数。
+* 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数（[368db2b](https://github.com/ADD-SP/ngx_waf/commit/368db2b26e9d2a910c06e77f892740cefe9556d3)）。
 
 ### 改动
+
+* 废弃配置项 `waf_mult_mount`，该配置的功能已经合并到了配置项 `waf_mode` 中。
 
 ### 修复
 

@@ -218,6 +218,21 @@
 */
 #define MODE_INSPECT_CC                         (MODE_INSPECT_REFERER << 1)
 
+
+/**
+ * @def MODE_EXTRA_COMPAT
+ * @brief 兼容模式，启用一些兼容性功能。
+*/
+#define MODE_EXTRA_COMPAT                       (MODE_INSPECT_CC << 1)
+
+
+/**
+ * @def MODE_EXTRA_STRICT
+ * @brief 严格模式，牺牲一些性能进行更多的检查，但是花费的时间不会发生数量级上的变化。
+*/
+#define MODE_EXTRA_STRICT                       (MODE_EXTRA_COMPAT << 1)
+
+
 /**
  * @def MODE_STD
  * @brief 标准工作模式
@@ -230,7 +245,8 @@
                                                 | MODE_INSPECT_HEAD         \
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_POST         \
-                                                | MODE_INSPECT_CC)
+                                                | MODE_INSPECT_CC           \
+                                                | MODE_EXTRA_COMPAT)
 /**
  * @def MODE_STD
  * @brief 适用于静态站点的工作模式
@@ -282,23 +298,9 @@
                                                 | MODE_INSPECT_UNLOCK       \
                                                 | MODE_INSPECT_PATCH        \
                                                 | MODE_INSPECT_TRACE        \
-                                                | MODE_INSPECT_CC)
-
-
-
-#ifndef min
-/**
- * @def min(a,b)
-*/
-#define min(a,b)            (((a) < (b)) ? (a) : (b))
-#endif
-
-#ifndef max
-/**
- * @def max(a,b)
-*/
-#define max(a,b)            (((a) > (b)) ? (a) : (b))
-#endif
+                                                | MODE_INSPECT_CC           \
+                                                | MODE_EXTRA_COMPAT         \
+                                                | MODE_EXTRA_STRICT)
 
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */
