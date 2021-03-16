@@ -44,7 +44,7 @@ and it is recommended to test it after enabling it.
 
 ::: danger Changes in the development version
 
-This directive has been deprecated in the development version and the functions have been merged into the directive `waf_mode`.
+This directive has been deprecated in the v4.0.0-beta.1 and the functions have been merged into the directive `waf_mode`.
 
 ::: 
 
@@ -88,18 +88,18 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 
 ::: tip NOTE: Changes in the development version
 
-There are two new working modes in the development version as follows.
+There are two new working modes in the v4.0.0-beta.1 as follows.
 
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC`.
 * DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RB COOKIE CC`.
 * COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/zh-cn/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
 
-The following working modes have been changed in the development version.
+The following working modes have been changed in the v4.0.0-beta.1.
 
-* STD: Equivalent to `IP URL RB ARGS UA HEAD GET POST CC COMPAT` in the development version.
+* STD: Equivalent to `IP URL RB ARGS UA HEAD GET POST CC COMPAT` in the v4.0.0-beta.1.
 
-You can turn off a mode in the development version by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
+You can turn off a mode in the v4.0.0-beta.1 by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
 The following is an example of using the standard working mode, but without inspecting the User-Agent.
 
 ```nginx
@@ -121,7 +121,7 @@ Declare the maximum request rate of the same IP and the blocking time after the 
 
 ::: tip NOTE: Changes in the development version
 
-A parameter `buffer_size` has been added to the development version configuration to set the size of the memory used to record IP accesses.
+A parameter `buffer_size` has been added to the v4.0.0-beta.1 configuration to set the size of the memory used to record IP accesses.
 See the description below for details.
 
 * syntax: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;

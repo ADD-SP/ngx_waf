@@ -23,6 +23,10 @@ lang: zh-CN
 
 * 更正了内置变量 `waf_rule_details` 的名称错误，该变量的名称在之前的版本代码中被设置为 `waf_rule_deatails`。
 
+* 不再进行冗余的检测。
+
+* 彻底解决了与 `ngx_http_rewrite_module` 的兼容性问题。
+
 ***
 
 ## [3.1.6] - 2021-03-07

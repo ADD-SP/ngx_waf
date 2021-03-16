@@ -335,7 +335,7 @@
  * @retval TRUE 存在。
  * @retval FALSE 不存在。
 */
-#define CHECK_FLAG(origin, flag) (((origin) & (flag)) != 0 ? TRUE : FALSE)
+#define CHECK_FLAG(origin, flag) (((origin) & (flag)) == (flag) ? TRUE : FALSE)
 
 
 /**

@@ -41,7 +41,7 @@ static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 /**
  * @brief 执行全部的检查项目
 */
-static ngx_int_t check_all(ngx_http_request_t* r);
+static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc);
 
 /**
  * @}

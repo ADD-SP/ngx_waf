@@ -23,6 +23,10 @@ lang: en
 
 * Fixed an error in the name of the built-in variable `waf_rule_details`, which was set to `waf_rule_deatails` in a previous version of the code.
 
+* No more superfluous inspections.
+
+* Completely resolve compatibility issues with the `ngx_http_rewrite_module`.
+
 ***
 
 ## [3.1.6] - 2021-03-07

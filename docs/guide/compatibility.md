@@ -12,7 +12,7 @@ This module does not provide compatibility support for Windows platforms.
 
 ## Nginx Compatibility
 
-This module currently supports `nginx-1.18.0` and `nginx-1.19.7` versions.
+This module currently supports `nginx-1.18.0` or newer.
 
 ::: tip NOTE
 
@@ -20,7 +20,7 @@ This module currently supports `nginx-1.18.0` and `nginx-1.19.7` versions.
 i.e. the development. Therefore, 
 this module may not be compatible with the mainline version when it is updated.
 If you encounter compatibility errors when using the mainline version of nginx, 
-you can raise [issue](https://github.com/ADD-SP/ngx_waf/issues).
+you can create [issue](https://github.com/ADD-SP/ngx_waf/issues).
 
 :::
 
