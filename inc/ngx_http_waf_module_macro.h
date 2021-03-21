@@ -271,7 +271,8 @@
                                                 | MODE_INSPECT_HEAD         \
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_POST         \
-                                                | MODE_INSPECT_CC)
+                                                | MODE_INSPECT_CC           \
+                                                | MODE_EXTRA_COMPAT)
 
 
 /**
@@ -334,7 +335,7 @@
  * @retval TRUE 存在。
  * @retval FALSE 不存在。
 */
-#define CHECK_FLAG(origin, flag) (((origin) & (flag)) != 0 ? TRUE : FALSE)
+#define CHECK_FLAG(origin, flag) (((origin) & (flag)) == (flag) ? TRUE : FALSE)
 
 
 /**

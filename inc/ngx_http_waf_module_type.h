@@ -92,8 +92,6 @@ typedef struct {
 */
 typedef struct {
     ngx_int_t                       blocked;                    /**< 是否拦截了本次请求 */
-    ngx_int_t                       checked_in_pre_access;      /**< 是否在 NGX_HTTP_PREACCESS_PHASE 阶段检查过请求 */
-    ngx_int_t                       checked_in_server_rewrite;  /**< 是否在 NGX_HTTP_SERVER_REWRITE_PHASE 阶段检查过请求 */
     u_char                          rule_type[128];             /**< 触发的规则类型 */
     u_char                          rule_deatils[RULE_MAX_LEN]; /**< 触发的规则内容 */
     ngx_int_t                       read_body_done;             /**< 是否已经读取完请求体 */
@@ -109,7 +107,7 @@ typedef struct {
     ngx_uint_t                      alloc_times;                    /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                            /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                  /**< 配置文件所在目录 */  
-    ngx_uint_t                      waf_mode;                       /**< 检测模式 */
+    uint64_t                        waf_mode;                       /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;              /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;           /**< CC 防御的拉黑时长（分钟） */
     ngx_int_t                       waf_cc_deny_shm_zone_size;      /**< CC 防御所使用的共享内存的大小（字节） */

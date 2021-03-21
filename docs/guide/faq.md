@@ -56,3 +56,7 @@ and [client_body_in_file_only](https://nginx.org/en/docs/http/ngx_http_core_modu
 ## fork() failed while spawning "worker process" (12: Cannot allocate memory)
 
 It may be caused by excessive use of `nginx -s reload`. The module requests some memory when reading the configuration, but somehow the memory is not released immediately after `nginx -s reload`, so frequent `nginx -s reload` in a short period of time will most likely cause this error.
+
+## Can I change the rules at runtime?
+
+No, this module only reads the rules when nginx starts and not afterwards.

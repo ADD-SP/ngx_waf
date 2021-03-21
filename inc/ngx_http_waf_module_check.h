@@ -232,7 +232,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
             
             memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
             if (ip_trie_find(srv_conf->black_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
-                ctx->blocked = FALSE;
+                ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
                 *out_http_status = NGX_HTTP_FORBIDDEN;
@@ -243,7 +243,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
             inx_addr_t inx_addr;
             memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
             if (ip_trie_find(srv_conf->black_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
-                ctx->blocked = FALSE;
+                ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->text);
                 *out_http_status = NGX_HTTP_FORBIDDEN;
@@ -328,7 +328,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
                 set->last_put = 0;
                 break;
             case FAIL:
-                ctx->blocked = FALSE;
+                ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "CC-DNEY");
                 strcpy((char*)ctx->rule_deatils, "");
                 *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;

@@ -21,7 +21,7 @@ lang: zh-CN
 
 ## 闲谈
 
-[nginx 防火墙模块开发总结](https://www.addesp.com/archives/3922)
+[nginx 防火墙模块开发总结](https://www.addesp.com/archives/2876)
 
 欢迎访问我的博客：[https://www.addesp.com/](https://www.addesp.com/)。
 

@@ -79,7 +79,7 @@ ngx_module_t ngx_http_waf_module = {
 static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT) == TRUE) {
-        return check_all(r);
+        return check_all(r, TRUE);
     }
     return NGX_DECLINED;
 }
@@ -88,16 +88,15 @@ static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT) == FALSE) {
-        return check_all(r);
+        return check_all(r, TRUE);
     }
-    else if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT) == TRUE 
-        && CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_STRICT) == TRUE) {
-        return check_all(r);
+    else if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_COMPAT | MODE_EXTRA_STRICT) == TRUE) {
+        return check_all(r, FALSE);
     }
     return NGX_DECLINED;
 }
 
-static ngx_int_t check_all(ngx_http_request_t* r) {
+static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     static ngx_http_waf_check check_proc[] = {
         ngx_http_waf_handler_check_white_ip,
         ngx_http_waf_handler_check_black_ip,
@@ -124,8 +123,6 @@ static ngx_int_t check_all(ngx_http_request_t* r) {
             return http_status;
         }
         else {
-            ctx->checked_in_pre_access = FALSE;
-            ctx->checked_in_server_rewrite = FALSE;
             ctx->read_body_done = FALSE;
             ctx->blocked = FALSE;
             ctx->rule_type[0] = '\0';
@@ -134,36 +131,30 @@ static ngx_int_t check_all(ngx_http_request_t* r) {
         }
     }
 
-    
-
-    if (srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET || ctx->checked_in_pre_access == TRUE) {
+    if (r->internal != 0 || srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
-    else {
-        ctx->checked_in_pre_access = TRUE;
-        if (ngx_http_waf_handler_check_cc(r, &http_status) != MATCHED) {
-            if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
-                http_status = NGX_DECLINED;
-            }
-            else {
-                size_t i;
-                for (i = 0; check_proc[i] != NULL; i++) {
-                    is_matched = check_proc[i](r, &http_status);
-                    if (is_matched == MATCHED) {
-                        break;
-                    }
+    else if (is_check_cc == FALSE || ngx_http_waf_handler_check_cc(r, &http_status) != MATCHED) {
+        if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
+            http_status = NGX_DECLINED;
+        }
+        else {
+            for (size_t i = 0; check_proc[i] != NULL; i++) {
+                is_matched = check_proc[i](r, &http_status);
+                if (is_matched == MATCHED) {
+                    break;
                 }
-                /* 如果请求方法为 POST 且 本模块还未读取过请求体 且 配置中未关闭请求体检查 */
-                if ((r->method & NGX_HTTP_POST) != 0
-                    && ctx->read_body_done == FALSE
-                    && is_matched != MATCHED
-                    && CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_RB) == TRUE) {
-                    r->request_body_in_persistent_file = 0;
-                    r->request_body_in_clean_file = 0;
-                    http_status = ngx_http_read_client_request_body(r, check_post);
-                    if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
-                        http_status = NGX_DONE;
-                    }
+            }
+            /* 如果请求方法为 POST 且 本模块还未读取过请求体 且 配置中未关闭请求体检查 */
+            if ((r->method & NGX_HTTP_POST) != 0
+                && ctx->read_body_done == FALSE
+                && is_matched != MATCHED
+                && CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_RB) == TRUE) {
+                r->request_body_in_persistent_file = 0;
+                r->request_body_in_clean_file = 0;
+                http_status = ngx_http_read_client_request_body(r, check_post);
+                if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
+                    http_status = NGX_DONE;
                 }
             }
         }

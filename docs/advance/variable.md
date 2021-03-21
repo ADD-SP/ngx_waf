@@ -15,7 +15,7 @@ Whether this request is intercepted by this module, if intercepted, its value is
 
 ## `$waf_rule_type`
 
-If current request was blocked by this module, this variable is set to the triggered rule type, otherwise `'null'`. The following are possible values.
+If current request was blocked by this module, this variable is set to the triggered rule type, otherwise `''`. The following are possible values.
 
 + `'BLACK-IPV4'`
 + `'BLACK-URL'`
@@ -27,4 +27,4 @@ If current request was blocked by this module, this variable is set to the trigg
 
 ## `$waf_rule_details`
 
-If this request is blocked by this module, its value is the content of the specific rule triggered. If it is not blocked, its value is `'null'`.
+If this request is blocked by this module, its value is the content of the specific rule triggered. If it is not blocked, its value is `''`.
