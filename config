@@ -1,13 +1,3 @@
-# Check if the uthash library is installed.
-ngx_feature="uthash library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_incs="#include <uthash.h>"
-ngx_feature_libs=
-ngx_feature_test=
-. auto/feature
-
-
 ngx_addon_name=ngx_http_waf_module
 
 deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
@@ -21,34 +11,86 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
 
-if [ $ngx_found = yes ]; then
-    # Clear these variables to avoid affecting the installation of other modules.
-    ngx_feature=
-    ngx_feature_name=
-    ngx_feature_run=
-    ngx_feature_incs=
-    ngx_feature_libs=
-    ngx_feature_test=
-    if test -n "$ngx_module_link"; then
-        ngx_module_type=HTTP
-        ngx_module_name=ngx_http_waf_module
-        ngx_module_deps=$deps
-        ngx_module_incs="$ngx_addon_dir/inc"
-        ngx_module_srcs=$srcs
-
-        . auto/module
-    else
-        HTTP_MODULES="$HTTP_MODULES ngx_http_waf_module"
-        HTTP_DEPS-"$HTTP_DEPS $deps"
-        NGX_ADDON_INCS="$NGX_ADDON_INCS $ngx_addon_dir/inc"
-        NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
-    fi
-else
-	cat << END
+# Check if the uthash library is installed.
+ngx_feature="uthash library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs="#include <uthash.h>"
+ngx_feature_libs=
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
 Please visit https://docs.addesp.com/ngx_waf/ or https://add-sp.github.io/ngx_waf/ or https://ngx-waf.pages.dev/ .
 
 END
-	exit 1
+    exit 1
+fi
+
+# Check if the C compiler supports the C99 standard.
+ngx_feature="C99 features"
+ngx_feature_name=
+ngx_feature_run=yes
+ngx_feature_incs=
+ngx_feature_libs=
+ngx_feature_test=$(cat << END
+
+/* Declare variables in loops. */
+for(int i = 0; i < 10; i++) {}
+
+int i = 0, j = 0;
+
+/* Short-circuit operation for logical expressions. */
+if (i == 0 || !(j = 1)) {}
+
+if (j == 1) { return 1; }
+
+j = 0;
+
+if (i != 0 && !(j = 1)) {}
+
+if (j == 1) { return 1; }
+
+END
+)
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature, make sure your C compiler supports and enables the C99 standard.
+
+For gcc, you can enable the C99 standard by appending the parameter --with-cc-opt='-std=c99'.
+
+END
+    exit 1
+fi
+
+# Clear these variables to avoid affecting the installation of other modules.
+ngx_feature=
+ngx_feature_name=
+ngx_feature_run=
+ngx_feature_incs=
+ngx_feature_libs=
+ngx_feature_test=
+
+
+if test -n "$ngx_module_link"; then
+    ngx_module_type=HTTP
+    ngx_module_name=$ngx_addon_name
+    ngx_module_deps=$deps
+    ngx_module_incs="$ngx_addon_dir/inc"
+    ngx_module_srcs=$srcs
+    
+    # Let ngx_http_rewrite_module initialize before this module,
+    # so that this module can take effect before ngx_http_rewrite_module,
+    # because the initialization order and the effective order are reversed.
+    ngx_module_order="ngx_http_rewrite_module ${ngx_addon_name}"
+
+    . auto/module
+else
+    HTTP_MODULES="$HTTP_MODULES ${ngx_addon_name}"
+    HTTP_DEPS-"$HTTP_DEPS $deps"
+    NGX_ADDON_INCS="$NGX_ADDON_INCS $ngx_addon_dir/inc"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
 fi

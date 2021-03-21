@@ -60,3 +60,7 @@ http {
 ## fork() failed while spawning "worker process" (12: Cannot allocate memory)
 
 可能是过多地使用 `nginx -s reload` 导致的，本模块会在读取配置的时候申请一些内存，但是不知为何 `nginx -s reload` 之后这些内存不会立即释放，所以短时间内频繁 `nginx -s reload` 就极可能导致这个错误。
+
+## 可以在运行时修改规则么？
+
+不可以，本模块只会在 nginx 启动时读取规则，之后不再读取。

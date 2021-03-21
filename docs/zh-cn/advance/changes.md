@@ -7,6 +7,18 @@ lang: zh-CN
 
 ## [未发布]
 
+### 新增
+
+### 移除
+
+### 变动
+
+### 修复
+
+***
+
+## [4.0.0] - 2021-03-22 GMT+0800
+
 ### **警告**
 
 **此版本包含不兼容的更新（breaking changes）。**
@@ -15,11 +27,21 @@ lang: zh-CN
 
 * 为 `waf_mode` 和 `waf_cc_deny_limit` 增加了一些参数（[368db2b](https://github.com/ADD-SP/ngx_waf/commit/368db2b26e9d2a910c06e77f892740cefe9556d3)）。
 
-### 改动
+### 移除
 
 * 废弃配置项 `waf_mult_mount`，该配置的功能已经合并到了配置项 `waf_mode` 中。
 
+### 变动
+
+* 给 `waf_mode` 增加了一些参数。
+
 ### 修复
+
+* 更正了内置变量 `waf_rule_details` 的名称错误，该变量的名称在之前的版本代码中被设置为 `waf_rule_deatails`。
+
+* 不再进行冗余的检测。
+
+* 彻底解决了与 `ngx_http_rewrite_module` 的兼容性问题。
 
 ***
 
