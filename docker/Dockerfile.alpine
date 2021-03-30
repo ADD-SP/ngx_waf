@@ -1,6 +1,5 @@
 FROM nginx:stable-alpine as builder
 ARG CHANGE_SOURCE=false
-ARG NGINX_VER=1.18.0
 
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
@@ -78,7 +77,7 @@ RUN set -xe \
         --with-cc-opt='-Os -fomit-frame-pointer' \
         --with-ld-opt=-Wl,--as-needed \
         --add-module=/usr/local/src/ngx_waf \
-    &&  make \
+    &&  make -j$(nproc)\
     &&  cp objs/nginx /usr/sbin/nginx
 
 FROM nginx:stable-alpine

@@ -53,7 +53,7 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
 * CC: Enable 'Anti Challenge Collapsar'.
-* COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/zh-cn/guide/compatibility.md).
+* COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC`.
 * DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RB COOKIE CC`.
@@ -79,6 +79,8 @@ The mode of `CC` is independent of other modes, and whether it takes effect or n
 * syntax: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;
 * default: `waf_cc_deny_limit 10000000 1 10m;`
 * context: server
+
+Set the parameters related to CC protection.
 
 * `rate`:Indicates the maximum number of requests per minute (an integer greater than zero).
 * `duration`:Indicates how many minutes (an integer greater than zero) to pull the IP after exceeding the limit of the first parameter `rate`.
