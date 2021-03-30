@@ -20,7 +20,7 @@ git clone -b master https://github.com/ADD-SP/ngx_waf.git
 
 ## Development
 
-The development board is guaranteed to work in most cases, 
+The development version is guaranteed to work in most cases, 
 with some additional changes included relative to the stable version, 
 such as new features, bug fixes and functional changes.
 You can get the module source code for the development version with the following command.

@@ -80,7 +80,7 @@ RUN set -xe \
         --with-cc-opt='-Os -fomit-frame-pointer' \
         --with-ld-opt=-Wl,--as-needed \
         --add-module=/usr/local/src/ngx_waf \
-    &&  make \
+    &&  make -j$(nproc) \
     &&  cp objs/nginx /usr/sbin/nginx
 
 FROM nginx:stable

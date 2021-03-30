@@ -40,6 +40,11 @@ static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 /**
  * @brief 执行全部的检查项目
+ * @param r 本次要处理的请求
+ * @param is_check_cc 是否执行 CC 防护逻辑
+ * @return http 状态码或者 nginx 控制量
+ * @retval NGX_DECLINED 放行本次请求
+ * @retval NGX_DONE 将在其它地方进行检查，通常是因为执行了 POST 检测
 */
 static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc);
 

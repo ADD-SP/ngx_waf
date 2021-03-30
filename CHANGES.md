@@ -24,7 +24,7 @@
 
 ### Removed
 
-* Abort instruction: `waf_mult_mount`. The function of this directive has been merged into the directive `waf_mode`.
+* Abort directive: `waf_mult_mount`. The function of this directive has been merged into the directive `waf_mode`.
 
 ### Changed 
 
