@@ -13,7 +13,7 @@ lang: zh-CN
 您可以使用下列命令快速查看拦截日志。
 
 ```sh
-cat /path/to/error.log | grep ngx_waf
+cat /path/to/error.log | grep ngx_waf:
 ```
 
 下面是两个例子。
@@ -32,7 +32,7 @@ cat /path/to/error.log | grep ngx_waf
 您可以使用下列命令快速查看调试日志。
 
 ```sh
-cat /path/to/error.log | grep ngx_waf_debug
+cat /path/to/error.log | grep ngx_waf_debug:
 ```
 
 下面是一段典型的调式日志，指示了一次 CC 防御检测的流程。
@@ -70,7 +70,7 @@ http {
                         '  request: "$request"\n'
                         '  status: "$status"\n'
                         '  body_bytes_sent: "$body_bytes_sent"\n'
-                        '  http_referer: "http_referer"\n'
+                        '  http_referer: "$http_referer"\n'
                         '  http_user_agent: "$http_user_agent"\n'
                         '  http_x_forwarded_for: "$http_x_forwarded_for"\n'
                         '  waf_blocked: $waf_blocked\n'
@@ -106,7 +106,7 @@ http {
   request: "GET /www.bak HTTP/1.1"
   status: "403"
   body_bytes_sent: "555"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: true
@@ -119,7 +119,7 @@ http {
   request: "GET / HTTP/1.1"
   status: "304"
   body_bytes_sent: "0"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: false
@@ -132,7 +132,7 @@ http {
   request: "GET / HTTP/1.1"
   status: "304"
   body_bytes_sent: "0"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: false
@@ -145,7 +145,7 @@ http {
   request: "GET / HTTP/1.1"
   status: "503"
   body_bytes_sent: "599"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: false
@@ -158,7 +158,7 @@ http {
   request: "GET / HTTP/1.1"
   status: "503"
   body_bytes_sent: "599"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: true

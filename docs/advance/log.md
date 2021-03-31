@@ -14,7 +14,7 @@ The format is `ngx_waf: [rule type][specific rule triggered]`.
 You can use the following command to quickly view the blocking log.
 
 ```sh
-cat /path/to/error.log | grep ngx_waf
+cat /path/to/error.log | grep ngx_waf:
 ```
 
 Here are two examples.
@@ -34,7 +34,7 @@ for troubleshooting purposes. The format is `ngx_waf_debug: debug information`.
 You can use the following command to quickly view the debug log.
 
 ```sh
-cat /path/to/error.log | grep ngx_waf_debug
+cat /path/to/error.log | grep ngx_waf_debug:
 ```
 
 Below is a typical modulation log that illustrates the flow of a CC defense detection.
@@ -75,7 +75,7 @@ http {
                         '  request: "$request"\n'
                         '  status: "$status"\n'
                         '  body_bytes_sent: "$body_bytes_sent"\n'
-                        '  http_referer: "http_referer"\n'
+                        '  http_referer: "$http_referer"\n'
                         '  http_user_agent: "$http_user_agent"\n'
                         '  http_x_forwarded_for: "$http_x_forwarded_for"\n'
                         '  waf_blocked: $waf_blocked\n'
@@ -112,7 +112,7 @@ The following is a log in YAML format.
   request: "GET /www.bak HTTP/1.1"
   status: "403"
   body_bytes_sent: "555"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: true
@@ -125,7 +125,7 @@ The following is a log in YAML format.
   request: "GET / HTTP/1.1"
   status: "304"
   body_bytes_sent: "0"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: false
@@ -138,7 +138,7 @@ The following is a log in YAML format.
   request: "GET / HTTP/1.1"
   status: "304"
   body_bytes_sent: "0"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: false
@@ -151,7 +151,7 @@ The following is a log in YAML format.
   request: "GET / HTTP/1.1"
   status: "503"
   body_bytes_sent: "599"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: true
@@ -164,7 +164,7 @@ The following is a log in YAML format.
   request: "GET / HTTP/1.1"
   status: "503"
   body_bytes_sent: "599"
-  http_referer: "http_referer"
+  http_referer: "localhost"
   http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
   http_x_forwarded_for: "-"
   waf_blocked: true

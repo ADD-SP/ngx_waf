@@ -9,6 +9,9 @@ lang: en
 
 ### Added
 
+* A new mode `CACHE` has been added, enabling this mode will cache the results of each inspection to improve performance.
+* New configuration `waf_cache_size` has been added to set the size of the memory for caching inspection results.
+
 ### Removed
 
 ### Changed

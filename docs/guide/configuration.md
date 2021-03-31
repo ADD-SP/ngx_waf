@@ -8,6 +8,12 @@ lang: en
 You can enable ngx_waf by adding configuration to a `server` block inside `nginx.conf`.
 Here is an example.
 
+::: warning WARNING
+
+The configurations listed below are required if you intend to change them unless you know what it means.
+
+:::
+
 ```nginx
 http {
     ...
@@ -22,6 +28,11 @@ http {
         # CC protection parameter, 1000 maximum number of requests per minute, 
         # 60 means the corresponding ip is blocked for 60 minutes after exceeding the limit.
         waf_cc_deny_limit 1000 60;
+
+        # The following directives are for the development version only.
+
+        # The size of the memory space used to cache the check results is set to 10 MB.
+        waf_cache_size 10m;
         ...
     }
     ...

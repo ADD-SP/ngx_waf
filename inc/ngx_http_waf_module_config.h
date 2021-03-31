@@ -16,6 +16,7 @@
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_token_bucket_set.h>
+#include <ngx_http_waf_module_lru_cache.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
@@ -56,9 +57,14 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
 static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 /**
- * @brief 读取配置项 _waf_cc_deny_limit，该项表示最高的访问频次以及超出后的拉黑时间。
+ * @brief 读取配置项 waf_cc_deny_limit，该项表示最高的访问频次以及超出后的拉黑时间。
 */
 static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+/**
+ * @brief 读取配置项 waf_cache_size，该项表示最高的访问频次以及超出后的拉黑时间。
+*/
+static char* ngx_http_waf_cache_size_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 /**
  * @brief 当读取 waf_blocked 变量时的回调函数，这个变量当请求被拦截的时候是 "true"，反之是 "false"。
@@ -91,7 +97,13 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
 static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 
 
-static ngx_int_t ngx_http_waf_share_memory_init(ngx_shm_zone_t *zone, void *data);
+static ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *data);
+
+static ngx_int_t ngx_http_waf_shm_zone_inspection_cache_init(ngx_shm_zone_t *zone, void *data);
+
+static void ngx_http_waf_event_clear_token_bucket_set_handler(ngx_event_t* event);
+
+static void ngx_http_waf_event_eliminate_inspection_cache_handler(ngx_event_t* event);
 
 
 /**
@@ -425,6 +437,15 @@ static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             srv_conf->waf_mode &= ~MODE_EXTRA_STRICT;
         }
 
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"CACHE", ngx_min(modes[i].len, sizeof("CACHE") - 1)) == 0
+            && modes[i].len == sizeof("CACHE") - 1) {
+            srv_conf->waf_mode |= MODE_EXTRA_CACHE;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!CACHE", ngx_min(modes[i].len, sizeof("!CACHE") - 1)) == 0
+            && modes[i].len == sizeof("!CACHE") - 1) {
+            srv_conf->waf_mode &= ~MODE_EXTRA_CACHE;
+        }
+
         else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: Invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html or https://ngx-waf.pages.dev/advance/syntax.html .");
@@ -469,17 +490,19 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
             return NGX_CONF_ERROR;
         }
 
-        if (srv_conf->waf_cc_deny_shm_zone_size < SHATE_MEMORY_MIN_SIZE)
+        if (srv_conf->waf_cc_deny_shm_zone_size < SHARE_MEMORY_CC_DENY_MIN_SIZE)
         {
-            srv_conf->waf_cc_deny_shm_zone_size = SHATE_MEMORY_MIN_SIZE;
+            srv_conf->waf_cc_deny_shm_zone_size = SHARE_MEMORY_CC_DENY_MIN_SIZE;
             ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_ENOMOREFILES, 
-                "ngx_waf: The specified memory space is too small and is automatically set to the default size: %d Byte.", 
-                SHATE_MEMORY_MIN_SIZE);
+                "ngx_waf: The specified memory space is too small and is automatically set to the default size: %d KB.", 
+                SHARE_MEMORY_CC_DENY_MIN_SIZE / 1024);
         }
+    } else {
+        srv_conf->waf_cc_deny_shm_zone_size = SHARE_MEMORY_CC_DENY_MIN_SIZE;
     }
 
     u_char* str = ngx_pcalloc(srv_conf->ngx_pool, sizeof(u_char) * 1025);
-    memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
+    ngx_memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
     ngx_uint_t id = (ngx_uint_t)shm_id++;
     int index = cf->conf_file->file.name.len;
     while (id != 0) {
@@ -487,7 +510,7 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
         id /= 10;
     }
     str[index] = '\0';
-    strcat((char*)str, SHARE_MEMORY_NAME);
+    strcat((char*)str, SHARE_MEMORY_CC_DNEY_NAME);
     ngx_str_t name;
     name.data = str;
     #ifdef __STDC_LIB_EXT1__
@@ -496,16 +519,112 @@ static char* ngx_http_waf_cc_deny_limit_conf(ngx_conf_t* cf, ngx_command_t* cmd,
         name.len = strlen((char*)str);
     #endif
     
-    srv_conf->shm_zone = ngx_shared_memory_add(cf, &name, srv_conf->waf_cc_deny_shm_zone_size, &ngx_http_waf_module);
+    srv_conf->shm_zone_cc_deny = ngx_shared_memory_add(cf, &name, 
+                                                        srv_conf->waf_cc_deny_shm_zone_size, 
+                                                        &ngx_http_waf_module);
 
-    if (srv_conf->shm_zone == NULL) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-                "ngx_waf: Failed to allocate shared memory.");
-        return NULL;
+    if (srv_conf->shm_zone_cc_deny == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+                "ngx_waf: Failed to add shared memory.");
+        return NGX_CONF_ERROR;
     }
 
-    srv_conf->shm_zone->init = ngx_http_waf_share_memory_init;
-    srv_conf->shm_zone->data = srv_conf;
+    srv_conf->shm_zone_cc_deny->init = ngx_http_waf_shm_zone_cc_deny_init;
+    srv_conf->shm_zone_cc_deny->data = srv_conf;
+
+    return NGX_CONF_OK;
+}
+
+
+static char* ngx_http_waf_cache_size_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    static ngx_uint_t shm_id = 1;
+    ngx_http_waf_srv_conf_t* srv_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+    u_char error_str[256];
+
+    srv_conf->waf_inspection_shm_zone_size = ngx_parse_size(p_str + 1);
+    if (srv_conf->waf_inspection_shm_zone_size == NGX_ERROR) {
+        to_c_str(error_str, p_str[1]);
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+            "ngx_waf: Invalid memory size %s", error_str);
+        return NGX_CONF_ERROR;
+    } 
+
+    if (srv_conf->waf_inspection_shm_zone_size < SHARE_MEMORY_INSPECTION_CACHE_MIN_SIZE)
+    {
+        srv_conf->waf_inspection_shm_zone_size = SHARE_MEMORY_INSPECTION_CACHE_MIN_SIZE;
+        ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_ENOMOREFILES, 
+            "ngx_waf: The specified memory space is too small and is automatically set to the default size: %d KB.", 
+            SHARE_MEMORY_INSPECTION_CACHE_MIN_SIZE / 1024);
+    }
+
+    /* 如果有第二个参数 */
+    if (cf->args->nelts >= 3) {
+        srv_conf->waf_eliminate_inspection_cache_interval = ngx_atoi(p_str[2].data, p_str[2].len);
+        if (srv_conf->waf_eliminate_inspection_cache_interval == NGX_ERROR
+            || srv_conf->waf_eliminate_inspection_cache_interval <= 0) {
+            to_c_str(error_str, p_str[1]);
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+                "ngx_waf: Unable to convert [%s] to a positive integer", error_str);
+            return NGX_CONF_ERROR;
+        }
+    } else {
+        /* 默认为 60 分钟 */
+        srv_conf->waf_eliminate_inspection_cache_interval = 60;
+    }
+
+    /* 如果有第三个参数 */
+    if (cf->args->nelts == 4) {
+        srv_conf->waf_eliminate_inspection_cache_percent = ngx_atoi(p_str[3].data, p_str[3].len);
+        if (srv_conf->waf_eliminate_inspection_cache_percent == NGX_ERROR) {
+            to_c_str(error_str, p_str[1]);
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+                "ngx_waf: Unable to convert [%s] to a integer", error_str);
+            return NGX_CONF_ERROR;
+        }
+        if (srv_conf->waf_eliminate_inspection_cache_percent <= 0
+            || srv_conf->waf_eliminate_inspection_cache_percent > 100) {
+            to_c_str(error_str, p_str[1]);
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+                "ngx_waf: [%s] must be greater than 0 and less than or equal to 100.", error_str);
+            return NGX_CONF_ERROR;
+        }
+    } else {
+        /* 默认为淘汰掉 50 % 的缓存 */
+        srv_conf->waf_eliminate_inspection_cache_percent = 50;
+    }
+
+
+    u_char* str = ngx_pcalloc(srv_conf->ngx_pool, sizeof(u_char) * 1025);
+    ngx_memcpy(str, cf->conf_file->file.name.data, cf->conf_file->file.name.len);
+    ngx_uint_t id = (ngx_uint_t)shm_id++;
+    int index = cf->conf_file->file.name.len;
+    while (id != 0) {
+        str[index++] = (id % 10) + '0';
+        id /= 10;
+    }
+    str[index] = '\0';
+    strcat((char*)str, SHARE_MEMORY_INSPECTION_CACHE_NAME);
+    ngx_str_t name;
+    name.data = str;
+    #ifdef __STDC_LIB_EXT1__
+        name.len = strnlen_s((char*)str, sizeof(u_char) * 1025 - 1);
+    #else
+        name.len = strlen((char*)str);
+    #endif
+    
+    srv_conf->shm_zone_inspection_cache = ngx_shared_memory_add(cf, &name, 
+                                                                srv_conf->waf_inspection_shm_zone_size, 
+                                                                &ngx_http_waf_module);
+
+    if (srv_conf->shm_zone_cc_deny == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+                "ngx_waf: Failed to add shared memory.");
+        return NGX_CONF_ERROR;
+    }
+
+    srv_conf->shm_zone_inspection_cache->init = ngx_http_waf_shm_zone_inspection_cache_init;
+    srv_conf->shm_zone_inspection_cache->data = srv_conf;
 
     return NGX_CONF_OK;
 }
@@ -526,13 +645,17 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     #else
         srv_conf->debug_log = ngx_log_init(NULL, NULL);
     #endif
+    srv_conf->debug_log->log_level = NGX_LOG_DEBUG_CORE;
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + INITIAL_SIZE, cf->log);
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mode = 0;
-    srv_conf->waf_cc_deny_limit = 10000000;
-    srv_conf->waf_cc_deny_duration = 1;
-    srv_conf->waf_cc_deny_shm_zone_size = SHATE_MEMORY_MIN_SIZE;
+    srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
+    srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
+    srv_conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
+    srv_conf->waf_inspection_shm_zone_size = NGX_CONF_UNSET;
+    srv_conf->waf_eliminate_inspection_cache_interval = NGX_CONF_UNSET;
+    srv_conf->waf_eliminate_inspection_cache_percent = NGX_CONF_UNSET;
     srv_conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -541,7 +664,26 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->black_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
+    srv_conf->shm_zone_cc_deny = NULL;
+    srv_conf->shm_zone_inspection_cache = NULL;
     srv_conf->ip_token_bucket_set = NULL;
+    srv_conf->black_url_inspection_cache = NULL;
+    srv_conf->black_args_inspection_cache = NULL;
+    srv_conf->black_ua_inspection_cache = NULL;
+    srv_conf->black_referer_inspection_cache = NULL;
+    srv_conf->black_cookie_inspection_cache = NULL;
+    srv_conf->white_url_inspection_cache = NULL;
+    srv_conf->white_referer_inspection_cache = NULL;
+
+    ngx_memzero(&(srv_conf->event_clear_token_bucket_set), sizeof(ngx_event_t));
+    srv_conf->event_clear_token_bucket_set.data = srv_conf;
+    srv_conf->event_clear_token_bucket_set.log = srv_conf->debug_log;
+    srv_conf->event_clear_token_bucket_set.handler = ngx_http_waf_event_clear_token_bucket_set_handler;
+
+    ngx_memzero(&(srv_conf->event_eliminate_inspection_cache), sizeof(ngx_event_t));
+    srv_conf->event_eliminate_inspection_cache.data = srv_conf;
+    srv_conf->event_eliminate_inspection_cache.log = srv_conf->debug_log;
+    srv_conf->event_eliminate_inspection_cache.handler = ngx_http_waf_event_eliminate_inspection_cache_handler;
 
     if (ip_trie_init(&(srv_conf->black_ipv4), srv_conf->ngx_pool, AF_INET) != SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_ipv4.");
@@ -713,7 +855,7 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 }
 
 
-static ngx_int_t ngx_http_waf_share_memory_init(ngx_shm_zone_t *zone, void *data) {
+static ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *data) {
     ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
     ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)(zone->data);
     srv_conf->ip_token_bucket_set = ngx_slab_calloc(shpool, sizeof(token_bucket_set_t));
@@ -723,10 +865,178 @@ static ngx_int_t ngx_http_waf_share_memory_init(ngx_shm_zone_t *zone, void *data
     if (token_bucket_set_init(srv_conf->ip_token_bucket_set, 
                               slab_pool, shpool, 
                               srv_conf->waf_cc_deny_limit, 
-                              srv_conf->waf_cc_deny_duration) == SUCCESS) {
-        return NGX_OK;
+                              srv_conf->waf_cc_deny_duration) != SUCCESS) {
+        return NGX_ERROR;
     }
-    return NGX_ERROR;
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_shm_zone_inspection_cache_init(ngx_shm_zone_t *zone, void *data) {
+    ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
+    ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)(zone->data);
+
+    srv_conf->black_url_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->black_url_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->black_url_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    srv_conf->black_args_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->black_args_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->black_args_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    srv_conf->black_ua_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->black_ua_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->black_ua_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    srv_conf->black_referer_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->black_referer_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->black_referer_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    srv_conf->black_cookie_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->black_cookie_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->black_cookie_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    srv_conf->white_url_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->white_url_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->white_url_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    srv_conf->white_referer_inspection_cache = ngx_slab_calloc(shpool, sizeof(lru_cache_manager_t));
+    if (srv_conf->white_referer_inspection_cache == NULL) {
+        return NGX_ERROR;
+    }
+    if (lru_cache_manager_init( srv_conf->white_referer_inspection_cache,
+                                slab_pool,
+                                shpool) != SUCCESS) {
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
+static void ngx_http_waf_event_clear_token_bucket_set_handler(ngx_event_t* event) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: The token bucket clearing process has been started.");
+
+    ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)event->data;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+
+    
+    ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_cc_deny->shm.addr;
+    token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
+    time_t now = time(NULL);
+
+    ngx_shmtx_lock(&shpool->mutex);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: Shared memory is locked.");
+
+    token_bucket_set_clear(set);
+    set->last_clear = now;
+    set->last_put = now;
+
+    ngx_shmtx_unlock(&shpool->mutex);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: Shared memory is unlocked.");
+
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: The token bucket clearing process is all but complete.");
+}
+
+
+static void ngx_http_waf_event_eliminate_inspection_cache_handler(ngx_event_t* event) {
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: The batch cache elimination process has been activated.");
+
+    ngx_http_waf_srv_conf_t* srv_conf = (ngx_http_waf_srv_conf_t*)event->data;
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
+    
+    ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+    double percent = srv_conf->waf_eliminate_inspection_cache_percent / 100.0;
+
+    ngx_shmtx_lock(&shpool->mutex);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: Shared memory is locked.");
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->black_url_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from black_url_inspection_cache.");
+    }
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->black_args_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from black_args_inspection_cache.");
+    }
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->black_ua_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from black_ua_inspection_cache.");
+    }
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->black_referer_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from black_referer_inspection_cache.");
+    }
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->black_cookie_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from black_cookie_inspection_cache.");
+    }
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->white_url_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from white_url_inspection_cache.");
+    }
+
+    if (lru_cache_manager_eliminate_percent(srv_conf->white_referer_inspection_cache, percent) != SUCCESS) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+            "ngx_waf_debug: Unable to clear cache from white_referer_inspection_cache.");
+    }
+
+
+    ngx_shmtx_unlock(&shpool->mutex);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: Shared memory is unlocked.");
+
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, event->log, 0, 
+        "ngx_waf_debug: The batch cache elimination process is all but complete.");
 }
 
 
@@ -824,7 +1134,7 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
                     "ngx_waf: In %s:%d, [%s] is not a valid IPV6 string.", file_name, line_number, ipv6.text);
                 return FAIL;
             }
-            memcpy(inx_addr.ipv6.s6_addr, ipv6.prefix, 16);
+            ngx_memcpy(inx_addr.ipv6.s6_addr, ipv6.prefix, 16);
             if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text) != SUCCESS) {
                 if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == SUCCESS) {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 

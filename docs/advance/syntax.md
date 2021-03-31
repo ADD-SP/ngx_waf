@@ -47,18 +47,18 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * TRAC: Start the inspection process when `Http.Method=TRAC`.
 * IP: Enable IP address inspecting rules.
 * URL: Enable URL inspecting rules.
-* RBODY: Enable request body inspecting rules.
+* RBODY: Enable POST request body inspecting rules.
 * ARGS: Enable ARGS inspecting rules.
 * UA: Enable UA inspecting rules.
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
-* CC: Enable 'Anti Challenge Collapsar'.
+* CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny_limit](#waf-cc-deny-limit).
 * COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC`.
-* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RB COOKIE CC`.
-* STD: Equivalent to `IP URL RB ARGS UA HEAD GET POST CC COMPAT`.
-* FULL: In any case, the inspection process will be started and all inspection rules will be enabled.
+* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC`.
+* STD: Equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT`.
+* FULL: Enable all modes.
 
 You can turn off a mode by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
 The following is an example of using the standard working mode, but without inspecting the User-Agent.
@@ -73,11 +73,25 @@ The mode of `CC` is independent of other modes, and whether it takes effect or n
 
 :::
 
+::: tip CHANGES IN THE DEVELOPMENT VERSION
+
+Added a new mode:
+
+* CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache_size](#waf-cache-size).
+
+The following modes have changed:
+
+* STD: Standard working mode, equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`.
+* STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC CACHE`.
+* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`.
+
+:::
+
 
 ## `waf_cc_deny_limit`
 
 * syntax: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;
-* default: `waf_cc_deny_limit 10000000 1 10m;`
+* default: ——
 * context: server
 
 Set the parameters related to CC protection.
@@ -85,5 +99,36 @@ Set the parameters related to CC protection.
 * `rate`:Indicates the maximum number of requests per minute (an integer greater than zero).
 * `duration`:Indicates how many minutes (an integer greater than zero) to pull the IP after exceeding the limit of the first parameter `rate`.
 * `buffer_size`: used to set the size of the memory for recording IP accesses, such as `10m`, `10240k`, must not be less than `10m`, if not specified then the default is `10m`.
+
+
+## `waf_cache_size`
+
+* syntax: `waf_cache_size buffer_size`;
+* default: ——
+* context: server
+
+Set the size of the memory used to cache the inspection results. 
+For example `10m`, `10240k`, must not be less than `10m`, or default to `10m` if not specified.
+
+::: tip NOTE
+
+It is recommended to set the size of the cache space according to the actual situation. If the memory space is not large enough, the cache will be deleted frequently, which will reduce the performance.
+
+You can check if the following line appears frequently by looking at the [debug log](log.md).
+If it appears almost every request, please increase the size of the cache space appropriately.
+
+```
+ngx_slab_alloc() failed: no memory
+```
+
+Translated with www.DeepL.com/Translator (free version)
+
+::: warning WARNING
+
+This configuration is a new feature in the development version, 
+and can only be used in the development version, 
+and will be merged into the stable version when it is stable.
+
+:::
 
 

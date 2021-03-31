@@ -50,6 +50,7 @@ RUN set -xe \
         --with-perl_modules_path=/usr/lib/perl5/vendor_perl \
         --user=nginx \
         --group=nginx \
+        --with-debug \
         --with-compat \
         --with-file-aio \
         --with-threads \

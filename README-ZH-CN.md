@@ -7,7 +7,6 @@
 [![docker](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)](https://github.com/ADD-SP/ngx_waf/releases)
-![GitHub](https://img.shields.io/github/license/ADD-SP/ngx_waf?color=blue)
 [![语义化版本 2.0.0](https://img.shields.io/badge/%E8%AF%AD%E4%B9%89%E5%8C%96%E7%89%88%E6%9C%AC-2.0.0-blue)](https://semver.org/lang/zh-CN/)
 
 [English](README.md) | 简体中文
@@ -16,15 +15,15 @@
 
 ## 功能
 
-+ 支持 IPV4 和 IPV6。
-+ CC 防御，超出限制后自动拉黑对应 IP 一段时间。
-+ IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
-+ POST 黑名单。
-+ URL 黑白名单
-+ GET 参数黑名单
-+ UserAgent 黑名单。
-+ Cookie 黑名单。
-+ Referer 黑白名单。
+* 支持 IPV4 和 IPV6。
+* CC 防御，超出限制后自动拉黑对应 IP 一段时间。
+* IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
+* POST 黑名单。
+* URL 黑白名单
+* GET 参数黑名单
+* UserAgent 黑名单。
+* Cookie 黑名单。
+* Referer 黑白名单。
 
 ## 使用文档
 
@@ -38,6 +37,7 @@
 
 ## 感谢
 
-+ [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
-+ [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
-+ [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。
+* [uthash](https://github.com/troydhanson/uthash): 本项目使用 uthash 的两个数据结构，即 `uthash` 和 `utlist`。
+* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
+* [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
+* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。

@@ -72,13 +72,25 @@
  * @def SHARE_MEMORY_NAME
  * @brief 用于 CC 防护的共享内存的名称
 */
-#define SHARE_MEMORY_NAME       ("__ADD-SP_NGX_WAF__")
+#define SHARE_MEMORY_CC_DNEY_NAME                   ("__ADD-SP_NGX_WAF_CC_DENY_SHM__")
 
 /**
- * @def INITIAL_SIZE
- * @brief 用于 CC 防护的共享内存的大小（字节）
+ * @def SHARE_MEMORY_INSPECTION_CACHE_NAME
+ * @brief 用于缓存规则检查结果的共享内存的名称
 */
-#define SHATE_MEMORY_MIN_SIZE   (1024 * 1024 * 10)
+#define SHARE_MEMORY_INSPECTION_CACHE_NAME          ("__ADD-SP_NGX_WAF_INSPECTION_CACHE_SHM__")
+
+/**
+ * @def SHATE_MEMORY_CC_DENY_MIN_SIZE
+ * @brief 用于 CC 防护的共享内存的最小大小（字节）
+*/
+#define SHARE_MEMORY_CC_DENY_MIN_SIZE               (1024 * 1024 * 10)
+
+/**
+ * @def SHATE_MEMORY_INSPECTION_CACHE_MIN_SIZE
+ * @brief 用于缓存规则检查结果的共享内存的最小大小（字节）
+*/
+#define SHARE_MEMORY_INSPECTION_CACHE_MIN_SIZE      (1024 * 1024 * 10)
 
 /**
  * @def MODE_INSPECT_GET
@@ -232,6 +244,12 @@
 */
 #define MODE_EXTRA_STRICT                       (MODE_EXTRA_COMPAT << 1)
 
+/**
+ * @def MODE_EXTRA_CACHE
+ * @brief 启用缓存，但是不缓存 POST 检查。
+*/
+#define MODE_EXTRA_CACHE                        (MODE_EXTRA_STRICT << 1)
+
 
 /**
  * @def MODE_STD
@@ -246,9 +264,10 @@
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_POST         \
                                                 | MODE_INSPECT_CC           \
-                                                | MODE_EXTRA_COMPAT)
+                                                | MODE_EXTRA_COMPAT         \
+                                                | MODE_EXTRA_CACHE)
 /**
- * @def MODE_STD
+ * @def MODE_STATIC
  * @brief 适用于静态站点的工作模式
 */
 #define MODE_STATIC                             (MODE_INSPECT_IP            \
@@ -256,10 +275,11 @@
                                                 | MODE_INSPECT_UA           \
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_HEAD         \
-                                                | MODE_INSPECT_CC)
+                                                | MODE_INSPECT_CC           \
+                                                | MODE_EXTRA_CACHE)
 
 /**
- * @def MODE_STD
+ * @def MODE_DYNAMIC
  * @brief 适用于动态站点的工作模式
 */
 #define MODE_DYNAMIC                            (MODE_INSPECT_IP            \
@@ -272,12 +292,13 @@
                                                 | MODE_INSPECT_GET          \
                                                 | MODE_INSPECT_POST         \
                                                 | MODE_INSPECT_CC           \
-                                                | MODE_EXTRA_COMPAT)
+                                                | MODE_EXTRA_COMPAT         \
+                                                | MODE_EXTRA_CACHE)
 
 
 /**
  * @def MODE_FULL
- * @brief 检测全部请求类型并启用全部的检测项目
+ * @brief 启用所有的模式
 */
 #define MODE_FULL                               (MODE_INSPECT_IP            \
                                                 | MODE_INSPECT_URL          \
@@ -301,7 +322,8 @@
                                                 | MODE_INSPECT_TRACE        \
                                                 | MODE_INSPECT_CC           \
                                                 | MODE_EXTRA_COMPAT         \
-                                                | MODE_EXTRA_STRICT)
+                                                | MODE_EXTRA_STRICT         \
+                                                | MODE_EXTRA_CACHE)
 
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */

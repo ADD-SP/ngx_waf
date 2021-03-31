@@ -96,9 +96,9 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
     
     new_node->is_ip = TRUE;
     if (trie->ip_type == AF_INET) {
-        memcpy(new_node->text, text, 32);
+        ngx_memcpy(new_node->text, text, 32);
     } else if (trie->ip_type == AF_INET6) {
-        memcpy(new_node->text, text, 64);
+        ngx_memcpy(new_node->text, text, 64);
     }
 
     ip_trie_node_t* prev_node = trie->root;

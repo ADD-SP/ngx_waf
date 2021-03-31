@@ -15,6 +15,7 @@
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_token_bucket_set.h>
+#include <ngx_http_waf_module_lru_cache.h>
 
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
@@ -171,7 +172,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
         if (r->connection->sockaddr->sa_family == AF_INET) {
             struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
             inx_addr_t inx_addr;
-            memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
+            ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
             if (ip_trie_find(srv_conf->white_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
                 ctx->blocked = FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
@@ -183,7 +184,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
             struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             
-            memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
+            ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
             if (ip_trie_find(srv_conf->white_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
                 ctx->blocked = FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
@@ -230,7 +231,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
             struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             
-            memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
+            ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
             if (ip_trie_find(srv_conf->black_ipv4, &inx_addr, &ip_trie_node) == SUCCESS) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
@@ -241,7 +242,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
         } else if (r->connection->sockaddr->sa_family == AF_INET6) {
             struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
             inx_addr_t inx_addr;
-            memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
+            ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
             if (ip_trie_find(srv_conf->black_ipv6, &inx_addr, &ip_trie_node) == SUCCESS) {
                 ctx->blocked = TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV6");
@@ -291,41 +292,40 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             "ngx_waf_debug: Detection has begun.");
 
         inx_addr_t inx_addr;
-        memset(&inx_addr, 0, sizeof(inx_addr_t));
+        ngx_memset(&inx_addr, 0, sizeof(inx_addr_t));
 
         if (ip_type == AF_INET) {
             struct sockaddr_in* s_addr_in = (struct sockaddr_in*)(r->connection->sockaddr);
-            memcpy(&(inx_addr.ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
+            ngx_memcpy(&(inx_addr.ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
         } else {
             struct sockaddr_in6* s_addr_in6 = (struct sockaddr_in6*)(r->connection->sockaddr);
-            memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
+            ngx_memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
         }
 
-        ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone->shm.addr;
+        ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_cc_deny->shm.addr;
+        token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
 
         ngx_shmtx_lock(&shpool->mutex);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Shared memory is locked.");
 
-        token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
         double diff_put_minute = difftime(now, set->last_put) / 60;
-        double diff_clear_minute = difftime(now, set->last_clear) / 60;
 
-        if (diff_clear_minute > ngx_max(60, srv_conf->waf_cc_deny_duration * 5)) {
-            token_bucket_set_clear(set);
-            set->last_clear = now;
-            set->last_put = now;
-        } else if (diff_put_minute >= 1) {
-            token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit, now);
+        if (diff_put_minute >= 1) {
+            if (token_bucket_set_put(set, NULL, srv_conf->waf_cc_deny_limit, now) != SUCCESS) {
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Failed to add tokens to the token bucket.");
+            }
             set->last_put = now;
         }
 
         switch (token_bucket_set_take(set, &inx_addr, 1, now)) {
             case MALLOC_ERROR:
-                ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, 
-                    "ngx_waf_debug: Unable to allocate shared memory, the next request will reset the shared memory pool.");
-                set->last_clear = 0;
-                set->last_put = 0;
+                ngx_log_error(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Unable to allocate shared memory.");
+                ngx_post_event(&(srv_conf->event_clear_token_bucket_set), &ngx_posted_events);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Trigger event - token_bucket_set.clear .");
                 break;
             case FAIL:
                 ctx->blocked = TRUE;
@@ -377,23 +377,66 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_regex_elt_t* p = srv_conf->white_url->elts;
+        
+        
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+
 
         if (p_uri->data == NULL || p_uri->len == 0) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the URL is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            size_t i;
-            for (i = 0; i < srv_conf->white_url->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = FALSE;
-                    strcpy((char*)ctx->rule_type, "WHITE-URL");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_DECLINED;
-                    ret_value = MATCHED;
-                    break;
+            u_char* rule_details = NULL;
+            ngx_int_t cache_hit = FAIL;
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                cache_hit = lru_cache_manager_find(srv_conf->white_url_inspection_cache, 
+                                                    p_uri->data, 
+                                                    p_uri->len, 
+                                                    &ret_value, 
+                                                    &rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (cache_hit != SUCCESS) {
+                for (size_t i = 0; i < srv_conf->white_url->nelts; i++, p++) {
+                    ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
+                    if (rc >= 0) {
+                        ret_value = MATCHED;
+                        rule_details = p->name;
+                        break;
+                    }
                 }
+            }
+
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                lru_cache_manager_add(srv_conf->white_url_inspection_cache, 
+                                        p_uri->data, 
+                                        p_uri->len, 
+                                        ret_value, 
+                                        rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (ret_value == MATCHED) {
+                ctx->blocked = FALSE;
+                strcpy((char*)ctx->rule_type, "WHITE-URL");
+                strcpy((char*)ctx->rule_deatils, (char*)rule_details);
+                *out_http_status = NGX_DECLINED;
             }
         }
 
@@ -431,23 +474,66 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_regex_elt_t* p = srv_conf->black_url->elts;
+        
+        
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+
 
         if (p_uri->data == NULL || p_uri->len == 0) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the URL is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            size_t i;
-            for (i = 0; i < srv_conf->black_url->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = TRUE;
-                    strcpy((char*)ctx->rule_type, "BLACK-URL");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_HTTP_FORBIDDEN;
-                    ret_value = MATCHED;
-                    break;
+            u_char* rule_details = NULL;
+            ngx_int_t cache_hit = FAIL;
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                cache_hit = lru_cache_manager_find(srv_conf->black_url_inspection_cache, 
+                                                    p_uri->data, 
+                                                    p_uri->len, 
+                                                    &ret_value, 
+                                                    &rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (cache_hit != SUCCESS) {
+                for (size_t i = 0; i < srv_conf->black_url->nelts; i++, p++) {
+                    ngx_int_t rc = ngx_regex_exec(p->regex, p_uri, NULL, 0);
+                    if (rc >= 0) {
+                        ret_value = MATCHED;
+                        rule_details = p->name;
+                        break;
+                    }
                 }
+            }
+
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                lru_cache_manager_add(srv_conf->black_url_inspection_cache, 
+                                        p_uri->data, 
+                                        p_uri->len, 
+                                        ret_value, 
+                                        rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (ret_value == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "BLACK-URL");
+                strcpy((char*)ctx->rule_deatils, (char*)rule_details);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
             }
         }
 
@@ -489,23 +575,66 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         ngx_str_t* p_args = &r->args;
         ngx_regex_elt_t* p = srv_conf->black_args->elts;
+        
+        
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+
 
         if (p_args->data == NULL || p_args->len == 0) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the ARGS is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            size_t i;
-            for (i = 0; i < srv_conf->black_args->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, p_args, NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = TRUE;
-                    strcpy((char*)ctx->rule_type, "BLACK-ARGS");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_HTTP_FORBIDDEN;
-                    ret_value = MATCHED;
-                    break;
+            u_char* rule_details = NULL;
+            ngx_int_t cache_hit = FAIL;
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                cache_hit = lru_cache_manager_find(srv_conf->black_args_inspection_cache, 
+                                                    p_args->data, 
+                                                    p_args->len, 
+                                                    &ret_value, 
+                                                    &rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (cache_hit != SUCCESS) {
+                for (size_t i = 0; i < srv_conf->black_args->nelts; i++, p++) {
+                    ngx_int_t rc = ngx_regex_exec(p->regex, p_args, NULL, 0);
+                    if (rc >= 0) {
+                        ret_value = MATCHED;
+                        rule_details = p->name;
+                        break;
+                    }
                 }
+            }
+
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                lru_cache_manager_add(srv_conf->black_args_inspection_cache, 
+                                        p_args->data, 
+                                        p_args->len, 
+                                        ret_value, 
+                                        rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (ret_value == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "BLACK-ARGS");
+                strcpy((char*)ctx->rule_deatils, (char*)rule_details);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
             }
         }
 
@@ -547,23 +676,66 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
 
         ngx_str_t* p_ua = &r->headers_in.user_agent->value;
         ngx_regex_elt_t* p = srv_conf->black_ua->elts;
+        
+        
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+
 
         if (p_ua->data == NULL || p_ua->len == 0) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the User-Agent is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            size_t i;
-            for (i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, p_ua, NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = TRUE;
-                    strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_HTTP_FORBIDDEN;
-                    ret_value = MATCHED;
-                    break;
+            u_char* rule_details = NULL;
+            ngx_int_t cache_hit = FAIL;
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                cache_hit = lru_cache_manager_find(srv_conf->black_ua_inspection_cache, 
+                                                    p_ua->data, 
+                                                    p_ua->len, 
+                                                    &ret_value, 
+                                                    &rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (cache_hit != SUCCESS) {
+                for (size_t i = 0; i < srv_conf->black_ua->nelts; i++, p++) {
+                    ngx_int_t rc = ngx_regex_exec(p->regex, p_ua, NULL, 0);
+                    if (rc >= 0) {
+                        ret_value = MATCHED;
+                        rule_details = p->name;
+                        break;
+                    }
                 }
+            }
+
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                lru_cache_manager_add(srv_conf->black_ua_inspection_cache, 
+                                        p_ua->data, 
+                                        p_ua->len, 
+                                        ret_value, 
+                                        rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (ret_value == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "BLACK-USER-AGENT");
+                strcpy((char*)ctx->rule_deatils, (char*)rule_details);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
             }
         }
 
@@ -605,23 +777,66 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_regex_elt_t* p = srv_conf->white_referer->elts;
+        
+        
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+
 
         if (p_referer->data == NULL || p_referer->len == 0) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            size_t i;
-            for (i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = FALSE;
-                    strcpy((char*)ctx->rule_type, "WHITE-REFERER");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_DECLINED;
-                    ret_value = MATCHED;
-                    break;
+            u_char* rule_details = NULL;
+            ngx_int_t cache_hit = FAIL;
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                cache_hit = lru_cache_manager_find(srv_conf->white_referer_inspection_cache, 
+                                                    p_referer->data, 
+                                                    p_referer->len, 
+                                                    &ret_value, 
+                                                    &rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (cache_hit != SUCCESS) {
+                for (size_t i = 0; i < srv_conf->white_referer->nelts; i++, p++) {
+                    ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
+                    if (rc >= 0) {
+                        ret_value = MATCHED;
+                        rule_details = p->name;
+                        break;
+                    }
                 }
+            }
+
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                lru_cache_manager_add(srv_conf->white_referer_inspection_cache, 
+                                        p_referer->data, 
+                                        p_referer->len, 
+                                        ret_value, 
+                                        rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (ret_value == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "WHITE-REFERER");
+                strcpy((char*)ctx->rule_deatils, (char*)rule_details);
+                *out_http_status = NGX_DECLINED;
             }
         }
 
@@ -663,23 +878,66 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_regex_elt_t* p = srv_conf->black_referer->elts;
+        
+
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+
 
         if (p_referer->data == NULL || p_referer->len == 0) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
             ret_value = NOT_MATCHED;
         } else {
-            size_t i;
-            for (i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = FALSE;
-                    strcpy((char*)ctx->rule_type, "BLACK-REFERER");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_HTTP_FORBIDDEN;
-                    ret_value = MATCHED;
-                    break;
+            u_char* rule_details = NULL;
+            ngx_int_t cache_hit = FAIL;
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                cache_hit = lru_cache_manager_find(srv_conf->black_referer_inspection_cache, 
+                                                    p_referer->data, 
+                                                    p_referer->len, 
+                                                    &ret_value, 
+                                                    &rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (cache_hit != SUCCESS) {
+                for (size_t i = 0; i < srv_conf->black_referer->nelts; i++, p++) {
+                    ngx_int_t rc = ngx_regex_exec(p->regex, p_referer, NULL, 0);
+                    if (rc >= 0) {
+                        ret_value = MATCHED;
+                        rule_details = p->name;
+                        break;
+                    }
                 }
+            }
+
+            if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                ngx_shmtx_lock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is locked.");
+                lru_cache_manager_add(srv_conf->black_referer_inspection_cache, 
+                                        p_referer->data, 
+                                        p_referer->len, 
+                                        ret_value, 
+                                        rule_details);
+                ngx_shmtx_unlock(&shpool->mutex);
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                    "ngx_waf_debug: Shared memory is unlocked.");
+            }
+
+            if (ret_value == MATCHED) {
+                ctx->blocked = TRUE;
+                strcpy((char*)ctx->rule_type, "BLACK-REFERER");
+                strcpy((char*)ctx->rule_deatils, (char*)rule_details);
+                *out_http_status = NGX_HTTP_FORBIDDEN;
             }
         }
 
@@ -715,38 +973,79 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection has begun.");
 
+
+        ngx_slab_pool_t *shpool = NULL;
+        if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE
+            && srv_conf->shm_zone_inspection_cache != NULL) {
+            shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
+        }
+        
+
         ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
         size_t i;
         for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
             ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
             size_t j;
             for (j = 0; j < srv_conf->black_cookie->nelts; j++, p++) {
-                if ((**ppcookie).value.data == NULL || (**ppcookie).value.len == 0) {
-                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: The Inspection is skipped because the Cookie.value is empty.");
-                    continue;
-                }
-                ngx_int_t rc = ngx_regex_exec(p->regex, &((*ppcookie)->value), NULL, 0);
-                if (rc >= 0) {
-                    ctx->blocked = TRUE;
-                    strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                    *out_http_status = NGX_HTTP_FORBIDDEN;
-                    ret_value = MATCHED;
-                    break;
-                }
-
                 if ((**ppcookie).key.data == NULL || (**ppcookie).key.len == 0) {
                     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                         "ngx_waf_debug: The Inspection is skipped because the Cookie.key is empty.");
                     continue;
                 }
 
-                rc = ngx_regex_exec(p->regex, &((*ppcookie)->key), NULL, 0);
-                if (rc >= 0) {
+                if ((**ppcookie).value.data == NULL || (**ppcookie).value.len == 0) {
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: The Inspection is skipped because the Cookie.value is empty.");
+                    continue;
+                }
+
+                ngx_str_t temp;
+                temp.len = (**ppcookie).key.len + (**ppcookie).value.len;
+                temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
+                ngx_memcpy(temp.data, (**ppcookie).key.data, (**ppcookie).key.len);
+                ngx_memcpy(temp.data + (**ppcookie).key.len, (**ppcookie).value.data, (**ppcookie).value.len);
+
+                ngx_int_t cache_hit = FAIL;
+                u_char* rule_detail = NULL;
+                if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                    ngx_shmtx_lock(&shpool->mutex);
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Shared memory is locked.");
+                    cache_hit = lru_cache_manager_find(srv_conf->black_cookie_inspection_cache,
+                                                       temp.data,
+                                                       temp.len,
+                                                       &ret_value,
+                                                       &rule_detail);
+                    ngx_shmtx_unlock(&shpool->mutex);
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Shared memory is unlocked.");
+                }
+ 
+                if (cache_hit != SUCCESS && ngx_regex_exec(p->regex, &temp, NULL, 0) >= 0) {
+                    rule_detail = p->name;
+                    ret_value = MATCHED;
+                }
+
+                if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE && shpool != NULL) {
+                    ngx_shmtx_lock(&shpool->mutex);
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Shared memory is locked.");
+                    lru_cache_manager_add(srv_conf->black_cookie_inspection_cache,
+                                          temp.data,
+                                          temp.len,
+                                          ret_value,
+                                          rule_detail);
+                    ngx_shmtx_unlock(&shpool->mutex);
+                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Shared memory is unlocked.");
+                }
+
+                ngx_pfree(r->pool, temp.data);
+
+                if (ret_value == MATCHED) {
                     ctx->blocked = TRUE;
                     strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
-                    strcpy((char*)ctx->rule_deatils, (char*)p->name);
+                    strcpy((char*)ctx->rule_deatils, (char*)rule_detail);
                     *out_http_status = NGX_HTTP_FORBIDDEN;
                     ret_value = MATCHED;
                     break;

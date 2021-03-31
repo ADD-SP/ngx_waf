@@ -7,7 +7,9 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_token_bucket_set.h"
+    $ngx_addon_dir/inc/ngx_http_waf_module_token_bucket_set.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
 

@@ -39,6 +39,11 @@ static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 /**
+ * @brief 启动内存整理事件
+*/
+static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r);
+
+/**
  * @brief 执行全部的检查项目
  * @param r 本次要处理的请求
  * @param is_check_cc 是否执行 CC 防护逻辑
