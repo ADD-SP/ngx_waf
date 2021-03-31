@@ -8,6 +8,7 @@
 
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
+#include <ngx_http_waf_module_mem_pool.h>
 
 /**
  * @defgroup token_bucket_set IP 令牌桶集合
@@ -19,7 +20,7 @@
 /**
  * @brief 初始化一个令牌桶集合
  * @param[out] set 要操作的令牌桶集合
- * @param[in] memory_pool_type_e 内存池类型
+ * @param[in] pool_type 内存池类型
  * @param[in] memory_pool 内存池
  * @param[in] init_count 令牌桶初始令牌数
  * @param[in] ban_duration 令牌桶为空后令牌桶的拉黑时间（分钟）
@@ -28,7 +29,7 @@
  * @retval 其它 失败
 */
 ngx_int_t token_bucket_set_init(token_bucket_set_t* set, 
-                                memory_pool_type_e pool_type, 
+                                mem_pool_type_e pool_type, 
                                 void* memory_pool,
                                 ngx_uint_t init_count,
                                 ngx_uint_t ban_duration);
@@ -72,33 +73,13 @@ ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ng
 ngx_int_t token_bucket_set_clear(token_bucket_set_t* set);
 
 /**
- * @brief 申请并自动清零一段内存。
- * @param[in] set 要操作的令牌桶集合
- * @param[in] size 内存的字节长度
- * @return 如果成功则返回首地址，反之返回 NULL。
- * @retval NULL 失败
- * @retval 其它 成功
-*/
-void* _token_bucket_set_malloc(token_bucket_set_t* set, size_t size);
-
-/**
- * @brief 释放一段内存。
- * @param[in] set 要操作的令牌桶集合
- * @param[in] 要释放的内存的首地址
- * @return 如果成功返回 SUCCESS，反之则不是。
- * @retval SUCCESS 成功
- * @retval 其它 失败
-*/
-ngx_int_t _token_bucket_set_free(token_bucket_set_t* set, void* addr);
-
-/**
  * @}
 */
 
 
 
 ngx_int_t token_bucket_set_init(token_bucket_set_t* set, 
-                                memory_pool_type_e pool_type, 
+                                mem_pool_type_e pool_type, 
                                 void* memory_pool,
                                 ngx_uint_t init_count,
                                 ngx_uint_t ban_duration) {
@@ -106,8 +87,8 @@ ngx_int_t token_bucket_set_init(token_bucket_set_t* set,
         return FAIL;
     }
 
-    set->memory_pool_type = pool_type;
-    set->memory_pool = memory_pool;
+    set->pool.type = pool_type;
+    set->pool.native_pool.slab_pool = memory_pool;
     set->bucket_count = 0;
     set->head = NULL;
     set->last_clear = time(NULL);
@@ -123,11 +104,11 @@ ngx_int_t token_bucket_set_take(token_bucket_set_t* set, inx_addr_t* inx_addr, n
     HASH_FIND(hh, set->head, inx_addr, sizeof(inx_addr_t), bucket);
 
     if (bucket == NULL) {
-        bucket = (token_bucket_t*)_token_bucket_set_malloc(set, sizeof(token_bucket_t));
+        bucket = (token_bucket_t*)mem_pool_calloc(&(set->pool), sizeof(token_bucket_t));
         if (bucket == NULL) {
             return MALLOC_ERROR;
         } else {
-            memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
+            ngx_memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
             bucket->count = set->init_count;
             bucket->is_ban = FALSE;
             bucket->last_ban_time = 0;
@@ -158,11 +139,11 @@ ngx_int_t token_bucket_set_put(token_bucket_set_t* set, inx_addr_t* inx_addr, ng
         HASH_FIND(hh, set->head, &bucket->inx_addr, sizeof(inx_addr_t), bucket);
 
         if (bucket == NULL) {
-            bucket = (token_bucket_t*)_token_bucket_set_malloc(set, sizeof(token_bucket_t));
+            bucket = (token_bucket_t*)mem_pool_calloc(&(set->pool), sizeof(token_bucket_t));
             if (bucket == NULL) {
                 return MALLOC_ERROR;
             } else {
-                memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
+                ngx_memcpy(&(bucket->inx_addr), inx_addr, sizeof(inx_addr_t));
                 bucket->is_ban = FALSE;
                 bucket->last_ban_time = 0;
                 bucket->count = count;
@@ -202,32 +183,12 @@ ngx_int_t token_bucket_set_clear(token_bucket_set_t* set) {
     for (p = set->head; p != NULL; ) {
         prev = p;
         p = (token_bucket_t*)(p->hh.next);
-        if (_token_bucket_set_free(set, prev) != SUCCESS) {
+        if (mem_pool_free(&(set->pool), prev) != SUCCESS) {
             set->head = NULL;
             return FAIL;
         }
     }
     set->head = NULL;
-    return SUCCESS;
-}
-
-
-void* _token_bucket_set_malloc(token_bucket_set_t* set, size_t size) {
-    void* addr;
-    switch (set->memory_pool_type) {
-        case gernal_pool: addr = ngx_pcalloc((ngx_pool_t*)set->memory_pool, size); break;
-        case slab_pool: addr = ngx_slab_calloc_locked((ngx_slab_pool_t*)set->memory_pool, size); break;
-        default: addr = NULL; break;
-    }
-    return addr;
-}
-
-ngx_int_t _token_bucket_set_free(token_bucket_set_t* set, void* addr) {
-    switch (set->memory_pool_type) {
-        case gernal_pool: ngx_pfree((ngx_pool_t*)set->memory_pool, addr); break;
-        case slab_pool: ngx_slab_free_locked((ngx_slab_pool_t*)set->memory_pool, addr); break;
-        default: return FAIL;
-    }
     return SUCCESS;
 }
 

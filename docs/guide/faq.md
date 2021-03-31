@@ -36,7 +36,11 @@ See [https://pkgs.org/download/uthash-devel](https://pkgs.org/download/uthash-de
 
 ## How does this module perform?
 
-The time complexity of IP inspecting and Anti Challenge Collapsar is O(1), and the other inspecting are O(nm), where n is the number of relevant rules and m is the time complexity of performing regular expression matching.
+IP inspection and CC defense take constant time, other inspections take `O(nm)`, where `n` is the number of relevant rules and `m` is the time complexity to perform regular matching, but the results of this inspection are automatically cached after each inspection, so that the next time the same target is inspected, the cache can be used instead of checking all the rules. The result of the POST request body check is not cached.
+
+## Cache Policy
+
+LRU
 
 ## Post Inspection Failure
 

@@ -47,18 +47,18 @@ lang: zh-CN
 * TRAC: 当`Http.Method=TRAC`时启动检查。
 * IP: 启用 IP 地址的检查规则。
 * URL: 启用 url 的检查规则。
-* RBODY: 启用请求体的检查规则。
+* RBODY: 启用 POST 请求体的检查规则。
 * ARGS: 启用 args 的检查规则。
 * UA: 启用 user-agent 的检查规则。
 * COOKIE: 启用 cookie 的检查规则。
 * REFERER: 启用 referer 的检查规则。
-* CC: 启用 CC 防御。
+* CC: 启用 CC 防御。当你启用了此模式，你必须设置 [waf_cc_deny_limit](#waf-cc-deny-limit)。
 * COMPAT：兼容模式，用来启用一些兼容性选项去兼容其它的模块或者环境，目前用于兼容 ngx_http_rewrite_module，详见[兼容性说明](/zh-cn/guide/compatibility.md)。
 * STRICT：严格模式，牺牲一些性能进行更多的检查，目前仅在启用了 `COMPAT` 模式时生效，在 ngx_http_rewrite_module 生效前和生效后都进行一轮完整的检查。
-* STD: 标准工作模式，等价于 `IP URL RB ARGS UA HEAD GET POST CC COMPAT`。
+* STD: 标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT`。
 * STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC`。
-* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RB COOKIE CC COMPAT`。
-* FULL: 任何情况下都会启动检查并启用所有的检查规则。
+* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT`。
+* FULL: 启用所有的模式。
 
 您可以通过在某个 `mode_type` 前增加 `!` 前缀来关闭该模式，下面是一个例子。
 表示使用标准的工作模式，但是不检查 User-Agent。
@@ -73,14 +73,56 @@ waf_mode STD !UA;
 
 :::
 
+
+::: tip 开发版中的变动
+
+增加了一个的模式：
+
+* CACHE: 启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache_size](#waf-cache-size)。
+
+下列模式有变化：
+
+* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`。
+* STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC CACHE`。
+* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`。
+
+:::
+
 ## `waf_cc_deny_limit`
 
 * 配置语法: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;
-* 默认配置：`waf_cc_deny_limit 10000000 1 10m;`
+* 默认配置：——
 * 配置段: server
 
 设置 CC 防护相关的参数。
 
 * `rate`:表示每分钟的最多请求次数（大于零的整数）。
 * `duration`:表示超出第一个参数 `rate` 的限制后拉黑 IP 多少分钟（大于零的整数）.
-* `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。  
+* `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
+
+## `waf_cache_size`
+
+* 配置语法: `waf_cache_size buffer_size`;
+* 默认配置：——
+* 配置段: server
+
+设置用于缓存检查结果的内存的大小。如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
+
+::: tip 注意
+
+建议根据实际情况设置缓存空间的大小。因为如果内存空间不够大会会频繁删除缓存，反而降低了性能。
+
+您可以通过观察[调试日志](log.md)，检查下面这一行日志是否经常出现。
+如果几乎每次请求都会出现请适当增加缓存空间的大小。
+
+```
+ngx_slab_alloc() failed: no memory
+```
+
+:::
+
+::: warning 警告
+
+本配置属于开发版新增的功能，只能在开发版中使用，等稳定后会合并到稳定版中。
+
+:::

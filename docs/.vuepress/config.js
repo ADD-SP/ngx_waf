@@ -29,7 +29,7 @@ module.exports = {
                 sidebar: [
                     {
                         title: "Quick Start",
-                        path: "/guide/",
+                        path: "/guide/overview.html",
                         children: [
                             "/guide/overview.md",
                             "/guide/version.md",
@@ -42,7 +42,7 @@ module.exports = {
                     },
                     {
                         title: "Advanced Guide",
-                        path: "/advance/",
+                        path: "/advance/syntax.html",
                         children: [
                             "/advance/syntax.md",
                             "/advance/rule.md",
@@ -63,7 +63,7 @@ module.exports = {
                 sidebar: [
                     {
                         title: "快速上手",
-                        path: "/zh-cn/guide/",
+                        path: "/zh-cn/guide/overview.html",
                         children: [
                             "/zh-cn/guide/overview.md",
                             "/zh-cn/guide/version.md",
@@ -76,7 +76,7 @@ module.exports = {
                     },
                     {
                         title: "进阶指南",
-                        path: "/zh-cn/advance/",
+                        path: "/zh-cn/advance/syntax.html",
                         children: [
                             "/zh-cn/advance/syntax.md",
                             "/zh-cn/advance/rule.md",

@@ -79,7 +79,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
         return FAIL;
     }
 
-    memcpy(ipv4->text, text.data, text.len);
+    ngx_memcpy(ipv4->text, text.data, text.len);
     ipv4->text[text.len] = '\0';
 
     u_char* c = ipv4->text;
@@ -92,12 +92,12 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     char prefix_text[32];
     struct in_addr addr4;
     if (*c =='\0' && prefix_len == text.len) {
-        memcpy(prefix_text, ipv4->text, prefix_len);
+        ngx_memcpy(prefix_text, ipv4->text, prefix_len);
         prefix_text[prefix_len] = '\0';
     } 
     else if (*c == '/' && prefix_len >= 7) {
         /* 0.0.0.0 的长度刚好是 7 */
-        memcpy(prefix_text, ipv4->text, prefix_len);
+        ngx_memcpy(prefix_text, ipv4->text, prefix_len);
         prefix_text[prefix_len] = '\0';
     } 
     else {
@@ -161,7 +161,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
         return FAIL;
     }
     
-    memcpy(ipv6->text, text.data, text.len);
+    ngx_memcpy(ipv6->text, text.data, text.len);
 
     ipv6->text[text.len] = '\0';
 
@@ -175,12 +175,12 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     char prefix_text[64];
     struct in6_addr addr6;
     if (*c =='\0' && prefix_len == text.len) {
-        memcpy(prefix_text, ipv6->text, prefix_len);
+        ngx_memcpy(prefix_text, ipv6->text, prefix_len);
         prefix_text[prefix_len] = '\0';
     } 
     else if (*c == '/' && prefix_len >= 2) {
         /* :: 的长度刚好是 2，此 IPV6 地址代表全零 */
-        memcpy(prefix_text, ipv6->text, prefix_len);
+        ngx_memcpy(prefix_text, ipv6->text, prefix_len);
         prefix_text[prefix_len] = '\0';
     } 
     else {
@@ -190,7 +190,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     if (inet_pton(AF_INET6, prefix_text, &addr6) != 1) {
         return FAIL;
     }
-    memcpy(prefix, &addr6.s6_addr, 16);
+    ngx_memcpy(prefix, &addr6.s6_addr, 16);
 
     uint32_t temp_suffix = 0;
     if (*c == '/') {
@@ -226,8 +226,8 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
         prefix[i] &= suffix[i];
     }
 
-    memcpy(ipv6->prefix, prefix, 16);
-    memcpy(ipv6->suffix, suffix, 16);
+    ngx_memcpy(ipv6->prefix, prefix, 16);
+    ngx_memcpy(ipv6->suffix, suffix, 16);
     ipv6->suffix_num = suffix_num;
 
     return SUCCESS;
@@ -263,7 +263,7 @@ static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
     if (ngx_str.len > RULE_MAX_LEN) {
         return NULL;
     }
-    memcpy(destination, ngx_str.data, ngx_str.len);
+    ngx_memcpy(destination, ngx_str.data, ngx_str.len);
     destination[ngx_str.len] = '\0';
     return (char*)destination + ngx_str.len;
 }
