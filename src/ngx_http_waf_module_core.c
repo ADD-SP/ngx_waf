@@ -217,6 +217,7 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
 static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     static ngx_http_waf_check check_proc[] = {
         ngx_http_waf_handler_check_white_ip,
+        ngx_http_waf_handler_check_cc,
         ngx_http_waf_handler_check_black_ip,
         ngx_http_waf_handler_check_white_url,
         ngx_http_waf_handler_check_black_url,
@@ -227,6 +228,19 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_waf_handler_check_black_cookie,
         NULL
     };
+    static ngx_http_waf_check check_proc_no_cc[] = {
+        ngx_http_waf_handler_check_white_ip,
+        ngx_http_waf_handler_check_black_ip,
+        ngx_http_waf_handler_check_white_url,
+        ngx_http_waf_handler_check_black_url,
+        ngx_http_waf_handler_check_black_args,
+        ngx_http_waf_handler_check_black_user_agent,
+        ngx_http_waf_handler_check_white_referer,
+        ngx_http_waf_handler_check_black_referer,
+        ngx_http_waf_handler_check_black_cookie,
+        NULL
+    };
+
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
     ngx_int_t is_matched = NOT_MATCHED;
@@ -252,28 +266,29 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     if (r->internal != 0 || srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
     }
-    else if (is_check_cc == FALSE || ngx_http_waf_handler_check_cc(r, &http_status) != MATCHED) {
-        if (CHECK_FLAG(srv_conf->waf_mode, r->method) != TRUE) {
-            http_status = NGX_DECLINED;
+    else {
+        ngx_http_waf_check* funcs = NULL;
+        if (is_check_cc == TRUE) {
+            funcs = check_proc;
+        } else {
+            funcs = check_proc_no_cc;
         }
-        else {
-            for (size_t i = 0; check_proc[i] != NULL; i++) {
-                is_matched = check_proc[i](r, &http_status);
-                if (is_matched == MATCHED) {
-                    break;
-                }
+        for (size_t i = 0; funcs[i] != NULL; i++) {
+            is_matched = funcs[i](r, &http_status);
+            if (is_matched == MATCHED) {
+                break;
             }
-            /* 如果请求方法为 POST 且 本模块还未读取过请求体 且 配置中未关闭请求体检查 */
-            if ((r->method & NGX_HTTP_POST) != 0
-                && ctx->read_body_done == FALSE
-                && is_matched != MATCHED
-                && CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_RB) == TRUE) {
-                r->request_body_in_persistent_file = 0;
-                r->request_body_in_clean_file = 0;
-                http_status = ngx_http_read_client_request_body(r, check_post);
-                if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
-                    http_status = NGX_DONE;
-                }
+        }
+        /* 如果请求方法为 POST 且 本模块还未读取过请求体 且 配置中未关闭请求体检查 */
+        if ((r->method & NGX_HTTP_POST) != 0
+            && ctx->read_body_done == FALSE
+            && is_matched != MATCHED
+            && CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_RB) == TRUE) {
+            r->request_body_in_persistent_file = 0;
+            r->request_body_in_clean_file = 0;
+            http_status = ngx_http_read_client_request_body(r, check_post);
+            if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
+                http_status = NGX_DONE;
             }
         }
     }

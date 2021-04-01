@@ -7,7 +7,7 @@ lang: zh-CN
 
 ## `waf`
 
-* 配置语法: `waf [on|off];`
+* 配置语法: `waf <on|off>;`
 * 默认配置：`waf off;`
 * 配置段: server
 
@@ -78,7 +78,7 @@ waf_mode STD !UA;
 
 增加了一个的模式：
 
-* CACHE: 启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache_size](#waf-cache-size)。
+* CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache_size](#waf-cache-size)。
 
 下列模式有变化：
 
@@ -90,23 +90,27 @@ waf_mode STD !UA;
 
 ## `waf_cc_deny_limit`
 
-* 配置语法: `waf_cc_deny_limit <rate> <duration> [buffer_size]`;
+* 配置语法: `waf_cc_deny_limit <rate> <duration> [buffer_size];`
 * 默认配置：——
 * 配置段: server
 
 设置 CC 防护相关的参数。
 
-* `rate`:表示每分钟的最多请求次数（大于零的整数）。
-* `duration`:表示超出第一个参数 `rate` 的限制后拉黑 IP 多少分钟（大于零的整数）.
+* `rate`：表示每分钟的最多请求次数（大于零的整数）。
+* `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 多少分钟（大于零的整数）.
 * `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
 
 ## `waf_cache_size`
 
-* 配置语法: `waf_cache_size buffer_size`;
+* 配置语法: `waf_cache_size <buffer_size> [interval] [percent];`
 * 默认配置：——
 * 配置段: server
 
-设置用于缓存检查结果的内存的大小。如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
+设置缓存规则检查结果相关的参数。
+
+* `buffer_size`：设置用于缓存检查结果的内存的大小。如 `10m`、`10240k`，不得小于 `10m`。
+* `interval`：用于设置批量淘汰缓存的周期，单位为分钟。如不指定则默认为 `60`，即 60 分钟。
+* `percent`：每次批量淘汰缓存时淘汰掉多少比例的缓存。需要指定一个大于 0 小于等于 100 的整数。若设置为 50 则代表淘汰掉一半的缓存。如不指定则默认为 `50`。
 
 ::: tip 注意
 

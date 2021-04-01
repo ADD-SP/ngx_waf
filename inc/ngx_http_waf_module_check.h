@@ -164,6 +164,10 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
     } else {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection has begun.");
@@ -221,6 +225,10 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_IP) == FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
     } else {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -371,6 +379,10 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
         ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
     } else {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection has begun.");
@@ -468,6 +480,10 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
     } else {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection has begun.");
@@ -564,6 +580,10 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_ARGS) == FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
     } else if (r->args.len == 0) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -666,6 +686,10 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
     } else if (r->headers_in.user_agent == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the User-Agent is empty.");
@@ -766,6 +790,10 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
     if (CHECK_FLAG(srv_conf->waf_mode, MODE_INSPECT_REFERER) == FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
     } else if (r->headers_in.referer == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -868,6 +896,10 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
     } else if (r->headers_in.referer == NULL) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
@@ -969,10 +1001,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NOT_MATCHED;
+    } else if (CHECK_FLAG(srv_conf->waf_mode, r->method) == FALSE) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Because this Http.Method is disabled in the configuration, no Inspection is performed.");
+        ret_value = NOT_MATCHED;
     } else if (r->headers_in.cookies.nelts != 0) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection has begun.");
-
 
         ngx_slab_pool_t *shpool = NULL;
         if (CHECK_FLAG(srv_conf->waf_mode, MODE_EXTRA_CACHE) == TRUE

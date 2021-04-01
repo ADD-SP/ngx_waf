@@ -16,6 +16,8 @@ lang: en
 
 ### Changed
 
+* Swaps the priority of CC protection and IP whitelist inspection.
+
 ### Fixed
 
 ***
