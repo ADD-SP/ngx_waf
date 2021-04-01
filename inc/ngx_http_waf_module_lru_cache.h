@@ -89,7 +89,7 @@ static ngx_int_t lru_cache_manager_eliminate_percent(lru_cache_manager_t* manage
 static ngx_int_t lru_cache_manager_init(lru_cache_manager_t* manager, 
                                         mem_pool_type_e pool_type, 
                                         void* native_pool) {
-    if (manager == NULL || native_pool == NULL) {
+    if (manager == NULL) {
         return FAIL;
     }
 
@@ -153,7 +153,7 @@ static ngx_int_t lru_cache_manager_add( lru_cache_manager_t* manager,
     hash_item->value.chain_item = chain_item;
 
     CDL_PREPEND(manager->chain_head, chain_item);
-    HASH_ADD(hh, manager->hash_head, key, key_byte_length, hash_item);
+    HASH_ADD_KEYPTR(hh, manager->hash_head, key_copy, key_byte_length, hash_item);
     ++(manager->size);
 
     return SUCCESS;

@@ -8,6 +8,7 @@
 
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
+#include <ngx_http_waf_module_mem_pool.h>
 
 /**
  * @defgroup ip_trie IP 前缀树
@@ -24,7 +25,7 @@
  * @retval SUCCESS 初始化成功。
  * @retval FAIL 初始化失败。
 */
-static ngx_int_t ip_trie_init(ip_trie_t** trie, ngx_pool_t* memory_pool, int ip_type);
+static ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* native_pool, int ip_type);
 
 /**
  * @brief 插入一个 IP 地址。
@@ -56,22 +57,21 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
 */
 
 
-static ngx_int_t ip_trie_init(ip_trie_t** trie, ngx_pool_t* memory_pool, int ip_type) {
-    if (trie == NULL) {
+static ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* native_pool, int ip_type) {
+    if (trie == NULL || (pool_type != std && native_pool == NULL)) {
         return FAIL;
     }
 
-    *trie = (ip_trie_t*)ngx_pcalloc(memory_pool, sizeof(ip_trie_t));
-    if (*trie == NULL) {
-        return MALLOC_ERROR;
+    
+    if (mem_pool_init(&trie->pool, pool_type, native_pool) != SUCCESS) {
+        return FAIL;
     }
 
-    (*trie)->ip_type = ip_type;
-    (*trie)->memory_pool = memory_pool;
-    (*trie)->root = (ip_trie_node_t*)ngx_pcalloc(memory_pool, sizeof(ip_trie_node_t));
-    (*trie)->size = 0;
+    trie->ip_type = ip_type;
+    trie->root = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
+    trie->size = 0;
 
-    if ((*trie)->root == NULL) {
+    if (trie->root == NULL) {
         return MALLOC_ERROR;
     }
 
@@ -89,7 +89,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         return FAIL;
     }
 
-    new_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+    new_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
     if (new_node == NULL) {
         return MALLOC_ERROR;
     }
@@ -116,7 +116,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         while (bit_index < suffix_num - 1) {
             uint8_index = bit_index / 8;
             if (cur_node == NULL) {
-                cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+                cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
                     return MALLOC_ERROR;
                 }
@@ -137,7 +137,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             ++bit_index;
         }
         if (cur_node == NULL) {
-            cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+            cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
                 return MALLOC_ERROR;
             }
@@ -158,7 +158,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         while (bit_index < suffix_num - 1) {
             uint8_index = bit_index / 8;
             if (cur_node == NULL) {
-                cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+                cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
                     return MALLOC_ERROR;
                 }
@@ -179,7 +179,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             ++bit_index;
         }
         if (cur_node == NULL) {
-            cur_node = (ip_trie_node_t*)ngx_pcalloc(trie->memory_pool, sizeof(ip_trie_node_t));
+            cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
                 return MALLOC_ERROR;
             }

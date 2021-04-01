@@ -20,6 +20,10 @@ lang: en
 
 ### Fixed
 
+* Fixed a segment error when the number of worker processes is greater than one.
+
+* Fixed a cache failure bug, this bug only exists in `v4.1.0-beta`.
+
 ***
 
 ## [4.0.0] - 2021-03-22 GMT+0800

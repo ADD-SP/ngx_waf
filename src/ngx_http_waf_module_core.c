@@ -120,19 +120,23 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
         return;
     }
 
-    time_t now = time(NULL);
-    ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_cc_deny->shm.addr;
-    token_bucket_set_t* set = srv_conf->ip_token_bucket_set;
+    // if (srv_conf->shm_zone_cc_deny == NULL) {
+    //     return;
+    // }
 
-    ngx_shmtx_lock(&shpool->mutex);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: Shared memory is locked.");
+    time_t now = time(NULL);
+    // ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_cc_deny->shm.addr;
+
+    // ngx_shmtx_lock(&shpool->mutex);
+    // ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+    //     "ngx_waf_debug: Shared memory is locked.");
     
+    token_bucket_set_t* set = &srv_conf->ip_token_bucket_set;
     double diff_clear_minute = difftime(now, set->last_clear) / 60;
 
-    ngx_shmtx_unlock(&shpool->mutex);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: Shared memory is unlocked.");
+    // ngx_shmtx_unlock(&shpool->mutex);
+    // ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+    //     "ngx_waf_debug: Shared memory is unlocked.");
     
     if (diff_clear_minute > ngx_max(60, srv_conf->waf_cc_deny_duration * 5)) {
         ngx_post_event(&(srv_conf->event_clear_token_bucket_set), &ngx_posted_events);
@@ -141,68 +145,59 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
     }
 
     ngx_int_t is_need_eliminate_cache = FALSE;
-    shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_inspection_cache->shm.addr;
     ngx_int_t interval = srv_conf->waf_eliminate_inspection_cache_interval;
-
-    ngx_shmtx_lock(&shpool->mutex);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: Shared memory is locked.");
     
 
-    if (difftime(now, srv_conf->black_url_inspection_cache->last_eliminate) / 60 > interval) {
+    if (difftime(now, srv_conf->black_url_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_url_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     } 
     
-    else if (difftime(now, srv_conf->black_args_inspection_cache->last_eliminate) / 60 > interval) {
+    else if (difftime(now, srv_conf->black_args_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_args_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     } 
     
-    else if (difftime(now, srv_conf->black_ua_inspection_cache->last_eliminate) / 60 > interval) {
+    else if (difftime(now, srv_conf->black_ua_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_ua_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     } 
     
-    else if (difftime(now, srv_conf->black_referer_inspection_cache->last_eliminate) / 60 > interval) {
+    else if (difftime(now, srv_conf->black_referer_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_referer_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     } 
     
-    else if (difftime(now, srv_conf->black_cookie_inspection_cache->last_eliminate) / 60 > interval) {
+    else if (difftime(now, srv_conf->black_cookie_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_cookie_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     } 
     
-    else if (difftime(now, srv_conf->white_url_inspection_cache->last_eliminate) / 60 > interval) {
+    else if (difftime(now, srv_conf->white_url_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in white_url_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     } 
     
-    else if (difftime(now, srv_conf->white_referer_inspection_cache->last_eliminate) / 60 > interval) {
+    else if (difftime(now, srv_conf->white_referer_inspection_cache.last_eliminate) / 60 > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in white_referer_inspection_cache is eliminated too often and will trigger a memory collection event.");
         is_need_eliminate_cache = TRUE;
     }
 
-    ngx_shmtx_unlock(&shpool->mutex);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: Shared memory is unlocked.");
-
     if (is_need_eliminate_cache == TRUE) {
-        srv_conf->black_url_inspection_cache->last_eliminate = now;
-        srv_conf->black_args_inspection_cache->last_eliminate = now;
-        srv_conf->black_ua_inspection_cache->last_eliminate = now;
-        srv_conf->black_referer_inspection_cache->last_eliminate = now;
-        srv_conf->black_cookie_inspection_cache->last_eliminate = now;
-        srv_conf->white_url_inspection_cache->last_eliminate = now;
-        srv_conf->white_referer_inspection_cache->last_eliminate = now;
+        srv_conf->black_url_inspection_cache.last_eliminate = now;
+        srv_conf->black_args_inspection_cache.last_eliminate = now;
+        srv_conf->black_ua_inspection_cache.last_eliminate = now;
+        srv_conf->black_referer_inspection_cache.last_eliminate = now;
+        srv_conf->black_cookie_inspection_cache.last_eliminate = now;
+        srv_conf->white_url_inspection_cache.last_eliminate = now;
+        srv_conf->white_referer_inspection_cache.last_eliminate = now;
         ngx_post_event(&(srv_conf->event_eliminate_inspection_cache), &ngx_posted_events);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Trigger event - batch cache elimination.");

@@ -30,6 +30,7 @@ typedef union {
  * @brief 内存池类型
 */
 typedef enum {
+    std,       /**< malloc */
     gernal_pool,    /**< ngx_pool_t */
     slab_pool       /**< ngx_slab_pool_t */
 } mem_pool_type_e;
@@ -125,7 +126,7 @@ typedef struct ip_trie_s {
     int                 ip_type;        /**< 存储的 IP 地址的类型。 */
     ip_trie_node_t     *root;           /**< 前缀树树根。 */
     size_t              size;           /**< 已经存储的 IP 数量。 */
-    ngx_pool_t         *memory_pool;    /**< 用于初始化、添加和删除节点的内存池 */
+    mem_pool_t          pool;           /**< 使用的内存池 */
 } ip_trie_t;
 
 
@@ -157,28 +158,28 @@ typedef struct ngx_http_waf_srv_conf_s {
     ngx_int_t                       waf_inspection_shm_zone_size;               /**< 用于缓存检查结果的共享内存的大小（字节） */
     ngx_int_t                       waf_eliminate_inspection_cache_interval;    /**< 批量淘汰缓存的周期（分钟） */
     ngx_int_t                       waf_eliminate_inspection_cache_percent;     /**< 每次批量淘汰多少百分比的缓存（50 表示 50%） */
-    ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
-    ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
+    ip_trie_t                       black_ipv4;                                 /**< IPV4 黑名单 */
+    ip_trie_t                       black_ipv6;                                 /**< IPV6 黑名单 */
     ngx_array_t                    *black_url;                                  /**< URL 黑名单 */
     ngx_array_t                    *black_args;                                 /**< args 黑名单 */
     ngx_array_t                    *black_ua;                                   /**< user-agent 黑名单 */
     ngx_array_t                    *black_referer;                              /**< Referer 黑名单 */
     ngx_array_t                    *black_cookie;                               /**< Cookie 黑名单 */
     ngx_array_t                    *black_post;                                 /**< 请求体内容黑名单 */
-    ip_trie_t                      *white_ipv4;                                 /**< IPV4 白名单 */
-    ip_trie_t                      *white_ipv6;                                 /**< IPV6 白名单 */
+    ip_trie_t                       white_ipv4;                                 /**< IPV4 白名单 */
+    ip_trie_t                       white_ipv6;                                 /**< IPV6 白名单 */
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
-    ngx_shm_zone_t                 *shm_zone_inspection_cache;                  /**< 共享内存 */
-    token_bucket_set_t             *ip_token_bucket_set;                        /**< IP 访问令牌桶集合 */
-    lru_cache_manager_t            *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
-    lru_cache_manager_t            *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
-    lru_cache_manager_t            *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
-    lru_cache_manager_t            *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
-    lru_cache_manager_t            *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
-    lru_cache_manager_t            *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
-    lru_cache_manager_t            *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    token_bucket_set_t              ip_token_bucket_set;                        /**< IP 访问令牌桶集合 */
+    ngx_array_t                    *ip_access_statistics;                       /**< IP 访问频率统计表 */
+    lru_cache_manager_t             black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
+    lru_cache_manager_t             black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
+    lru_cache_manager_t             black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
+    lru_cache_manager_t             black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
+    lru_cache_manager_t             black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
+    lru_cache_manager_t             white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
+    lru_cache_manager_t             white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     ngx_event_t                     event_clear_token_bucket_set;               /**< 令牌桶清空事件 */
     ngx_event_t                     event_eliminate_inspection_cache;           /**< 集中淘汰缓存事件 */
 } ngx_http_waf_srv_conf_t;
