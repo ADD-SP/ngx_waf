@@ -31,8 +31,10 @@ http {
 
         # The following directives are for the development version only.
 
-        # The size of the memory space used to cache the check results is set to 10 MB.
-        waf_cache_size 10m;
+        # Cache the results of up to as many inspection targets as possible, 
+        # effective for all inspections 
+        # except IP black and white list inspection, CC protection and POST inspection.
+        waf_cache 60;
         ...
     }
     ...

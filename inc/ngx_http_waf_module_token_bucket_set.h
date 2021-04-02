@@ -83,12 +83,14 @@ ngx_int_t token_bucket_set_init(token_bucket_set_t* set,
                                 void* memory_pool,
                                 ngx_uint_t init_count,
                                 ngx_uint_t ban_duration) {
-    if (set == NULL || memory_pool == NULL) {
+    if (set == NULL) {
         return FAIL;
     }
 
-    set->pool.type = pool_type;
-    set->pool.native_pool.slab_pool = memory_pool;
+    if (mem_pool_init(&set->pool, pool_type, memory_pool) != SUCCESS) {
+        return FAIL;
+    }
+
     set->bucket_count = 0;
     set->head = NULL;
     set->last_clear = time(NULL);
