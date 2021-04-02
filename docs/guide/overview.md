@@ -7,6 +7,12 @@ lang: en
 
 A web application firewall module for nginx without complex configuration.
 
+::: danger CRITICAL BUG
+
+When the number of worker processes in nginx is greater than one, the current stable version of the module will throw a segment error. Please use the latest development version.
+
+:::
+
 ## Function
 
 * IPV4 and IPV6 support.

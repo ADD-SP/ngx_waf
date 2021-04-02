@@ -103,28 +103,23 @@ Set the parameters related to CC protection.
 
 ## `waf_cache_size`
 
-* syntax: `waf_cache_size <buffer_size> [interval] [percent];`
+* syntax: `waf_cache_size <capacity> [interval] [percent];`
 * default: ——
 * context: server
 
 Set parameters related to caching rule inspection results.
 
-* `buffer_size`: Set the size of the memory used to cache the inspection results. For example `10m`, `10240k`, must not be smaller than `10m`.
+* `capacity`: For some inspections with the caching mechanism enabled, the maximum number of inspection results for each inspection target is cached.
 * `interval`: Sets the period of the batch cache phase-out in minutes. If not specified, the default is `60`, which is 60 minutes.
 * `percent`: what percentage of the cache will be eliminated each time the cache is eliminated in bulk. You need to specify an integer greater than 0 and less than or equal to 100. A setting of 50 means that half of the cache is eliminated. If not specified, the default is `50`.
 
-::: tip NOTE
 
-It is recommended to set the size of the cache space according to the actual situation. If the memory space is not large enough, the cache will be deleted frequently, which will reduce the performance.
+::: tip Cache-enabled inspections
 
-You can check if the following line appears frequently by looking at the [debug log](log.md).
-If it appears almost every request, please increase the size of the cache space appropriately.
+Cache-enabled inspections refer to all inspections except CC protection, IP black and white list inspection, and POST inspection.
 
-```
-ngx_slab_alloc() failed: no memory
-```
+:::
 
-Translated with www.DeepL.com/Translator (free version)
 
 ::: warning WARNING
 

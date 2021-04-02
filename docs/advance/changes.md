@@ -10,7 +10,8 @@ lang: en
 ### Added
 
 * A new mode `CACHE` has been added, enabling this mode will cache the results of each inspection to improve performance.
-* New configuration `waf_cache_size` has been added to set the size of the memory for caching inspection results.
+
+* New configuration `waf_cache` has been added to set parameters related to cache.
 
 ### Removed
 
@@ -19,6 +20,8 @@ lang: en
 * Swaps the priority of CC protection and IP whitelist inspection.
 
 ### Fixed
+
+* Fixed a segmentation fault when the number of worker processes is greater than one.
 
 ***
 

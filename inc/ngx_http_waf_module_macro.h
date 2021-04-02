@@ -75,22 +75,16 @@
 #define SHARE_MEMORY_CC_DNEY_NAME                   ("__ADD-SP_NGX_WAF_CC_DENY_SHM__")
 
 /**
- * @def SHARE_MEMORY_INSPECTION_CACHE_NAME
- * @brief 用于缓存规则检查结果的共享内存的名称
-*/
-#define SHARE_MEMORY_INSPECTION_CACHE_NAME          ("__ADD-SP_NGX_WAF_INSPECTION_CACHE_SHM__")
-
-/**
  * @def SHATE_MEMORY_CC_DENY_MIN_SIZE
  * @brief 用于 CC 防护的共享内存的最小大小（字节）
 */
-#define SHARE_MEMORY_CC_DENY_MIN_SIZE               (1024 * 1024 * 10)
+#define SHARE_MEMORY_CC_DENY_MIN_SIZE               (1024 * 1024 * 20)
 
 /**
- * @def SHATE_MEMORY_INSPECTION_CACHE_MIN_SIZE
- * @brief 用于缓存规则检查结果的共享内存的最小大小（字节）
+ * @def CACHE_ITEM_MIN_SIZE
+ * @brief 用于设置缓存项数的上限
 */
-#define SHARE_MEMORY_INSPECTION_CACHE_MIN_SIZE      (1024 * 1024 * 10)
+#define CACHE_ITEM_MIN_NUM                          (50)
 
 /**
  * @def MODE_INSPECT_GET
