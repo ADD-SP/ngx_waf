@@ -101,22 +101,32 @@ Set the parameters related to CC protection.
 * `buffer_size`: used to set the size of the memory for recording IP accesses, such as `10m`, `10240k`, must not be less than `10m`, if not specified then the default is `10m`.
 
 
-## `waf_cache_size`
+## `waf_cache`
 
-* syntax: `waf_cache_size <capacity> [interval] [percent];`
+* syntax: `waf_cache <capacity> [interval] [percent];`
 * default: ——
 * context: server
 
 Set parameters related to caching rule inspection results.
 
 * `capacity`: For some inspections with the caching mechanism enabled, the maximum number of inspection results for each inspection target is cached.
-* `interval`: Sets the period of the batch cache phase-out in minutes. If not specified, the default is `60`, which is 60 minutes.
+* `interval`: Used to set the period of batch cache cleaning in minutes. If not specified, the default is `60`, which is 60 minutes.
 * `percent`: what percentage of the cache will be eliminated each time the cache is eliminated in bulk. You need to specify an integer greater than 0 and less than or equal to 100. A setting of 50 means that half of the cache is eliminated. If not specified, the default is `50`.
 
 
 ::: tip Cache-enabled inspections
 
-Cache-enabled inspections refer to all inspections except CC protection, IP black and white list inspection, and POST inspection.
+Cache-enabled inspections refer to all inspections except CC protection, I
+P black and white list inspection, and POST inspection.
+
+:::
+
+
+::: tip Performance optimization suggestions
+
+Too small a `capacity` will result in frequent cache cleanups, 
+increasing memory fragmentation and reducing performance. 
+So please set it reasonably according to your actual needs.
 
 :::
 

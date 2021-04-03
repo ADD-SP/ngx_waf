@@ -100,9 +100,9 @@ waf_mode STD !UA;
 * `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 多少分钟（大于零的整数）.
 * `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
 
-## `waf_cache_size`
+## `waf_cache`
 
-* 配置语法: `waf_cache_size <capacity> [interval] [percent];`
+* 配置语法: `waf_cache <capacity> [interval] [percent];`
 * 默认配置：——
 * 配置段: server
 
@@ -115,6 +115,12 @@ waf_mode STD !UA;
 ::: tip 启用了缓存机制的检测项目
 
 启用了缓存机制的检测项目指除了 CC 防护、IP 黑白名单检测和 POST 检测之外的所有的检测项。
+
+:::
+
+::: tip 性能优化建议
+
+`capacity` 过小会导致频繁地淘汰缓存，增加内存碎片，降低性能。所以请根据实际应用场景合理地设置。
 
 :::
 
