@@ -91,7 +91,7 @@ The following modes have changed:
 ## `waf_cc_deny_limit`
 
 * syntax: waf_cc_deny_limit \<*rate*\> \<*duration*\> \[*buffer_size*\]
-* default: ——
+* default: —
 * context: server
 
 Set the parameters related to CC protection.
@@ -103,15 +103,15 @@ Set the parameters related to CC protection.
 
 ::: tip CHANGES IN DEVELOPMENT
 
-* syntax: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[buffer_size=*20m*\]
-* default: ——
+* syntax: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
+* default: —
 * context: server
 
 Set the parameters related to CC protection.
 
 * `rate`: indicates the maximum number of requests per minute, e.g. `60r/m` means the maximum number of requests per minute is 60.
 * `duration`: indicates the IP band oh after exceeding the limit of the first parameter `rate`, such as `60s`, `60m`, `60h` and `60d`, if not specified, the default is `1h`.
-* `buffer_size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`.
+* `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`.
 
 
 :::
@@ -121,7 +121,7 @@ Set the parameters related to CC protection.
 ## `waf_cache`
 
 * syntax: waf_cache \<capacity=*n*\> \[interval=*1h*\] \[percent=*50*\]
-* default: ——
+* default: —
 * context: server
 
 Set the parameters related to cache rule inspection results.
