@@ -16,6 +16,15 @@
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
 #define NGX_HTTP_WAF_MODULE_TYPE_H
 
+
+/**
+ * @typedef ngx_http_waf_check
+ * @brief 请求检查函数的函数指针
+ * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
+*/
+typedef ngx_int_t (*ngx_http_waf_check_pt)(ngx_http_request_t* r, ngx_int_t* out_http_status);
+
+
 /**
  * @struct inx_addr_t
  * @brief 代表 ipv4 或 ipv6 地址。
@@ -93,7 +102,7 @@ typedef struct lru_cache_item_s {
  * @brief LRU 缓存管理器
 */
 typedef struct lru_cache_manager_s {
-    time_t                                  last_eliminate;     /**< 淘汰缓存项的次数 */
+    time_t                                  last_eliminate;     /**< 最后一次批量淘汰缓存的时间 */
     mem_pool_t                              pool;               /**< 内存池 */
     ngx_uint_t                              size;               /**< 当前缓存的项目数 */
     ngx_uint_t                              capacity;           /**< 最多嫩容纳多少个缓存项 */
@@ -162,7 +171,7 @@ typedef struct ip_trie_s {
 typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       blocked;                    /**< 是否拦截了本次请求 */
     u_char                          rule_type[128];             /**< 触发的规则类型 */
-    u_char                          rule_deatils[RULE_MAX_LEN]; /**< 触发的规则内容 */
+    u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN]; /**< 触发的规则内容 */
     ngx_int_t                       read_body_done;             /**< 是否已经读取完请求体 */
 } ngx_http_waf_ctx_t;
 
@@ -172,17 +181,16 @@ typedef struct ngx_http_waf_ctx_s {
  * @brief 每个 server 块的配置块
 */
 typedef struct ngx_http_waf_srv_conf_s {
-    ngx_log_t                      *debug_log;                                  /**< 记录内存池在进行操作时的错误日志 */
     ngx_pool_t                     *ngx_pool;                                   /**< 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                                /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
     uint64_t                        waf_mode;                                   /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
-    ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（分钟） */
+    ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
     ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
     ngx_int_t                       waf_inspection_capacity;                    /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_eliminate_inspection_cache_interval;    /**< 批量淘汰缓存的周期（分钟） */
+    ngx_int_t                       waf_eliminate_inspection_cache_interval;    /**< 批量淘汰缓存的周期（秒） */
     ngx_int_t                       waf_eliminate_inspection_cache_percent;     /**< 每次批量淘汰多少百分比的缓存（50 表示 50%） */
     ip_trie_t                       black_ipv4;                                 /**< IPV4 黑名单 */
     ip_trie_t                       black_ipv6;                                 /**< IPV6 黑名单 */
@@ -207,8 +215,8 @@ typedef struct ngx_http_waf_srv_conf_s {
     lru_cache_manager_t             black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
     lru_cache_manager_t             white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
     lru_cache_manager_t             white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
-    ngx_event_t                     event_clear_ip_access_statistics;           /**< 令牌桶清空事件 */
-    ngx_event_t                     event_eliminate_inspection_cache;           /**< 集中淘汰缓存事件 */
+    ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
+    ngx_http_waf_check_pt           check_proc_no_cc[20];                       /**< 各种检测流程的启动函数，但是不包括 CC 检测 */
 } ngx_http_waf_srv_conf_t;
 
 

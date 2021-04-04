@@ -22,7 +22,7 @@ When the number of worker processes in nginx is greater than one, the current st
 * Block the specified request body.
 * Exceptional allow on specific URL.
 * Block the specified URL.
-* Block the specified request args.
+* Block the specified query string.
 * Block the specified UserAgent.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.

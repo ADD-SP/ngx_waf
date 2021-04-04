@@ -16,9 +16,7 @@
  * @param[out] pool 要初始化的内存池
  * @param[in] type 内存池类型
  * @param[in] native_pool 内存池
- * @return 如果成功返回 SUCCESS，反之则不是。
- * @retval SUCCESS 成功
- * @retval 其它 失败 
+ * @return 如果成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 static ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_pool);
 
@@ -34,13 +32,13 @@ static void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size);
  * @brief 释放一段连续的内存
  * @param[in] pool 要操作的内存池
  * @param[in] buffer 内存的首地址
- * @return 成功则返回 SUCCESS，反之则不是。
+ * @return 成功则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 static ngx_int_t mem_pool_free(mem_pool_t* pool, void* buffer);
 
 static ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_pool) {
     if (pool == NULL || (type != std && native_pool == NULL)) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     pool->type = type;
@@ -51,7 +49,7 @@ static ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* nat
         case slab_pool: pool->native_pool.slab_pool = (ngx_slab_pool_t*)native_pool; break;
     }
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 static void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size) {
@@ -70,9 +68,9 @@ static ngx_int_t mem_pool_free(mem_pool_t* pool, void* buffer) {
         case std: free(buffer); break;
         case gernal_pool: ngx_pfree(pool->native_pool.gernal_pool, buffer); break;
         case slab_pool: ngx_slab_free_locked(pool->native_pool.slab_pool, buffer); break;
-        default: return FAIL;
+        default: return NGX_HTTP_WAF_FAIL;
     }
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 

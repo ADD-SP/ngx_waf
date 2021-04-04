@@ -15,12 +15,13 @@
  * @param[out] manager 要初始化的 LRU 缓存管理器
  * @param[in] pool_type 所使用的内存池的类型
  * @param[in] native_pool 要使用的内存池的指针
- * @return 如果成功则返回 SUCCESS，反之则不是。
+ * @return 如果成功则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 static ngx_int_t lru_cache_manager_init(lru_cache_manager_t* manager, 
                                         ngx_uint_t capacity, 
                                         mem_pool_type_e pool_type, 
                                         void* native_pool);
+
 
 /**
  * @brief 添加一个缓存项
@@ -29,7 +30,7 @@ static ngx_int_t lru_cache_manager_init(lru_cache_manager_t* manager,
  * @param[in] key_byte_length 关键字占用的字节数
  * @param[in] match_status 要缓存的规则匹配结果
  * @param[in] rule_detail 要缓存的被匹配的规则的细节
- * @return 如果成功则返回 SUCCESS，反之则不是。
+ * @return 如果成功则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
  * @note 如果内存不足会按照 LRU 策略自动淘汰其它缓存项。
  * @note 如果关键字已经存在则什么都不做，返回 SUCCESS。
 */
@@ -39,6 +40,7 @@ static ngx_int_t lru_cache_manager_add( lru_cache_manager_t* manager,
                                         ngx_int_t match_status,
                                         u_char* rule_detail);
 
+
 /**
  * @brief 查询缓存项
  * @param[in] manager 要操作的 LRU 缓存管理器
@@ -46,7 +48,7 @@ static ngx_int_t lru_cache_manager_add( lru_cache_manager_t* manager,
  * @param[in] key_byte_length 关键字占用的字节数
  * @param[in] out_match_status 被缓存的规则匹配结果
  * @param[in] out_rule_detail 被缓存的被匹配的规则的细节
- * @return 如果缓存项存在则返回 SUCCESS，反之则不是。
+ * @return 如果缓存项存在则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 static ngx_int_t lru_cache_manager_find(lru_cache_manager_t* manager, 
                                         u_char* key, 
@@ -60,24 +62,26 @@ static ngx_int_t lru_cache_manager_find(lru_cache_manager_t* manager,
  * @param[in] manager 要操作的 LRU 缓存管理器
  * @param[in] u_char 用于查询缓存的关键字指针
  * @param[in] key_byte_length 关键字占用的字节数
- * @return 如果缓存项存在则返回 SUCCESS，反之则不是。
+ * @return 如果缓存项存在则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 static ngx_int_t lru_cache_manager_remove(  lru_cache_manager_t* manager, 
                                             u_char* key, 
                                             ngx_uint_t key_byte_length);
 
+
 /**
  * @brief 按照 LRU 策略淘汰掉一个缓存项
  * @param[in] manager 要操作的 LRU 缓存管理器
- * @return 如果淘汰成功则返回 SUCCESS，反之则不是。
+ * @return 如果淘汰成功则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 static ngx_int_t lru_cache_manager_eliminate(lru_cache_manager_t* manager);
+
 
 /**
  * @brief 按照 LRU 策略淘汰掉一定百分比的缓存项
  * @param[in] manager 要操作的 LRU 缓存管理器
  * @param[in] percent 要淘汰掉的缓存项所占总量的百分比
- * @return 如果淘汰成功则返回 SUCCESS，反之则不是。
+ * @return 如果淘汰成功则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
  * @warning 此函数无论成功与否都会清零 eliminate_times 字段。
 */
 static ngx_int_t lru_cache_manager_eliminate_percent(lru_cache_manager_t* manager, double percent);
@@ -92,11 +96,11 @@ static ngx_int_t lru_cache_manager_init(lru_cache_manager_t* manager,
                                         mem_pool_type_e pool_type, 
                                         void* native_pool) {
     if (manager == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
-    if (mem_pool_init(&(manager->pool), pool_type, native_pool) != SUCCESS) {
-        return FAIL;
+    if (mem_pool_init(&(manager->pool), pool_type, native_pool) != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_HTTP_WAF_FAIL;
     }
 
     manager->last_eliminate = time(NULL);
@@ -105,7 +109,7 @@ static ngx_int_t lru_cache_manager_init(lru_cache_manager_t* manager,
     manager->hash_head = NULL;
     manager->chain_head = NULL;
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 static ngx_int_t lru_cache_manager_add( lru_cache_manager_t* manager, 
@@ -114,58 +118,60 @@ static ngx_int_t lru_cache_manager_add( lru_cache_manager_t* manager,
                                         ngx_int_t match_status,
                                         u_char* rule_detail) {
     if (manager == NULL || key == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     lru_cache_item_t* hash_item = NULL;
     HASH_FIND(hh, manager->hash_head, key, key_byte_length, hash_item);
     if (hash_item != NULL) {
-        return SUCCESS;
+        return NGX_HTTP_WAF_SUCCESS;
     }
 
     hash_item = NULL;
     lru_cache_item_t* chain_item = NULL;
 
     while (manager->size + 1 > manager->capacity) {
-        if (lru_cache_manager_eliminate(manager) != SUCCESS) {
-            return FAIL;
+        if (lru_cache_manager_eliminate(manager) != NGX_HTTP_WAF_SUCCESS) {
+            return NGX_HTTP_WAF_FAIL;
         }
     }
     
     do {
         chain_item = (lru_cache_item_t*)mem_pool_calloc(&(manager->pool), sizeof(lru_cache_item_t));
-        if (chain_item == NULL && lru_cache_manager_eliminate(manager) == FAIL) {
-            return FAIL;
+        if (chain_item == NULL && lru_cache_manager_eliminate(manager) == NGX_HTTP_WAF_FAIL) {
+            return NGX_HTTP_WAF_FAIL;
         }
     } while (chain_item == NULL);
 
     do {
         hash_item = (lru_cache_item_t*)mem_pool_calloc(&(manager->pool), sizeof(lru_cache_item_t));
-        if (hash_item == NULL && lru_cache_manager_eliminate(manager) == FAIL) {
-            return FAIL;
+        if (hash_item == NULL && lru_cache_manager_eliminate(manager) == NGX_HTTP_WAF_FAIL) {
+            return NGX_HTTP_WAF_FAIL;
         }
     } while (hash_item == NULL);
 
     u_char* key_copy = NULL;
     do {
         key_copy = (u_char*)mem_pool_calloc(&(manager->pool), key_byte_length);
-        if (key_copy == NULL && lru_cache_manager_eliminate(manager) == FAIL) {
-            return FAIL;
+        if (key_copy == NULL && lru_cache_manager_eliminate(manager) == NGX_HTTP_WAF_FAIL) {
+            return NGX_HTTP_WAF_FAIL;
         }
     } while (key_copy == NULL);
     ngx_memcpy(key_copy, key, key_byte_length);
 
     chain_item->key = key_copy;
+    chain_item->key_byte_length = key_byte_length;
     chain_item->value.value.match_status = match_status;
     chain_item->value.value.rule_detail = rule_detail;
     hash_item->key = key_copy;
+    hash_item->key_byte_length = key_byte_length;
     hash_item->value.chain_item = chain_item;
 
     CDL_PREPEND(manager->chain_head, chain_item);
     HASH_ADD_KEYPTR(hh, manager->hash_head, key_copy, key_byte_length, hash_item);
     ++(manager->size);
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
@@ -175,13 +181,13 @@ static ngx_int_t lru_cache_manager_find(lru_cache_manager_t* manager,
                                         ngx_int_t* out_match_status,
                                         u_char** out_rule_detail) {
     if (manager == NULL || key == NULL || out_match_status == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     lru_cache_item_t* hash_item = NULL;
     HASH_FIND(hh, manager->hash_head, key, key_byte_length, hash_item);
     if (hash_item == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     lru_cache_item_t* chain_item = hash_item->value.chain_item;
@@ -191,7 +197,7 @@ static ngx_int_t lru_cache_manager_find(lru_cache_manager_t* manager,
     CDL_DELETE(manager->chain_head, chain_item);
     CDL_PREPEND(manager->chain_head, chain_item);
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 
 }
 
@@ -200,33 +206,33 @@ static ngx_int_t lru_cache_manager_remove(  lru_cache_manager_t* manager,
                                             u_char* key, 
                                             ngx_uint_t key_byte_length) {
     if (manager == NULL || key == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     lru_cache_item_t* hash_item = NULL;
     HASH_FIND(hh, manager->hash_head, key, key_byte_length, hash_item);
     if (hash_item == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
     HASH_DELETE(hh, manager->hash_head, hash_item);
 
     lru_cache_item_t* chain_item = hash_item->value.chain_item;
     CDL_DELETE(manager->chain_head, chain_item);
 
-    if (    mem_pool_free(&(manager->pool), chain_item->key)    != SUCCESS 
-        ||  mem_pool_free(&(manager->pool), hash_item)          != SUCCESS
-        ||  mem_pool_free(&(manager->pool), chain_item)         != SUCCESS) {
-        return FAIL;
+    if (    mem_pool_free(&(manager->pool), chain_item->key)    != NGX_HTTP_WAF_SUCCESS 
+        ||  mem_pool_free(&(manager->pool), hash_item)          != NGX_HTTP_WAF_SUCCESS
+        ||  mem_pool_free(&(manager->pool), chain_item)         != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_HTTP_WAF_FAIL;
     }
 
     --(manager->size);
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t lru_cache_manager_eliminate(lru_cache_manager_t* manager) {
     if (manager == NULL || manager->chain_head == NULL || manager->hash_head == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     lru_cache_item_t* chain_tail = manager->chain_head->prev;
@@ -239,19 +245,19 @@ static ngx_int_t lru_cache_manager_eliminate(lru_cache_manager_t* manager) {
 
 static ngx_int_t lru_cache_manager_eliminate_percent(lru_cache_manager_t* manager, double percent) {
     if (manager == NULL || percent > 1.0) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     ngx_uint_t target_size = (ngx_uint_t)((double)(manager->size) * (1.0 - percent));
 
     while (manager->size > target_size) {
         ngx_int_t ret = lru_cache_manager_eliminate(manager);
-        if (ret != SUCCESS) {
+        if (ret != NGX_HTTP_WAF_SUCCESS) {
             return ret;
         }
     }
     
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 // static void lru_cache_manager_clear(lru_cache_manager_t* manager) {

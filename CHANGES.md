@@ -2,21 +2,33 @@
 
 ## [Unreleased]
 
+### **WARNING**
+
+**This version contains breaking changes.**
+
 ### Added
 
 * A new mode `CACHE` has been added, enabling this mode will cache the results of each inspection to improve performance.
 
 * New configuration `waf_cache` has been added to set parameters related to cache.
 
+* Added directive `waf_cc_deny` to set CC protection related parameters.
+
+* New directive `waf_priority` has been added to set the priority of all checks except for POST checks.
+
 ### Removed
+
+* The directive `waf_cc_deny_limit` is deprecated and replaced with the new directive `waf_cc_deny`.
 
 ### Changed
 
-* Swaps the priority of CC protection and IP whitelist inspection.
+* Swaps the default priority of CC protection and IP whitelist inspection.
 
 ### Fixed
 
 * Fixed a segmentation fault when the number of worker processes is greater than one.
+
+* Fixed a bug where CC protection statistics were sometimes inaccurate.
 
 ***
 

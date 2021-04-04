@@ -21,11 +21,10 @@
  * @param[out] trie 要初始化的前缀树。
  * @param[in] memory_pool 初始化、添加、删除节点所用的内存池。
  * @param[in] ip_type 存储的 IP 地址类型。
- * @return 返回 SUCCESS 表示初始化成功，反之为 FAIL。
- * @retval SUCCESS 初始化成功。
- * @retval FAIL 初始化失败。
+ * @return 返回 NGX_HTTP_WAF_SUCCESS 表示初始化成功，反之为 NGX_HTTP_WAF_FAIL。
 */
 static ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* native_pool, int ip_type);
+
 
 /**
  * @brief 插入一个 IP 地址。
@@ -33,9 +32,7 @@ static ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* 
  * @param[in] inx_addr IP 地址。
  * @param[in] suffix_num IP 网段长度。
  * @param[in] text IP 的字符串形式。
- * @return 返回 SUCCESS 表示成功，反之为 FAIL。
- * @retval SUCCESS 成功。
- * @retval FAIL 失败。
+ * @return 返回 NGX_HTTP_WAF_SUCCESS 表示成功，反之为 NGX_HTTP_WAF_FAIL。
 */
 static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suffix_num, void* data, size_t data_byte_length);
 
@@ -44,9 +41,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
  * @param[in] trie 要操作的前缀树。
  * @param[in] inx_addr IP 地址。
  * @param[out] ip_trie_node 找到之后此指针将指向对应的节点。
- * @return 返回 SUCCESS 表示找到，反之为 FAIL。
- * @retval SUCCESS 找到。
- * @retval FAIL 没找到。
+ * @return 返回 NGX_HTTP_WAF_SUCCESS 表示找到，反之为 FAIL。
 */
 static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** ip_trie_node);
 
@@ -54,7 +49,7 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
  * @brief 删除一个 IP 地址。
  * @param[in] trie 要操作的前缀树。
  * @param[in] inx_addr IP 地址。
- * @return 成功返回 SUCCESS，反之则不是
+ * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是
  * @warning 不会释放节点所在占用的内存，但是会释放节点的 data 域所指向的内存。
 */
 // static ngx_int_t ip_trie_delete(ip_trie_t* trie, inx_addr_t* inx_addr);
@@ -62,7 +57,7 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
 /**
  * @brief 清空整个树，除根节点以外的全部节点的内存和 data 域指向的内存。
  * @param[in] trie 要操作的前缀树。
- * @return 成功返回 SUCCESS，反之则不是
+ * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是
 */
 static ngx_int_t ip_trie_clear(ip_trie_t* trie);
 
@@ -81,12 +76,12 @@ static void _ip_trie_traversal(ip_trie_node_t* node, singly_linked_list_t** head
 
 static ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* native_pool, int ip_type) {
     if (trie == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     
-    if (mem_pool_init(&trie->pool, pool_type, native_pool) != SUCCESS) {
-        return FAIL;
+    if (mem_pool_init(&trie->pool, pool_type, native_pool) != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_HTTP_WAF_FAIL;
     }
 
     trie->ip_type = ip_type;
@@ -94,35 +89,35 @@ static ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* 
     trie->size = 0;
 
     if (trie->root == NULL) {
-        return MALLOC_ERROR;
+        return NGX_HTTP_WAF_MALLOC_ERROR;
     }
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suffix_num, void* data, size_t data_byte_length) {
     if (trie == NULL || inx_addr == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     ip_trie_node_t* new_node = NULL;
 
-    if (ip_trie_find(trie, inx_addr, &new_node) == SUCCESS) {
-        return FAIL;
+    if (ip_trie_find(trie, inx_addr, &new_node) == NGX_HTTP_WAF_SUCCESS) {
+        return NGX_HTTP_WAF_FAIL;
     }
 
     new_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
     if (new_node == NULL) {
-        return MALLOC_ERROR;
+        return NGX_HTTP_WAF_MALLOC_ERROR;
     }
 
     new_node->data = mem_pool_calloc(&trie->pool, data_byte_length);
     if (new_node->data == NULL) {
-        return MALLOC_ERROR;
+        return NGX_HTTP_WAF_MALLOC_ERROR;
     }
     
-    new_node->is_ip = TRUE;
+    new_node->is_ip = NGX_HTTP_WAF_TRUE;
     ngx_memcpy(new_node->data, data, data_byte_length);
 
     ip_trie_node_t* prev_node = trie->root;
@@ -142,7 +137,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             if (cur_node == NULL) {
                 cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
-                    return MALLOC_ERROR;
+                    return NGX_HTTP_WAF_MALLOC_ERROR;
                 }
                 if (prev_bit == 0) {
                     prev_node->left = cur_node;
@@ -151,7 +146,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
                 }
             }
             prev_node = cur_node;
-            if (CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (NGX_HTTP_WAF_CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
                 prev_bit = 0;
                 cur_node = cur_node->left;
             } else {
@@ -163,7 +158,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         if (cur_node == NULL) {
             cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
-                return MALLOC_ERROR;
+                return NGX_HTTP_WAF_MALLOC_ERROR;
             }
             if (prev_bit == 0) {
                 prev_node->left = cur_node;
@@ -172,7 +167,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             }
         }
         uint8_index = bit_index / 8;
-        if (CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+        if (NGX_HTTP_WAF_CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
             cur_node->left = new_node;
         } else {
             cur_node->right = new_node;
@@ -184,7 +179,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             if (cur_node == NULL) {
                 cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
                 if (cur_node == NULL) {
-                    return MALLOC_ERROR;
+                    return NGX_HTTP_WAF_MALLOC_ERROR;
                 }
                 if (prev_bit == 0) {
                     prev_node->left = cur_node;
@@ -193,7 +188,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
                 }
             }
             prev_node = cur_node;
-            if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (NGX_HTTP_WAF_CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
                 cur_node = cur_node->left;
                 prev_bit = 0;
             } else {
@@ -205,7 +200,7 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
         if (cur_node == NULL) {
             cur_node = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
             if (cur_node == NULL) {
-                return MALLOC_ERROR;
+                return NGX_HTTP_WAF_MALLOC_ERROR;
             }
             if (prev_bit == 0) {
                 prev_node->left = cur_node;
@@ -214,26 +209,26 @@ static ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suf
             }
         }
         uint8_index = bit_index / 8;
-        if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+        if (NGX_HTTP_WAF_CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
             cur_node->left = new_node;
         } else {
             cur_node->right = new_node;
         }
     }
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** ip_trie_node) {
     if (trie == NULL || inx_addr == NULL || ip_trie_node ==NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     *ip_trie_node = NULL;
 
     ip_trie_node_t* cur_node = trie->root;
-    ngx_int_t is_found = FAIL;
+    ngx_int_t is_found = NGX_HTTP_WAF_FAIL;
     uint32_t bit_index = 0;
 
     if (trie->ip_type == AF_INET) {
@@ -243,9 +238,9 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
         u8_addr[2] = (uint8_t)((inx_addr->ipv4.s_addr & 0x00ff0000) >> 16);
         u8_addr[3] = (uint8_t)((inx_addr->ipv4.s_addr & 0xff000000) >> 24);
 
-        while (bit_index < 32 && cur_node != NULL && cur_node->is_ip != TRUE) {
+        while (bit_index < 32 && cur_node != NULL && cur_node->is_ip != NGX_HTTP_WAF_TRUE) {
             int uint8_index = bit_index / 8;
-            if (CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (NGX_HTTP_WAF_CHECK_BIT(u8_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
                 cur_node = cur_node->left;
             } else {
                 cur_node = cur_node->right;
@@ -254,9 +249,9 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
         }
         
     } else if (trie->ip_type == AF_INET6) {
-        while (bit_index < 128 && cur_node != NULL && cur_node->is_ip != TRUE) {
+        while (bit_index < 128 && cur_node != NULL && cur_node->is_ip != NGX_HTTP_WAF_TRUE) {
             int uint8_index = bit_index / 8;
-            if (CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != TRUE) {
+            if (NGX_HTTP_WAF_CHECK_BIT(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
                 cur_node = cur_node->left;
             } else {
                 cur_node = cur_node->right;
@@ -265,8 +260,8 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
         }
     }
 
-    if (cur_node != NULL && cur_node->is_ip == TRUE) {
-        is_found = SUCCESS;
+    if (cur_node != NULL && cur_node->is_ip == NGX_HTTP_WAF_TRUE) {
+        is_found = NGX_HTTP_WAF_SUCCESS;
         *ip_trie_node = cur_node;
     }
 
@@ -323,7 +318,7 @@ static ngx_int_t ip_trie_clear(ip_trie_t* trie) {
     trie->root->left = NULL;
     trie->root->right = NULL;
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 

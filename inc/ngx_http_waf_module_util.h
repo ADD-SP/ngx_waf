@@ -6,6 +6,7 @@
 #ifndef NGX_HTTP_WAF_MODULE_UTIL_H
 #define NGX_HTTP_WAF_MODULE_UTIL_H
 
+#include <utarray.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 
@@ -26,6 +27,7 @@
 */
 static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4);
 
+
 /**
  * @brief 将一个字符串形式的 IPV6 地址转化为 ipv6_t。
  * @param[in] text 要转换的字符串
@@ -36,25 +38,46 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4);
 */
 static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6);
 
-/**
- * @brief 检查两个 IPV4 是否属于同一网段
- * @param[in] ip 整型格式的 IPV4
- * @param[in] ipv4 格式化后的 IPV4
- * @return 如果属于同一网段返回 MATCHED，反之返回 NOT_MATCHED。
- * @retval MATCHED 属于同一网段。
- * @retval NOT_MATCHED 不属于同一网段。
-*/
-// static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
 
 /**
- * @brief 检查两个 IPV6 是否属于同一网段
- * @param[in] ip 整型格式的 IPV6
- * @param[in] ipv6 格式化后的 IPV6
- * @return 如果属于同一网段返回 MATCHED，反之返回 NOT_MATCHED。
- * @retval MATCHED 属于同一网段。
- * @retval NOT_MATCHED 不属于同一网段。
+ * @brief 将一个形如 10s 10m 10h 10d 这样的字符串转化为整数，单位是秒。
+ * @param[in] str 要解析的字符串
+ * @return 失败返回 NGX_ERROR，反之则不是。
 */
-// static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
+static ngx_int_t parse_time(u_char* str);
+
+
+/**
+ * @brief 将一个形如 10k 10m 10g 这样的字符串转化为整数，单位是字节。
+ * @param[in] str 要解析的字符串
+ * @return 失败返回 NGX_ERROR，反之则不是。
+*/
+static ngx_int_t parse_size(u_char* str);
+
+
+/**
+ * @brief 字符串分割
+ * @param[in] str 要分割的字符串
+ * @param[in] sep 分隔符
+ * @param[out] max_len 分割后单个字符串的最大长度
+ * @param[out] array 存放分割结果的数组
+ * @return 成功则返回 SUCCESS，反之则不是。
+ * @warning 使用完毕后请自行释放数组所占用内存。
+*/ 
+static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array);
+
+
+/**
+ * @brief 字符串分割
+ * @param[in] str 要分割的字符串
+ * @param[in] sep 分隔符
+ * @param[out] max_len 分割后单个字符串的最大长度
+ * @param[out] array 存放分割结果的数组
+ * @return 成功则返回 SUCCESS，反之则不是。
+ * @warning 使用完毕后请自行释放数组所占用内存。
+*/ 
+static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** array);
+
 
 /**
  * @brief 将 ngx_str 转化为 C 风格的字符串
@@ -66,6 +89,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6);
 */
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str);
 
+
 /**
  * @}
 */
@@ -76,7 +100,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     uint32_t suffix_num = 0;
 
     if (ipv4 == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     ngx_memcpy(ipv4->text, text.data, text.len);
@@ -101,11 +125,11 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
         prefix_text[prefix_len] = '\0';
     } 
     else {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     if (inet_pton(AF_INET, prefix_text, &addr4) != 1) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
     prefix = addr4.s_addr;
 
@@ -149,8 +173,9 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     ipv4->suffix = suffix;
     ipv4->suffix_num = suffix_num;
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
+
 
 static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     uint8_t prefix[16] = { 0 };
@@ -158,7 +183,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     uint32_t suffix_num = 0;
 
     if (ipv6 == NULL) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
     
     ngx_memcpy(ipv6->text, text.data, text.len);
@@ -184,11 +209,11 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
         prefix_text[prefix_len] = '\0';
     } 
     else {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
 
     if (inet_pton(AF_INET6, prefix_text, &addr6) != 1) {
-        return FAIL;
+        return NGX_HTTP_WAF_FAIL;
     }
     ngx_memcpy(prefix, &addr6.s6_addr, 16);
 
@@ -230,37 +255,131 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     ngx_memcpy(ipv6->suffix, suffix, 16);
     ipv6->suffix_num = suffix_num;
 
-    return SUCCESS;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
-// static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
-//     size_t prefix = ip & ipv4->suffix;
 
-//     if (prefix == ipv4->prefix) {
-//         return MATCHED;
-//     }
+static ngx_int_t parse_time(u_char* str) {
+    ngx_int_t ret = 0;
+    size_t len = ngx_strlen(str);
+    if (len < 2) {
+        return NGX_ERROR;
+    }
 
-//     return NOT_MATCHED;
-// }
+    ret = ngx_atoi(str, len - 1);
+    if (ret == NGX_ERROR || ret <= 0) {
+        return NGX_ERROR;
+    }
 
-// static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
-//     uint8_t temp_ip[16];
+    switch (str[len - 1]) {
+        case 's': ret *= 1; break;
+        case 'm': ret *= 1 * 60; break;
+        case 'h': ret *= 1 * 60 * 60; break;
+        case 'd': ret *= 1 * 60 * 60 * 24; break;
+        default: return NGX_ERROR; break;
+    }
 
-//     memcpy(temp_ip, ip, 16);
+    return ret;
+}
 
-//     for (int i = 0; i < 16; i++) {
-//         temp_ip[i] &= ipv6->suffix[i];
-//     }
 
-//     if (memcmp(temp_ip, ipv6->prefix, 16) != 0) {
-//         return NOT_MATCHED;
-//     }
+static ngx_int_t parse_size(u_char* str) {
+    ngx_int_t ret = 0;
+    size_t len = ngx_strlen(str);
+    if (len < 2) {
+        return NGX_ERROR;
+    }
 
-//     return MATCHED;
-// }
+    ret = ngx_atoi(str, len - 1);
+    if (ret == NGX_ERROR || ret <= 0) {
+        return NGX_ERROR;
+    }
+
+    switch (str[len - 1]) {
+        case 'k': ret *= 1 * 1024; break;
+        case 'm': ret *= 1 * 1024 * 1024; break;
+        case 'g': ret *= 1 * 1024 * 1024 * 1024; break;
+        default: return NGX_ERROR; break;
+    }
+
+    return ret;
+}
+
+
+static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array) {
+    if (str == NULL || array == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    utarray_new(*array,&ut_str_icd);
+    u_char* temp_str = malloc(sizeof(u_char) * max_len);
+    ngx_memzero(temp_str, sizeof(u_char) * max_len);
+    size_t str_index = 0;
+
+    for (size_t i = 0; i < str->len; i++) {
+        u_char c = str->data[i];
+        if (c != sep) {
+            if (str_index + 1 >= max_len) {
+                return NGX_HTTP_WAF_FAIL;
+            }
+            temp_str[str_index++] = c;
+        } else {
+            temp_str[str_index] = '\0';
+            utarray_push_back(*array, &temp_str);
+            str_index = 0;
+        }
+    }
+
+    if (str_index != 0) {
+        temp_str[str_index] = '\0';
+        utarray_push_back(*array, &temp_str);
+        str_index = 0;
+    }
+
+    free(temp_str);
+
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** array) {
+    if (str == NULL || array == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    utarray_new(*array,&ut_str_icd);
+    u_char* temp_str = malloc(sizeof(u_char) * max_len);
+    ngx_memzero(temp_str, sizeof(u_char) * max_len);
+    size_t str_index = 0;
+
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        u_char c = str[i];
+        if (c != sep) {
+            if (str_index + 1 >= max_len) {
+                return NGX_HTTP_WAF_FAIL;
+            }
+            temp_str[str_index++] = c;
+        } else {
+            temp_str[str_index] = '\0';
+            utarray_push_back(*array, &temp_str);
+            str_index = 0;
+        }
+    }
+
+    if (str_index != 0) {
+        temp_str[str_index] = '\0';
+        utarray_push_back(*array, &temp_str);
+        str_index = 0;
+    }
+
+    free(temp_str);
+
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
 
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
-    if (ngx_str.len > RULE_MAX_LEN) {
+    if (ngx_str.len > NGX_HTTP_WAF_RULE_MAX_LEN) {
         return NULL;
     }
     ngx_memcpy(destination, ngx_str.data, ngx_str.len);
