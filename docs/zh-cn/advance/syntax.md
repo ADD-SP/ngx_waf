@@ -7,15 +7,15 @@ lang: zh-CN
 
 ## `waf`
 
-* 配置语法: `waf <on|off>;`
-* 默认配置：`waf off;`
+* 配置语法: waf \<*on* | *off*\>
+* 默认配置：waf *off*
 * 配置段: server
 
 是否启用本模块。
 
 ## `waf_rule_path`
 
-* 配置语法: `waf_rule_path <dir>;`
+* 配置语法: waf_rule_path <\*dir*\>
 * 默认配置：——
 * 配置段: server
 
@@ -23,7 +23,7 @@ lang: zh-CN
 
 ## `waf_mode`
 
-* 配置语法: `waf_mode <mode_type> ...;`
+* 配置语法: waf_mode \<*mode_type*\> ...
 * 默认配置：——
 * 配置段: server
 
@@ -90,7 +90,7 @@ waf_mode STD !UA;
 
 ## `waf_cc_deny_limit`
 
-* 配置语法: `waf_cc_deny_limit <rate> <duration> [buffer_size];`
+* 配置语法: waf_cc_deny \<*rate*\> \<*duration*\> \[*buffer_size*\]`
 * 默认配置：——
 * 配置段: server
 
@@ -100,17 +100,40 @@ waf_mode STD !UA;
 * `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 多少分钟（大于零的整数）.
 * `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
 
+::: tip 开发版中的变动
+
+* 配置语法: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[buffer_size=*20m*\]
+* 默认配置：——
+* 配置段: server
+
+设置 CC 防护相关的参数。
+
+* `rate`：表示每分钟的最多请求次数，如 `60r/m` 表示每分钟最多请求 60 次。
+* `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 带哦就，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。
+* `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。
+
+
+:::
+
 ## `waf_cache`
 
-* 配置语法: `waf_cache <capacity> [interval] [percent];`
+* 配置语法: waf_cache \<capacity=*n*\> \[interval=*1h*\] \[percent=*50*\]
 * 默认配置：——
 * 配置段: server
 
 设置缓存规则检查结果相关的参数。
 
 * `capacity`：对于一些启用了缓存机制的检测项目，每个检测项目最多缓存多少个检测目标的检测结果。
-* `interval`：用于设置批量淘汰缓存的周期，单位为分钟。如不指定则默认为 `60`，即 60 分钟。
+* `interval`：用于设置批量淘汰缓存的周期，单位为分钟，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。如不指定则默认为 `1h`，即一小时。
 * `percent`：每次批量淘汰缓存时淘汰掉多少比例的缓存。需要指定一个大于 0 小于等于 100 的整数。若设置为 50 则代表淘汰掉一半的缓存。如不指定则默认为 `50`。
+
+
+::: warning 警告
+
+本配置属于开发版新增的功能，只能在开发版中使用，等稳定后会合并到稳定版中。
+
+:::
+
 
 ::: tip 启用了缓存机制的检测项目
 
@@ -124,8 +147,38 @@ waf_mode STD !UA;
 
 :::
 
+
+## `waf_priority`
+
+* 配置语法: waf_priority "*str*"
+* 默认配置：waf_priority "W-IP IP CC W-URL URL ARGS UA W-REFERER REFERER COOKIE"
+* 配置段: server
+
+设置各个检测项目的优先级，除了 POST 检测，POST 检测的优先级永远最低。
+
+* `W-IP`：IP 白名单检测
+* `IP`：IP 黑名单检测
+* `CC`：CC 防护
+* `W-URL`：URL 白名单检测
+* `URL`：URL 黑名单检测
+* `ARGS`：URL 参数（查询字符串）黑名单检测
+* `UA`：User-Agent 黑名单检测
+* `W-REFERER`：Referer 白名单检测
+* `REFERER`：Referer 黑名单检测
+* `COOKIE`：Cookie 黑名单检测
+
+
 ::: warning 警告
 
 本配置属于开发版新增的功能，只能在开发版中使用，等稳定后会合并到稳定版中。
 
 :::
+
+::: warning 警告
+
+`str` 必须使用单引号或者双引号包裹，且 `str` 必须包含全部的检测项目。
+
+:::
+
+
+

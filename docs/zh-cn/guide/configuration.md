@@ -24,17 +24,21 @@ http {
         ...
         # on 表示启用，off 表示关闭。
         waf on;
+
         # 规则文件所在目录的绝对路径，必须以 / 结尾。
         waf_rule_path /usr/local/src/ngx_waf/rules/;
+        
         # 防火墙工作模式，STD 表示标准模式。
         waf_mode STD;
-        # CC 防御参数，1000 每分钟请求次数上限，60 表示超出上限后封禁对应 ip 60 分钟。
-        waf_cc_deny_limit 1000 60;
+
+        # CC 防御参数，1000 每分钟请求次数上限，超出上限后封禁对应 ip 60 分钟。
+        waf_cc_deny rate=1000r/m duration=60m;
+
 
         # 下面的配置仅开发版可用。
 
-        # 最多缓存多少个检测目标的检测结果，对除了 IP 黑白名单检测、CC 防护和 POST 检测以外的所有检测生效。
-        waf_cache 50;
+        # 最多缓存 50 个检测目标的检测结果，对除了 IP 黑白名单检测、CC 防护和 POST 检测以外的所有检测生效。
+        waf_cache capacity=50;
         ...
     }
     ...

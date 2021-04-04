@@ -5,7 +5,7 @@ lang: en
 
 # Rule Priority
 
-There are many inspection items in this module, so it is important to specify the inspection priority of each inspection item to avoid illogical inspection results.
+There are many inspection process in this module, so it is important to specify the inspection priority of each inspection process to avoid illogical inspection results.
 
 The following is a list of all the tests in order of priority, from top to bottom.
 
@@ -21,8 +21,16 @@ The following is a list of all the tests in order of priority, from top to botto
 10. Cookie blacklist inspection
 11. Post request body blacklist
 
+
+::: tip Change priority
+
+You can modify the priority through the configuration file, but the priority of the POST request body detection is not allowed to be modified, it will always have the lowest priority. See [waf_priority](syntax.md#waf-priority) for details
+
+:::
+
+
 ::: tip CHANGES IN THE DEVELOPMENT VERSION
 
-Swaps the priority of CC protection and IP whitelist inspection.
+Swaps the default priority of CC protection and IP whitelist inspection.
 
 :::
