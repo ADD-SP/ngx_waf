@@ -108,7 +108,7 @@ waf_mode STD !UA;
 
 设置 CC 防护相关的参数。
 
-* `rate`：表示每分钟的最多请求次数，如 `60r/m` 表示每分钟最多请求 60 次。
+* `rate`：表示每分钟的最多请求次数，如 `60r/m` 表示每分钟最多请求 60 次。超出限制后会返回 [503 状态码](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status/503)，并附带 [Retry-After](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Retry-After) 响应头。
 * `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 带哦就，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。
 * `size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。
 

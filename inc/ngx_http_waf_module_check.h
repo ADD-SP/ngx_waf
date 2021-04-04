@@ -366,11 +366,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
         if (diff_second < 60) {
             /* 如果访问次数超出上限 */
             if (statis.count > limit) {
-                ctx->blocked = NGX_HTTP_WAF_TRUE;
-                strcpy((char*)ctx->rule_type, "CC-DNEY");
-                strcpy((char*)ctx->rule_deatils, "");
-                *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-                ret_value = NGX_HTTP_WAF_MATCHED;
+                goto matched;
             } else {
                 ++(statis.count);
                 ngx_memcpy(node->data, &statis, sizeof(ip_statis_t));
@@ -378,11 +374,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
         } else {
             /* 如果一分钟前访问次数就超出上限 && 仍然在拉黑时间内 */
             if (statis.count > limit && diff_second <= duration) {
-                ctx->blocked = NGX_HTTP_WAF_TRUE;
-                strcpy((char*)ctx->rule_type, "CC-DNEY");
-                strcpy((char*)ctx->rule_deatils, "");
-                *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-                ret_value = NGX_HTTP_WAF_MATCHED;
+                goto matched;
             } else {
                 /* 重置访问次数和记录时间 */
                 statis.count = 1;
@@ -390,6 +382,39 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
                 ngx_memcpy(node->data, &statis, sizeof(ip_statis_t));
             }
         }
+
+        goto not_matched;
+
+        matched: {
+            ctx->blocked = NGX_HTTP_WAF_TRUE;
+            strcpy((char*)ctx->rule_type, "CC-DNEY");
+            strcpy((char*)ctx->rule_deatils, "");
+            *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
+            ret_value = NGX_HTTP_WAF_MATCHED;
+
+            size_t header_key_len = ngx_strlen("Retry-After");
+            ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
+            if (header == NULL) {
+                goto not_matched;
+            }
+
+            /* 如果 hash 字段为 0 则会在遍历 HTTP 头的时候被忽略 */
+            header->hash = 1;
+            header->key.data = ngx_palloc(r->pool, sizeof(u_char) * header_key_len);
+            if (header->key.data == NULL) {
+                goto not_matched;
+            }
+            ngx_memcpy(header->key.data, "Retry-After", header_key_len);
+            header->key.len = header_key_len;
+            header->value.data = ngx_palloc(r->pool, sizeof(u_char) * 20);
+            if (header->value.data == NULL) {
+                goto not_matched;
+            }
+            header->value.len = ngx_sprintf(header->value.data, "%d", duration) - header->value.data;
+        }
+        
+
+        not_matched:
         
         ngx_shmtx_unlock(&shpool->mutex);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
