@@ -21,6 +21,8 @@ lang: en
 
 * New directive `waf_priority` has been added to set the priority of all checks except for POST checks.
 
+* The [Retry-Afte](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After) response header is appended when the CC protection returns a 503 status code.
+
 ### Removed
 
 * The directive `waf_cc_deny_limit` is deprecated and replaced with the new directive `waf_cc_deny`.

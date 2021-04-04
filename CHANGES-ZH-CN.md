@@ -9,9 +9,14 @@
 ### 新增
 
 * 新增了模式 `CACHE`，启用此模式后会缓存每次检查的结果，提高性能。
+
 * 新增了配置 `waf_cache` 用于设置缓存相关的参数。
+
 * 新增了配置 `waf_cc_deny`，用于设置 CC 防护相关的参数。
+
 * 新增了配置 `waf_priority`，用来设置除了 POST 检查以外所有的检查项目的优先级。
+
+* 当 CC 防护返回 503 状态码时会附上 [Retry-After](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Retry-After) 响应头。
 
 ### 移除
 

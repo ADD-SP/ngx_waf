@@ -109,7 +109,7 @@ Set the parameters related to CC protection.
 
 Set the parameters related to CC protection.
 
-* `rate`: indicates the maximum number of requests per minute, e.g. `60r/m` means the maximum number of requests per minute is 60.
+* `rate`: indicates the maximum number of requests per minute, e.g. `60r/m` means the maximum number of requests per minute is 60. Exceeding the limit returns a [503 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503) with a [Retry-After](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After) response header.
 * `duration`: indicates the IP band oh after exceeding the limit of the first parameter `rate`, such as `60s`, `60m`, `60h` and `60d`, if not specified, the default is `1h`.
 * `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`.
 
