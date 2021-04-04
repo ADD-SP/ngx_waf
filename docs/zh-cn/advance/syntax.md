@@ -91,7 +91,7 @@ waf_mode STD !UA;
 ## `waf_cc_deny_limit`
 
 * 配置语法: waf_cc_deny \<*rate*\> \<*duration*\> \[*buffer_size*\]`
-* 默认配置：——
+* 默认配置：—
 * 配置段: server
 
 设置 CC 防护相关的参数。
@@ -102,15 +102,15 @@ waf_mode STD !UA;
 
 ::: tip 开发版中的变动
 
-* 配置语法: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[buffer_size=*20m*\]
-* 默认配置：——
+* 配置语法: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
+* 默认配置：—
 * 配置段: server
 
 设置 CC 防护相关的参数。
 
 * `rate`：表示每分钟的最多请求次数，如 `60r/m` 表示每分钟最多请求 60 次。
 * `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 带哦就，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。
-* `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。
+* `size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。
 
 
 :::
@@ -118,7 +118,7 @@ waf_mode STD !UA;
 ## `waf_cache`
 
 * 配置语法: waf_cache \<capacity=*n*\> \[interval=*1h*\] \[percent=*50*\]
-* 默认配置：——
+* 默认配置：—
 * 配置段: server
 
 设置缓存规则检查结果相关的参数。
