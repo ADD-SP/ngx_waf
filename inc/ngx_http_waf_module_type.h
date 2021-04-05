@@ -46,6 +46,18 @@ typedef struct singly_linked_list_s {
 } singly_linked_list_t;
 
 
+/**
+ * @struct circular_doublly_linked_list_t
+ * @brief 双向循环链表
+*/
+typedef struct circular_doublly_linked_list_s {
+    void                                       *data;               /**< 链表的数据项 */
+    size_t                                      data_byte_length;   /**< data 指针指向的内存的长度（字节） */
+    struct circular_doublly_linked_list_s      *prev;               /**< utlist 关键成员 */
+    struct circular_doublly_linked_list_s      *next;               /**< utlist 关键成员 */
+} circular_doublly_linked_list_t;
+
+
 typedef struct ip_statis_s {
     ngx_int_t      count;          /**< 访问次数 */
     time_t          start_time;     /**< 何时开始记录 */

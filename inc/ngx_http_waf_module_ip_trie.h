@@ -67,7 +67,7 @@ static ngx_int_t ip_trie_clear(ip_trie_t* trie);
  * @param[in] node 开始遍历的节点
  * @param[out] head 链表头
 */
-static void _ip_trie_traversal(ip_trie_node_t* node, singly_linked_list_t** head);
+static void _ip_trie_traversal(ip_trie_node_t* node, circular_doublly_linked_list_t** head);
 
 /**
  * @}
@@ -295,25 +295,24 @@ static ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_nod
 
 
 static ngx_int_t ip_trie_clear(ip_trie_t* trie) {
-    singly_linked_list_t* head = NULL;
+    circular_doublly_linked_list_t* head = NULL;
 
     _ip_trie_traversal(trie->root, &head);
-
-    singly_linked_list_t* prev = NULL;
-    singly_linked_list_t* item = NULL;
-    LL_FOREACH(head, item) {
-        if (prev != NULL) {
-            mem_pool_free(&trie->pool, prev->data);
-            mem_pool_free(&trie->pool, prev);
-        }
-
-        prev = item;
+    if (head == NULL) {
+        return NGX_HTTP_WAF_SUCCESS;
     }
 
-    if (prev != NULL) {
-        mem_pool_free(&trie->pool, prev->data);
-        mem_pool_free(&trie->pool, prev);
+    circular_doublly_linked_list_t* item = NULL;
+
+    while ((item = head->next), (item != NULL && item != head)) {
+        mem_pool_free(&trie->pool, item->data);
+        free(item);
+        CDL_DELETE(head, item);
     }
+
+    mem_pool_free(&trie->pool, head->data);
+    free(head);
+    CDL_DELETE(head, head);
 
     trie->root->left = NULL;
     trie->root->right = NULL;
@@ -322,31 +321,31 @@ static ngx_int_t ip_trie_clear(ip_trie_t* trie) {
 }
 
 
-static void _ip_trie_traversal(ip_trie_node_t* node, singly_linked_list_t** head) {
+static void _ip_trie_traversal(ip_trie_node_t* node, circular_doublly_linked_list_t** head) {
     if (node == NULL) {
         return;
     }
 
-    singly_linked_list_t* item = NULL;
+    circular_doublly_linked_list_t* item = NULL;
 
     if (node->left != NULL) {
-        item = malloc(sizeof(singly_linked_list_t));
+        item = malloc(sizeof(circular_doublly_linked_list_t));
         if (item != NULL) {
-            ngx_memzero(item, sizeof(singly_linked_list_t));
+            ngx_memzero(item, sizeof(circular_doublly_linked_list_t));
             item->data = node->left;
             item->data_byte_length = sizeof(ip_trie_node_t);
-            LL_PREPEND(*head, item);
+            CDL_APPEND(*head, item);
             _ip_trie_traversal(node->left, head);
         }
     }
     
     if (node->right != NULL) {
-        item = malloc(sizeof(singly_linked_list_t));
+        item = malloc(sizeof(circular_doublly_linked_list_t));
         if (item != NULL) {
-            ngx_memzero(item, sizeof(singly_linked_list_t));
+            ngx_memzero(item, sizeof(circular_doublly_linked_list_t));
             item->data = node->right;
             item->data_byte_length = sizeof(ip_trie_node_t);
-            LL_PREPEND(*head, item);
+            CDL_APPEND(*head, item);
             _ip_trie_traversal(node->right, head);
         }
     }
