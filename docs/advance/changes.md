@@ -7,6 +7,20 @@ lang: en
 
 ## [Unreleased]
 
+### Added
+
+
+### Removed
+
+
+### Changed
+
+
+### Fixed
+
+
+## [5.0.0] - 2021-04-07 GMT+0800
+
 ### **WARNING**
 
 **This version contains breaking changes.**

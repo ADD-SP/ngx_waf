@@ -52,12 +52,13 @@ lang: zh-CN
 * UA: 启用 user-agent 的检查规则。
 * COOKIE: 启用 cookie 的检查规则。
 * REFERER: 启用 referer 的检查规则。
-* CC: 启用 CC 防御。当你启用了此模式，你必须设置 [waf_cc_deny_limit](#waf-cc-deny-limit)。
+* CC: 启用 CC 防御。当你启用了此模式，你必须设置 [waf_cc_deny](#waf-cc-deny)。
 * COMPAT：兼容模式，用来启用一些兼容性选项去兼容其它的模块或者环境，目前用于兼容 ngx_http_rewrite_module，详见[兼容性说明](/zh-cn/guide/compatibility.md)。
 * STRICT：严格模式，牺牲一些性能进行更多的检查，目前仅在启用了 `COMPAT` 模式时生效，在 ngx_http_rewrite_module 生效前和生效后都进行一轮完整的检查。
-* STD: 标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT`。
-* STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC`。
-* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT`。
+* CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache](#waf-cache)。
+* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`。
+* STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC CACHE`。
+* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`。
 * FULL: 启用所有的模式。
 
 您可以通过在某个 `mode_type` 前增加 `!` 前缀来关闭该模式，下面是一个例子。
@@ -74,33 +75,7 @@ waf_mode STD !UA;
 :::
 
 
-::: tip 开发版中的变动
-
-增加了一个的模式：
-
-* CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache_size](#waf-cache-size)。
-
-下列模式有变化：
-
-* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`。
-* STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC CACHE`。
-* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`。
-
-:::
-
-## `waf_cc_deny_limit`
-
-* 配置语法: waf_cc_deny \<*rate*\> \<*duration*\> \[*buffer_size*\]`
-* 默认配置：—
-* 配置段: server
-
-设置 CC 防护相关的参数。
-
-* `rate`：表示每分钟的最多请求次数（大于零的整数）。
-* `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 多少分钟（大于零的整数）.
-* `buffer_size`：用于设置记录 IP 访问次数的内存的大小，如 `10m`、`10240k`，不得小于 `10m`，如不指定则默认为 `10m`。
-
-::: tip 开发版中的变动
+## `waf_cc_deny`
 
 * 配置语法: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
 * 默认配置：—
@@ -109,11 +84,10 @@ waf_mode STD !UA;
 设置 CC 防护相关的参数。
 
 * `rate`：表示每分钟的最多请求次数，如 `60r/m` 表示每分钟最多请求 60 次。超出限制后会返回 [503 状态码](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status/503)，并附带 [Retry-After](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Retry-After) 响应头。
-* `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 带哦就，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。
+* `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 的时间，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。
 * `size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。
 
 
-:::
 
 ## `waf_cache`
 
@@ -127,12 +101,6 @@ waf_mode STD !UA;
 * `interval`：用于设置批量淘汰缓存的周期，单位为分钟，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。如不指定则默认为 `1h`，即一小时。
 * `percent`：每次批量淘汰缓存时淘汰掉多少比例的缓存。需要指定一个大于 0 小于等于 100 的整数。若设置为 50 则代表淘汰掉一半的缓存。如不指定则默认为 `50`。
 
-
-::: warning 警告
-
-本配置属于开发版新增的功能，只能在开发版中使用，等稳定后会合并到稳定版中。
-
-:::
 
 
 ::: tip 启用了缓存机制的检测项目
@@ -166,13 +134,6 @@ waf_mode STD !UA;
 * `W-REFERER`：Referer 白名单检测
 * `REFERER`：Referer 黑名单检测
 * `COOKIE`：Cookie 黑名单检测
-
-
-::: warning 警告
-
-本配置属于开发版新增的功能，只能在开发版中使用，等稳定后会合并到稳定版中。
-
-:::
 
 ::: warning 警告
 
