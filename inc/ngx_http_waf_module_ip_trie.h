@@ -306,13 +306,15 @@ static ngx_int_t ip_trie_clear(ip_trie_t* trie) {
 
     while ((item = head->next), (item != NULL && item != head)) {
         mem_pool_free(&trie->pool, item->data);
-        free(item);
         CDL_DELETE(head, item);
+        free(item);
     }
 
     mem_pool_free(&trie->pool, head->data);
-    free(head);
+    item = head;
     CDL_DELETE(head, head);
+    free(item);
+    
 
     trie->root->left = NULL;
     trie->root->right = NULL;
