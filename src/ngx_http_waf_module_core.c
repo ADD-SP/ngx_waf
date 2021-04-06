@@ -147,9 +147,10 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
         "ngx_waf_debug: Shared memory is unlocked.");
     
     if (diff_clear_minute > ngx_max(60, srv_conf->waf_cc_deny_duration / 60 * 3)) {
-        ngx_http_waf_clear_ip_access_statistics(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Trigger process - clear ip access statistics.");
+            "ngx_waf_debug: Start process - clear ip access statistics.");
+        ngx_http_waf_clear_ip_access_statistics(r);
+
     }
 
     ngx_int_t is_need_eliminate_cache = NGX_HTTP_WAF_FALSE;
@@ -219,7 +220,7 @@ static void ngx_http_waf_clear_ip_access_statistics(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The token bucket clearing process has been started.");
+        "ngx_waf_debug: The IP statistics cleanup process has been started.");
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The configuration of the module has been obtained.");
 
@@ -238,7 +239,7 @@ static void ngx_http_waf_clear_ip_access_statistics(ngx_http_request_t* r) {
         "ngx_waf_debug: Shared memory is unlocked.");
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The token bucket clearing process is all but complete.");
+        "ngx_waf_debug: The IP statistics cleanup process has been fully completed.");
 }
 
 
@@ -289,7 +290,7 @@ static void ngx_http_waf_eliminate_inspection_cache(ngx_http_request_t* r) {
     }
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The batch cache elimination process is all but complete.");
+        "ngx_waf_debug: The batch cache elimination process has been fully completed.");
 }
 
 

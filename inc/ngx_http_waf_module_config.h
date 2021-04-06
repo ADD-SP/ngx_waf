@@ -831,6 +831,27 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->check_proc_no_cc[8] = ngx_http_waf_handler_check_black_cookie;
 
 
+    if (ip_trie_init(&(srv_conf->white_ipv4), std, NULL, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
+        return NULL;
+    }
+
+    if (ip_trie_init(&(srv_conf->white_ipv6), std, NULL, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
+        return NULL;
+    }
+
+    if (ip_trie_init(&(srv_conf->black_ipv4), std, NULL, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
+        return NULL;
+    }
+
+    if (ip_trie_init(&(srv_conf->black_ipv6), std, NULL, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
+        return NULL;
+    }
+
+
     if (srv_conf->ngx_pool == NULL
         || srv_conf->black_url == NULL
         || srv_conf->black_args == NULL
