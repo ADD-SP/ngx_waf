@@ -52,12 +52,13 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * UA: Enable UA inspecting rules.
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
-* CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny_limit](#waf-cc-deny-limit).
+* CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny](#waf-cc-deny).
 * COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
-* STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC`.
-* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC`.
-* STD: Equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT`.
+* CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache](#waf-cache).
+* STD: Standard working mode, equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`.
+* STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC CACHE`.
+* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`.
 * FULL: Enable all modes.
 
 You can turn off a mode by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
@@ -73,35 +74,8 @@ The mode of `CC` is independent of other modes, and whether it takes effect or n
 
 :::
 
-::: tip CHANGES IN THE DEVELOPMENT VERSION
 
-Added a new mode:
-
-* CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache_size](#waf-cache-size).
-
-The following modes have changed:
-
-* STD: Standard working mode, equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`.
-* STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC CACHE`.
-* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`.
-
-:::
-
-
-## `waf_cc_deny_limit`
-
-* syntax: waf_cc_deny_limit \<*rate*\> \<*duration*\> \[*buffer_size*\]
-* default: —
-* context: server
-
-Set the parameters related to CC protection.
-
-* `rate`:Indicates the maximum number of requests per minute (an integer greater than zero).
-* `duration`:Indicates how many minutes (an integer greater than zero) to pull the IP after exceeding the limit of the first parameter `rate`.
-* `buffer_size`: used to set the size of the memory for recording IP accesses, such as `10m`, `10240k`, must not be less than `10m`, if not specified then the default is `10m`.
-
-
-::: tip CHANGES IN DEVELOPMENT
+## `waf_cc_deny`
 
 * syntax: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
 * default: —
@@ -109,12 +83,9 @@ Set the parameters related to CC protection.
 
 Set the parameters related to CC protection.
 
-* `rate`: indicates the maximum number of requests per minute, e.g. `60r/m` means the maximum number of requests per minute is 60. Exceeding the limit returns a [503 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503) with a [Retry-After](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After) response header.
-* `duration`: indicates the IP band oh after exceeding the limit of the first parameter `rate`, such as `60s`, `60m`, `60h` and `60d`, if not specified, the default is `1h`.
+* `rate`: Indicates the maximum number of requests per minute, e.g. `60r/m` means the maximum number of requests per minute is 60. Exceeding the limit returns a [503 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503) with a [Retry-After](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After) response header.
+* `duration`: Indicates the time to block IP after exceeding the limit of the first parameter `rate`, such as `60s`, `60m`, `60h` and `60d`, if not specified, the default is `1h`.
 * `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`.
-
-
-:::
 
 
 
@@ -126,18 +97,9 @@ Set the parameters related to CC protection.
 
 Set the parameters related to cache rule inspection results.
 
-* `capacity`: for some inspection items with caching mechanism enabled, the maximum number of inspection results per inspection item to be cached for each inspection target.
-* `interval`: set the period of the batch cull cache in minutes, such as `60s`, `60m`, `60h` and `60d`, or `1h` if not specified. If not specified, the default is `1h`, which is one hour.
-* `percent`: what percentage of the cache is eliminated each time the batch eliminates the cache. Specify an integer greater than 0 and less than or equal to 100. A setting of 50 means that half of the cache is eliminated. If not specified, the default is `50`.
-
-
-::: warning WARNING
-
-This configuration is a new feature in the development version, 
-and can only be used in the development version, 
-and will be merged into the stable version when it is stable.
-
-:::
+* `capacity`: For some inspection items with caching mechanism enabled, the maximum number of inspection results per inspection item to be cached for each inspection target.
+* `interval`: Set the period of the batch cull cache in minutes, such as `60s`, `60m`, `60h` and `60d`, or `1h` if not specified. If not specified, the default is `1h`, which is one hour.
+* `percent`: What percentage of the cache is eliminated each time the batch eliminates the cache. Specify an integer greater than 0 and less than or equal to 100. A setting of 50 means that half of the cache is eliminated. If not specified, the default is `50`.
 
 
 ::: tip Cache-enabled inspections
@@ -175,13 +137,6 @@ Set the priority of each inspection process, except for POST detection, which al
 * `W-REFERER`: Referer whitelist inspection
 * `REFERER`: Referer blacklist inspection
 * `COOKIE`: Cookie blacklist inspection
-
-
-::: warning warning
-
-This configuration is a new feature in the development version, and can only be used in the development version, and will be merged into the stable version when it is stable.
-
-:::
 
 ::: warning warning
 

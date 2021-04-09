@@ -7,6 +7,21 @@ lang: zh-CN
 
 ## [未发布]
 
+
+### 新增
+
+
+### 移除
+
+
+### 变动
+
+
+### 修复
+
+
+## [5.0.0] - 2021-04-07 GMT+0800
+
 ### **警告**
 
 **此版本包含不兼容的更新（breaking changes）。**
@@ -35,6 +50,7 @@ lang: zh-CN
 
 * 修复了当 worker 进程数量大于一时的段错误。
 
+* 修复了 CC 防护统计有时不准的错误。
 
 ***
 
@@ -371,3 +387,4 @@ lang: zh-CN
 * IPV4 黑白名单功能失效（[231f94a](https://github.com/ADD-SP/ngx_waf/commit/231f94aa5383fe8f6cdc0fbc3cd2dcadb7606881)）。
 * 当 User-agent 为空时会触发 segmentation fault（[bf33b36](https://github.com/ADD-SP/ngx_waf/commit/bf33b366232b7f5e05379d5e10ab006696189ea6)）。
 * 启用 CC 防御后会有内存泄漏（[be58d18](https://github.com/ADD-SP/ngx_waf/commit/be58d189b4c95be066623604124b02a9bf174e7f)）。
+
