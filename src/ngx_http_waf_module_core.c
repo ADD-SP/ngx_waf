@@ -317,7 +317,11 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         }
     }
 
-    if (r->internal != 0 || srv_conf->waf == 0 || srv_conf->waf == NGX_CONF_UNSET || ctx->read_body_done == NGX_HTTP_WAF_TRUE) {
+    if (r->internal != 0 
+        || srv_conf->waf == 0 
+        || srv_conf->waf == NGX_CONF_UNSET 
+        || ctx->read_body_done == NGX_HTTP_WAF_TRUE
+        || NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, r->method) == NGX_HTTP_WAF_FALSE) {
         http_status = NGX_DECLINED;
     }
     else {

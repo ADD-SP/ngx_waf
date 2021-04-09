@@ -64,3 +64,12 @@ It may be caused by excessive use of `nginx -s reload`. The module requests some
 ## Can I change the rules at runtime?
 
 No, this module only reads the rules when nginx starts and not afterwards.
+
+## Regular expression Denial of Service (ReDoS)
+
+> The regular expression denial of service (ReDoS) is an algorithmic complexity attack that produces a denial-of-service by providing a regular expression that takes a very long time to evaluate. <br><br>
+> [ReDoS - Wikipedia](https://en.wikipedia.org/wiki/ReDoS)
+
+* This module uses the PCRE library to execute regular expressions. The PCRE library can specify the upper limit of the main loop counter at compile time and stop automatically when the upper limit is exceeded. The default limit is 500000. You can also adjust it manually at compile time, see the [pcre2build man page](https://www.pcre.org/current/doc/html/pcre2build.html#SEC11).
+
+* This module caches all regular inspections (except POST inspections), so that the next time you encounter a string for an attack, you do not need to execute the regular expression again without triggering the cache cleanup process.
