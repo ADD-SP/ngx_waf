@@ -32,9 +32,6 @@ http {
         # block the corresponding ip for 60 minutes after exceeding the limit.
         waf_cc_deny rate=1000r/m duration=60m;
 
-
-        # The following directives are for the development version only.
-
         # Cache detection results for up to 50 detection targets, 
         # effective for all detections 
         # except IP black and white list detection, CC protection and POST detection.
