@@ -34,9 +34,6 @@ http {
         # CC 防御参数，1000 每分钟请求次数上限，超出上限后封禁对应 ip 60 分钟。
         waf_cc_deny rate=1000r/m duration=60m;
 
-
-        # 下面的配置仅开发版可用。
-
         # 最多缓存 50 个检测目标的检测结果，对除了 IP 黑白名单检测、CC 防护和 POST 检测以外的所有检测生效。
         waf_cache capacity=50;
         ...
