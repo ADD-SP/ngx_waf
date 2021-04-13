@@ -69,12 +69,16 @@ http {
 
 不可以，本模块只会在 nginx 启动时读取规则，之后不再读取。
 
+## CDN 对 IP 检查的影响
+
+如果你使用 [ngx_http_realip_module](https://nginx.org/en/docs/http/ngx_http_realip_module.html) 获取真实 IP 的话，则本模块在检查 IP 时就会使用真实的 IP。
+
 ## 正则表达式拒绝服务攻击（ReDoS）
 
 ReDoS 是指使用的正则表达式存在缺陷时，攻击者可以使用一个精心构造的字符串来大量地消耗服务器的资源，比如导致正则引擎的灾难性的回溯。
 
 本模块有两种措施可以用来缓解此类攻击。
 
-* 本模块使用的 PCRE 库执行正则表达式，PCRE 在编译时即可指定主循环的计数器上限，超出上限自动停止。默认上限为 500000。你也可以在编译时手动调整，详见 [pcre2build man page](https://www.pcre.org/current/doc/html/pcre2build.html#SEC11)。
+* 本模块使用的 PCRE 库执行正则表达式，PCRE 在编译时即可指定主循环的计数器上限，超出上限自动停止。默认上限为 500000。你也可以在编译时手动调整，详见 [pcre2 build man page](https://www.pcre.org/current/doc/html/pcre2build.html#SEC11)。
 
 * 本模块会缓存所有正则的检查结果（POST 检查除外），这样在不触发缓存淘汰流程的情况下，下次遇到用于攻击的字符串也无需再次执行正则表达式。
