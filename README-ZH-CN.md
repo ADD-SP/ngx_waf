@@ -20,7 +20,7 @@
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
 * POST 黑名单。
 * URL 黑白名单
-* GET 参数黑名单
+* 查询字符串（Query String）黑名单。
 * UserAgent 黑名单。
 * Cookie 黑名单。
 * Referer 黑白名单。
@@ -37,7 +37,7 @@
 
 ## 感谢
 
-* [uthash](https://github.com/troydhanson/uthash): 本项目使用 uthash 的两个数据结构，即 `uthash` 和 `utlist`。
+* [uthash](https://github.com/troydhanson/uthash): 本项目使用 uthash 的一些数据结构。
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
 * [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
 * [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。

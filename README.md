@@ -22,7 +22,7 @@ A web application firewall module for nginx without complex configuration.
 * Block the specified request body.
 * Exceptional allow on specific URL.
 * Block the specified URL.
-* Block the specified request args.
+* Block the specified query string.
 * Block the specified UserAgent.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.
@@ -40,7 +40,7 @@ A web application firewall module for nginx without complex configuration.
 
 ## Thanks
 
-* [uthash](https://github.com/troydhanson/uthash): This project uses two data structures, `uthash` and `utlist`.
+* [uthash](https://github.com/troydhanson/uthash): This project uses some data structures from `uthash`.
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): Most of the default rules of this module come from this.
 * [nginx-book](https://github.com/taobao/nginx-book): Thanks for the tutorial provided by the author.
 * [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): Thanks for the tutorial provided by the author.
