@@ -310,7 +310,9 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         }
         else {
             ctx->read_body_done = NGX_HTTP_WAF_FALSE;
+            ctx->checked = NGX_HTTP_WAF_FALSE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
+            ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
             ctx->rule_type[0] = '\0';
             ctx->rule_deatils[0] = '\0';
             ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
@@ -325,6 +327,7 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         http_status = NGX_DECLINED;
     }
     else {
+        ctx->checked = NGX_HTTP_WAF_TRUE;
         ngx_http_waf_check_pt* funcs = NULL;
         if (is_check_cc == NGX_HTTP_WAF_TRUE) {
             funcs = srv_conf->check_proc;
@@ -344,6 +347,7 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             && NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB) == NGX_HTTP_WAF_TRUE) {
             r->request_body_in_persistent_file = 0;
             r->request_body_in_clean_file = 0;
+            ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
             http_status = ngx_http_read_client_request_body(r, ngx_http_waf_handler_check_black_post);
             if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
                 http_status = NGX_DONE;
@@ -351,8 +355,13 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         }
     }
 
-    if (http_status != NGX_DECLINED && http_status != NGX_DONE) {
+    if (http_status != NGX_DECLINED && http_status != NGX_DONE && http_status != NGX_ERROR) {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
     }
+
+    if (http_status != NGX_DONE) {
+        ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
+    }
+    
     return http_status;
 }

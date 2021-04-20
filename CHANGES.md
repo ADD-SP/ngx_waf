@@ -14,6 +14,18 @@
 ### Fixed
 
 
+***
+
+## [5.1.0] - 2021-04-20 GMT+0800
+
+### Added
+
+* New built-in variable `waf_log`, which is not an empty string when this module has performed a inspection, but an empty string otherwise, mainly used in the directive `access_log`.
+
+* New built-in variable `waf_spend`, which records the time (in milliseconds) taken by this module to perform the inspection.
+
+***
+
 ## [5.0.0] - 2021-04-07 GMT+0800
 
 ### **WARNING**
