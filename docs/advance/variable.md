@@ -9,21 +9,36 @@ When writing `nginx.conf`, some variables are inevitably needed. For example, `$
 
 This module adds three available variables.
 
+## `waf_log`
+
+Not an empty string if the firewall is checked in this request, otherwise an empty string. This variable is mainly used in the directive `access_log`, see [Customised Log Format](log.md#customised-log-format).
+
 ## `$waf_blocked`
 
 Whether this request is intercepted by this module, if intercepted, its value is `'true'`, otherwise it is `'false'`.
 
+## `waf_spend`
+
+Indicates how much time (in milliseconds) this check took, retaining 5 decimal places, with rounding rules depending on the specific C standard library implementation.
+
 ## `$waf_rule_type`
 
-If current request was blocked by this module, this variable is set to the triggered rule type, otherwise `''`. The following are possible values.
+If a black and white list rule is in effect for this request, the value is the type of rule that triggered it. Here are the possible values. If no black and white list rule is in effect then the value is `''`.
 
++ `'WHITE-IPV4'`
++ `'WHITE-IPV6'`
 + `'BLACK-IPV4'`
++ `'BLACK-IPV6'`
++ `'WHITE-URL'`
 + `'BLACK-URL'`
 + `'BLACK-ARGS'`
 + `'BLACK-USER-AGENT'`
++ `'WHITE-REFERER'`
 + `'BLACK-REFERER'`
 + `'BLACK-COOKIE'`
 + `'BLACK-POST'`
+
+:::
 
 ## `$waf_rule_details`
 

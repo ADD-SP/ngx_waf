@@ -42,30 +42,36 @@ static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 */
 static char* ngx_http_waf_mult_mount_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
+
 /**
  * @brief 读取配置项 waf，该项表示是否启用模块。
 */
 static char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
 
 /**
  * @brief 读取配置项 waf_rule_path，该项表示存有配置文件的文件夹的绝对路径，必须以 '/' 结尾。
 */
 static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
+
 /**
  * @brief 读取配置项 waf_mode，该项表示拦截模式。
 */
 static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
 
 /**
  * @brief 读取配置项 waf_cc_deny，该项表示最高的访问频次以及超出后的拉黑时间。
 */
 static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
+
 /**
- * @brief 读取配置项 waf_cache，该项表示最高的访问频次以及超出后的拉黑时间。
+ * @brief 读取配置项 waf_cache，该项表示缓存相关的参数。
 */
 static char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
 
 /**
  * @brief 读取配置项 waf_priority，该项用来设置检查项目的优先级。
@@ -73,19 +79,33 @@ static char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 /**
+ * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
+*/
+static ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
  * @brief 当读取 waf_blocked 变量时的回调函数，这个变量当请求被拦截的时候是 "true"，反之是 "false"。
 */
 static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
 
 /**
  * @brief 当读取 waf_rule_type 变量时的回调函数，这个变量会显示触发了的规则类型。
 */
 static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
+
 /**
- * @brief 当读取 waf_rule_deatils 变量时的回调函数，这个变量会显示触发了的规则。
+ * @brief 当读取 waf_rule_deatils 变量时的回调函数，这个变量会显示触发了的规则的细节。
 */
 static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_spend 变量时的回调函数，这个变量表示本次检查花费的时间（毫秒）。
+*/
+static ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
 
 /**
@@ -867,6 +887,28 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
 }
 
 
+static ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+    v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+
+    if (ctx == NULL || ctx->checked == NGX_HTTP_WAF_FALSE) {
+        v->len = 0;
+        v->data = NULL;
+    }
+    else {
+        v->len = 4;
+        strcpy((char*)v->data, "true");
+
+    }
+
+    return NGX_OK;
+}
+
+
 static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
 
@@ -906,24 +948,9 @@ static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_h
         v->data = NULL;
     }
     else {
-        if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
-            #ifdef __STDC_LIB_EXT1__
-                v->len = strnlen_s((char*)ctx->rule_type, sizeof(ctx->rule_type));
-            #else
-                v->len = strlen((char*)ctx->rule_type);
-            #endif
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
-            #ifdef __STDC_LIB_EXT1__
-                strcpy_s((char*)v->data, sizeof(u_char) * v->len, (char*)ctx->rule_type);
-            #else
-                strcpy((char*)v->data, (char*)ctx->rule_type);
-            #endif
-        }
-        else {
-            v->len = 0;
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
-            v->data[0] = '\0';
-        }
+        v->len = strlen((char*)ctx->rule_type);
+        v->data = ngx_palloc(r->pool, sizeof(u_char) * ngx_max(v->len, 2));
+        strcpy((char*)v->data, (char*)ctx->rule_type);
     }
 
     return NGX_OK;
@@ -942,24 +969,32 @@ static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_ht
         v->data = NULL;
     }
     else {
-        if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
-            #ifdef __STDC_LIB_EXT1__
-                v->len = strnlen_s((char*)ctx->rule_deatils, sizeof(ctx->rule_deatils));
-            #else
-                v->len = strlen((char*)ctx->rule_deatils);
-            #endif
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
-            #ifdef __STDC_LIB_EXT1__
-                strcpy_s((char*)v->data, sizeof(ctx->rule_deatils), (char*)ctx->rule_deatils);
-            #else
-                strcpy((char*)v->data, (char*)ctx->rule_deatils);
-            #endif
-        }
-        else {
-            v->len = 0;
-            v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
-            v->data[0] = '\0';
-        }
+        v->len = strlen((char*)ctx->rule_deatils);
+        v->data = ngx_palloc(r->pool, sizeof(u_char) * ngx_max(v->len, 2));
+        strcpy((char*)v->data, (char*)ctx->rule_deatils);
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+
+    if (ctx == NULL) {
+        v->len = 0;
+        v->data = NULL;
+    }
+    else {
+        u_char text[32] = { 0 };
+        sprintf((char*)text, "%.5lf", ctx->spend);
+        v->len = ngx_strlen(text);
+        v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
+        strcpy((char*)v->data, (char*)text);
     }
 
     return NGX_OK;
@@ -980,6 +1015,11 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers);
     *h = ngx_http_waf_handler_server_rewrite_phase;
 
+    ngx_str_t waf_log_name = ngx_string("waf_log");
+    ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
+    waf_log->get_handler = ngx_http_waf_log_get_handler;
+    waf_log->set_handler = NULL;
+
     ngx_str_t waf_blocked_name = ngx_string("waf_blocked");
     ngx_http_variable_t* waf_blocked = ngx_http_add_variable(cf, &waf_blocked_name, NGX_HTTP_VAR_NOCACHEABLE);
     waf_blocked->get_handler = ngx_http_waf_blocked_get_handler;
@@ -994,6 +1034,11 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_variable_t* waf_rule_details = ngx_http_add_variable(cf, &waf_rule_details_name, NGX_HTTP_VAR_NOCACHEABLE);
     waf_rule_details->get_handler = ngx_http_waf_rule_deatils_handler;
     waf_rule_details->set_handler = NULL;
+
+    ngx_str_t waf_spend_name = ngx_string("waf_spend");
+    ngx_http_variable_t* waf_spend = ngx_http_add_variable(cf, &waf_spend_name, NGX_HTTP_VAR_NOCACHEABLE);
+    waf_spend->get_handler = ngx_http_waf_spend_handler;
+    waf_spend->set_handler = NULL;
 
     return NGX_OK;
 }

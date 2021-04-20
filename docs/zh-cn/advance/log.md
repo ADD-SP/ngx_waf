@@ -51,7 +51,7 @@ cat /path/to/error.log | grep ngx_waf_debug:
 ## 自定义日志格式
 
 nginx 允许自定义日志格式，并且一个 server 块可以同时写入多个日志文件，
-这就给我我们自定义日志格式的机会。本模块提供了三个[内置变量](/zh-cn/advance/variable.md)，稍加利用即可实现。
+这就给我我们自定义日志格式的机会。本模块提供了几个[内置变量](/zh-cn/advance/variable.md)，稍加利用即可实现。
 下面是一个例子。
 
 ```nginx
@@ -64,7 +64,7 @@ http {
                         '$status $body_bytes_sent "$http_referer" '
                         '"$http_user_agent" "$http_x_forwarded_for"';
 
-    log_format  yaml    '- remote_addr: "$remote_addr"\n'
+    log_format yaml     '- remote_addr: "$remote_addr"\n'
                         '  remote_user: "$remote_user"\n'
                         '  time_local: "$time_local"\n'
                         '  request: "$request"\n'
@@ -74,6 +74,7 @@ http {
                         '  http_user_agent: "$http_user_agent"\n'
                         '  http_x_forwarded_for: "$http_x_forwarded_for"\n'
                         '  waf_blocked: $waf_blocked\n'
+                        '  waf_spend: $waf_spend\n'
                         '  waf_rule_type: "$waf_rule_type"\n'
                         '  waf_rule_details: "$waf_rule_details"\n';
 
@@ -82,7 +83,7 @@ http {
         ...
 
         access_log  logs/access.log  main;
-        access_log  logs/access.yml  yaml;
+        access_log  logs/access.yml  yaml if=$waf_log;
 
         ...
     }
@@ -96,75 +97,6 @@ http {
 上述配置将常规的日志格式存入 `logs/access.log` 中，而 yaml 格式的日志会存入 `logs/access.yml` 中。
 值得注意的是 yaml 格式的日志中使用了本模块提供了三个内置变量，
 您可以通过程序方便地读取 `logs/access.yml`，然后就可以进行分析或者绘制图表了。
-
-下面是一段 YAML 格式的日志。
-
-```yaml
-- remote_addr: "127.0.0.1"
-  remote_user: "-"
-  time_local: "14/Mar/2021:21:55:04 +0800"
-  request: "GET /www.bak HTTP/1.1"
-  status: "403"
-  body_bytes_sent: "555"
-  http_referer: "localhost"
-  http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
-  http_x_forwarded_for: "-"
-  waf_blocked: true
-  waf_rule_type: "BLACK-URL"
-  waf_rule_details: "(?i)(?:\x5C.(?:bak|inc|old|mdb|sql|backup|java|class))$"
-
-- remote_addr: "127.0.0.1"
-  remote_user: "-"
-  time_local: "14/Mar/2021:21:55:32 +0800"
-  request: "GET / HTTP/1.1"
-  status: "304"
-  body_bytes_sent: "0"
-  http_referer: "localhost"
-  http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
-  http_x_forwarded_for: "-"
-  waf_blocked: false
-  waf_rule_type: "null"
-  waf_rule_details: "null"
-
-- remote_addr: "127.0.0.1"
-  remote_user: "-"
-  time_local: "14/Mar/2021:21:55:33 +0800"
-  request: "GET / HTTP/1.1"
-  status: "304"
-  body_bytes_sent: "0"
-  http_referer: "localhost"
-  http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
-  http_x_forwarded_for: "-"
-  waf_blocked: false
-  waf_rule_type: "null"
-  waf_rule_details: "null"
-
-- remote_addr: "127.0.0.1"
-  remote_user: "-"
-  time_local: "14/Mar/2021:21:55:33 +0800"
-  request: "GET / HTTP/1.1"
-  status: "503"
-  body_bytes_sent: "599"
-  http_referer: "localhost"
-  http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
-  http_x_forwarded_for: "-"
-  waf_blocked: false
-  waf_rule_type: "CC-DENY"
-  waf_rule_details: "null"
-
-- remote_addr: "127.0.0.1"
-  remote_user: "-"
-  time_local: "14/Mar/2021:21:55:34 +0800"
-  request: "GET / HTTP/1.1"
-  status: "503"
-  body_bytes_sent: "599"
-  http_referer: "localhost"
-  http_user_agent: "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.2)"
-  http_x_forwarded_for: "-"
-  waf_blocked: true
-  waf_rule_type: "CC-DENY"
-  waf_rule_details: "null"
-```
 
 ::: tip 关于 YAML 格式
 

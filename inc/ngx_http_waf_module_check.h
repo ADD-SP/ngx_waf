@@ -132,9 +132,15 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
 
 
 /**
-* @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
+ * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
 */
 static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
+
+
+/**
+ * @brief 获取模块上下文和 server 块配置。
+*/
+static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_srv_conf_t** srv_conf, ngx_http_waf_ctx_t** ctx);
 
 
 /**
@@ -157,13 +163,10 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the IP whitelist.");
 
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The module context has been obtained.");
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -194,7 +197,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
             if (ip_trie_find(&srv_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_FALSE;
-                strcpy((char*)ctx->rule_type, "WHITE-IPV4");
+                strcpy((char*)ctx->rule_type, "WHITE-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
                 *out_http_status = NGX_DECLINED;
                 ret_value = NGX_HTTP_WAF_MATCHED;
@@ -215,13 +218,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the IP blacklist.");
 
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The module context has been obtained.");
-
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -273,13 +272,9 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start the CC inspection process.");
 
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The module context has been obtained.");
-
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
     ngx_int_t ip_type = r->connection->sockaddr->sa_family;
@@ -440,9 +435,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the URL whitelist.");
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -478,9 +472,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the URL blacklist.");
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -516,9 +509,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the ARGS blacklist.");
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -554,9 +546,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the User-Agent blacklist.");
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -596,9 +587,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Referer whitelist.");
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -639,9 +629,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Referer blacklist.");
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -682,13 +671,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Cookie blacklist.");
 
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The module context has been obtained.");
-
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -703,64 +688,21 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
         ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
         size_t i;
         for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
-            ngx_regex_elt_t* p = srv_conf->black_cookie->elts;
-            size_t j;
-            for (j = 0; j < srv_conf->black_cookie->nelts; j++, p++) {
-                if ((**ppcookie).key.data == NULL || (**ppcookie).key.len == 0) {
-                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: The Inspection is skipped because the Cookie.key is empty.");
-                    continue;
-                }
+            ngx_str_t temp;
+            temp.len = (**ppcookie).key.len + (**ppcookie).value.len;
+            temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
+            ngx_memcpy(temp.data, (**ppcookie).key.data, (**ppcookie).key.len);
+            ngx_memcpy(temp.data + (**ppcookie).key.len, (**ppcookie).value.data, (**ppcookie).value.len);
 
-                if ((**ppcookie).value.data == NULL || (**ppcookie).value.len == 0) {
-                    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: The Inspection is skipped because the Cookie.value is empty.");
-                    continue;
-                }
+            ngx_array_t* regex_array = srv_conf->black_cookie;
+            lru_cache_manager_t* cache = &(srv_conf->black_cookie_inspection_cache);
 
-                ngx_str_t temp;
-                temp.len = (**ppcookie).key.len + (**ppcookie).value.len;
-                temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
-                ngx_memcpy(temp.data, (**ppcookie).key.data, (**ppcookie).key.len);
-                ngx_memcpy(temp.data + (**ppcookie).key.len, (**ppcookie).value.data, (**ppcookie).value.len);
+            ret_value = ngx_http_waf_regex_exec_arrray(r, &temp, regex_array, (u_char*)"BLACK-COOKIE", cache);
 
-                ngx_int_t cache_hit = NGX_HTTP_WAF_FAIL;
-                u_char* rule_detail = NULL;
-                if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-                    && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET) {
-                    cache_hit = lru_cache_manager_find(&srv_conf->black_cookie_inspection_cache,
-                                                       temp.data,
-                                                       temp.len,
-                                                       &ret_value,
-                                                       &rule_detail);
-                }
- 
-                if (cache_hit != NGX_HTTP_WAF_SUCCESS && ngx_regex_exec(p->regex, &temp, NULL, 0) >= 0) {
-                    rule_detail = p->name;
-                    ret_value = NGX_HTTP_WAF_MATCHED;
-                }
-
-                if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-                    && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET) {
-                    lru_cache_manager_add(&srv_conf->black_cookie_inspection_cache,
-                                          temp.data,
-                                          temp.len,
-                                          ret_value,
-                                          rule_detail);
-                }
-
-                ngx_pfree(r->pool, temp.data);
-
-                if (ret_value == NGX_HTTP_WAF_MATCHED) {
-                    ctx->blocked = NGX_HTTP_WAF_TRUE;
-                    strcpy((char*)ctx->rule_type, "BLACK-COOKIE");
-                    strcpy((char*)ctx->rule_deatils, (char*)rule_detail);
-                    *out_http_status = NGX_HTTP_FORBIDDEN;
-                    ret_value = NGX_HTTP_WAF_MATCHED;
-                    break;
-                }
-            }
+            ngx_pfree(r->pool, temp.data);
+            
             if (ret_value == NGX_HTTP_WAF_MATCHED) {
+                *out_http_status = NGX_HTTP_FORBIDDEN;
                 break;
             }
         }
@@ -779,69 +721,65 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Post-Body blacklist.");
 
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The module context has been obtained.");
+    double start_clock = (double)clock();
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The configuration of the module has been obtained.");
-    
+    ngx_int_t content_length = ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len);
     ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
-    ngx_buf_t* body_buf = NULL;
     ngx_str_t body_str;
+    body_str.data = ngx_palloc(r->pool, content_length);
+    body_str.len = 0;
 
     ctx->read_body_done = NGX_HTTP_WAF_TRUE;
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection has begun.");
 
-    while (buf_chain != NULL) {
-        body_buf = buf_chain->buf;
 
-        if (body_buf == NULL) {
-            break;
-        }
-
-        body_str.data = body_buf->pos;
-        body_str.len = body_buf->last - body_buf->pos;
-
-
-        if (!ngx_buf_in_memory(body_buf)) {
+    ngx_int_t cur_buf_pos = 0;
+    for (ngx_chain_t* i = buf_chain; i != NULL; i = i->next) {
+        if (!ngx_buf_in_memory_only(i->buf)) {
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                "ngx_waf_debug: The detection is skipped because the Post-Body is not in memory.");
-            buf_chain = buf_chain->next;
-            continue;
+                "ngx_waf_debug: The buffer is skipped because the Post-Body is not in memory.");
+        } else {
+            ngx_int_t buf_len = sizeof(u_char) * (i->buf->last - i->buf->pos);
+            body_str.len += buf_len;
+            ngx_memcpy(body_str.data + cur_buf_pos, i->buf->pos, buf_len);
+            cur_buf_pos += buf_len;
         }
-
-        ngx_regex_elt_t* p = srv_conf->black_post->elts;
-        ngx_int_t rc;
-        size_t i;
-        for (i = 0; i < srv_conf->black_post->nelts; i++, p++) {
-            rc = ngx_regex_exec(p->regex, &body_str, NULL, 0);
-            if (rc >= 0) {
-                ctx->blocked = NGX_HTTP_WAF_TRUE;
-                strcpy((char*)ctx->rule_type, "BLACK-POST");
-                strcpy((char*)ctx->rule_deatils, (char*)p->name);
-                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
-                ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
-                break;
-            }
-        }
-
-        if (ctx->blocked != NGX_HTTP_WAF_TRUE) {
-            break;
-        }
-
-        buf_chain = buf_chain->next;
     }
+
+    ngx_http_waf_regex_exec_arrray(r, &body_str, srv_conf->black_post, (u_char*)"BLACK-POST", NULL);
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection is over.");
 
+    double end_clock = (double)clock();
+    ctx->spend += (end_clock - start_clock) / CLOCKS_PER_SEC * 1000;
+
     if (ctx->blocked != NGX_HTTP_WAF_TRUE) {
         ngx_http_finalize_request(r, NGX_DONE);
         ngx_http_core_run_phases(r);
+    } else {
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
+        ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+    }
+}
+
+
+static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_srv_conf_t** srv_conf, ngx_http_waf_ctx_t** ctx) {
+    if (ctx != NULL) {
+        *ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The module context has been obtained.");
+    }
+    
+    if (srv_conf != NULL) {
+        *srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The configuration of the module has been obtained.");
     }
 }
 
@@ -859,7 +797,8 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r, ngx_str_t
     }
 
     if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET) {
+        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET
+        && cache != NULL) {
         cache_hit = lru_cache_manager_find(cache, str->data, str->len * sizeof(u_char), &is_matched, &rule_detail);
     }
 
@@ -876,7 +815,8 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r, ngx_str_t
     }
 
     if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET) {
+        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET
+        && cache != NULL) {
         lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
     }
 
