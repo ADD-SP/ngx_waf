@@ -9,7 +9,7 @@ When writing `nginx.conf`, some variables are inevitably needed. For example, `$
 
 This module adds three available variables.
 
-## `waf_log`
+## `$waf_log`
 
 Not an empty string if the firewall is checked in this request, otherwise an empty string. This variable is mainly used in the directive `access_log`, see [Customised Log Format](log.md#customised-log-format).
 
@@ -17,7 +17,7 @@ Not an empty string if the firewall is checked in this request, otherwise an emp
 
 Whether this request is intercepted by this module, if intercepted, its value is `'true'`, otherwise it is `'false'`.
 
-## `waf_spend`
+## `$waf_spend`
 
 Indicates how much time (in milliseconds) this check took, retaining 5 decimal places, with rounding rules depending on the specific C standard library implementation.
 
