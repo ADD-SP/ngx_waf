@@ -24,6 +24,7 @@ RUN set -xe \
             gd-dev \
             geoip-dev \
             python3 \
+            py3-pip \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \

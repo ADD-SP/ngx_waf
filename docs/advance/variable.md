@@ -38,7 +38,6 @@ If a black and white list rule is in effect for this request, the value is the t
 + `'BLACK-COOKIE'`
 + `'BLACK-POST'`
 
-:::
 
 ## `$waf_rule_details`
 

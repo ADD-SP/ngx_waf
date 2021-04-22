@@ -5,8 +5,7 @@ lang: en
 
 # Overview
 
-A web application firewall module for nginx without complex configuration.
-
+Handy, High performance Nginx firewall module.
 
 ## Function
 
@@ -22,3 +21,12 @@ A web application firewall module for nginx without complex configuration.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.
 * Block the specified Referer.
+
+## Contact
+
+* Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)
+* Telegram Group: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
+
+## Performance Test
+
+[Performance Test](test.md#performance-test)

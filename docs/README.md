@@ -1,5 +1,6 @@
 ---
 home: true
+heroImage: https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png
 heroText: ngx_waf
 tagline: A web application firewall module for nginx without complex configuration.
 actionText: Quick Start →
