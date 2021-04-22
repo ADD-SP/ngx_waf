@@ -1,6 +1,10 @@
 # ngx_waf
 
-![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=%E7%94%A8%E4%BA%8E%20nginx%20%E7%9A%84%E6%B2%A1%E6%9C%89%E5%A4%8D%E6%9D%82%E9%85%8D%E7%BD%AE%E7%9A%84%20Web%20%E5%BA%94%E7%94%A8%E9%98%B2%E7%81%AB%E5%A2%99%E6%A8%A1%E5%9D%97%E3%80%82&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
+
+<p align="center">
+    <img src="https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png" width=200 height=200/>
+</p>
+
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/zh-cn/)
@@ -30,6 +34,11 @@
 * 推荐链接：[https://docs.addesp.com/ngx_waf/zh-cn/](https://docs.addesp.com/ngx_waf/zh-cn/)
 * 备用链接 1：[https://add-sp.github.io/ngx_waf/zh-cn/](https://add-sp.github.io/ngx_waf/zh-cn/)
 * 备用链接 2：[https://ngx-waf.pages.dev/zh-cn/](https://ngx-waf.pages.dev/zh-cn/)
+
+## 联系方式
+
+* Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)
+* Telegram 群组: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
 
 ## 开源许可证
 

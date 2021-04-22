@@ -1,6 +1,8 @@
 # ngx_waf
 
-![ngx_waf](https://socialify.git.ci/ADD-SP/ngx_waf/image?description=1&descriptionEditable=A%20web%20application%20firewall%20module%20for%20nginx%20without%20complex%20configuration.&language=1&owner=1&pattern=Brick%20Wall&theme=Light)
+<p align="center">
+    <img src="https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png" width=200 height=200/>
+</p>
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/)
@@ -33,6 +35,11 @@ A web application firewall module for nginx without complex configuration.
 * Recommended link: [https://docs.addesp.com/ngx_waf/](https://docs.addesp.com/ngx_waf/)
 * Alternate link 1: [https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf/)
 * Alternate link 2: [https://ngx-waf.pages.dev/](https://ngx-waf.pages.dev/)
+
+## Contact
+
+* Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)
+* Telegram Group: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
 
 ## License
 

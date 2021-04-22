@@ -5,7 +5,7 @@ lang: zh-CN
 
 # 简介
 
-一个用于 nginx 的没有复杂配置的 Web 应用防火墙模块。
+方便又高性能的 Nginx 防火墙模块。
 
 ## 功能
 
@@ -18,6 +18,15 @@ lang: zh-CN
 * UserAgent 黑名单。
 * Cookie 黑名单。
 * Referer 黑白名单。
+
+## 联系方式
+
+* Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)
+* Telegram 群组: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
+
+## 性能测试
+
+[性能测试](test.md#性能测试)
 
 ## 闲谈
 
