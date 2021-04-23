@@ -2,7 +2,7 @@
 home: true
 heroImage: https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png
 heroText: ngx_waf
-tagline: 使用简单的 nginx 防火墙模块
+tagline: 方便且高性能的 Nginx 防火墙模块。
 actionText: 快速上手 →
 actionLink: /zh-cn/guide/overview.html
 features:

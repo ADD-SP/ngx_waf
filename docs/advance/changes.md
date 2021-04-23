@@ -18,6 +18,7 @@ lang: en
 
 ### Fixed
 
+* URL and Referer whitelist are not working.
 
 ***
 

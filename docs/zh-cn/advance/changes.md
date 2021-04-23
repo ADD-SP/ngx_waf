@@ -19,6 +19,7 @@ lang: zh-CN
 
 ### 修复
 
+* URL 和 Referer 白名单规则失效。
 
 ***
 

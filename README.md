@@ -13,7 +13,7 @@
 
 English | [简体中文](README-ZH-CN.md)
 
-A web application firewall module for nginx without complex configuration.
+Handy, High performance Nginx firewall module.
 
 ## Function
 
