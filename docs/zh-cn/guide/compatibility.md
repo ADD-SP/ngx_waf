@@ -14,13 +14,6 @@ lang: zh-CN
 
 本模块目前支持 `nginx-1.18.0` 或更新的版本。
 
-::: tip 注意
-
-`nginx-1.19.x` 为主线版本，即开发版。所以当主线版本发生更新时本模块可能无法兼容。
-如果您使用主线版本的 nginx 时遇到了兼容性错误可以提 [issue](https://github.com/ADD-SP/ngx_waf/issues)。
-
-:::
-
 ## 模块兼容性
 
 ### ngx_http_rewrite_module
