@@ -15,7 +15,7 @@
 
 [English](README.md) | 简体中文
 
-一个用于 nginx 的没有复杂配置的 Web 应用防火墙模块。
+方便且高性能的 Nginx 防火墙模块。
 
 ## 功能
 

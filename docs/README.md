@@ -2,7 +2,7 @@
 home: true
 heroImage: https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png
 heroText: ngx_waf
-tagline: A web application firewall module for nginx without complex configuration.
+tagline: Handy, High performance Nginx firewall module.
 actionText: Quick Start →
 actionLink: /guide/overview.html
 features:
