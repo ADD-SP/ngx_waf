@@ -435,8 +435,9 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the URL whitelist.");
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -455,7 +456,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
         ret_value = ngx_http_waf_regex_exec_arrray(r, p_uri, regex_array, (u_char*)"WHITE-URL", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
-            *out_http_status = NGX_HTTP_FORBIDDEN;
+            ctx->blocked = NGX_HTTP_WAF_FALSE;
+            *out_http_status = NGX_DECLINED;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -472,8 +474,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the URL blacklist.");
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -492,6 +495,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
         ret_value = ngx_http_waf_regex_exec_arrray(r, p_uri, regex_array, (u_char*)"BLACK-URL", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = NGX_HTTP_FORBIDDEN;
         }
 
@@ -509,8 +513,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the ARGS blacklist.");
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -529,6 +534,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
         ret_value = ngx_http_waf_regex_exec_arrray(r, p_args, regex_array, (u_char*)"BLACK-ARGS", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = NGX_HTTP_FORBIDDEN;
         }
 
@@ -546,8 +552,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the User-Agent blacklist.");
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -570,6 +577,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
         ret_value = ngx_http_waf_regex_exec_arrray(r, p_ua, regex_array, (u_char*)"BLACK-UA", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = NGX_HTTP_FORBIDDEN;
         }
 
@@ -587,8 +595,9 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Referer whitelist.");
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -611,7 +620,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
         ret_value = ngx_http_waf_regex_exec_arrray(r, p_referer, regex_array, (u_char*)"WHITE-REFERER", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
-            *out_http_status = NGX_HTTP_FORBIDDEN;
+            ctx->blocked = NGX_HTTP_WAF_FALSE;
+            *out_http_status = NGX_DECLINED;
         }
 
 
@@ -629,8 +639,9 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Referer blacklist.");
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -653,6 +664,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
         ret_value = ngx_http_waf_regex_exec_arrray(r, p_referer, regex_array, (u_char*)"BLACK-REFERER", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = NGX_HTTP_FORBIDDEN;
         }
 
@@ -702,6 +714,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
             ngx_pfree(r->pool, temp.data);
             
             if (ret_value == NGX_HTTP_WAF_MATCHED) {
+                ctx->blocked = NGX_HTTP_WAF_TRUE;
                 *out_http_status = NGX_HTTP_FORBIDDEN;
                 break;
             }
@@ -821,7 +834,6 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r, ngx_str_t
     }
 
     if (is_matched == NGX_HTTP_WAF_MATCHED) {
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
         strcpy((char*)ctx->rule_type, (char*)rule_type);
         strcpy((char*)ctx->rule_deatils, (char*)rule_detail);
     }

@@ -21,6 +21,14 @@ lang: en
 
 ***
 
+## [5.1.1] - 2021-04-23 GMT+0800
+
+### Fixed
+
+* URL and Referer whitelist are not working.
+
+***
+
 ## [5.1.0] - 2021-04-20 GMT+0800
 
 ### Added
