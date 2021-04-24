@@ -65,7 +65,7 @@ wrk -c 100 -d 30m -t 1 -s test/wrk/rand.lua --latency http://localhost/ -- /path
 
 #### 测试结果
 
-开启防火墙后 QPS 降低了约 4%。
+开启防火墙后 RPS（每秒请求数） 降低了约 4%。
 
 ```sh
 # waf on;
@@ -109,7 +109,7 @@ Transfer/sec:     10.19MB
 
 你可以使用 [wrk](https://github.com/wg/wrk) 对本模块进行性能测试。
 
-本项目提供了 wrk 的 lua 脚本用来辅助测试，脚本的路径为 `test/wrk/rand.lua`，其功能时使用随机的 URI 发送 GET 请求。你需要为其提供一个含有一定数量的随机字符串的文本文件，每行一个随机字符串。然后通过下面的命令进行测试。
+本项目提供了 wrk 的 lua 脚本用来辅助测试，脚本的路径为 `test/wrk/rand.lua`，其功能是使用随机的 URI 发送 GET 请求。你需要为其提供一个含有一定数量的随机字符串的文本文件，每行一个随机字符串。然后通过下面的命令进行测试。
 
 ```sh
 wrk -c 100 -d 1m -t 1 -s test/wrk/rand.lua --latency http://localhost/ -- /path/to/rand-str.txt
