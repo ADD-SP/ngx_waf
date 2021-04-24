@@ -13,9 +13,21 @@
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ADD-SP/ngx_waf?include_prereleases)](https://github.com/ADD-SP/ngx_waf/releases)
 [![语义化版本 2.0.0](https://img.shields.io/badge/%E8%AF%AD%E4%B9%89%E5%8C%96%E7%89%88%E6%9C%AC-2.0.0-blue)](https://semver.org/lang/zh-CN/)
 
+[![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
+[![Chat](https://img.shields.io/badge/Chat-Telegram%20Group-blue)](https://t.me/ngx_waf_group)
+
 [English](README.md) | 简体中文
 
 方便且高性能的 Nginx 防火墙模块。
+
+## 为什么选择 ngx_waf
+
+* 功能齐全：「网络应用防火墙」的基本功能都有。
+* 安装方便：
+    * 仅依赖 `uthash` 库，并且可以直接通过包管理器（如 apt）安装。
+    * 无需提前安装其它模块。
+* 使用方便：配置指令简单易懂，不用看文档都能猜到大概是什么意思。
+* 高性能：经过较为极限的测试，启动本模块后 RPS（每秒请求数） 降低约 4%。测试说明和结果见使用文档。
 
 ## 功能
 

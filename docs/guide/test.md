@@ -65,7 +65,7 @@ wrk -c 100 -d 30m -t 1 -s test/wrk/rand.lua --latency http://localhost/ -- /path
 
 #### Test Results
 
-With the firewall on, QPS is reduced by about 4%.
+With the firewall on, QPS(Queries Per Second) is reduced by about 4%.
 
 ```sh
 # waf on;
@@ -108,7 +108,7 @@ Transfer/sec:     10.19MB
 
 You can use [wrk](https://github.com/wg/wrk) to perform performance tests on this module.
 
-The project provides a lua script for wrk to assist in the testing. The script has the path `test/wrk/rand.lua` and functions by sending GET requests with a random URI. You need to provide it with a text file containing a certain number of random strings, one random string per line. Then test it with the following command.
+This project provides wrk's lua script for testing. The path of the script is `test/wrk/rand.lua` and its function is to send GET requests using a random URI. You need to provide it with a text file containing a certain number of random strings, one random string per line. Then test it with the following command.
 
 ```sh
 wrk -c 100 -d 1m -t 1 -s test/wrk/rand.lua --latency http://localhost/ -- /path/to/rand-str.txt
