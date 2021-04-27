@@ -26,7 +26,7 @@ RUN set -xe \
             python3 \
             py3-pip \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
-            pip3 config set global.index-url https://pypi.python.org/simple/ ; \
+            pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \
     &&  pip3 install lastversion
 RUN set -xe \
