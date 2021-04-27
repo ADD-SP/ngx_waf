@@ -4,7 +4,7 @@ ARG CHANGE_SOURCE=false
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
 
-SHELL ["/bin/ash", "-o", "pipefail", "-c"]
+SHELL ["/bin/sh", "-o", "pipefail", "-c"]
 RUN set -xe \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
             sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/' /etc/apk/repositories ; \
