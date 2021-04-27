@@ -31,6 +31,7 @@
 
 ## 功能
 
+* SQL 注入检测。
 * 支持 IPV4 和 IPV6。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间。
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
@@ -59,6 +60,7 @@
 ## 感谢
 
 * [uthash](https://github.com/troydhanson/uthash): 本项目使用 uthash 的一些数据结构。
+* [libinjection](https://github.com/client9/libinjection): 本模块使用此项目检测 SQL 注入。
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
 * [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
 * [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。

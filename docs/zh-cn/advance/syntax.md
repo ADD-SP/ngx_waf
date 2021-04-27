@@ -75,6 +75,21 @@ waf_mode STD !UA;
 :::
 
 
+::: tip 开发版中的变动
+
+新增了下列模式：
+
+* LIB-INJECTION：使用 [libinjection](https://github.com/client9/libinjection) 检测 SQL 注入。
+
+下列模式有改动：
+
+* STD：追加了一个模式 —— LIB-INJECTION。
+* DYNAMIC：追加了一个模式 —— LIB-INJECTION。
+* FULL：追加了一个模式 —— LIB-INJECTION。
+
+:::
+
+
 ## `waf_cc_deny`
 
 * 配置语法: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
