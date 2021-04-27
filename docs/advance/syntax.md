@@ -119,6 +119,21 @@ So please set it reasonably according to your actual needs.
 :::
 
 
+::: tip CHANGES IN THE DEVELOPMENT
+
+The following modes have been added.
+
+* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injections.
+
+The following schemas have been changed.
+
+* STD: The mode LIB-INJECTION has been added.
+* DYNAMIC: The mode LIB-INJECTION has been added.
+* FULL: The mode LIB-INJECTION has been added.
+
+:::
+
+
 ## `waf_priority`
 
 * syntax: waf_priority "*str*"

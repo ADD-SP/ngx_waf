@@ -4,6 +4,7 @@
 
 ### Added
 
+* Support for detecting SQL injection (powered by [libinjection](https://github.com/client9/libinjection). This feature can be enabled by enabling the mode `LIB-INJECTION`, see the usage documentation for details.
 
 ### Removed
 

@@ -29,6 +29,7 @@ Handy, High performance Nginx firewall module.
 
 ## Function
 
+* SQL injection detection.
 * IPV4 and IPV6 support.
 * Anti Challenge Collapsar, it can automatically block malicious IP.
 * Exceptional allow on specific IP address.
@@ -60,6 +61,7 @@ Handy, High performance Nginx firewall module.
 ## Thanks
 
 * [uthash](https://github.com/troydhanson/uthash): This project uses some data structures from `uthash`.
+* [libinjection](https://github.com/client9/libinjection): This module uses this project to detect SQL injections.
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): Most of the default rules of this module come from this.
 * [nginx-book](https://github.com/taobao/nginx-book): Thanks for the tutorial provided by the author.
 * [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): Thanks for the tutorial provided by the author.

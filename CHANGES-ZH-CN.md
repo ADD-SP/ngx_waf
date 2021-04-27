@@ -5,6 +5,7 @@
 
 ### 新增
 
+* 支持检测 SQL 注入（Powered By [libinjection](https://github.com/client9/libinjection)。你可以通过启用 `LIB-INJECTION` 模式开启该功能，详见使用文档。
 
 ### 移除
 

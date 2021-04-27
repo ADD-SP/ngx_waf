@@ -11,7 +11,8 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h"
 
-srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c"
+srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
+    $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c"
 
 # Check if the uthash library is installed.
 ngx_feature="uthash library"
@@ -67,6 +68,36 @@ For gcc, you can enable the C99 standard by appending the parameter --with-cc-op
 END
     exit 1
 fi
+
+
+# Check if libinjection exists.
+ngx_feature="injection library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs=$(cat << END
+
+#include <libinjection/src/libinjection.h>
+#include <libinjection/src/libinjection_sqli.h>
+
+END
+)
+
+ngx_feature_libs="-I $ngx_addon_dir/inc"
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+
+Please run cd $ngx_addon_dir && git clone https://github.com/client9/libinjection.git inc/libinjection && cd $PWD
+
+END
+    PWD=''
+    exit 1
+fi
+
+
 
 # Clear these variables to avoid affecting the installation of other modules.
 ngx_feature=

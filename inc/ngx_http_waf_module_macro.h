@@ -230,6 +230,12 @@
 
 
 /**
+ * @def NGX_HTTP_WAF_MODE_LIB_INJECTION
+ * @brief 启用 libinjection 进行 SQL 注入检查。
+*/
+#define NGX_HTTP_WAF_MODE_LIB_INJECTION                      (NGX_HTTP_WAF_MODE_EXTRA_STRICT << 1)
+
+/**
  * @def MODE_STD
  * @brief 标准工作模式
 */
@@ -243,7 +249,8 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_POST         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE)
+                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
+                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION)
 /**
  * @def MODE_STATIC
  * @brief 适用于静态站点的工作模式
@@ -271,7 +278,8 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_POST         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE)
+                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
+                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION)
 
 
 /**
@@ -301,7 +309,8 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_STRICT         \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE)
+                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
+                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION)
 
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */
@@ -347,6 +356,9 @@
  * @note bit_index 从 0 开始计数，其中 0 代表最低位。
 */
 #define NGX_HTTP_WAF_CHECK_BIT(origin, bit_index) (NGX_HTTP_WAF_CHECK_FLAG((origin), 1 << (bit_index)))
+
+
+#define NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD() { sizeof(ngx_str_t), NULL, utarray_ngx_str_ctor, utarray_ngx_str_dtor }
 
 
 #endif // !NGX_HTTP_WAF_MODULE_MACRO_H
