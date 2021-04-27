@@ -46,9 +46,9 @@ The former is built based on `nginx:stable-alpine` and the latter is built based
 You can choose one of the following two commands to build the image
 
 ```sh
-docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.alpine .
+docker build -t nginx:stable-alpine-with-ngx_waf -f docker/Dockerfile.alpine .
 
-docker build -t nginx:stable-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.debian .
+docker build -t nginx:stable-with-ngx_waf -f docker/Dockerfile.debian .
 ```
 
 ## Compile And Install
