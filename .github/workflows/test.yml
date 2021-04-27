@@ -53,6 +53,7 @@ jobs:
       - name: Download ${{ matrix.nginx-version }}
         run: |
           chmod 777 -R ${{ github.workspace }}
+          sudo git clone https://github.com/client9/libinjection.git inc/libinjection
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
           else  \
@@ -69,7 +70,7 @@ jobs:
           else \
             opt='--add-dynamic-module' ;\
           fi
-          ./configure ${opt}=..
+          ./configure ${opt}=.. --with-cc-opt='-fstack-protector'
       - name: Install ${{ matrix.nginx-version }}
         run: |
           cd nginx-src

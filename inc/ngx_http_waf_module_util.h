@@ -76,7 +76,7 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
  * @return 成功则返回 SUCCESS，反之则不是。
  * @warning 使用完毕后请自行释放数组所占用内存。
 */ 
-static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** array);
+// static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** array);
 
 
 /**
@@ -88,6 +88,12 @@ static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** a
  * @retval NULL 转换失败
 */
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str);
+
+
+void utarray_ngx_str_ctor(void *dst, const void *src);
+
+
+void utarray_ngx_str_dtor(void* elt);
 
 
 /**
@@ -311,71 +317,81 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
         return NGX_HTTP_WAF_FAIL;
     }
 
-    utarray_new(*array,&ut_str_icd);
-    u_char* temp_str = malloc(sizeof(u_char) * max_len);
-    ngx_memzero(temp_str, sizeof(u_char) * max_len);
+    UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
+
+    utarray_new(*array,&icd);
+    ngx_str_t temp_str;
+    temp_str.data = malloc(sizeof(u_char) * max_len);
+    ngx_memzero(temp_str.data, sizeof(u_char) * max_len);
     size_t str_index = 0;
 
     for (size_t i = 0; i < str->len; i++) {
         u_char c = str->data[i];
         if (c != sep) {
-            if (str_index + 1 >= max_len) {
+            if (str_index >= max_len) {
                 return NGX_HTTP_WAF_FAIL;
             }
-            temp_str[str_index++] = c;
+            temp_str.data[str_index++] = c;
         } else {
-            temp_str[str_index] = '\0';
+            temp_str.data[str_index] = '\0';
+            temp_str.len = str_index;
             utarray_push_back(*array, &temp_str);
             str_index = 0;
         }
     }
 
     if (str_index != 0) {
-        temp_str[str_index] = '\0';
+        temp_str.data[str_index] = '\0';
+        temp_str.len = str_index;
         utarray_push_back(*array, &temp_str);
         str_index = 0;
     }
 
-    free(temp_str);
+    free(temp_str.data);
 
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
-static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** array) {
-    if (str == NULL || array == NULL) {
-        return NGX_HTTP_WAF_FAIL;
-    }
+// static ngx_int_t str_split(u_char* str, u_char sep, size_t max_len, UT_array** array) {
+//     if (str == NULL || array == NULL) {
+//         return NGX_HTTP_WAF_FAIL;
+//     }
 
-    utarray_new(*array,&ut_str_icd);
-    u_char* temp_str = malloc(sizeof(u_char) * max_len);
-    ngx_memzero(temp_str, sizeof(u_char) * max_len);
-    size_t str_index = 0;
+//     UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        u_char c = str[i];
-        if (c != sep) {
-            if (str_index + 1 >= max_len) {
-                return NGX_HTTP_WAF_FAIL;
-            }
-            temp_str[str_index++] = c;
-        } else {
-            temp_str[str_index] = '\0';
-            utarray_push_back(*array, &temp_str);
-            str_index = 0;
-        }
-    }
+//     utarray_new(*array,&icd);
+//     ngx_str_t temp_str;
+//     temp_str.data = malloc(sizeof(u_char) * max_len);
+//     ngx_memzero(temp_str.data, sizeof(u_char) * max_len);
+//     size_t str_index = 0;
 
-    if (str_index != 0) {
-        temp_str[str_index] = '\0';
-        utarray_push_back(*array, &temp_str);
-        str_index = 0;
-    }
+//     for (size_t i = 0; str[i] != '\0'; i++) {
+//         u_char c = str[i];
+//         if (c != sep) {
+//             if (str_index + 1 >= max_len) {
+//                 return NGX_HTTP_WAF_FAIL;
+//             }
+//             temp_str.data[str_index++] = c;
+//         } else {
+//             temp_str.data[str_index] = '\0';
+//             temp_str.len = str_index;
+//             utarray_push_back(*array, &temp_str);
+//             str_index = 0;
+//         }
+//     }
 
-    free(temp_str);
+//     if (str_index != 0) {
+//         temp_str.data[str_index] = '\0';
+//         temp_str.len = str_index;
+//         utarray_push_back(*array, &temp_str);
+//         str_index = 0;
+//     }
 
-    return NGX_HTTP_WAF_SUCCESS;
-}
+//     free(temp_str.data);
+
+//     return NGX_HTTP_WAF_SUCCESS;
+// }
 
 
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
@@ -386,5 +402,23 @@ static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
     destination[ngx_str.len] = '\0';
     return (char*)destination + ngx_str.len;
 }
+
+
+void utarray_ngx_str_ctor(void *dst, const void *src) {
+    ngx_str_t* _dst = (ngx_str_t*)dst;
+    const ngx_str_t* _src = (const ngx_str_t*)src;
+
+    _dst->data = malloc(sizeof(u_char) * (_src->len + 1));
+    ngx_memcpy(_dst->data, _src->data, sizeof(u_char) * _src->len);
+    _dst->data[_src->len] = '\0';
+    _dst->len = _src->len;
+}
+
+
+void utarray_ngx_str_dtor(void* elt) {
+    ngx_str_t* _elt = (ngx_str_t*)elt;
+    free(_elt->data);
+}
+
 
 #endif

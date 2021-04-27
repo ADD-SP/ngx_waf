@@ -472,6 +472,15 @@ static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             srv_conf->waf_mode &= ~NGX_HTTP_WAF_MODE_EXTRA_CACHE;
         }
 
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"LIB-INJECTION", ngx_min(modes[i].len, sizeof("LIB-INJECTION") - 1)) == 0
+            && modes[i].len == sizeof("LIB-INJECTION") - 1) {
+            srv_conf->waf_mode |= NGX_HTTP_WAF_MODE_LIB_INJECTION;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!LIB-INJECTION", ngx_min(modes[i].len, sizeof("!LIB-INJECTION") - 1)) == 0
+            && modes[i].len == sizeof("!LIB-INJECTION") - 1) {
+            srv_conf->waf_mode &= ~NGX_HTTP_WAF_MODE_LIB_INJECTION;
+        }
+
         else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html or https://ngx-waf.pages.dev/advance/syntax.html");
@@ -503,14 +512,14 @@ static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void*
             goto error;
         }
 
-        u_char** p = NULL;
-        p = (u_char**)utarray_next(array, p);
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        if (ngx_strcmp("rate", *p) == 0) {
-            p = (u_char**)utarray_next(array, p);
+        if (ngx_strcmp("rate", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
 
             UT_array* temp = NULL;
-            if (str_split(*p, '/', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
+            if (ngx_str_split(p, '/', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
                 goto error;
             }
 
@@ -518,34 +527,33 @@ static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void*
                 goto error;
             }
 
-            u_char** q = NULL;
-            q = (u_char**)utarray_next(temp, q);
-            size_t len = ngx_strlen(*q);
-            srv_conf->waf_cc_deny_limit = ngx_atoi(*q, len - 1);
+            ngx_str_t* q = NULL;
+            q = (ngx_str_t*)utarray_next(temp, q);
+            srv_conf->waf_cc_deny_limit = ngx_atoi(q->data, q->len - 1);
             if (srv_conf->waf_cc_deny_limit == NGX_ERROR || srv_conf->waf_cc_deny_limit <= 0) {
                 goto error;
             }
-            if ((*q)[len - 1] != 'r') {
+            if (q->data[q->len - 1] != 'r') {
                 goto error;
             }
 
-            q = (u_char**)utarray_next(temp, q);
-            if (**q != 'm' || ngx_strlen(*q) != 1) {
+            q = (ngx_str_t*)utarray_next(temp, q);
+            if (q->data[0] != 'm' || q->len != 1) {
                 goto error;
             }
 
             utarray_free(temp);
 
-        } else if (ngx_strcmp("duration", *p) == 0) {
-            p = (u_char**)utarray_next(array, p);
-            srv_conf->waf_cc_deny_duration = parse_time(*p);
+        } else if (ngx_strcmp("duration", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_cc_deny_duration = parse_time(p->data);
             if (srv_conf->waf_cc_deny_duration == NGX_ERROR) {
                 goto error;
             }
 
-        } else if (ngx_strcmp("size", *p) == 0) {
-            p = (u_char**)utarray_next(array, p);
-            srv_conf->waf_cc_deny_shm_zone_size = parse_size(*p);
+        } else if (ngx_strcmp("size", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_cc_deny_shm_zone_size = parse_size(p->data);
             if (srv_conf->waf_cc_deny_shm_zone_size == NGX_ERROR) {
                 goto error;
             }
@@ -622,27 +630,27 @@ static char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
             goto error;
         }
 
-        u_char** p = NULL;
-        p = (u_char**)utarray_next(array, p);
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        if (ngx_strcmp("capacity", *p) == 0) {
-            p = (u_char**)utarray_next(array, p);
-            srv_conf->waf_inspection_capacity = ngx_atoi(*p, ngx_strlen(*p));
+        if (ngx_strcmp("capacity", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_inspection_capacity = ngx_atoi(p->data, p->len);
             if (srv_conf->waf_inspection_capacity == NGX_ERROR
                 || srv_conf->waf_inspection_capacity <= 0) {
                 goto error;
             }
 
-        } else if (ngx_strcmp("interval", *p) == 0) {
-            p = (u_char**)utarray_next(array, p);
-            srv_conf->waf_eliminate_inspection_cache_interval = parse_time(*p);
+        } else if (ngx_strcmp("interval", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_eliminate_inspection_cache_interval = parse_time(p->data);
             if (srv_conf->waf_eliminate_inspection_cache_interval == NGX_ERROR) {
                 goto error;
             }
 
-        } else if (ngx_strcmp("percent", *p) == 0) {
-            p = (u_char**)utarray_next(array, p);
-            srv_conf->waf_eliminate_inspection_cache_percent = ngx_atoi(*p, ngx_strlen(*p));
+        } else if (ngx_strcmp("percent", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_eliminate_inspection_cache_percent = ngx_atoi(p->data, p->len);
             if (srv_conf->waf_eliminate_inspection_cache_percent == NGX_ERROR
                 || srv_conf->waf_eliminate_inspection_cache_percent <= 0
                 || srv_conf->waf_eliminate_inspection_cache_percent > 100) {
@@ -730,60 +738,60 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
     }
 
 
-    u_char** p = NULL;
+    ngx_str_t* p = NULL;
     size_t proc_index = 0, proc_no_cc_index = 0;
-    while ((p = (u_char**)utarray_next(array, p))) {
-        if (strcasecmp("CC", (char*)*p) == 0) {
+    while ((p = (ngx_str_t*)utarray_next(array, p))) {
+        if (strcasecmp("CC", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_cc;
 
-        } else if (strcasecmp("W-IP", (char*)*p) == 0) {
+        } else if (strcasecmp("W-IP", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_white_ip;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_white_ip;
         } 
         
-        else if (strcasecmp("IP", (char*)*p) == 0) {
+        else if (strcasecmp("IP", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_black_ip;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_ip;
         } 
         
-        else if (strcasecmp("W-URL", (char*)*p) == 0) {
+        else if (strcasecmp("W-URL", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_white_url;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_white_url;
         } 
         
-        else if (strcasecmp("URL", (char*)*p) == 0) {
+        else if (strcasecmp("URL", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_black_url;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_url;
         } 
         
-        else if (strcasecmp("ARGS", (char*)*p) == 0) {
+        else if (strcasecmp("ARGS", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_black_args;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_args;
         } 
         
-        else if (strcasecmp("UA", (char*)*p) == 0) {
+        else if (strcasecmp("UA", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_black_user_agent;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_user_agent;
         } 
         
-        else if (strcasecmp("W-REFERER", (char*)*p) == 0) {
+        else if (strcasecmp("W-REFERER", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_white_referer;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_white_referer;
         } 
         
-        else if (strcasecmp("REFERER", (char*)*p) == 0) {
+        else if (strcasecmp("REFERER", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_black_referer;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_referer;
         } 
         
-        else if (strcasecmp("COOKIE", (char*)*p) == 0) {
+        else if (strcasecmp("COOKIE", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_handler_check_black_cookie;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_cookie;
         }
 
         else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-                "ngx_waf: ngx_waf: invalid value [%s]", *p);
+                "ngx_waf: ngx_waf: invalid value [%s]", p->data);
             return NGX_CONF_ERROR;
         }
     }

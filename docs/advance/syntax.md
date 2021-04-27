@@ -75,6 +75,21 @@ The mode of `CC` is independent of other modes, and whether it takes effect or n
 :::
 
 
+::: tip CHANGES IN THE DEVELOPMENT VERSION
+
+The following modes have been added.
+
+* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injections.
+
+The following schemas have been changed.
+
+* STD: The mode LIB-INJECTION has been added.
+* DYNAMIC: The mode LIB-INJECTION has been added.
+* FULL: The mode LIB-INJECTION has been added.
+
+:::
+
+
 ## `waf_cc_deny`
 
 * syntax: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]

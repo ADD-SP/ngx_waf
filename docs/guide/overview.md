@@ -18,6 +18,7 @@ Handy, High performance Nginx firewall module.
 
 ## Function
 
+* SQL injection detection.
 * IPV4 and IPV6 support.
 * Anti Challenge Collapsar, it can automatically block malicious IP.
 * Exceptional allow on specific IP address.
