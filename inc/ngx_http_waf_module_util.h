@@ -313,13 +313,17 @@ static ngx_int_t parse_size(u_char* str) {
 
 
 static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array) {
-    if (str == NULL || array == NULL) {
+    if (array == NULL) {
         return NGX_HTTP_WAF_FAIL;
     }
 
     UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
-
     utarray_new(*array,&icd);
+
+    if (str == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
     ngx_str_t temp_str;
     temp_str.data = malloc(sizeof(u_char) * max_len);
     ngx_memzero(temp_str.data, sizeof(u_char) * max_len);
