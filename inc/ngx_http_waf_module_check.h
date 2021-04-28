@@ -534,8 +534,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
         ngx_array_t* regex_array = srv_conf->black_args;
         lru_cache_manager_t* cache = &(srv_conf->black_args_inspection_cache);
 
-        // ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, p_args, regex_array, 
-                                                        // (u_char*)"BLACK-ARGS", cache, NGX_HTTP_WAF_TRUE);
+        ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, p_args, regex_array, 
+                                                        (u_char*)"BLACK-ARGS", cache, NGX_HTTP_WAF_TRUE);
 
         if (ret_value != NGX_HTTP_WAF_MATCHED) {
             UT_array* args = NULL;
@@ -561,8 +561,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
                     if (ret_value == NGX_HTTP_WAF_MATCHED) {
                         break;
                     }
-                    utarray_free(key_value);
                 }
+                utarray_free(key_value);
             }
             utarray_free(args);
         }
