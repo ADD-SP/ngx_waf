@@ -7,10 +7,9 @@ lang: zh-CN
 
 ## [未发布]
 
-
 ### 新增
 
-* 支持检测 SQL 注入（Powered By [libinjection](https://github.com/client9/libinjection)）。你可以通过启用 `LIB-INJECTION` 模式开启该功能，详见使用文档。
+* 新的配置：`waf_under_attack`，当网站受到攻击时可以使用。
 
 ### 移除
 
@@ -20,6 +19,14 @@ lang: zh-CN
 
 ### 修复
 
+
+***
+
+## [5.1.2] - 2021-04-30 GMT+0800
+
+### 新增
+
+* 支持检测 SQL 注入（Powered By [libinjection](https://github.com/client9/libinjection)）。你可以通过启用 `LIB-INJECTION` 模式开启该功能，详见使用文档。
 
 ***
 
