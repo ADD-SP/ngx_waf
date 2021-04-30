@@ -53,12 +53,13 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
 * CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny](#waf-cc-deny).
+* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injections.
 * COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
 * CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache](#waf-cache).
-* STD: Standard working mode, equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`.
+* STD: Standard working mode, equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE LIB-INJECTION`.
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC CACHE`.
-* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`.
+* DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE LIB-INJECTION`.
 * FULL: Enable all modes.
 
 You can turn off a mode by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
@@ -71,21 +72,6 @@ waf_mode STD !UA;
 ::: tip NOTE
 
 The mode of `CC` is independent of other modes, and whether it takes effect or not is not affected by other modes. A typical situation such as the `URL` mode will be affected by the `GET` mode, because if the `GET` mode is not used, the check will not be started when `Http.Method=GET`, and the URL will naturally not be inspected, but ` CC` mode will not be similarly affected.
-
-:::
-
-
-::: tip CHANGES IN THE DEVELOPMENT VERSION
-
-The following modes have been added.
-
-* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injections.
-
-The following schemas have been changed.
-
-* STD: The mode LIB-INJECTION has been added.
-* DYNAMIC: The mode LIB-INJECTION has been added.
-* FULL: The mode LIB-INJECTION has been added.
 
 :::
 
@@ -134,14 +120,44 @@ So please set it reasonably according to your actual needs.
 :::
 
 
+## `waf_under_attack`
+
+* syntax: waf_under_attack \<*on* | *off*\> *uri*
+* default: waf_under_attack off ""
+* context: server
+
+If your site is under attack you can try using this directive.
+Turning it on forces a five-second delay on each user's first visit and automatically jumps to the page pointed to by `uri`.
+
+* `uri`: can be a full URL or a path. For example, `https://example.com/attack.html` or `/attack.html`.
+
+::: tip Tips
+
+The page pointed to by `uri` should automatically jump to the page the user wants to visit after five seconds, the URL of the page can be obtained by querying a string with the parameter `target`.
+
+`under-attack.html` is a sample page, you should copy this file to your web directory and configure `uri` correctly.
+
+Naturally, you can also write your own html file and point to it with `uri`.
+
+:::
+
+
+::: warnning warning
+
+This feature is only available in the development version.
+
+:::
+
+
 ## `waf_priority`
 
 * syntax: waf_priority "*str*"
-* default: waf_priority "W-IP B-IP CC W-URL URL ARGS UA W-REFERER REFERER COOKIE"
+* default: waf_priority "W-IP B-IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE"
 * context: server
 
 Set the priority of each inspection process, except for POST detection, which always has the lowest priority.
 
+* `UNDER-ATTACK`: Directive `waf_under_attack`(development version only).
 * `W-IP`: IP whitelist inspection
 * `IP`: IP Blacklist inspection
 * `CC`: CC protection

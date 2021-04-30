@@ -53,12 +53,13 @@ lang: zh-CN
 * COOKIE: 启用 cookie 的检查规则。
 * REFERER: 启用 referer 的检查规则。
 * CC: 启用 CC 防御。当你启用了此模式，你必须设置 [waf_cc_deny](#waf-cc-deny)。
+* LIB-INJECTION：使用 [libinjection](https://github.com/client9/libinjection) 检测 SQL 注入。
 * COMPAT：兼容模式，用来启用一些兼容性选项去兼容其它的模块或者环境，目前用于兼容 ngx_http_rewrite_module，详见[兼容性说明](/zh-cn/guide/compatibility.md)。
 * STRICT：严格模式，牺牲一些性能进行更多的检查，目前仅在启用了 `COMPAT` 模式时生效，在 ngx_http_rewrite_module 生效前和生效后都进行一轮完整的检查。
 * CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache](#waf-cache)。
-* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE`。
+* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE LIB-INJECTION`。
 * STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC CACHE`。
-* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE`。
+* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE LIB-INJECTION`。
 * FULL: 启用所有的模式。
 
 您可以通过在某个 `mode_type` 前增加 `!` 前缀来关闭该模式，下面是一个例子。
@@ -71,21 +72,6 @@ waf_mode STD !UA;
 ::: tip 注意
 
 `CC`是独立于其它模式的模式，其生效与否不受到其它模式的影响。典型情况如`URL`模式会受到`GET`模式的影响，因为如果不使用`GET`模式，那么在收到`GET`请求时就不会启动检查，自然也就不会检查 URL，但是`CC`模式不会受到类似的影响。
-
-:::
-
-
-::: tip 开发版中的变动
-
-新增了下列模式：
-
-* LIB-INJECTION：使用 [libinjection](https://github.com/client9/libinjection) 检测 SQL 注入。
-
-下列模式有改动：
-
-* STD：追加了一个模式 —— LIB-INJECTION。
-* DYNAMIC：追加了一个模式 —— LIB-INJECTION。
-* FULL：追加了一个模式 —— LIB-INJECTION。
 
 :::
 
@@ -131,14 +117,46 @@ waf_mode STD !UA;
 :::
 
 
+## `waf_under_attack`
+
+* 配置语法: waf_under_attack \<*on* | *off*\> *uri*
+* 默认配置：waf_under_attack off ""
+* 配置段: server
+
+如果您的站点正在受到攻击可以尝试使用此配置。
+开启后每个用户首次访问会强制延迟五秒，并自动跳转到 `uri` 所指向的网页。
+
+* `uri`: 可以是一个完整的网址，也可以是一个路径。比如 `https://example.com/attack.html` 或 `/attack.html`。
+
+::: tip 小技巧
+
+`uri` 所指向的网页应该在五秒后自动跳转到用户想要访问的页面，页面的网址可以通过查询字符串获得，参数名为 `target`。
+
+`under-attack.html` 是一个示例网页，你应该将这个文件拷贝到你的网站目录下，并正确地配置 `uri`。
+
+你自然也可以自己编写一个 html 文件，然后通过 `uri` 指向它。
+
+:::
+
+
+::: warnning 警告
+
+此功能仅开发版可用。
+
+:::
+
+
+
+
 ## `waf_priority`
 
 * 配置语法: waf_priority "*str*"
-* 默认配置：waf_priority "W-IP IP CC W-URL URL ARGS UA W-REFERER REFERER COOKIE"
+* 默认配置：waf_priority "W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE"
 * 配置段: server
 
 设置各个检测项目的优先级，除了 POST 检测，POST 检测的优先级永远最低。
 
+* `UNDER-ATTACK`: 配置 `waf_under_attack`(仅限开发版)。
 * `W-IP`：IP 白名单检测
 * `IP`：IP 黑名单检测
 * `CC`：CC 防护

@@ -4,7 +4,7 @@
 
 ### Added
 
-* Support for detecting SQL injection (powered by [libinjection](https://github.com/client9/libinjection)). This feature can be enabled by enabling the mode `LIB-INJECTION`, see the documentation for details.
+* New directive: `waf_under_attack`, which can be used when the site is under attack.
 
 ### Removed
 
@@ -14,6 +14,15 @@
 
 ### Fixed
 
+
+***
+
+
+## [5.1.2] - 2021-04-30 GMT+0800
+
+### Added
+
+* Support for detecting SQL injection (powered by [libinjection](https://github.com/client9/libinjection)). This feature can be enabled by enabling the mode `LIB-INJECTION`, see the documentation for details.
 
 ***
 
