@@ -28,12 +28,20 @@ RUN set -xe \
             uthash-dev \
             python3 \
             python3-pip \
+            libsodium23 \
+            libsodium-dev \
     &&  if [ ${CHANGE_SOURCE} == true ] ; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \
     &&  pip3 install lastversion
 RUN set -xe \
     &&  (cd ngx_waf && git clone https://github.com/client9/libinjection.git inc/libinjection) \
+    &&  cd ngx_waf \
+    &&  git clone https://github.com/jedisct1/libsodium --branch stable inc/libsodium \
+    &&  cd inc/libsodium \
+    &&  ./configure --prefix=$(pwd)/build \
+    &&  make -j$(nproc) && make check -j$(nproc) && make install \
+    &&  cd ../../../ \
     &&  ngx_version=$(lastversion nginx:stable) \
     &&  lastversion -d "nginx-${ngx_version}.tar.gz" nginx:stable \
     &&  tar -zxf "nginx-${ngx_version}.tar.gz" \
@@ -89,3 +97,4 @@ RUN set -xe \
 FROM nginx:stable
 COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
+RUN set -xe && apt-get update && apt-get install --yes libsodium23 libsodium-dev

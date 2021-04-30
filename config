@@ -9,7 +9,8 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_token_bucket_set.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h"
+    $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c"
@@ -82,7 +83,7 @@ ngx_feature_incs=$(cat << END
 END
 )
 
-ngx_feature_libs="-I $ngx_addon_dir/inc"
+ngx_feature_libs=" -I $ngx_addon_dir/inc -fstack-protector "
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
@@ -91,6 +92,31 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
 Please run cd $ngx_addon_dir && git clone https://github.com/client9/libinjection.git inc/libinjection && cd $PWD
+
+END
+    PWD=''
+    exit 1
+fi
+
+
+# Check if libsodium exists.
+ngx_feature="sodium library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs='#include <sodium.h>'
+
+ngx_feature_libs="-I $ngx_addon_dir/inc -lsodium"
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+
+Please run:
+    On Ubuntu or Debian: apt-get update && apt-get install --yes libsodium23 libsodium-dev
+    On Alpine: apk update && apk add libsodium libsodium-dev
+    On other OS: Please visit https://pkgs.org/
 
 END
     PWD=''
@@ -114,6 +140,7 @@ if test -n "$ngx_module_link"; then
     ngx_module_deps=$deps
     ngx_module_incs="$ngx_addon_dir/inc"
     ngx_module_srcs=$srcs
+    ngx_module_libs=" -lsodium -fstack-protector "
     
     # Let ngx_http_rewrite_module initialize before this module,
     # so that this module can take effect before ngx_http_rewrite_module,
