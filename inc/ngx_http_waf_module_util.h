@@ -9,6 +9,7 @@
 #include <utarray.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
+#include <sodium.h>
 
 /**
  * @defgroup util 工具代码
@@ -88,6 +89,12 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
  * @retval NULL 转换失败
 */
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str);
+
+
+static ngx_int_t rand_str(u_char* dest, size_t len);
+
+
+static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len);
 
 
 void utarray_ngx_str_ctor(void *dst, const void *src);
@@ -405,6 +412,43 @@ static char* to_c_str(u_char* destination, ngx_str_t ngx_str) {
     ngx_memcpy(destination, ngx_str.data, ngx_str.len);
     destination[ngx_str.len] = '\0';
     return (char*)destination + ngx_str.len;
+}
+
+
+static ngx_int_t rand_str(u_char* dest, size_t len) {
+    if (dest == NULL || len == 0) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    for (size_t i = 0; i < len - 1; i++) {
+        uint32_t num = randombytes_uniform(52);
+        if (num < 26) {
+            dest[i] = (unsigned char)'A' + (unsigned char)num;
+        } else {
+            dest[i] = (unsigned char)'a' + (unsigned char)(num - 26);
+        }
+    }
+
+    dest[len - 1] = '\0';
+
+    return NGX_HTTP_WAF_TRUE;
+}
+
+
+static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len) {
+    if (dst == NULL  || dst_len < 65 || buf == NULL || buf_len == 0) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    unsigned char* out = malloc(sizeof(u_char) * crypto_hash_sha256_BYTES);
+    ngx_memzero(out, sizeof(u_char) * crypto_hash_sha256_BYTES);
+
+    crypto_hash_sha256(out, buf, buf_len);
+    sodium_bin2hex((char*)dst, dst_len, out, crypto_hash_sha256_BYTES);
+
+    free(out);
+    
+    return NGX_HTTP_WAF_TRUE;
 }
 
 

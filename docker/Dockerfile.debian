@@ -28,6 +28,8 @@ RUN set -xe \
             uthash-dev \
             python3 \
             python3-pip \
+            libsodium23 \
+            libsodium-dev \
     &&  if [ ${CHANGE_SOURCE} == true ] ; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \
@@ -89,3 +91,4 @@ RUN set -xe \
 FROM nginx:stable
 COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
+RUN set -xe && apt-get update && apt-get install --yes libsodium23 libsodium-dev

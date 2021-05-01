@@ -17,6 +17,7 @@
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
+#include <ngx_http_waf_module_under_attack.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
@@ -71,6 +72,12 @@ static char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void*
  * @brief 读取配置项 waf_cache，该项表示缓存相关的参数。
 */
 static char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
+ * @brief 读取配置项 waf_under_attack，该项用来设置五秒盾相关的参数。
+*/
+static char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**
@@ -718,6 +725,22 @@ static char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 }
 
 
+static char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_srv_conf_t* srv_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+    if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
+        srv_conf->waf_under_attack = 1;
+    }
+
+    srv_conf->waf_under_attack_uri.data = ngx_pnalloc(srv_conf->ngx_pool, sizeof(u_char) * (p_str[2].len + 1));
+    ngx_memcpy(srv_conf->waf_under_attack_uri.data, p_str[2].data, sizeof(u_char) * p_str[2].len);
+    srv_conf->waf_under_attack_uri.len = p_str[2].len;
+
+    return NGX_CONF_OK;
+}
+
+
 static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_srv_conf_t* srv_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
@@ -789,6 +812,11 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_handler_check_black_cookie;
         }
 
+        else if (strcasecmp("UNDER-ATTACK", (char*)(p->data)) == 0) {
+            srv_conf->check_proc[proc_index++] = ngx_http_waf_check_under_attack;
+            srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_check_under_attack;
+        }
+
         else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
                 "ngx_waf: ngx_waf: invalid value [%s]", p->data);
@@ -810,10 +838,14 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     }
     ngx_str_null(&srv_conf->waf_rule_path);
 
+    rand_str(srv_conf->random_str, sizeof(srv_conf->random_str));
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + NGX_HTTP_WAF_INITIAL_SIZE, cf->log);
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
     srv_conf->waf_mode = 0;
+    srv_conf->waf_under_attack = 0;
+    srv_conf->waf_under_attack_uri.data = NULL;
+    srv_conf->waf_under_attack_uri.len = 0;
     srv_conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     srv_conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
@@ -838,25 +870,27 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->check_proc[0] = ngx_http_waf_handler_check_white_ip;
     srv_conf->check_proc[1] = ngx_http_waf_handler_check_black_ip;
     srv_conf->check_proc[2] = ngx_http_waf_handler_check_cc;
-    srv_conf->check_proc[3] = ngx_http_waf_handler_check_white_url;
-    srv_conf->check_proc[4] = ngx_http_waf_handler_check_black_url;
-    srv_conf->check_proc[5] = ngx_http_waf_handler_check_black_args;
-    srv_conf->check_proc[6] = ngx_http_waf_handler_check_black_user_agent;
-    srv_conf->check_proc[7] = ngx_http_waf_handler_check_white_referer;
-    srv_conf->check_proc[8] = ngx_http_waf_handler_check_black_referer;
-    srv_conf->check_proc[9] = ngx_http_waf_handler_check_black_cookie;
+    srv_conf->check_proc[3] = ngx_http_waf_check_under_attack;
+    srv_conf->check_proc[4] = ngx_http_waf_handler_check_white_url;
+    srv_conf->check_proc[5] = ngx_http_waf_handler_check_black_url;
+    srv_conf->check_proc[6] = ngx_http_waf_handler_check_black_args;
+    srv_conf->check_proc[7] = ngx_http_waf_handler_check_black_user_agent;
+    srv_conf->check_proc[8] = ngx_http_waf_handler_check_white_referer;
+    srv_conf->check_proc[9] = ngx_http_waf_handler_check_black_referer;
+    srv_conf->check_proc[10] = ngx_http_waf_handler_check_black_cookie;
 
 
     ngx_memzero(srv_conf->check_proc_no_cc, sizeof(srv_conf->check_proc_no_cc));
     srv_conf->check_proc_no_cc[0] = ngx_http_waf_handler_check_white_ip;
     srv_conf->check_proc_no_cc[1] = ngx_http_waf_handler_check_black_ip;
-    srv_conf->check_proc_no_cc[2] = ngx_http_waf_handler_check_white_url;
-    srv_conf->check_proc_no_cc[3] = ngx_http_waf_handler_check_black_url;
-    srv_conf->check_proc_no_cc[4] = ngx_http_waf_handler_check_black_args;
-    srv_conf->check_proc_no_cc[5] = ngx_http_waf_handler_check_black_user_agent;
-    srv_conf->check_proc_no_cc[6] = ngx_http_waf_handler_check_white_referer;
-    srv_conf->check_proc_no_cc[7] = ngx_http_waf_handler_check_black_referer;
-    srv_conf->check_proc_no_cc[8] = ngx_http_waf_handler_check_black_cookie;
+    srv_conf->check_proc_no_cc[2] = ngx_http_waf_check_under_attack;
+    srv_conf->check_proc_no_cc[3] = ngx_http_waf_handler_check_white_url;
+    srv_conf->check_proc_no_cc[4] = ngx_http_waf_handler_check_black_url;
+    srv_conf->check_proc_no_cc[5] = ngx_http_waf_handler_check_black_args;
+    srv_conf->check_proc_no_cc[6] = ngx_http_waf_handler_check_black_user_agent;
+    srv_conf->check_proc_no_cc[7] = ngx_http_waf_handler_check_white_referer;
+    srv_conf->check_proc_no_cc[8] = ngx_http_waf_handler_check_black_referer;
+    srv_conf->check_proc_no_cc[9] = ngx_http_waf_handler_check_black_cookie;
 
 
     if (ip_trie_init(&(srv_conf->white_ipv4), std, NULL, AF_INET) != NGX_HTTP_WAF_SUCCESS) {

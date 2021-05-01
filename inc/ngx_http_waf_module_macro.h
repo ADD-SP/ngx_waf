@@ -64,6 +64,13 @@
 */
 #define NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE               (1024 * 1024 * 20)
 
+
+#define NGX_HTTP_WAF_UNDER_ATTACH_UID_LEN                        (64)
+
+
+#define NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN                       (16)
+
+
 /**
  * @def CACHE_ITEM_MIN_SIZE
  * @brief 用于设置缓存项数的上限

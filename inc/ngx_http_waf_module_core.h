@@ -28,6 +28,10 @@
  * @{
 */
 
+
+static ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle);
+
+
 /**
  * @brief NGX_HTTP_SERVER_REWRITE_PHASE 阶段的处理函数
 */
