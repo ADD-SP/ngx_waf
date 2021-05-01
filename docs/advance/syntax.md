@@ -152,7 +152,7 @@ This feature is only available in the development version.
 ## `waf_priority`
 
 * syntax: waf_priority "*str*"
-* default: waf_priority "W-IP B-IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE"
+* default: waf_priority "W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE"
 * context: server
 
 Set the priority of each inspection process, except for POST detection, which always has the lowest priority.
