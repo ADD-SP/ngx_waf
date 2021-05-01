@@ -754,7 +754,7 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
     }
 
 
-    if (utarray_len(array) != 10) {
+    if (utarray_len(array) != 11) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: you must specify the priority of all inspections except for POST inspections");
         return NGX_CONF_ERROR;
