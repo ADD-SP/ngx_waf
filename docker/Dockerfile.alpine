@@ -26,6 +26,8 @@ RUN set -xe \
             geoip-dev \
             python3 \
             py3-pip \
+            libsodium-dev \
+            libsodium \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \
@@ -87,3 +89,4 @@ RUN set -xe \
 FROM nginx:stable-alpine
 COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
+RUN set -xe && apk update && apk add libsodium libsodium-dev

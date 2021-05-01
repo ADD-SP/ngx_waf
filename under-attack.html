@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Please wait 5 seconds.</title>
+    <script> 
+        setTimeout(() => {
+            var urlParams = new URLSearchParams(location.search);
+            var uri = urlParams.get('target');
+            window.location.href = uri;
+        }, 6000);
+    </script>
+</head>
+<body>
+    <h1>
+        Your browser will jump to the page you visited after 5 seconds.
+    </h1>
+    <h1>
+        您的浏览器将在五秒后跳转到您访问的页面。
+    </h1>
+</body>
+</html>

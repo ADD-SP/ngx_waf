@@ -195,6 +195,9 @@ typedef struct ngx_http_waf_ctx_s {
  * @brief 每个 server 块的配置块
 */
 typedef struct ngx_http_waf_srv_conf_s {
+    u_char                          random_str[129];                            /**< 随机字符串 */
+    ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
+    ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_pool_t                     *ngx_pool;                                   /**< 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                                /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */

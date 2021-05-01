@@ -3,6 +3,7 @@
 #include <ngx_http_waf_module_config.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_lru_cache.h>
+#include <ngx_http_waf_module_under_attack.h>
 
 static ngx_command_t ngx_http_waf_commands[] = {
    {
@@ -54,6 +55,14 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NULL
    },
    {
+        ngx_string("waf_under_attack"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE2,
+        ngx_http_waf_under_attack_conf,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        0,
+        NULL
+   },
+   {
         ngx_string("waf_priority"),
         NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
         ngx_http_waf_priority_conf,
@@ -79,23 +88,28 @@ static ngx_http_module_t ngx_http_waf_module_ctx = {
 
 ngx_module_t ngx_http_waf_module = {
     NGX_MODULE_V1,
-    &ngx_http_waf_module_ctx,    /* module context */
-    ngx_http_waf_commands,       /* module directives */
-    NGX_HTTP_MODULE,               /* module type */
-    NULL,                          /* init master */
-    NULL,                          /* init module */
-    NULL,                          /* init process */
-    NULL,                          /* init thread */
-    NULL,                          /* exit thread */
-    NULL,                          /* exit process */
-    NULL,                          /* exit master */
+    &ngx_http_waf_module_ctx,       /* module context */
+    ngx_http_waf_commands,          /* module directives */
+    NGX_HTTP_MODULE,                /* module type */
+    NULL,                           /* init master */
+    NULL,                           /* init module */
+    ngx_http_waf_init_process,      /* init process */
+    NULL,                           /* init thread */
+    NULL,                           /* exit thread */
+    NULL,                           /* exit process */
+    NULL,                           /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
 
+static ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle) {
+    randombytes_stir();
+    return NGX_OK;
+}
+
+
 static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-
     if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT) == NGX_HTTP_WAF_TRUE) {
         ngx_http_waf_trigger_mem_collation_event(r);
         return check_all(r, NGX_HTTP_WAF_TRUE);
