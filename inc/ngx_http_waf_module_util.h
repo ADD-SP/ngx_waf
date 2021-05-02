@@ -91,9 +91,23 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
 static char* to_c_str(u_char* destination, ngx_str_t ngx_str);
 
 
+/**
+ * @brief 生成一个 C 风格的随机字符串
+ * @param[out] dest 存储 C 风格字符串的字符数组
+ * @param[in] len 要生成的字符串的长度，不包含结尾的 \0 。
+ * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
+*/
 static ngx_int_t rand_str(u_char* dest, size_t len);
 
 
+/**
+ * @brief 计算 SHA256 并返回 16 进制字符串。
+ * @param[out] dst 存储 SHA256 字符串的缓冲区
+ * @param[in] dst_len 不包含结尾的 \0
+ * @param[in] buf 用来计算数据所在的缓冲区
+ * @param[in] buf_len 缓冲区长度
+ * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
+*/
 static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len);
 
 
@@ -340,6 +354,7 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
         u_char c = str->data[i];
         if (c != sep) {
             if (str_index >= max_len) {
+                free(temp_str.data);
                 return NGX_HTTP_WAF_FAIL;
             }
             temp_str.data[str_index++] = c;
@@ -420,7 +435,7 @@ static ngx_int_t rand_str(u_char* dest, size_t len) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    for (size_t i = 0; i < len - 1; i++) {
+    for (size_t i = 0; i < len; i++) {
         uint32_t num = randombytes_uniform(52);
         if (num < 26) {
             dest[i] = (unsigned char)'A' + (unsigned char)num;
@@ -429,14 +444,14 @@ static ngx_int_t rand_str(u_char* dest, size_t len) {
         }
     }
 
-    dest[len - 1] = '\0';
+    dest[len] = '\0';
 
-    return NGX_HTTP_WAF_TRUE;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len) {
-    if (dst == NULL  || dst_len < 65 || buf == NULL || buf_len == 0) {
+    if (dst == NULL  || dst_len < crypto_hash_sha256_BYTES * 2 + 1 || buf == NULL || buf_len == 0) {
         return NGX_HTTP_WAF_FAIL;
     }
 
@@ -448,7 +463,7 @@ static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t b
 
     free(out);
     
-    return NGX_HTTP_WAF_TRUE;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 

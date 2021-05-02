@@ -25,7 +25,9 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
+
 static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r);
+
 
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
@@ -838,7 +840,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     }
     ngx_str_null(&srv_conf->waf_rule_path);
 
-    rand_str(srv_conf->random_str, sizeof(srv_conf->random_str));
+    rand_str(srv_conf->random_str, sizeof(srv_conf->random_str) - 1);
     srv_conf->ngx_pool = ngx_create_pool(sizeof(ngx_pool_t) + NGX_HTTP_WAF_INITIAL_SIZE, cf->log);
     srv_conf->alloc_times = 0;
     srv_conf->waf = NGX_CONF_UNSET;
