@@ -71,6 +71,9 @@
 #define NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN                       (16)
 
 
+#define NGX_HTTP_WAF_SHA256_HEX_LEN                              (crypto_hash_sha256_BYTES * 2)
+
+
 /**
  * @def CACHE_ITEM_MIN_SIZE
  * @brief 用于设置缓存项数的上限

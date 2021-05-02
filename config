@@ -15,21 +15,47 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c"
 
+
+ngx_http_waf_module_cc_opt=" -I $ngx_addon_dir/inc -fstack-protector "
+
+if [ -n "$LIB_SODIUM" ] ;  then
+    ngx_http_waf_module_cc_opt=" ${ngx_http_waf_module_cc_opt}  -I ${LIB_SODIUM}/include -L ${LIB_SODIUM}/lib -l sodium"
+else
+    ngx_http_waf_module_cc_opt=" ${ngx_http_waf_module_cc_opt}  -l sodium"
+fi
+
+if [ -n "$LIB_UTHASH" ] ;  then
+    ngx_http_waf_module_cc_opt=" ${ngx_http_waf_module_cc_opt}  -I ${LIB_UTHASH}/include "
+fi
+
+
+
 # Check if the uthash library is installed.
 ngx_feature="uthash library"
 ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs="#include <uthash.h>"
-ngx_feature_libs=
+ngx_feature_libs=$ngx_http_waf_module_cc_opt
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
     cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
-Please visit https://docs.addesp.com/ngx_waf/ or https://add-sp.github.io/ngx_waf/ or https://ngx-waf.pages.dev/ .
+Please run:
+    On Ubuntu or Debian: 
+            apt-get update && apt-get install --yes uthash-dev
+    On Alpine: 
+            apk update && apk add uthash-dev
+    On other OS:
+            cd /usr/local/src \\
+        &&  git clone https://github.com/troydhanson/uthash.git \\
+        &&  export LIB_UTHASH=/usr/local/src/uthash \\
+        &&  cd $PWD
 
 END
+    PWD=''
     exit 1
 fi
 
@@ -38,7 +64,7 @@ ngx_feature="C99 features"
 ngx_feature_name=
 ngx_feature_run=yes
 ngx_feature_incs=
-ngx_feature_libs=
+ngx_feature_libs=$ngx_http_waf_module_cc_opt
 ngx_feature_test=$(cat << END
 
 /* Declare variables in loops. */
@@ -83,7 +109,7 @@ ngx_feature_incs=$(cat << END
 END
 )
 
-ngx_feature_libs=" -I $ngx_addon_dir/inc -fstack-protector "
+ngx_feature_libs=$ngx_http_waf_module_cc_opt
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
@@ -99,13 +125,13 @@ END
 fi
 
 
+
 # Check if libsodium exists.
 ngx_feature="sodium library"
 ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs='#include <sodium.h>'
-
-ngx_feature_libs="-I $ngx_addon_dir/inc -lsodium"
+ngx_feature_libs=$ngx_http_waf_module_cc_opt
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
@@ -114,9 +140,18 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
 Please run:
-    On Ubuntu or Debian: apt-get update && apt-get install --yes libsodium23 libsodium-dev
-    On Alpine: apk update && apk add libsodium libsodium-dev
-    On other OS: Please visit https://pkgs.org/
+    On Ubuntu or Debian: 
+            apt-get update && apt-get install --yes libsodium23 libsodium-dev
+    On Alpine: 
+            apk update && apk add libsodium libsodium-dev
+    On other OS:
+            cd /usr/local/src \\
+        &&  git clone https://github.com/jedisct1/libsodium --branch stable \\
+        &&  cd libsodium \\
+        &&  ./configure --prefix=/usr/local/libsodium \\
+        &&  make -j\$(nproc) && make check -j \$(nproc) && make install \\
+        &&  export LIB_SODIUM=/usr/local/libsodium \\
+        &&  cd $PWD
 
 END
     PWD=''
@@ -140,7 +175,7 @@ if test -n "$ngx_module_link"; then
     ngx_module_deps=$deps
     ngx_module_incs="$ngx_addon_dir/inc"
     ngx_module_srcs=$srcs
-    ngx_module_libs=" -lsodium -fstack-protector "
+    ngx_module_libs=$ngx_http_waf_module_cc_opt
     
     # Let ngx_http_rewrite_module initialize before this module,
     # so that this module can take effect before ngx_http_rewrite_module,
