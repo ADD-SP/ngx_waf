@@ -731,15 +731,48 @@ static char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, 
     ngx_http_waf_srv_conf_t* srv_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
+    srv_conf->waf_under_attack = NGX_CONF_UNSET;
+
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         srv_conf->waf_under_attack = 1;
     }
 
-    srv_conf->waf_under_attack_uri.data = ngx_pnalloc(srv_conf->ngx_pool, sizeof(u_char) * (p_str[2].len + 1));
-    ngx_memcpy(srv_conf->waf_under_attack_uri.data, p_str[2].data, sizeof(u_char) * p_str[2].len);
-    srv_conf->waf_under_attack_uri.len = p_str[2].len;
+    for (size_t i = 2; i < cf->args->nelts; i++) {
+        UT_array* array = NULL;
+        if (ngx_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
+            goto error;
+        }
+
+        if (utarray_len(array) != 2) {
+            goto error;
+        }
+
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
+
+        if (ngx_strcmp("uri", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            if (p == NULL || p->data == NULL || p->len == 0) {
+                goto error;
+            }
+            srv_conf->waf_under_attack_uri.data = ngx_palloc(srv_conf->ngx_pool, sizeof(u_char) * (p->len + 1));
+            ngx_memzero(srv_conf->waf_under_attack_uri.data, sizeof(u_char) * (p->len + 1));
+            ngx_memcpy(srv_conf->waf_under_attack_uri.data, p->data, sizeof(u_char) * p->len);
+            srv_conf->waf_under_attack_uri.len = p->len;
+
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
+    }
 
     return NGX_CONF_OK;
+
+    error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
 }
 
 

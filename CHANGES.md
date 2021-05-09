@@ -14,6 +14,7 @@
 
 ### Fixed
 
+* CC protection can sometimes not work.
 
 ***
 
