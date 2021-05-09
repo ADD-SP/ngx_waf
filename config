@@ -90,7 +90,7 @@ if [ $ngx_found = no  ] ; then
     cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature, make sure your C compiler supports and enables the C99 standard.
 
-For gcc, you can enable the C99 standard by appending the parameter --with-cc-opt='-std=c99'.
+For gcc, you can enable the C99 standard by appending the parameter --with-cc-opt='-std=gnu99'.
 
 END
     exit 1
@@ -186,6 +186,6 @@ if test -n "$ngx_module_link"; then
 else
     HTTP_MODULES="$HTTP_MODULES ${ngx_addon_name}"
     HTTP_DEPS-"$HTTP_DEPS $deps"
-    NGX_ADDON_INCS="$NGX_ADDON_INCS $ngx_addon_dir/inc"
+    HTTP_INCS="$HTTP_INCS -I $ngx_addon_dir/inc"
     NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
 fi
