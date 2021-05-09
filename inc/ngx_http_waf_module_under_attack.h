@@ -139,13 +139,14 @@ static ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_
 
 
     /* 验证时间是否超过 5 秒 */
-    time_t target_time = ngx_atoi(__waf_under_attack_time.data, __waf_under_attack_time.len);
-    if (target_time == NGX_ERROR) {
+    time_t client_time = ngx_atoi(__waf_under_attack_time.data, __waf_under_attack_time.len);
+    /* 如果 Cookie 不合法 或 已经超过 30 分钟 */
+    if (client_time == NGX_ERROR || difftime(time(NULL), client_time) > 60 * 30) {
         ngx_http_waf_gen_cookie(r);
         *out_http_status = 303;
         ngx_http_waf_gen_ctx_and_header_location(r);
         return NGX_HTTP_WAF_MATCHED;
-    } else if (difftime(time(NULL), target_time) <= 5) {
+    } else if (difftime(time(NULL), client_time) <= 5) {
         *out_http_status = 303;
         ngx_http_waf_gen_ctx_and_header_location(r);
         return NGX_HTTP_WAF_MATCHED;
