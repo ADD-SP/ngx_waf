@@ -122,7 +122,7 @@ So please set it reasonably according to your actual needs.
 
 ## `waf_under_attack`
 
-* syntax: waf_under_attack \<*on* | *off*\> *uri*
+* syntax: waf_under_attack \<*on* | *off*\> \[uri=*str*\]
 * default: waf_under_attack off ""
 * context: server
 

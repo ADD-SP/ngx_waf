@@ -12,14 +12,15 @@ The following is a list of all the tests in order of priority, from top to botto
 1. IP whitelist inspection
 2. IP blacklist inspection
 3. CC protection
-4. Url whitelist inspection
-5. Url blacklist inspection
-6. Get parameter blacklist inspection
-7. User-Agent blacklist inspection
-8. Referer whitelist inspection
-9. Referer blacklist inspection
-10. Cookie blacklist inspection
-11. Post request body blacklist
+4. Under attack mode
+5. Url whitelist inspection
+6. Url blacklist inspection
+7. Get parameter blacklist inspection
+8. User-Agent blacklist inspection
+9. Referer whitelist inspection
+10. Referer blacklist inspection
+11. Cookie blacklist inspection
+12. Post request body blacklist
 
 
 ::: tip Change priority

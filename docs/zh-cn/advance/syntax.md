@@ -119,7 +119,7 @@ waf_mode STD !UA;
 
 ## `waf_under_attack`
 
-* 配置语法: waf_under_attack \<*on* | *off*\> *uri*
+* 配置语法: waf_under_attack \<*on* | *off*\> \[uri=*str*\]
 * 默认配置：waf_under_attack off ""
 * 配置段: server
 
