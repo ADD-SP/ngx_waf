@@ -120,7 +120,7 @@ waf_mode STD !UA;
 ## `waf_under_attack`
 
 * 配置语法: waf_under_attack \<*on* | *off*\> \[uri=*str*\]
-* 默认配置：waf_under_attack off ""
+* 默认配置：waf_under_attack off
 * 配置段: server
 
 如果您的站点正在受到攻击可以尝试使用此配置。
