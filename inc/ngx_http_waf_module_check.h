@@ -254,7 +254,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
-                *out_http_status = NGX_HTTP_FORBIDDEN;
+                *out_http_status = srv_conf->waf_http_status;
                 ret_value = NGX_HTTP_WAF_MATCHED;
             }
         }
@@ -391,7 +391,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             strcpy((char*)ctx->rule_type, "CC-DNEY");
             strcpy((char*)ctx->rule_deatils, "");
             *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-            ret_value = NGX_HTTP_WAF_MATCHED;
+            ret_value = srv_conf->waf_http_status_cc;
 
             size_t header_key_len = ngx_strlen("Retry-After");
             ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
@@ -499,7 +499,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = NGX_HTTP_FORBIDDEN;
+            *out_http_status = srv_conf->waf_http_status;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -569,7 +569,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = NGX_HTTP_FORBIDDEN;
+            *out_http_status = srv_conf->waf_http_status;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -613,7 +613,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = NGX_HTTP_FORBIDDEN;
+            *out_http_status = srv_conf->waf_http_status;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -702,7 +702,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = NGX_HTTP_FORBIDDEN;
+            *out_http_status = srv_conf->waf_http_status;
         }
 
 
@@ -753,7 +753,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
             
             if (ret_value == NGX_HTTP_WAF_MATCHED) {
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
-                *out_http_status = NGX_HTTP_FORBIDDEN;
+                *out_http_status = srv_conf->waf_http_status;
                 break;
             }
         }
@@ -815,7 +815,7 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
         ngx_http_core_run_phases(r);
     } else {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
-        ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+        ngx_http_finalize_request(r, srv_conf->waf_http_status);
     }
 }
 

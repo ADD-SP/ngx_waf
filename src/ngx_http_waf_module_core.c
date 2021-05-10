@@ -70,6 +70,14 @@ static ngx_command_t ngx_http_waf_commands[] = {
         0,
         NULL
    },
+   {
+        ngx_string("waf_http_status"),
+        NGX_HTTP_SRV_CONF | NGX_CONF_TAKE12,
+        ngx_http_waf_priority_conf,
+        NGX_HTTP_SRV_CONF_OFFSET,
+        0,
+        NULL
+   },
     ngx_null_command
 };
 
