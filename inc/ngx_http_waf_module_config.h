@@ -89,6 +89,12 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
 
 
 /**
+ * @brief 读取配置项 waf_http_status，该项用来设置检查项目的优先级。
+*/
+static char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
  * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
 */
 static ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
@@ -744,6 +750,10 @@ static char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, 
         srv_conf->waf_under_attack = 1;
     }
 
+    if (cf->args->nelts != 2) {
+        goto error;
+    }
+
     for (size_t i = 2; i < cf->args->nelts; i++) {
         UT_array* array = NULL;
         if (ngx_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
@@ -872,6 +882,56 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
 }
 
 
+static char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_srv_conf_t* srv_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+
+    for (size_t i = 1; i < cf->args->nelts; i++) {
+        UT_array* array = NULL;
+        if (ngx_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
+            goto error;
+        }
+
+        if (utarray_len(array) != 2) {
+            goto error;
+        }
+
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
+
+        if (ngx_strcmp("general", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_http_status = ngx_atoi(p->data, p->len);
+            if (srv_conf->waf_http_status == NGX_ERROR
+                || srv_conf->waf_http_status <= 0) {
+                goto error;
+            }
+
+        } else if (ngx_strcmp("cc_deny", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            srv_conf->waf_http_status_cc = ngx_atoi(p->data, p->len);
+            if (srv_conf->waf_http_status_cc == NGX_ERROR
+                || srv_conf->waf_http_status_cc <= 0) {
+                goto error;
+            }
+
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
+    }
+
+    return NGX_CONF_OK;
+
+    error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
+}
+
+
 static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
     srv_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_srv_conf_t));
@@ -894,6 +954,8 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->waf_inspection_capacity = NGX_CONF_UNSET;
     srv_conf->waf_eliminate_inspection_cache_interval = 60;
     srv_conf->waf_eliminate_inspection_cache_percent = 50;
+    srv_conf->waf_http_status = 403;
+    srv_conf->waf_http_status_cc = 503;
     srv_conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_args = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->black_ua = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -1272,7 +1334,6 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
                         file_name, line_number, ipv4.text);
                         return NGX_HTTP_WAF_FAIL;
                 }
-                
             }
             break;
         case 2:
