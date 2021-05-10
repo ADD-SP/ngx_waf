@@ -176,3 +176,22 @@ Set the priority of each inspection process, except for POST detection, which al
 :::
 
 
+## `waf_http_status`
+
+* syntax: waf_http_status \[general=*http_status_code*\] \[cc_deny=*http_status_code*]
+* default: waf_under_attack general=403 cc_deny=503
+* context: server
+
+This directive is used to set the HTTP status code returned when a request is blocked.
+
+* `general`: Indicates the HTTP status code returned when all blacklist-based inpection are triggered.
+* `cc_dney`: Indicates the HTTP status code returned when CC protection is triggered.
+
+
+::: warnning warning
+
+This feature is only available in the development version.
+
+:::
+
+

@@ -83,7 +83,8 @@ http {
         ...
 
         access_log  logs/access.log  main;
-        access_log  logs/access.yml  yaml if=$waf_log;
+        access_log  logs/access.yml  yaml   if=$waf_log;
+        access_log  logs/waf.yml     yaml   if=$waf_blocking_log;
 
         ...
     }
@@ -94,9 +95,19 @@ http {
 ...
 ```
 
-上述配置将常规的日志格式存入 `logs/access.log` 中，而 yaml 格式的日志会存入 `logs/access.yml` 中。
-值得注意的是 yaml 格式的日志中使用了本模块提供了三个内置变量，
-您可以通过程序方便地读取 `logs/access.yml`，然后就可以进行分析或者绘制图表了。
+上述配置会有如下效果：
+
+* 常规的访问日志写入 `logs/access.log` 中。
+* YAML 格式的访问日志写入 `logs/access.yml` 中。
+* YAML 格式的拦截日志写入 `logs/waf.yml` 中。
+
+
+::: tip 日志分析
+
+你可以自定义日志格式，然后通过程序分析并制作统计图表。
+
+:::
+
 
 ::: tip 关于 YAML 格式
 

@@ -88,7 +88,8 @@ http {
         ...
 
         access_log  logs/access.log  main;
-        access_log  logs/access.yml  yaml if=$waf_log;
+        access_log  logs/access.yml  yaml   if=$waf_log;
+        access_log  logs/waf.yml     yaml   if=$waf_blocking_log;
 
         ...
     }
@@ -102,7 +103,18 @@ http {
 The above configuration stores the normal log format in `logs/access.log`,
 while the yaml format logs are stored in `logs/access.yml`.
 It is worth noting that yaml format logs use the three built-in variables provided by the module.
-You can easily read `logs/access.yml` programmatically and then analyse or graph it.
+You can easily read `logs/access.The above configuration will have the following effect.
+
+* normal access logs are written to `logs/access.log`.
+* YAML-formatted access logs are written to `logs/access.yml`.
+* YAML-formatted intercept logs are written to `logs/waf.yml`.
+
+
+::: tip Log analysis
+
+You can customize the log format, and then programmatically analyze it and make statistical graphs.
+
+:::
 
 ::: tip ABOUT YAML FORMAT
 

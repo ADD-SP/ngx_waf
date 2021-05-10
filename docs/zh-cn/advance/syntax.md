@@ -175,4 +175,20 @@ waf_mode STD !UA;
 :::
 
 
+## `waf_http_status`
 
+* 配置语法: waf_http_status \[general=*http_status_code*\] \[cc_deny=*http_status_code*\]
+* 默认配置：waf_under_attack general=403 cc_deny=503
+* 配置段: server
+
+此指令用于设置请求被拦截时返回的 HTTP 状态码。
+
+* `general`: 表示所有基于黑名单的检测项目触发后返回的 HTTP 状态码。
+* `cc_dney`：表示 CC 防护触发后返回的 HTTP 状态码。
+
+
+::: warnning 警告
+
+此功能仅开发版可用。
+
+:::

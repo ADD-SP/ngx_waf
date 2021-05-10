@@ -13,6 +13,10 @@ This module adds three available variables.
 
 Not an empty string if the firewall is checked in this request, otherwise an empty string. This variable is mainly used in the directive `access_log`, see [Customised Log Format](log.md#customised-log-format).
 
+## `waf_blocking_log`
+
+Not an empty string if this request was originally blocked by the module, and vice versa. This variable is mainly used in the directive `access_log`, see [Customised Log Format](log.md#customised-log-format).
+
 ## `$waf_blocked`
 
 Whether this request is intercepted by this module, if intercepted, its value is `'true'`, otherwise it is `'false'`.
