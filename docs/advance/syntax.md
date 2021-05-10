@@ -123,7 +123,7 @@ So please set it reasonably according to your actual needs.
 ## `waf_under_attack`
 
 * syntax: waf_under_attack \<*on* | *off*\> \[uri=*str*\]
-* default: waf_under_attack off ""
+* default: waf_under_attack off
 * context: server
 
 If your site is under attack you can try using this directive.
