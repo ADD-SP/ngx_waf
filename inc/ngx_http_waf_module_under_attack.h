@@ -63,49 +63,47 @@ static ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_
     for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
         ngx_table_elt_t *native_cookie = *ppcookie;
         UT_array* cookies = NULL;
-        ngx_str_split(&(native_cookie->value), ';', native_cookie->value.len, &cookies);
-        ngx_str_t* p = NULL;
-        
-        while (p = (ngx_str_t*)utarray_next(cookies, p), p != NULL) {
-            UT_array* key_and_value = NULL;
-
-            ngx_str_t temp;
-            temp.data = p->data;
-            temp.len = p->len;
-            if (p->data[0] == ' ') {
-                temp.data += 1;
-                temp.len -= 1;
-            }
-
-            ngx_str_split(&temp, '=', temp.len, &key_and_value);
-            if (utarray_len(key_and_value) == 2) {
-                ngx_str_t* key = NULL;
-                ngx_str_t* value = NULL;
-                key = (ngx_str_t*)utarray_next(key_and_value, NULL);
-                value = (ngx_str_t*)utarray_next(key_and_value, key);
-
-                if (ngx_strcmp(key->data, "__waf_under_attack_time") == 0) {
-                    __waf_under_attack_time.data = ngx_pnalloc(r->pool, sizeof(u_char) * (NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN + 1));
-                    ngx_memzero(__waf_under_attack_time.data, sizeof(u_char) * (NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN + 1));
-                    ngx_memcpy(__waf_under_attack_time.data, value->data, 
-                              sizeof(u_char) * ngx_min(value->len, NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN));
-                    __waf_under_attack_time.len = value->len;
-                } else if (ngx_strcmp(key->data, "__waf_under_attack_uid") == 0) {
-                    size_t len = ngx_min(value->len, NGX_HTTP_WAF_UNDER_ATTACH_UID_LEN);
-                    __waf_under_attack_uid.data = ngx_pnalloc(r->pool, sizeof(u_char) * (len + 1));
-                    ngx_memzero(__waf_under_attack_uid.data, sizeof(u_char) * (len + 1));
-                    ngx_memcpy(__waf_under_attack_uid.data, value->data, sizeof(u_char) * len);
-                    __waf_under_attack_uid.len = value->len;
-                } else if (ngx_strcmp(key->data, "__waf_under_attack_verification") == 0) {
-                    size_t len = ngx_min(value->len, NGX_HTTP_WAF_SHA256_HEX_LEN);
-                    __waf_under_attack_verification.data = ngx_pnalloc(r->pool, sizeof(u_char) * (len + 1));
-                    ngx_memzero(__waf_under_attack_verification.data, sizeof(u_char) * (len + 1));
-                    ngx_memcpy(__waf_under_attack_verification.data, value->data, sizeof(u_char) * len);
-                    __waf_under_attack_verification.len = value->len;
-                }
-            }
-            utarray_free(key_and_value);
+        if (parse_cookie(&(native_cookie->value), &cookies) != NGX_HTTP_WAF_SUCCESS) {
+            continue;
         }
+
+        ngx_str_t* key = NULL;
+        ngx_str_t* value = NULL;
+        ngx_str_t* p = NULL;
+
+        do {
+            if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
+                break;
+            }
+
+            if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
+                break;
+            }
+
+            if (ngx_strcmp(key->data, "__waf_under_attack_time") == 0) {
+                __waf_under_attack_time.data = ngx_pnalloc(r->pool, sizeof(u_char) * (NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN + 1));
+                ngx_memzero(__waf_under_attack_time.data, sizeof(u_char) * (NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN + 1));
+                ngx_memcpy(__waf_under_attack_time.data, value->data,
+                        sizeof(u_char) * ngx_min(value->len, NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN));
+                __waf_under_attack_time.len = value->len;
+            }
+            else if (ngx_strcmp(key->data, "__waf_under_attack_uid") == 0) {
+                size_t len = ngx_min(value->len, NGX_HTTP_WAF_UNDER_ATTACH_UID_LEN);
+                __waf_under_attack_uid.data = ngx_pnalloc(r->pool, sizeof(u_char) * (len + 1));
+                ngx_memzero(__waf_under_attack_uid.data, sizeof(u_char) * (len + 1));
+                ngx_memcpy(__waf_under_attack_uid.data, value->data, sizeof(u_char) * len);
+                __waf_under_attack_uid.len = value->len;
+            }
+            else if (ngx_strcmp(key->data, "__waf_under_attack_verification") == 0) {
+                size_t len = ngx_min(value->len, NGX_HTTP_WAF_SHA256_HEX_LEN);
+                __waf_under_attack_verification.data = ngx_pnalloc(r->pool, sizeof(u_char) * (len + 1));
+                ngx_memzero(__waf_under_attack_verification.data, sizeof(u_char) * (len + 1));
+                ngx_memcpy(__waf_under_attack_verification.data, value->data, sizeof(u_char) * len);
+                __waf_under_attack_verification.len = value->len;
+            }
+
+        } while (p != NULL);
+
 
         utarray_free(cookies);
     }

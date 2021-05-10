@@ -750,7 +750,7 @@ static char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, 
         srv_conf->waf_under_attack = 1;
     }
 
-    if (cf->args->nelts != 2) {
+    if (cf->args->nelts != 3) {
         goto error;
     }
 
@@ -1188,10 +1188,10 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     waf_log->get_handler = ngx_http_waf_log_get_handler;
     waf_log->set_handler = NULL;
 
-    ngx_str_t waf_log_name = ngx_string("waf_blocking_log");
-    ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_log->get_handler = ngx_http_waf_blocking_log_get_handler;
-    waf_log->set_handler = NULL;
+    ngx_str_t waf_blocking_log_name = ngx_string("waf_blocking_log");
+    ngx_http_variable_t* waf_blocking_log = ngx_http_add_variable(cf, &waf_blocking_log_name, NGX_HTTP_VAR_NOCACHEABLE);
+    waf_blocking_log->get_handler = ngx_http_waf_blocking_log_get_handler;
+    waf_blocking_log->set_handler = NULL;
 
     ngx_str_t waf_blocked_name = ngx_string("waf_blocked");
     ngx_http_variable_t* waf_blocked = ngx_http_add_variable(cf, &waf_blocked_name, NGX_HTTP_VAR_NOCACHEABLE);

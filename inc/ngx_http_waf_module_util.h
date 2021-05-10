@@ -57,6 +57,17 @@ static ngx_int_t parse_size(u_char* str);
 
 
 /**
+ * @brief 将一个 Cookie 字符串分割为一个一个的键值对。
+ * @param[in] cookies 字符串形式的 Cookie
+ * @param[out] array 保存解析结果的数组
+ * @return 成功则返回 SUCCESS，反之则不是。
+ * @note 数组内容格式为 [key, value, key, value, ......]
+ * @warning 使用完毕后请自行释放数组所占用内存。
+*/
+static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array);
+
+
+/**
  * @brief 字符串分割
  * @param[in] str 要分割的字符串
  * @param[in] sep 分隔符
@@ -330,6 +341,60 @@ static ngx_int_t parse_size(u_char* str) {
     }
 
     return ret;
+}
+
+
+static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array) {
+    if (array == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
+    utarray_new(*array, &icd);
+
+    if (native_cookie == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+
+    UT_array* cookies = NULL;
+    utarray_new(cookies, &icd);
+
+    ngx_str_split(native_cookie, ';', native_cookie->len, &cookies);
+    ngx_str_t* p = NULL;
+
+    while (p = (ngx_str_t*)utarray_next(cookies, p), p != NULL) {
+        UT_array* key_and_value = NULL;
+        ngx_str_t temp;
+        temp.data = p->data;
+        temp.len = p->len;
+        if (p->data[0] == ' ') {
+            temp.data += 1;
+            temp.len -= 1;
+        }
+
+        ngx_str_split(&temp, '=', native_cookie->len, &key_and_value);
+
+        if (utarray_len(key_and_value) != 2) {
+            return NGX_HTTP_WAF_FAIL;
+        }
+
+        ngx_str_t* key = NULL;
+        ngx_str_t* value = NULL;
+
+
+        key = (ngx_str_t*)utarray_next(key_and_value, NULL);
+        value = (ngx_str_t*)utarray_next(key_and_value, key);
+
+
+        utarray_push_back(*array, key);
+        utarray_push_back(*array, value);
+        utarray_free(key_and_value);
+    }
+
+    utarray_free(cookies);
+
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
