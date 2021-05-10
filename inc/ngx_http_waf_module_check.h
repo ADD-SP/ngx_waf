@@ -390,8 +390,8 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             strcpy((char*)ctx->rule_type, "CC-DNEY");
             strcpy((char*)ctx->rule_deatils, "");
-            *out_http_status = NGX_HTTP_SERVICE_UNAVAILABLE;
-            ret_value = srv_conf->waf_http_status_cc;
+            *out_http_status = srv_conf->waf_http_status_cc;
+            ret_value = NGX_HTTP_WAF_MATCHED;
 
             size_t header_key_len = ngx_strlen("Retry-After");
             ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
@@ -737,23 +737,60 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
         ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
         size_t i;
         for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
-            ngx_str_t temp;
-            temp.len = (**ppcookie).key.len + (**ppcookie).value.len;
-            temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
-            ngx_memcpy(temp.data, (**ppcookie).key.data, (**ppcookie).key.len);
-            ngx_memcpy(temp.data + (**ppcookie).key.len, (**ppcookie).value.data, (**ppcookie).value.len);
+            ngx_str_t* native_cookies = &((**ppcookie).value);
+            UT_array* cookies = NULL;
+            if (parse_cookie(native_cookies, &cookies) != NGX_HTTP_WAF_SUCCESS) {
+                continue;
+            }
 
-            ngx_array_t* regex_array = srv_conf->black_cookie;
-            lru_cache_manager_t* cache = &(srv_conf->black_cookie_inspection_cache);
+            ngx_str_t* key = NULL;
+            ngx_str_t* value = NULL;
+            ngx_str_t* p = NULL;
 
-            ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, &temp, regex_array, 
-                                                            (u_char*)"BLACK-COOKIE", cache, NGX_HTTP_WAF_TRUE);
+            do {
+                if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
+                    break;
+                }
 
-            ngx_pfree(r->pool, temp.data);
-            
-            if (ret_value == NGX_HTTP_WAF_MATCHED) {
-                ctx->blocked = NGX_HTTP_WAF_TRUE;
-                *out_http_status = srv_conf->waf_http_status;
+                if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
+                    break;
+                }
+
+                ngx_str_t temp;
+                temp.len = key->len + value->len;
+                temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
+                ngx_memcpy(temp.data, key->data, key->len);
+                ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
+
+                ngx_array_t* regex_array = srv_conf->black_cookie;
+                lru_cache_manager_t* cache = &(srv_conf->black_cookie_inspection_cache);
+
+                ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, &temp, regex_array, 
+                                                                (u_char*)"BLACK-COOKIE", cache, NGX_HTTP_WAF_TRUE);
+
+                if (ret_value != NGX_HTTP_WAF_MATCHED) {
+                    ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, key, regex_array, 
+                                                                (u_char*)"BLACK-COOKIE", cache, NGX_HTTP_WAF_TRUE);
+                }
+
+                if (ret_value != NGX_HTTP_WAF_MATCHED) {
+                    ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, value, regex_array, 
+                                                                (u_char*)"BLACK-COOKIE", cache, NGX_HTTP_WAF_TRUE);
+                }
+
+                ngx_pfree(r->pool, temp.data);
+                
+                if (ret_value == NGX_HTTP_WAF_MATCHED) {
+                    ctx->blocked = NGX_HTTP_WAF_TRUE;
+                    *out_http_status = srv_conf->waf_http_status;
+                    break;
+                }
+
+            } while (p != NULL);
+
+            utarray_free(cookies);
+
+            if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
                 break;
             }
         }
