@@ -87,10 +87,17 @@ static char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, 
 */
 static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
+
 /**
  * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
 */
 static ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_blocking_log 变量时的回调函数，这个变量当拦截时不为空，反之为空字符串。
+*/
+static ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
 
 /**
@@ -986,6 +993,28 @@ static ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_va
 }
 
 
+static ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+    v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+
+    if (ctx == NULL || ctx->blocked == NGX_HTTP_WAF_FALSE) {
+        v->len = 0;
+        v->data = NULL;
+    }
+    else {
+        v->len = 4;
+        strcpy((char*)v->data, "true");
+    }
+
+    return NGX_OK;
+}
+
+
+
 static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
 
@@ -1095,6 +1124,11 @@ static ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_str_t waf_log_name = ngx_string("waf_log");
     ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
     waf_log->get_handler = ngx_http_waf_log_get_handler;
+    waf_log->set_handler = NULL;
+
+    ngx_str_t waf_log_name = ngx_string("waf_blocking_log");
+    ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
+    waf_log->get_handler = ngx_http_waf_blocking_log_get_handler;
     waf_log->set_handler = NULL;
 
     ngx_str_t waf_blocked_name = ngx_string("waf_blocked");
