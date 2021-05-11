@@ -44,9 +44,9 @@ RUN set -xe \
     &&  mkdir nginx && tar -zxf "nginx.tar.gz" -C nginx --strip-components=1 \
     &&  cd nginx \
     &&  export EXTRA_CFLAGS="$(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_EXTRA_CFLAGS)" \
-    &&  echo $EXTRA_CFLAGS \
+    &&  echo $EXTRA_CFLAGS && echo "export EXTRA_CFLAGS=${EXTRA_CFLAGS}" > /.env \
     &&  export EXTRA_LFLAGS="$(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_EXTRA_LFLAGS)" \
-    &&  echo $EXTRA_LFLAGS \
+    &&  echo $EXTRA_LFLAGS && echo "export EXTRA_LFLAGS=${EXTRA_LFLAGS}" >> /.env \
     &&  ./configure \
         $(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_ARGUMENTS) \
         --with-debug \
@@ -60,7 +60,8 @@ RUN set -xe \
 FROM nginx:stable-alpine
 COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
+COPY --from=builder /.env /.env
 RUN set -xe \
     && apk update \
     && apk add --no-cache libsodium libsodium-dev libmaxminddb libmaxminddb-dev \
-    && nginx -t && nginx -V
+    && cat /.env && nginx -t && nginx -V
