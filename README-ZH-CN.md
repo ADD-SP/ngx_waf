@@ -23,9 +23,7 @@
 ## 为什么选择 ngx_waf
 
 * 功能齐全：「网络应用防火墙」的基本功能都有。
-* 安装方便：
-    * 仅依赖 `uthash` 库，并且可以直接通过包管理器（如 apt）安装。
-    * 无需提前安装其它模块。
+* 安装方便：无需提前安装其它模块。
 * 使用方便：配置指令简单易懂，不用看文档都能猜到大概是什么意思。
 * 高性能：经过较为极限的测试，启动本模块后 RPS（每秒请求数） 降低约 4%。测试说明和结果见使用文档。
 
@@ -59,8 +57,9 @@
 
 ## 感谢
 
-* [uthash](https://github.com/troydhanson/uthash): 本项目使用 uthash 的一些数据结构。
-* [libinjection](https://github.com/client9/libinjection): 本模块使用此项目检测 SQL 注入。
-* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): 本模块的默认规则大多来自于此。
-* [nginx-book](https://github.com/taobao/nginx-book): 感谢作者提供的教程。
-* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): 感谢作者提供的教程。
+* [uthash](https://github.com/troydhanson/uthash)
+* [libinjection](https://github.com/client9/libinjection)
+* [libsodium](https://github.com/jedisct1/libsodium)
+* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)
+* [nginx-book](https://github.com/taobao/nginx-book)
+* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide)
