@@ -45,12 +45,11 @@ RUN set -xe \
     &&  lastversion --download="nginx.tar.gz" nginx:stable \
     &&  mkdir nginx && tar -zxf "nginx.tar.gz" -C nginx --strip-components=1 \
     &&  cd nginx \
-    &&  cd nginx \
-    &&  echo "#!/bin/sh" > /.env \
+    &&  echo "#!/bin/bash" > /env.sh \
     &&  export EXTRA_CFLAGS="$(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_EXTRA_CFLAGS)" \
-    &&  echo $EXTRA_CFLAGS && echo "export EXTRA_CFLAGS='${EXTRA_CFLAGS}'" >> /.env \
+    &&  echo "export EXTRA_CFLAGS='${EXTRA_CFLAGS}'" >> /env.sh \
     &&  export EXTRA_LFLAGS="$(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_EXTRA_LFLAGS)" \
-    &&  echo $EXTRA_LFLAGS && echo "export EXTRA_LFLAGS='${EXTRA_LFLAGS}'" >> /.env \\
+    &&  echo "export EXTRA_LFLAGS='${EXTRA_LFLAGS}'" >> /env.sh \
     &&  ./configure \
         $(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_ARGUMENTS) \
         --with-debug \
@@ -65,12 +64,15 @@ RUN set -xe \
 FROM nginx:stable
 COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
-COPY --from=builder /.env /.env
+COPY --from=builder /env.sh /env.sh
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -xe \
     &&  apt-get update \
     &&  apt-get install --yes libsodium23 libsodium-dev libmaxminddb0 libmaxminddb-dev \
-    &&  cat /.env \
-    &&  sh /.env \
-    &&  rm -rf .env \ 
+    &&  cat /env.sh \
+    &&  source /env.sh \
+    &&  rm -rf /env.sh \ 
+    &&  echo "${EXTRA_CFLAGS}" \
+    &&  echo "${EXTRA_LFLAGS}" \
     &&  nginx -t \
     &&  nginx -V
