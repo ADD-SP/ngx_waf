@@ -139,15 +139,6 @@ waf_mode STD !UA;
 :::
 
 
-::: warnning 警告
-
-此功能仅开发版可用。
-
-:::
-
-
-
-
 ## `waf_priority`
 
 * 配置语法: waf_priority "*str*"
@@ -156,7 +147,7 @@ waf_mode STD !UA;
 
 设置各个检测项目的优先级，除了 POST 检测，POST 检测的优先级永远最低。
 
-* `UNDER-ATTACK`: 配置 `waf_under_attack`(仅限开发版)。
+* `UNDER-ATTACK`: 配置 `waf_under_attack`。
 * `W-IP`：IP 白名单检测
 * `IP`：IP 黑名单检测
 * `CC`：CC 防护
@@ -185,10 +176,3 @@ waf_mode STD !UA;
 
 * `general`: 表示所有基于黑名单的检测项目触发后返回的 HTTP 状态码。
 * `cc_dney`：表示 CC 防护触发后返回的 HTTP 状态码。
-
-
-::: warning 警告
-
-此功能仅开发版可用。
-
-:::

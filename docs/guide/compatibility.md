@@ -22,5 +22,5 @@ There is a compatibility issue between ngx_waf and
 [ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html). 
 The ngx_waf inspection process may be skipped when the `return` or `rewrite` directives are used.
 
-See [waf_mode](/advance/syntax.md#waf-mode) for the solution.
+See [waf_mode](/advance/directive.md#waf-mode) for the solution.
 

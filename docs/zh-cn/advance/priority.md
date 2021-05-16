@@ -24,6 +24,6 @@ lang: zh-CN
 
 ::: tip 修改优先级
 
-您可以通过配置文件修改优先级，但是 POST 请求体检测的优先级不允许修改，它的优先级永远是最低的。详见 [waf_priority](syntax.md#waf-priority)。
+您可以通过配置文件修改优先级，但是 POST 请求体检测的优先级不允许修改，它的优先级永远是最低的。详见 [waf_priority](directive.md#waf-priority)。
 
 :::

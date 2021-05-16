@@ -25,6 +25,6 @@ The following is a list of all the tests in order of priority, from top to botto
 
 ::: tip Change priority
 
-You can modify the priority through the configuration file, but the priority of the POST request body detection is not allowed to be modified, it will always have the lowest priority. See [waf_priority](syntax.md#waf-priority) for details
+You can modify the priority through the configuration file, but the priority of the POST request body detection is not allowed to be modified, it will always have the lowest priority. See [waf_priority](directive.md#waf-priority) for details
 
 :::
