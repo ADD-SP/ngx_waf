@@ -4,17 +4,31 @@
 
 ### Added
 
-* New directive: `waf_under_attack`, which can be used when the site is under attack.
-
-* New directive: `waf_http_status`, which sets the HTTP status code returned when a request is blocked.
-
-* New built-in variable: `$waf_blocking_log`, not an empty string when the request is intercepted for its value.
 
 ### Removed
 
 
 ### Changed
 
+
+### Fixed
+
+
+***
+
+## [5.3.0] - 2021-05-16 GMT+0800
+
+### Added
+
+* New directive: `waf_under_attack`, which can be used when the site is under attack.
+
+* New directive: `waf_http_status`, which sets the HTTP status code returned when a request is blocked.
+
+* New built-in variable: `$waf_blocking_log`, not an empty string when the request is intercepted for its value.
+
+### Changed
+
+* Update default rules.
 
 ### Fixed
 

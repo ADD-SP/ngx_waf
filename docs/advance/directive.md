@@ -1,9 +1,9 @@
 ---
-title: Configuration syntax
+title: Directive
 lang: en
 ---
 
-# Configuration syntax
+# Directive
 
 ## `waf`
 
@@ -142,13 +142,6 @@ Naturally, you can also write your own html file and point to it with `uri`.
 :::
 
 
-::: warnning warning
-
-This feature is only available in the development version.
-
-:::
-
-
 ## `waf_priority`
 
 * syntax: waf_priority "*str*"
@@ -157,7 +150,7 @@ This feature is only available in the development version.
 
 Set the priority of each inspection process, except for POST detection, which always has the lowest priority.
 
-* `UNDER-ATTACK`: Directive `waf_under_attack`(development version only).
+* `UNDER-ATTACK`: Directive `waf_under_attack`.
 * `W-IP`: IP whitelist inspection
 * `IP`: IP Blacklist inspection
 * `CC`: CC protection
@@ -186,12 +179,5 @@ This directive is used to set the HTTP status code returned when a request is bl
 
 * `general`: Indicates the HTTP status code returned when all blacklist-based inpection are triggered.
 * `cc_dney`: Indicates the HTTP status code returned when CC protection is triggered.
-
-
-::: warning WARNING
-
-This feature is only available in the development version.
-
-:::
 
 

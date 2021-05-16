@@ -42,9 +42,9 @@ module.exports = {
                     },
                     {
                         title: "Advanced Guide",
-                        path: "/advance/syntax.html",
+                        path: "/advance/directive.html",
                         children: [
-                            "/advance/syntax.md",
+                            "/advance/directive.md",
                             "/advance/rule.md",
                             "/advance/priority.md",
                             "/advance/variable.md",
@@ -76,9 +76,9 @@ module.exports = {
                     },
                     {
                         title: "进阶指南",
-                        path: "/zh-cn/advance/syntax.html",
+                        path: "/zh-cn/advance/directive.html",
                         children: [
-                            "/zh-cn/advance/syntax.md",
+                            "/zh-cn/advance/directive.md",
                             "/zh-cn/advance/rule.md",
                             "/zh-cn/advance/priority.md",
                             "/zh-cn/advance/variable.md",
