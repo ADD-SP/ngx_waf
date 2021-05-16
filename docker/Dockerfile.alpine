@@ -43,10 +43,11 @@ RUN set -xe \
     &&  lastversion --download="nginx.tar.gz" nginx:stable \
     &&  mkdir nginx && tar -zxf "nginx.tar.gz" -C nginx --strip-components=1 \
     &&  cd nginx \
+    &&  echo "#!/bin/sh" > /.env \
     &&  export EXTRA_CFLAGS="$(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_EXTRA_CFLAGS)" \
-    &&  echo $EXTRA_CFLAGS && echo "export EXTRA_CFLAGS=${EXTRA_CFLAGS}" > /.env \
+    &&  echo $EXTRA_CFLAGS && echo "export EXTRA_CFLAGS='${EXTRA_CFLAGS}'" >> /.env \
     &&  export EXTRA_LFLAGS="$(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_EXTRA_LFLAGS)" \
-    &&  echo $EXTRA_LFLAGS && echo "export EXTRA_LFLAGS=${EXTRA_LFLAGS}" >> /.env \
+    &&  echo $EXTRA_LFLAGS && echo "export EXTRA_LFLAGS='${EXTRA_LFLAGS}'" >> /.env \
     &&  ./configure \
         $(python3 /usr/local/src/ngx_waf/docker/arguments.py OUTPUT_ARGUMENTS) \
         --with-debug \
@@ -62,6 +63,10 @@ COPY ./rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
 COPY --from=builder /.env /.env
 RUN set -xe \
-    && apk update \
-    && apk add --no-cache libsodium libsodium-dev libmaxminddb libmaxminddb-dev \
-    && cat /.env && nginx -t && nginx -V
+    &&  apk update \
+    &&  apk add --no-cache libsodium libsodium-dev libmaxminddb libmaxminddb-dev \
+    &&  cat /.env \
+    &&  sh /.env \
+    &&  rm -rf .env \ 
+    &&  nginx -t \
+    &&  nginx -
