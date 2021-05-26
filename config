@@ -16,16 +16,12 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c"
 
 
-ngx_http_waf_module_cc_opt=" -I $ngx_addon_dir/inc -fstack-protector "
+ngx_http_waf_module_libs=""
 
-if [ -n "$LIB_SODIUM" ] ;  then
-    ngx_http_waf_module_cc_opt=" ${ngx_http_waf_module_cc_opt}  -I ${LIB_SODIUM}/include -L ${LIB_SODIUM}/lib -l sodium"
-else
-    ngx_http_waf_module_cc_opt=" ${ngx_http_waf_module_cc_opt}  -l sodium"
-fi
+ngx_http_waf_module_inc_path="$ngx_addon_dir/inc "
 
 if [ -n "$LIB_UTHASH" ] ;  then
-    ngx_http_waf_module_cc_opt=" ${ngx_http_waf_module_cc_opt}  -I ${LIB_UTHASH}/include "
+    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
 fi
 
 
@@ -34,8 +30,9 @@ fi
 ngx_feature="uthash library"
 ngx_feature_name=
 ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
 ngx_feature_incs="#include <uthash.h>"
-ngx_feature_libs=$ngx_http_waf_module_cc_opt
+ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
@@ -63,8 +60,9 @@ fi
 ngx_feature="C99 features"
 ngx_feature_name=
 ngx_feature_run=yes
+ngx_feature_path=$ngx_http_waf_module_inc_path
 ngx_feature_incs=
-ngx_feature_libs=$ngx_http_waf_module_cc_opt
+ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=$(cat << END
 
 /* Declare variables in loops. */
@@ -101,6 +99,7 @@ fi
 ngx_feature="injection library"
 ngx_feature_name=
 ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
 ngx_feature_incs=$(cat << END
 
 #include <libinjection/src/libinjection.h>
@@ -109,7 +108,7 @@ ngx_feature_incs=$(cat << END
 END
 )
 
-ngx_feature_libs=$ngx_http_waf_module_cc_opt
+ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
@@ -124,14 +123,20 @@ END
     exit 1
 fi
 
-
+if [ -n "$LIB_SODIUM" ] ;  then
+    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_SODIUM}/include"
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -l sodium"
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium"
+fi
 
 # Check if libsodium exists.
 ngx_feature="sodium library"
 ngx_feature_name=
 ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
 ngx_feature_incs='#include <sodium.h>'
-ngx_feature_libs=$ngx_http_waf_module_cc_opt
+ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
@@ -164,6 +169,7 @@ fi
 ngx_feature=
 ngx_feature_name=
 ngx_feature_run=
+ngx_feature_path=
 ngx_feature_incs=
 ngx_feature_libs=
 ngx_feature_test=
@@ -173,9 +179,9 @@ if test -n "$ngx_module_link"; then
     ngx_module_type=HTTP
     ngx_module_name=$ngx_addon_name
     ngx_module_deps=$deps
-    ngx_module_incs="$ngx_addon_dir/inc"
+    ngx_module_incs=$ngx_http_waf_module_inc_path
     ngx_module_srcs=$srcs
-    ngx_module_libs=$ngx_http_waf_module_cc_opt
+    ngx_module_libs=$ngx_http_waf_module_libs
     
     # Let ngx_http_rewrite_module initialize before this module,
     # so that this module can take effect before ngx_http_rewrite_module,
