@@ -29,6 +29,7 @@ Indicates how much time (in milliseconds) this check took, retaining 5 decimal p
 
 If a black and white list rule is in effect for this request, the value is the type of rule that triggered it. Here are the possible values. If no black and white list rule is in effect then the value is `''`.
 
++ `'CC-DENY'`
 + `'WHITE-IPV4'`
 + `'WHITE-IPV6'`
 + `'BLACK-IPV4'`
@@ -41,6 +42,7 @@ If a black and white list rule is in effect for this request, the value is the t
 + `'BLACK-REFERER'`
 + `'BLACK-COOKIE'`
 + `'BLACK-POST'`
++ `'UNDER-ATTACK'`
 
 
 ## `$waf_rule_details`

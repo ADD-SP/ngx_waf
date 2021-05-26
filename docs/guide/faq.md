@@ -63,7 +63,8 @@ It may be caused by excessive use of `nginx -s reload`. The module requests some
 
 ## Can I change the rules at runtime?
 
-No, this module only reads the rules when nginx starts and not afterwards.
+No, this module will only read the rules when nginx reads the configuration. 
+nginx will read the configuration on startup and reload.
 
 ## Is IP inspection affected by CDN?
 

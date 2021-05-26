@@ -29,6 +29,7 @@ lang: zh-CN
 
 如果本次请求命中黑白名单规则，则其值为触发的规则类型。下面是可能的取值。若没有命中黑白名单规则则其值为`''`。
 
++ `'CC-DENY'`
 + `'WHITE-IPV4'`
 + `'WHITE-IPV6'`
 + `'BLACK-IPV4'`
@@ -41,6 +42,7 @@ lang: zh-CN
 + `'BLACK-REFERER'`
 + `'BLACK-COOKIE'`
 + `'BLACK-POST'`
++ `'UNDER-ATTACK'`
 
 ## `$waf_rule_details`
 
