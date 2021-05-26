@@ -21,6 +21,16 @@ lang: en
 
 ***
 
+
+## [5.3.1] - 2021-05-26 GMT+0800
+
+### Fixed
+
+* Sometimes the module does not compile even if the dependencies are installed correctly.
+
+***
+
+
 ## [5.3.0] - 2021-05-16 GMT+0800
 
 ### Added
