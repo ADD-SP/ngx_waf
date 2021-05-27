@@ -28,6 +28,8 @@ RUN set -xe \
             uthash-dev \
             python3 \
             python3-pip \
+            libsodium23 \
+            libsodium-dev \
             libmaxminddb0 \
             libmaxminddb-dev \
     &&  if [ ${CHANGE_SOURCE} == true ] ; then \
@@ -37,13 +39,10 @@ RUN set -xe \
 RUN set -xe \
     &&  git clone https://github.com/leev/ngx_http_geoip2_module.git \
     &&  (cd ngx_waf && git clone https://github.com/client9/libinjection.git inc/libinjection) \
-    &&  git clone https://github.com/jedisct1/libsodium --branch stable libsodium-src \
-    &&  (cd libsodium-src && ./configure --prefix=/libsodium --with-pic && make -j$(nproc) && make install) \
-    &&  export LIB_SODIUM=/libsodium \
     &&  (git clone https://github.com/google/ngx_brotli.git && cd ngx_brotli && git submodule update --init) \ 
     # &&  lastversion --download="openssl.tar.gz" --at=github openssl \
     # &&  mkdir openssl && tar -zxf "openssl.tar.gz" -C openssl --strip-components=1 \
-    &&  lastversion --download="nginx.tar.gz" nginx:stable \
+    &&  lastversion --download="nginx.tar.gz" --major mainline https://nginx.org \
     &&  mkdir nginx && tar -zxf "nginx.tar.gz" -C nginx --strip-components=1 \
     &&  cd nginx \
     &&  echo "#!/bin/bash" > /env.sh \
@@ -69,7 +68,7 @@ COPY --from=builder /env.sh /env.sh
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -xe \
     &&  apt-get update \
-    &&  apt-get install --yes libmaxminddb0 libmaxminddb-dev \
+    &&  apt-get install --yes libsodium23 libsodium-dev libmaxminddb0 libmaxminddb-dev \
     &&  cat /env.sh \
     &&  source /env.sh \
     &&  rm -rf /env.sh \ 
