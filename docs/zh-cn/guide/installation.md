@@ -165,7 +165,7 @@ cp objs/nginx /usr/local/nginx/sbin/nginx
 运行配置脚本
 
 ```sh
-./configure --add-dynamic-module=/usr/local/src/ngx_waf
+./configure --add-dynamic-module=/usr/local/src/ngx_waf --with-compat
 ```
 
 然后开始编译动态模块
