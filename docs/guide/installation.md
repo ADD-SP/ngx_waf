@@ -158,7 +158,7 @@ The process of downloading nginx source code and module source code is the same 
 Run the configuration script
 
 ```sh
-./configure --add-dynamic-module=/usr/local/src/ngx_waf
+./configure --add-dynamic-module=/usr/local/src/ngx_waf --with-compat
 ```
 
 Then start compiling the dynamic module
