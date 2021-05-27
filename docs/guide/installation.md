@@ -113,7 +113,10 @@ cd /usr/local/src/nginx-1.20.1
 
 ::: warning NOTE
 
-The meaning of `ARG` is given in [Compile And Install](#compile-and-install).
+* The meaning of `ARG` is given in [Compile And Install](#compile-and-install).
+
+* If you are using GCC as your compiler, append `-fstack-protector-strong` to `-with-cc-opt`.
+For example `--with-cc-opt='-Werror -g'` ---> `--with-cc-opt='-Werror -g -fstack-protector-strong'`
 
 :::
 
@@ -160,6 +163,13 @@ Run the configuration script
 ```sh
 ./configure --add-dynamic-module=/usr/local/src/ngx_waf --with-compat
 ```
+
+::: warning NOTE
+
+* If you are using GCC as your compiler, append `-fstack-protector-strong` to `-with-cc-opt`.
+For example `--with-cc-opt='-Werror -g'` ---> `--with-cc-opt='-Werror -g -fstack-protector-strong'`
+
+:::
 
 Then start compiling the dynamic module
 
