@@ -539,30 +539,31 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         if (ret_value != NGX_HTTP_WAF_MATCHED) {
             UT_array* args = NULL;
-            ngx_str_split(p_args, '&', p_args->len, &args);
-            ngx_str_t* p = NULL;
-            while (p = (ngx_str_t*)utarray_next(args, p), p != NULL) {
-                UT_array* key_value = NULL;
-                if (ngx_str_split(p, '=', p_args->len, &key_value) == NGX_HTTP_WAF_TRUE
-                    && utarray_len(key_value) == 2) {
-                    ngx_str_t* key = NULL;
-                    ngx_str_t* value = NULL;
-                    key = (ngx_str_t*)utarray_next(key_value, NULL);
-                    value = (ngx_str_t*)utarray_next(key_value, key);
-                    ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, key, regex_array, 
-                                                            (u_char*)"BLACK-ARGS", cache, NGX_HTTP_WAF_TRUE);
-                    if (ret_value == NGX_HTTP_WAF_MATCHED) {
-                        break;
-                    }
+            if (ngx_str_split(p_args, '&', p_args->len, &args) == NGX_HTTP_WAF_TRUE) {
+                ngx_str_t* p = NULL;
+                while (p = (ngx_str_t*)utarray_next(args, p), p != NULL) {
+                    UT_array* key_value = NULL;
+                    if (ngx_str_split(p, '=', p_args->len, &key_value) == NGX_HTTP_WAF_TRUE
+                        && utarray_len(key_value) == 2) {
+                        ngx_str_t* key = NULL;
+                        ngx_str_t* value = NULL;
+                        key = (ngx_str_t*)utarray_next(key_value, NULL);
+                        value = (ngx_str_t*)utarray_next(key_value, key);
+                        ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, key, regex_array, 
+                                                                (u_char*)"BLACK-ARGS", cache, NGX_HTTP_WAF_TRUE);
+                        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+                            break;
+                        }
 
-                    ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, value, regex_array, 
-                                                            (u_char*)"BLACK-ARGS", cache, NGX_HTTP_WAF_TRUE);
+                        ret_value = ngx_http_waf_regex_exec_arrray_and_sqli(r, value, regex_array, 
+                                                                (u_char*)"BLACK-ARGS", cache, NGX_HTTP_WAF_TRUE);
 
-                    if (ret_value == NGX_HTTP_WAF_MATCHED) {
-                        break;
+                        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+                            break;
+                        }
                     }
+                    utarray_free(key_value);
                 }
-                utarray_free(key_value);
             }
             utarray_free(args);
         }
