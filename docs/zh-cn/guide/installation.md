@@ -38,7 +38,7 @@ sidebarDepth: 3
 您可以选择下面两条命令中的一条来拉取已经构建好的镜像。
 
 ```sh
-docker pull addsp/ngx_waf
+docker pull addsp/ngx_waf:stable
 
 docker pull addsp/ngx_waf:stable-alpine
 ```
@@ -96,12 +96,12 @@ configure arguments: --with-mail=dynamic --with-openssl=/usr/local/src/openssl-O
 安装静态模块需要重新编译整个 nginx，花费的时间相对于安装动态模块比较长。
 
 首先下载对应版本的 nginx，[下载页面](http://nginx.org/en/download.html)。
-下面将以 `nginx-1.18.0` 为例。
+下面将以 `nginx-1.20.1` 为例。
 
 ```sh
 cd /usr/local/src
-wget http://nginx.org/download/nginx-1.18.0.tar.gz
-tar -zxf nginx-1.18.0.tar.gz
+wget https://nginx.org/download/nginx-1.20.1.tar.gz
+tar -zxf nginx-1.20.1.tar.gz
 ```
 
 然后下载本模块的源码，下文将使用稳定版的源码。
@@ -116,7 +116,7 @@ git clone https://github.com/client9/libinjection.git inc/libinjection
 接下来应该运行配置脚本。
 
 ```sh
-cd /usr/local/src/nginx-1.18.0
+cd /usr/local/src/nginx-1.20.1
 ./configure ARG --add-module=/usr/local/src/ngx_waf
 ```
 
@@ -132,8 +132,8 @@ cd /usr/local/src/nginx-1.18.0
 # 不使用并行编译
 make
 
-# 使用并行编译，其中 n 建议设置为 CPU 的核心数。
-make -j n
+# 使用并行编译
+make -j$(nproc)
 ```
 
 ::: tip 注意
@@ -165,7 +165,7 @@ cp objs/nginx /usr/local/nginx/sbin/nginx
 运行配置脚本
 
 ```sh
-./configure ARG --add-dynamic-module=/usr/local/src/ngx_waf
+./configure --add-dynamic-module=/usr/local/src/ngx_waf
 ```
 
 然后开始编译动态模块
