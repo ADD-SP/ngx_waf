@@ -122,7 +122,10 @@ cd /usr/local/src/nginx-1.20.1
 
 ::: warning 注意
 
-`ARG` 的含义见[编译安装](#编译安装)。
+* `ARG` 的含义见[编译安装](#编译安装)。
+
+* 如果您使用的编译器是 GCC，请在 `--with-cc-opt` 中追加 `-fstack-protector-strong`，
+例如 `--with-cc-opt='-Werror -g'` ---> `--with-cc-opt='-Werror -g -fstack-protector-strong'`
 
 :::
 
@@ -167,6 +170,13 @@ cp objs/nginx /usr/local/nginx/sbin/nginx
 ```sh
 ./configure --add-dynamic-module=/usr/local/src/ngx_waf --with-compat
 ```
+
+::: warning 注意
+
+* 如果您使用的编译器是 GCC，请在 `--with-cc-opt` 中追加 `-fstack-protector-strong`，
+例如 `--with-cc-opt='-Werror -g'` ---> `--with-cc-opt='-Werror -g -fstack-protector-strong'`
+
+:::
 
 然后开始编译动态模块
 
