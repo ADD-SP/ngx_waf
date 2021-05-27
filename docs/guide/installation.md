@@ -32,7 +32,7 @@ and rebuilds all images at 00:00:00 UTC on Sunday.
 You can choose one of the following two commands to pull an image that has already been built.
 
 ```sh
-docker pull addsp/ngx_waf
+docker pull addsp/ngx_waf:stable
 
 docker pull addsp/ngx_waf:stable-alpine
 ```
@@ -87,12 +87,12 @@ Be sure to remember what comes after `configure arguments:`, which will be repla
 Installing a static module requires recompiling the entire nginx, which takes longer than installing a dynamic module.
 
 First download the corresponding version of nginx, [download page](http://nginx.org/en/download.html).
-The following is an example of `nginx-1.18.0`.
+The following is an example of `nginx-1.20.1`.
 
 ```sh
 cd /usr/local/src
-wget http://nginx.org/download/nginx-1.18.0.tar.gz
-tar -zxf nginx-1.18.0.tar.gz
+wget https://nginx.org/download/nginx-1.20.1.tar.gz
+tar -zxf nginx-1.20.1.tar.gz
 ```
 
 Then download the source code of this module, the following will use the stable version of the source code
@@ -107,7 +107,7 @@ git clone https://github.com/client9/libinjection.git inc/libinjection
 Next you should run the configuration script.
 
 ```sh
-cd /usr/local/src/nginx-1.18.0
+cd /usr/local/src/nginx-1.20.1
 ./configure ARG --add-module=/usr/local/src/ngx_waf
 ```
 
@@ -123,8 +123,8 @@ Then start compiling.
 # Not using parallel compilation
 make
 
-# Use parallel compilation, where n is recommended to be set to the number of CPU cores.
-make -j n
+# Use parallel compilation.
+make -j$(nproc)
 ```
 
 ::: tip NOTE
@@ -158,7 +158,7 @@ The process of downloading nginx source code and module source code is the same 
 Run the configuration script
 
 ```sh
-./configure ARG --add-dynamic-module=/usr/local/src/ngx_waf
+./configure --add-dynamic-module=/usr/local/src/ngx_waf
 ```
 
 Then start compiling the dynamic module
