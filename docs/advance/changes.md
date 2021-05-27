@@ -39,7 +39,7 @@ lang: en
 
 * New directive: `waf_http_status`, which sets the HTTP status code returned when a request is blocked.
 
-* New built-in variable: `$waf_blocking_log`, not an empty string when the request is intercepted for its value.
+* New built-in variable: `$waf_blocking_log`, not an empty string when the request is blocked for its value.
 
 ### Changed
 
