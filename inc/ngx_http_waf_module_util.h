@@ -71,7 +71,7 @@ static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array);
  * @brief 字符串分割
  * @param[in] str 要分割的字符串
  * @param[in] sep 分隔符
- * @param[out] max_len 分割后单个字符串的最大长度
+ * @param[out] max_len 分割后单个字符串的最大长度，不含 \0 。
  * @param[out] array 存放分割结果的数组
  * @return 成功则返回 SUCCESS，反之则不是。
  * @warning 使用完毕后请自行释放数组所占用内存。
@@ -418,7 +418,7 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
     for (size_t i = 0; i < str->len; i++) {
         u_char c = str->data[i];
         if (c != sep) {
-            if (str_index >= max_len) {
+            if (str_index > max_len) {
                 free(temp_str.data);
                 return NGX_HTTP_WAF_FAIL;
             }
