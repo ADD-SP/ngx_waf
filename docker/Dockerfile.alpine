@@ -26,8 +26,6 @@ RUN set -xe \
             geoip-dev \
             python3 \
             py3-pip \
-            libsodium-dev \
-            libsodium \
             libmaxminddb \
             libmaxminddb-dev \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
@@ -37,6 +35,9 @@ RUN set -xe \
 RUN set -xe \
     &&  git clone https://github.com/leev/ngx_http_geoip2_module.git \
     &&  (cd ngx_waf && git clone https://github.com/client9/libinjection.git inc/libinjection) \
+    &&  git clone https://github.com/jedisct1/libsodium --branch stable libsodium-src \
+    &&  (cd libsodium-src && ./configure --prefix=/libsodium --with-pic && make -j$(nproc) && make install) \
+    &&  export LIB_SODIUM=/libsodium \
     &&  (git clone https://github.com/google/ngx_brotli.git && cd ngx_brotli && git submodule update --init) \ 
     # &&  lastversion --download="openssl.tar.gz" --at=github openssl \
     # &&  mkdir openssl && tar -zxf "openssl.tar.gz" -C openssl --strip-components=1 \
@@ -55,7 +56,7 @@ RUN set -xe \
         --add-module=/usr/local/src/ngx_waf \
         --add-module=/usr/local/src/ngx_http_geoip2_module \
         --add-module=/usr/local/src/ngx_brotli \
-    &&  make -j$(nproc)\
+    &&  make -j$(nproc) \
     &&  cp objs/nginx /usr/sbin/nginx
 
 FROM nginx:stable-alpine
@@ -64,7 +65,7 @@ COPY --from=builder /usr/sbin/nginx /usr/sbin/
 COPY --from=builder /env.sh /env.sh
 RUN set -xe \
     &&  apk update \
-    &&  apk add --no-cache libsodium libsodium-dev libmaxminddb libmaxminddb-dev \
+    &&  apk add --no-cache libmaxminddb libmaxminddb-dev \
     &&  cat /env.sh \
     &&  source /env.sh \
     &&  rm -rf /env.sh \ 

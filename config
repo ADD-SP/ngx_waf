@@ -125,9 +125,9 @@ fi
 
 if [ -n "$LIB_SODIUM" ] ;  then
     ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_SODIUM}/include"
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -l sodium"
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -Wl,-Bstatic -l sodium -Wl,-Bdynamic "
 else
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium"
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium "
 fi
 
 # Check if libsodium exists.
@@ -150,12 +150,12 @@ Please run:
     On Alpine: 
             apk update && apk add libsodium libsodium-dev
     On other OS:
-            cd /usr/local/src \\
-        &&  git clone https://github.com/jedisct1/libsodium --branch stable \\
-        &&  cd libsodium \\
-        &&  ./configure --prefix=/usr/local/libsodium \\
+            # You can remove directories libsodium-src and libsodium after installing the ngx_http_waf_module.
+            git clone https://github.com/jedisct1/libsodium --branch stable libsodium-src \\
+        &&  cd libsodium-src \\
+        &&  ./configure --prefix=$PWD/libsodium --with-pic \\
         &&  make -j\$(nproc) && make check -j \$(nproc) && make install \\
-        &&  export LIB_SODIUM=/usr/local/libsodium \\
+        &&  export LIB_SODIUM=$PWD/libsodium \\
         &&  cd $PWD
 
 END
