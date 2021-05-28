@@ -1,6 +1,6 @@
 ---
 home: true
-heroImage: https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png
+heroImage: https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/logo.png
 heroText: ngx_waf
 tagline: Handy, High performance Nginx firewall module.
 actionText: Quick Start →
