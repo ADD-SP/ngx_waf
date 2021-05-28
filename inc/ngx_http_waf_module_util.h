@@ -411,8 +411,8 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
     }
 
     ngx_str_t temp_str;
-    temp_str.data = malloc(sizeof(u_char) * max_len);
-    ngx_memzero(temp_str.data, sizeof(u_char) * max_len);
+    temp_str.data = malloc(sizeof(u_char) * (max_len + 1));
+    ngx_memzero(temp_str.data, sizeof(u_char) * (max_len + 1));
     size_t str_index = 0;
 
     for (size_t i = 0; i < str->len; i++) {
