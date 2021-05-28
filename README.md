@@ -1,7 +1,7 @@
 # ngx_waf
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png" width=200 height=200/>
+    <img src="https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/logo.png" width=200 height=200/>
 </p>
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
@@ -58,9 +58,10 @@ Handy, High performance Nginx firewall module.
 
 ## Thanks
 
-* [uthash](https://github.com/troydhanson/uthash)
-* [libinjection](https://github.com/client9/libinjection)
-* [libsodium](https://github.com/jedisct1/libsodium)
-* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)
-* [nginx-book](https://github.com/taobao/nginx-book)
-* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide)
+* [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
+* [libinjection](https://github.com/client9/libinjection): SQL / SQLI tokenizer parser analyzer.
+* [libsodium](https://github.com/jedisct1/libsodium): A modern, portable, easy to use crypto library.
+* [lastversion](https://github.com/dvershinin/lastversion): A command line tool that helps you download or install a specific version of a project.
+* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): A web application firewall based on the lua-nginx-module (openresty).
+* [nginx-book](https://github.com/taobao/nginx-book): The Chinese language development guide for nginx.
+* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): The Chinese language development guide for nginx.

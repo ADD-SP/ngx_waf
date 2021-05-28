@@ -2,7 +2,7 @@
 
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/ADD-SP/ngx_waf/master/logo.png" width=200 height=200/>
+    <img src="https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/logo.png" width=200 height=200/>
 </p>
 
 
@@ -57,9 +57,10 @@
 
 ## 感谢
 
-* [uthash](https://github.com/troydhanson/uthash)
-* [libinjection](https://github.com/client9/libinjection)
-* [libsodium](https://github.com/jedisct1/libsodium)
-* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)
-* [nginx-book](https://github.com/taobao/nginx-book)
-* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide)
+* [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
+* [libinjection](https://github.com/client9/libinjection)：SQL 注入检测库。
+* [libsodium](https://github.com/jedisct1/libsodium)：C 语言密码函数库。
+* [lastversion](https://github.com/dvershinin/lastversion)：一个轻巧的命令行工具，帮助你下载或安装一个项目的特定版本。
+* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)：一个基于 lua-nginx-module (openresty) 的 web 应用防火墙。 
+* [nginx-book](https://github.com/taobao/nginx-book)：Nginx开发从入门到精通 
+* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide)：Nginx 开发指南。
