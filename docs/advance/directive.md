@@ -77,6 +77,8 @@ If two or more conflicting modes are enabled at the same time, the mode to the r
 waf_mode !UA STD;
 ```
 
+:::
+
 ::: tip NOTE
 
 The mode of `CC` is independent of other modes, and whether it takes effect or not is not affected by other modes. A typical situation such as the `URL` mode will be affected by the `GET` mode, because if the `GET` mode is not used, the check will not be started when `Http.Method=GET`, and the URL will naturally not be inspected, but ` CC` mode will not be similarly affected.
@@ -105,7 +107,7 @@ Set the parameters related to CC protection.
 
 * `rate`: Indicates the maximum number of requests per minute, e.g. `60r/m` means the maximum number of requests per minute is 60. Exceeding the limit returns a [503 status code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503) with a [Retry-After](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After) response header.
 * `duration`: Indicates the time to block IP after exceeding the limit of the first parameter `rate`, such as `60s`, `60m`, `60h` and `60d`, if not specified, the default is `1h`.
-* `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`.
+* `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`. When this memory is exhausted, the program will automatically reset this memory to recount the IP accesses.
 
 
 
