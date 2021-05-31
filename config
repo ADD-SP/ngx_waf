@@ -13,7 +13,9 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c"
+    $ngx_addon_dir/inc/libinjection/src/libinjection_html5.c \
+    $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c \
+    $ngx_addon_dir/inc/libinjection/src/libinjection_xss.c"
 
 
 ngx_http_waf_module_libs=""

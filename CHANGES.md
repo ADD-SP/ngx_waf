@@ -4,6 +4,7 @@
 
 ### Added
 
+* Anti XSS (powered by [libinjection](https://github.com/client9/libinjection)).
 
 ### Removed
 

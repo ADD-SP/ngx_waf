@@ -15,6 +15,7 @@ Visit `/www.bak` and if a 403 status code is returned, the module is successfull
 
 #### Test Description
 
+* ngx_waf v5.1.1.
 * Approximately 210,000 IPV4 whitelist rules were used.
 * About 210,000 IPV4 blacklist rules were used.
 * Approximately 48,000 IPV6 whitelist rules were used.

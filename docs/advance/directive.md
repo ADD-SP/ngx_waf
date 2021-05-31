@@ -53,7 +53,7 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
 * CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny](#waf-cc-deny).
-* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injections.
+* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injection and XSS attacks.
 * COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
 * CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache](#waf-cache).
@@ -69,9 +69,28 @@ The following is an example of using the standard working mode, but without insp
 waf_mode STD !UA;
 ```
 
+::: warning NOTE
+
+If two or more conflicting modes are enabled at the same time, the mode to the right will override the mode to its left. The following example means inspecting the User-Agent.
+
+```nginx
+waf_mode !UA STD;
+```
+
 ::: tip NOTE
 
 The mode of `CC` is independent of other modes, and whether it takes effect or not is not affected by other modes. A typical situation such as the `URL` mode will be affected by the `GET` mode, because if the `GET` mode is not used, the check will not be started when `Http.Method=GET`, and the URL will naturally not be inspected, but ` CC` mode will not be similarly affected.
+
+:::
+
+
+::: tip Development Version
+
+The following changes have been made in the development version.
+
+* LIB-INJECTION-SQLI: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injection.
+* LIB-INJECTION-XSS: Use [libinjection](https://github.com/client9/libinjection) to detect XSS attacks.
+* LIB-INJECTION: Equivalent to `LIB-INJECTION-SQLI LIB-INJECTION-XSS`.
 
 :::
 
