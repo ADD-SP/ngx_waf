@@ -3,7 +3,7 @@
 ngx_root=$1
 new_static_module_conf='test/nginx-static-module.conf'
 new_dynamic_module_conf='test/nginx-dynamic-module.conf'
-rules_dir='rules'
+rules_dir='assets/rules'
 
 if [ -e "${ngx_root}/conf/nginx.conf" ] ; then
     rm -rf "${ngx_root}/conf/nginx.conf"
