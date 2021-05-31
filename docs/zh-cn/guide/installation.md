@@ -110,7 +110,7 @@ tar -zxf nginx-1.20.1.tar.gz
 cd /usr/local/src
 git clone -b master https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
-git clone https://github.com/client9/libinjection.git inc/libinjection
+git clone https://github.com/libinjection/libinjection.git inc/libinjection
 ```
 
 接下来应该运行配置脚本。

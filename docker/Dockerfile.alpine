@@ -36,7 +36,7 @@ RUN set -xe \
     &&  pip3 install lastversion
 RUN set -xe \
     &&  git clone https://github.com/leev/ngx_http_geoip2_module.git \
-    &&  (cd ngx_waf && git clone https://github.com/client9/libinjection.git inc/libinjection) \
+    &&  (cd ngx_waf && git clone https://github.com/libinjection/libinjection.git inc/libinjection) \
     &&  (git clone https://github.com/google/ngx_brotli.git && cd ngx_brotli && git submodule update --init) \ 
     # &&  lastversion --download="openssl.tar.gz" --at=github openssl \
     # &&  mkdir openssl && tar -zxf "openssl.tar.gz" -C openssl --strip-components=1 \

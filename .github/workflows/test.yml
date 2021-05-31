@@ -53,7 +53,7 @@ jobs:
       - name: Download ${{ matrix.nginx-version }}
         run: |
           chmod 777 -R ${{ github.workspace }}
-          sudo git clone https://github.com/client9/libinjection.git inc/libinjection
+          sudo git clone https://github.com/libinjection/libinjection.git inc/libinjection
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
           else  \

@@ -4,7 +4,7 @@
 
 ### 新增
 
-* XSS 攻击防御（Powered By [libinjection](https://github.com/client9/libinjection)）。
+* XSS 攻击防御（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 
 ### 移除
 
@@ -60,7 +60,7 @@
 
 ### 新增
 
-* 支持检测 SQL 注入（Powered By [libinjection](https://github.com/client9/libinjection)）。你可以通过启用 `LIB-INJECTION` 模式开启该功能，详见使用文档。
+* 支持检测 SQL 注入（Powered By [libinjection](https://github.com/libinjection/libinjection)）。你可以通过启用 `LIB-INJECTION` 模式开启该功能，详见使用文档。
 
 ***
 
