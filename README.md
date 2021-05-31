@@ -12,7 +12,7 @@
 [![Semantic Versioning 2.0.0](https://img.shields.io/badge/Semantic%20Versioning-2.0.0-blue)](https://semver.org/)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
-[![Chat](https://img.shields.io/badge/Chat-Telegram%20Group-blue)](https://t.me/ngx_waf_group)
+[![Chat](https://img.shields.io/badge/Discussion-Telegram%20Group-blue)](https://t.me/ngx_waf_group)
 
 English | [简体中文](README-ZH-CN.md)
 

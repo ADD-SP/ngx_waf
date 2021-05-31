@@ -71,7 +71,7 @@ waf_mode STD !UA;
 
 ::: warning 注意
 
-如果同时启用两个及以上的存在冲突的模式，则靠右的模式会覆盖它左边的模式。下面的例子含义为检查 User-Agent。
+如果同时启用两个及以上的存在冲突的模式，则靠右的模式会覆盖它左边的模式。下面的例子表示检查 User-Agent。
 
 ```nginx
 waf_mode !UA STD;
@@ -107,7 +107,7 @@ waf_mode !UA STD;
 
 * `rate`：表示每分钟的最多请求次数，如 `60r/m` 表示每分钟最多请求 60 次。超出限制后会返回 [503 状态码](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status/503)，并附带 [Retry-After](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Retry-After) 响应头。
 * `duration`：表示超出第一个参数 `rate` 的限制后拉黑 IP 的时间，如 `60s`、`60m`、`60h` 和 `60d`，如不指定则默认为 `1h`。
-* `size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。
+* `size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。当这段内存耗尽的时候程序会自动重置这块内存以重新统计 IP 的访问次数。
 
 
 

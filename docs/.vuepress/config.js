@@ -52,6 +52,13 @@ module.exports = {
                             "/advance/issue.md",
                             "/advance/changes.md"
                         ]
+                    },
+                    {
+                        title: "TODO (Advice Needed)",
+                        path: "/todo/overview.html",
+                        children: [
+                            "/todo/advanced-rule.md",
+                        ]
                     }
                 ]
             },
@@ -85,6 +92,13 @@ module.exports = {
                             "/zh-cn/advance/log.md",
                             "/zh-cn/advance/issue.md",
                             "/zh-cn/advance/changes.md"
+                        ]
+                    },
+                    {
+                        title: "开发计划（建议征集）",
+                        path: "/zh-cn/todo/overview.html",
+                        children: [
+                            "/zh-cn/todo/advanced-rule.md",
                         ]
                     }
                 ]

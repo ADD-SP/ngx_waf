@@ -9,6 +9,7 @@ lang: en
 
 ### Added
 
+* Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
 
 ### Removed
 
