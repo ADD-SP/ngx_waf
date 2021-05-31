@@ -16,8 +16,8 @@ lang: zh-CN
 
 ## 功能
 
-* SQL 注入防护（Powered By [libinjection](https://github.com/client9/libinjection)）。
-* XSS 攻击防护（Powered By [libinjection](https://github.com/client9/libinjection)）。
+* SQL 注入防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
+* XSS 攻击防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * 支持 IPV4 和 IPV6。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间。
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。

@@ -29,8 +29,8 @@
 
 ## 功能
 
-* SQL 注入防护（Powered By [libinjection](https://github.com/client9/libinjection)）。
-* XSS 攻击防护（Powered By [libinjection](https://github.com/client9/libinjection)）。
+* SQL 注入防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
+* XSS 攻击防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * 支持 IPV4 和 IPV6。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间。
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
@@ -59,7 +59,7 @@
 ## 感谢
 
 * [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
-* [libinjection](https://github.com/client9/libinjection)：SQL 注入检测库。
+* [libinjection](https://github.com/libinjection/libinjection)：SQL 注入检测库。
 * [libsodium](https://github.com/jedisct1/libsodium)：C 语言密码函数库。
 * [lastversion](https://github.com/dvershinin/lastversion)：一个轻巧的命令行工具，帮助你下载或安装一个项目的特定版本。
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)：一个基于 lua-nginx-module (openresty) 的 web 应用防火墙。 

@@ -66,7 +66,7 @@ lang: en
 
 ### Added
 
-* Support for detecting SQL injection (powered by [libinjection](https://github.com/client9/libinjection)). This feature can be enabled by enabling the mode `LIB-INJECTION`, see the documentation for details.
+* Support for detecting SQL injection (powered by [libinjection](https://github.com/libinjection/libinjection)). This feature can be enabled by enabling the mode `LIB-INJECTION`, see the documentation for details.
 
 ***
 

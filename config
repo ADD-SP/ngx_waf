@@ -118,7 +118,7 @@ if [ $ngx_found = no  ] ; then
     cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
-Please run cd $ngx_addon_dir && git clone https://github.com/client9/libinjection.git inc/libinjection && cd $PWD
+Please run cd $ngx_addon_dir && git clone https://github.com/libinjection/libinjection.git inc/libinjection && cd $PWD
 
 END
     PWD=''

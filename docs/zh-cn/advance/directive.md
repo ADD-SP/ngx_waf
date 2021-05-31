@@ -53,7 +53,7 @@ lang: zh-CN
 * COOKIE: 启用 cookie 的检查规则。
 * REFERER: 启用 referer 的检查规则。
 * CC: 启用 CC 防御。当你启用了此模式，你必须设置 [waf_cc_deny](#waf-cc-deny)。
-* LIB-INJECTION：使用 [libinjection](https://github.com/client9/libinjection) 检测 SQL 注入 和 XSS 攻击。
+* LIB-INJECTION：使用 [libinjection](https://github.com/libinjection/libinjection) 检测 SQL 注入 和 XSS 攻击。
 * COMPAT：兼容模式，用来启用一些兼容性选项去兼容其它的模块或者环境，目前用于兼容 ngx_http_rewrite_module，详见[兼容性说明](/zh-cn/guide/compatibility.md)。
 * STRICT：严格模式，牺牲一些性能进行更多的检查，目前仅在启用了 `COMPAT` 模式时生效，在 ngx_http_rewrite_module 生效前和生效后都进行一轮完整的检查。
 * CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache](#waf-cache)。
@@ -90,8 +90,8 @@ waf_mode !UA STD;
 
 开发版中有下列变动。
 
-* LIB-INJECTION-SQLI：使用 [libinjection](https://github.com/client9/libinjection) 检测 SQL 注入。
-* LIB-INJECTION-XSS：使用 [libinjection](https://github.com/client9/libinjection) 检测 XSS 攻击。
+* LIB-INJECTION-SQLI：使用 [libinjection](https://github.com/libinjection/libinjection) 检测 SQL 注入。
+* LIB-INJECTION-XSS：使用 [libinjection](https://github.com/libinjection/libinjection) 检测 XSS 攻击。
 * LIB-INJECTION：等价于 `LIB-INJECTION-SQLI LIB-INJECTION-XSS`。
 
 :::

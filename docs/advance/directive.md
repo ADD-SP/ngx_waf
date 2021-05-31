@@ -53,7 +53,7 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
 * CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny](#waf-cc-deny).
-* LIB-INJECTION: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injection and XSS attacks.
+* LIB-INJECTION: Use [libinjection](https://github.com/libinjection/libinjection) to detect SQL injection and XSS attacks.
 * COMPAT: compatibility mode, used to enable compatibility options with other modules or environments, currently used for compatibility with the ngx_http_rewrite_module, see [compatibility statement](/guide/compatibility.md).
 * STRICT: Strict mode, which sacrifices some performance for more checks, currently only works when `COMPAT` mode is enabled, and performs a full round of inspections before and after the ngx_http_rewrite_module takes effect.
 * CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache](#waf-cache).
@@ -88,8 +88,8 @@ The mode of `CC` is independent of other modes, and whether it takes effect or n
 
 The following changes have been made in the development version.
 
-* LIB-INJECTION-SQLI: Use [libinjection](https://github.com/client9/libinjection) to detect SQL injection.
-* LIB-INJECTION-XSS: Use [libinjection](https://github.com/client9/libinjection) to detect XSS attacks.
+* LIB-INJECTION-SQLI: Use [libinjection](https://github.com/libinjection/libinjection) to detect SQL injection.
+* LIB-INJECTION-XSS: Use [libinjection](https://github.com/libinjection/libinjection) to detect XSS attacks.
 * LIB-INJECTION: Equivalent to `LIB-INJECTION-SQLI LIB-INJECTION-XSS`.
 
 :::
