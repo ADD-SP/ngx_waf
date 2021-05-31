@@ -169,7 +169,7 @@ waf_mode STD !UA;
 ## `waf_http_status`
 
 * 配置语法: waf_http_status \[general=*http_status_code*\] \[cc_deny=*http_status_code*\]
-* 默认配置：waf_under_attack general=403 cc_deny=503
+* 默认配置: waf_http_status general=403 cc_deny=503
 * 配置段: server
 
 此指令用于设置请求被拦截时返回的 HTTP 状态码。
