@@ -59,7 +59,7 @@ RUN set -xe \
     &&  cp objs/nginx /usr/sbin/nginx
 
 FROM nginx:stable-alpine
-COPY ./rules /etc/nginx/waf-rules
+COPY ./assets/rules /etc/nginx/waf-rules
 COPY --from=builder /usr/sbin/nginx /usr/sbin/
 COPY --from=builder /env.sh /env.sh
 RUN set -xe \
