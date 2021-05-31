@@ -16,7 +16,8 @@ Handy, High performance Nginx firewall module.
 
 ## Function
 
-* SQL injection detection.
+* Anti SQL injection (powered by [libinjection](https://github.com/client9/libinjection)).
+* Anti XSS (powered by [libinjection](https://github.com/client9/libinjection)).
 * IPV4 and IPV6 support.
 * Anti Challenge Collapsar, it can automatically block malicious IP.
 * Exceptional allow on specific IP address.
@@ -29,6 +30,13 @@ Handy, High performance Nginx firewall module.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.
 * Block the specified Referer.
+
+
+::: tip NOTE
+
+The feature `Anti XSSS` is currently only available in the development version.
+
+:::
 
 ## Contact
 

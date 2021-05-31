@@ -240,10 +240,26 @@
 
 
 /**
- * @def NGX_HTTP_WAF_MODE_LIB_INJECTION
+ * @def NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI
  * @brief 启用 libinjection 进行 SQL 注入检查。
 */
-#define NGX_HTTP_WAF_MODE_LIB_INJECTION                      (NGX_HTTP_WAF_MODE_EXTRA_STRICT << 1)
+#define NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI                 (NGX_HTTP_WAF_MODE_EXTRA_CACHE << 1)
+
+
+/**
+ * @def NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS
+ * @brief 启用 libinjection 进行 XSS 检查。
+*/
+#define NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS                  (NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI << 1)
+
+
+/**
+ * @def NGX_HTTP_WAF_MODE_LIB_INJECTION
+ * @brief 启用 libinjection 进行 SQL 注入检查和 XSS 检查。
+*/
+#define NGX_HTTP_WAF_MODE_LIB_INJECTION                      (NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI \
+                                                            | NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS)
+
 
 /**
  * @def MODE_STD

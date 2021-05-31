@@ -4,6 +4,7 @@
 
 ### 新增
 
+* XSS 攻击防御（Powered By [libinjection](https://github.com/client9/libinjection)）。
 
 ### 移除
 
@@ -17,7 +18,7 @@
 
 ## [5.3.2] - 2021-05-28 UTC+0800
 
-### Fixed
+### 修复
 
 * 内存损坏。
 

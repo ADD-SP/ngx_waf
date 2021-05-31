@@ -503,6 +503,26 @@ static char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             srv_conf->waf_mode &= ~NGX_HTTP_WAF_MODE_LIB_INJECTION;
         }
 
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"LIB-INJECTION-SQLI", ngx_min(modes[i].len, sizeof("LIB-INJECTION-SQLI") - 1)) == 0
+            && modes[i].len == sizeof("LIB-INJECTION-SQLI") - 1) {
+            srv_conf->waf_mode |= NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!LIB-INJECTION-SQLI", ngx_min(modes[i].len, sizeof("!LIB-INJECTION-SQLI") - 1)) == 0
+            && modes[i].len == sizeof("!LIB-INJECTION-SQLI") - 1) {
+            srv_conf->waf_mode &= ~NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI;
+        }
+
+
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"LIB-INJECTION-XSS", ngx_min(modes[i].len, sizeof("LIB-INJECTION-XSS") - 1)) == 0
+            && modes[i].len == sizeof("LIB-INJECTION-XSS") - 1) {
+            srv_conf->waf_mode |= NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS;
+        }
+        else if (ngx_strncasecmp(modes[i].data, (u_char*)"!LIB-INJECTION-XSS", ngx_min(modes[i].len, sizeof("!LIB-INJECTION-XSS") - 1)) == 0
+            && modes[i].len == sizeof("!LIB-INJECTION-XSS") - 1) {
+            srv_conf->waf_mode &= ~NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS;
+        }
+
         else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html or https://ngx-waf.pages.dev/advance/syntax.html");
