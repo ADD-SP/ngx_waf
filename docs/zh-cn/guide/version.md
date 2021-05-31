@@ -31,6 +31,6 @@ git clone -b dev https://github.com/ADD-SP/ngx_waf.git
 * master：稳定版分支，保证随时可用。
 * dev：开发版分支，保证大多数情况下可用。
 * feature-xxxx：新功能开发分支，不保证可用性，开发完成后会合并到 `dev` 分支。
-* bugfix-xxxx：错误修复分支，不保证可用性，修复完成后一般会合并到 `dev` 分支，
-如果错误比较严重会直接合并到 `master` 分支。
+* bugfix-xxxx：错误修复分支，不保证可用性，修复完成后一般会合并到 `dev` 分支。
+* hotfix-xxxx：热修复分支，不保证可用性，修复完成后会合并到 `master` 和 `dev`。
 * change-xxxx：功能变动分支，不保证可用性，开发完成后会合并到 `dev` 分支。
