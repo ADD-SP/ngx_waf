@@ -34,6 +34,7 @@ git clone -b dev https://github.com/ADD-SP/ngx_waf.git
 * master: The branch where the stable version is located, and which is guaranteed to be available at all times.
 * dev: The branch where the development version is located, and which is guaranteed to be available in most cases.
 * feature-xxxx: The new feature development branch, which is not guaranteed to be available, 
-will be merged into the `dev` branch when development is complete.
-* bugfix-xxxx: bug-fixing branch, which is not guaranteed to be available and will generally be merged into the `dev` branch when the fix is complete. If the bug is serious, it will be merged to the `master` branch directly.
-* change-xxxx: Feature change branches, which are not guaranteed to be available, will be merged into the `dev` branch when development is complete.
+will be merged into the `dev` when development is complete.
+* bugfix-xxxx: bug-fixing branch, which is not guaranteed to be available and will generally be merged into the `dev` when the fix is complete.
+* hotfix-xxxx: hotfix branch, not guaranteed availability, will be merged to `master` and `dev` when the fix is complete. 
+* change-xxxx: Feature change branches, which are not guaranteed to be available, will be merged into the `dev` when development is complete.

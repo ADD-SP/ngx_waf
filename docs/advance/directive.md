@@ -135,7 +135,7 @@ Turning it on forces a five-second delay on each user's first visit and automati
 
 The page pointed to by `uri` should automatically jump to the page the user wants to visit after five seconds, the URL of the page can be obtained by querying a string with the parameter `target`.
 
-`under-attack.html` is a sample page, you should copy this file to your web directory and configure `uri` correctly.
+`assets/under-attack.html` is a sample page, you should copy this file to your web directory and configure `uri` correctly.
 
 Naturally, you can also write your own html file and point to it with `uri`.
 

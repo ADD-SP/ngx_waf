@@ -26,7 +26,7 @@ http {
         waf on;
 
         # 规则文件所在目录的绝对路径，必须以 / 结尾。
-        waf_rule_path /usr/local/src/ngx_waf/rules/;
+        waf_rule_path /usr/local/src/ngx_waf/assets/rules/;
         
         # 防火墙工作模式，STD 表示标准模式。
         waf_mode STD;
