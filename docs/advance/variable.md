@@ -7,7 +7,13 @@ lang: en
 
 When writing `nginx.conf`, some variables are inevitably needed. For example, `$remote_addr` can be used to get the client IP address.
 
-This module adds three available variables.
+This module adds several available variables.
+
+::: warning KNOWN ISSUES
+
+The value of a built-in variable may be wrong when the directive `error_page` is used, see [Known Issues](issue.md) for details.
+
+:::
 
 ## `$waf_log`
 

@@ -317,28 +317,58 @@ static void ngx_http_waf_eliminate_inspection_cache(ngx_http_request_t* r) {
 
 
 static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+        "ngx_waf_debug: The scheduler has been started.");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     ngx_int_t http_status = NGX_DECLINED;
 
     if (ctx == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start allocating memory for storage contexts.");
+        ngx_http_cleanup_t* cln = ngx_palloc(r->pool, sizeof(ngx_http_cleanup_t));
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
-        if (ctx == NULL) {
+        if (ctx == NULL || cln == NULL) {
             http_status = NGX_ERROR;
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, 
                 "ngx_waf: The request context could not be created because the memory allocation failed.");
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                "ngx_waf_debug: The scheduler shutdown abnormally.");
             return http_status;
         }
         else {
+            cln->handler = ngx_http_waf_handler_cleanup;
+            cln->data = ctx;
+            cln->next = NULL;
+
             ctx->read_body_done = NGX_HTTP_WAF_FALSE;
             ctx->checked = NGX_HTTP_WAF_FALSE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
             ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
             ctx->rule_type[0] = '\0';
             ctx->rule_deatils[0] = '\0';
+
+            if (r->cleanup == NULL) {
+                r->cleanup = cln;
+            } else {
+                for (ngx_http_cleanup_t* i = r->cleanup; i != NULL; i = i->next) {
+                    if (i->next == NULL) {
+                        i->next = cln;
+                        break;
+                    }
+                }
+            }
+
             ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+            
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                "ngx_waf_debug: Context initialization is complete.");
         }
+    } else if (ngx_http_get_module_ctx(r, ngx_http_waf_module) == NULL) {
+        ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
 
     if (r->internal != 0 
@@ -346,6 +376,8 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         || srv_conf->waf == NGX_CONF_UNSET 
         || ctx->read_body_done == NGX_HTTP_WAF_TRUE) {
         http_status = NGX_DECLINED;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Skip scheduling.");
     }
     else {
         ctx->checked = NGX_HTTP_WAF_TRUE;
@@ -383,6 +415,13 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     if (http_status != NGX_DONE) {
         ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
     }
-    
+
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The scheduler shutdown normally.");
     return http_status;
+}
+
+
+static void ngx_http_waf_handler_cleanup(void *data) {
+    return;
 }
