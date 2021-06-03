@@ -1,7 +1,7 @@
 # ngx_waf
 
 <p align="center">
-    <img src="https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/logo.png" width=200 height=200/>
+    <img src="https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/assets/logo.png" width=200 height=200/>
 </p>
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)

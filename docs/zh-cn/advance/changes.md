@@ -9,16 +9,31 @@ lang: zh-CN
 
 ### 新增
 
-* XSS 攻击防御（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
-
 ### 移除
-
 
 ### 变动
 
+### 修复
+
+***
+
+## [5.4.0] - 2021-06-03 UTC+0800
+
+### **注意**
+
+**本次更新更换了 libinjection 的 clone 链接，新的链接为 [https://github.com/libinjection/libinjection.git](https://github.com/libinjection/libinjection.git)。**
+
+### 新增
+
+* XSS 攻击防御（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
+
+### 变动
+
+* 增加内置变量计算相关的调试日志。
 
 ### 修复
 
+* POST 检测失效。
 
 ***
 
