@@ -1054,78 +1054,119 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
 
 
 static ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start the variable calculation process (waf_log).");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
     v->valid = 1;
     v->no_cacheable = 1;
     v->not_found = 0;
     v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The memory was successfully allocated.");
 
     if (ctx == NULL || ctx->checked == NGX_HTTP_WAF_FALSE) {
         v->len = 0;
         v->data = NULL;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: No context or the module did not start the inspection process.");
     }
     else {
         v->len = 4;
         strcpy((char*)v->data, "true");
-
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The module starts the detection process.");
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The variable calculation process is fully completed (waf_log).");
     return NGX_OK;
 }
 
 
 static ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start the variable calculation process (waf_blocking_log).");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
     v->valid = 1;
     v->no_cacheable = 1;
     v->not_found = 0;
     v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The memory was successfully allocated.");
 
     if (ctx == NULL || ctx->blocked == NGX_HTTP_WAF_FALSE) {
         v->len = 0;
         v->data = NULL;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: No context or this request is not blocked.");
     }
     else {
         v->len = 4;
         strcpy((char*)v->data, "true");
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: This request has been blocked.");
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The variable calculation process is fully completed (waf_blocking_log).");
     return NGX_OK;
 }
 
 
 
 static ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start the variable calculation process (waf_blocked).");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
     v->valid = 1;
     v->no_cacheable = 1;
     v->not_found = 0;
     v->data = ngx_palloc(r->pool, sizeof(u_char) * 64);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The memory was successfully allocated.");
 
     if (ctx == NULL) {
         v->len = 0;
         v->data = NULL;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: No context.");
     }
     else {
         if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
             v->len = 4;
             strcpy((char*)v->data, "true");
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: This request has been blocked.");
         }
         else {
             v->len = 5;
             strcpy((char*)v->data, "false");
+            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: This request was not blocked.");
         }
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The variable calculation process is fully completed (waf_blocked).");
     return NGX_OK;
 }
 
 
 static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start the variable calculation process (waf_rule_type).");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
     v->valid = 1;
     v->no_cacheable = 1;
@@ -1134,6 +1175,8 @@ static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_h
     if (ctx == NULL) {
         v->len = 0;
         v->data = NULL;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: No context.");
     }
     else {
         v->len = strlen((char*)ctx->rule_type);
@@ -1141,12 +1184,18 @@ static ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_h
         strcpy((char*)v->data, (char*)ctx->rule_type);
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The variable calculation process is fully completed (waf_rule_type).");
     return NGX_OK;
 }
 
 
 static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start the variable calculation process (waf_rule_deatils).");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
     v->valid = 1;
     v->no_cacheable = 1;
@@ -1155,6 +1204,8 @@ static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_ht
     if (ctx == NULL) {
         v->len = 0;
         v->data = NULL;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: No context.");
     }
     else {
         v->len = strlen((char*)ctx->rule_deatils);
@@ -1162,12 +1213,18 @@ static ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_ht
         strcpy((char*)v->data, (char*)ctx->rule_deatils);
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The variable calculation process is fully completed (waf_rule_deatils).");
     return NGX_OK;
 }
 
 
 static ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Start the variable calculation process (waf_spend).");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
     v->valid = 1;
     v->no_cacheable = 1;
@@ -1176,6 +1233,8 @@ static ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_vari
     if (ctx == NULL) {
         v->len = 0;
         v->data = NULL;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: No context.");
     }
     else {
         u_char text[32] = { 0 };
@@ -1185,6 +1244,8 @@ static ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_vari
         strcpy((char*)v->data, (char*)text);
     }
 
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: The variable calculation process is fully completed (waf_spend).");
     return NGX_OK;
 }
 
