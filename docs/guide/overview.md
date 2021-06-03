@@ -32,12 +32,6 @@ Handy, High performance Nginx firewall module.
 * Block the specified Referer.
 
 
-::: tip NOTE
-
-The feature `Anti XSSS` is currently only available in the development version.
-
-:::
-
 ## Contact
 
 * Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)

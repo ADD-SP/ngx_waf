@@ -28,13 +28,6 @@ lang: zh-CN
 * Cookie 黑名单。
 * Referer 黑白名单。
 
-
-::: tip 注意
-
-xss 攻击防护功能目前仅开发版可用。
-
-:::
-
 ## 联系方式
 
 * Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)

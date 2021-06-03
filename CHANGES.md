@@ -4,16 +4,32 @@
 
 ### Added
 
-* Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
-
 ### Removed
-
 
 ### Changed
 
+### Fixed
+
+
+***
+
+## [5.4.0] - 2021-06-03 UTC+0800
+
+### **NOTE**
+
+**The clone link for `libinjection` has been replaced in this release. The new link is [https://github.com/libinjection/libinjection.git](https://github.com/libinjection/libinjection.git).**
+
+### Added
+
+* Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
+
+### Changed
+
+* Add debug log related to built-in variable calculation.
 
 ### Fixed
 
+* POST inspection is not working.
 
 ***
 
