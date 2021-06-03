@@ -10,6 +10,7 @@
 
 ### Fixed
 
+* The value of a built-in variable may be wrong when the directive `error_page` is used.
 
 ***
 

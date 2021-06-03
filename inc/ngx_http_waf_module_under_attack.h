@@ -348,7 +348,8 @@ static void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r) {
             (char*)uri);
     ngx_pfree(r->pool, uri);
 
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     ctx->blocked = NGX_HTTP_WAF_TRUE;
     strcpy((char*)ctx->rule_type, "UNDER-ATTACK");
     ctx->rule_deatils[0] = '\0';

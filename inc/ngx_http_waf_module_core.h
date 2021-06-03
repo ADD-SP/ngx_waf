@@ -75,6 +75,9 @@ static void ngx_http_waf_eliminate_inspection_cache(ngx_http_request_t* r);
 */
 static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc);
 
+
+static void ngx_http_waf_handler_cleanup(void *data);
+
 /**
  * @}
 */

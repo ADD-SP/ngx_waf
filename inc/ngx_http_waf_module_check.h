@@ -26,6 +26,8 @@
 
 extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
+static void ngx_http_waf_handler_cleanup(void *data);
+
 /**
  * @defgroup check 规则匹配模块
  * @brief 检查诸如 IP，URL 等是否命中规则。
@@ -928,9 +930,18 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
 
 static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_srv_conf_t** srv_conf, ngx_http_waf_ctx_t** ctx) {
     if (ctx != NULL) {
+        *ctx = NULL;
         *ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+        if (*ctx == NULL) {
+            ngx_http_cleanup_t* cln = NULL;
+            for (cln = r->cleanup; cln != NULL; cln = cln->next) {
+                if (cln->handler == ngx_http_waf_handler_cleanup) {
+                    *ctx = cln->data;
+                }
+            }
+        }
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: The module context has been obtained.");
+            "ngx_waf_debug: The module context has been obtained.");
     }
     
     if (srv_conf != NULL) {
@@ -950,8 +961,9 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         int check_xss) {
     static char s_no_memory[] = "No Memory";
 
-    ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
     ngx_int_t cache_hit = NGX_HTTP_WAF_FAIL;
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     u_char* rule_detail = NULL;

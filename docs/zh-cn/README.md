@@ -1,6 +1,6 @@
 ---
 home: true
-heroImage: hhttps://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/assets/logo.png
+heroImage: https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/assets/logo.png
 heroText: ngx_waf
 tagline: 方便且高性能的 Nginx 防火墙模块。
 actionText: 快速上手 →
