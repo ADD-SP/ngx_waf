@@ -900,13 +900,15 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
         }
     }
 
-    ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
+    if (ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                             &body_str, 
                                             srv_conf->black_post, 
                                             (u_char*)"BLACK-POST", 
                                             NULL, 
                                             NGX_HTTP_WAF_TRUE,
-                                            NGX_HTTP_WAF_TRUE);
+                                            NGX_HTTP_WAF_TRUE) == NGX_HTTP_WAF_MATCHED) {
+        ctx->blocked = NGX_HTTP_WAF_TRUE;
+    }
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection is over.");
