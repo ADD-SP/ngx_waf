@@ -5,40 +5,11 @@ lang: zh-CN
 
 # 常见问题与解答
 
-## ./configure: error: the ngx_http_waf_module module requires the uthash library.
-
-本模块需要使用 `uthash`库，您可以通过包管理器安装 `uthash` 相关的库。
-
-### Ubuntu 和 Debian
-
-```sh
-sudo apt-get update
-sudo apt-get install uthash-dev
-```
-
-### Centos8
-
-```sh
-dnf --enablerepo=PowerTools install uthash-devel
-```
-
-### Alpine
-
-```sh
-apk update
-apk add --upgrade uthash-dev
-```
-
-### 其它
-
-参见 [https://pkgs.org/download/uthash-devel](https://pkgs.org/download/uthash-devel) 和 
-[https://pkgs.org/download/uthash-dev](https://pkgs.org/download/uthash-dev)。
-
 ## 本模块的性能如何？
 
 IP 检查和 CC 防御花费常数时间，其它的检查花费 `O(nm)` 的时间，其中 `n` 是相关规则的条数，`m` 为执行正则匹配的时间复杂度，但是每次检查过后会自动缓存本次检查的结果，下次检查相同的目标时就可以使用缓存而不是检查全部的规则。不会缓存 POST 请求体的检查结果。
 
-## 缓存的淘汰策略
+## 缓存策略
 
 LRU
 
@@ -50,11 +21,8 @@ LRU
 ```nginx
 http {
     ...
-    # 设置 Post 请求体缓冲区大小
-    client_body_buffer_size: 10M;
-
-    # 永远将请求体存放在内存中
-    client_body_in_file_only: off;
+    client_body_buffer_size 10M;
+    client_body_in_file_only off;
     ...
 }
 ```

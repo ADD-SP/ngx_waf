@@ -108,6 +108,7 @@ tar -zxf nginx-1.20.1.tar.gz
 
 ```sh
 cd /usr/local/src
+# 如果你想使用开发版的模块请将 -b master 替换为 -b dev。
 git clone -b master https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
 git clone https://github.com/libinjection/libinjection.git inc/libinjection

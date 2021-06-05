@@ -23,7 +23,6 @@ http {
         waf on;
 
         # The absolute path to the directory where the rule file is located, must end with /.
-        # If you are using the stable version, replace the path with /usr/local/src/ngx_waf/rules/
         waf_rule_path /usr/local/src/ngx_waf/assets/rules/;
 
         # Firewall working mode, STD indicates standard mode.

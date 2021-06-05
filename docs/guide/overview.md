@@ -40,3 +40,13 @@ Handy, High performance Nginx firewall module.
 ## Performance Test
 
 [Performance Test](test.md#performance-test)
+
+## Thanks
+
+* [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
+* [libinjection](https://github.com/libinjection/libinjection): SQL / SQLI tokenizer parser analyzer.
+* [libsodium](https://github.com/jedisct1/libsodium): A modern, portable, easy to use crypto library.
+* [lastversion](https://github.com/dvershinin/lastversion): A command line tool that helps you download or install a specific version of a project.
+* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): A web application firewall based on the lua-nginx-module (openresty).
+* [nginx-book](https://github.com/taobao/nginx-book): The Chinese language development guide for nginx.
+* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): The Chinese language development guide for nginx.
