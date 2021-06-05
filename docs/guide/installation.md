@@ -99,6 +99,7 @@ Then download the source code of this module, the following will use the stable 
 
 ```sh
 cd /usr/local/src
+# If you want to use the development version please replace '-b master' with '-b dev'.
 git clone -b master https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
 git clone https://github.com/libinjection/libinjection.git inc/libinjection
