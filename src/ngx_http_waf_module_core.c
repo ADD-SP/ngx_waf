@@ -403,7 +403,13 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
             http_status = ngx_http_read_client_request_body(r, ngx_http_waf_handler_check_black_post);
             if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
-                http_status = NGX_DONE;
+                r->main->count--;
+                if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
+                    http_status = srv_conf->waf_http_status;
+                } else {
+                    http_status = NGX_DECLINED;
+                }
+                // http_status = NGX_DONE;
             }
         }
     }
