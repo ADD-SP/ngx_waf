@@ -9,12 +9,6 @@ When writing `nginx.conf`, some variables are inevitably needed. For example, `$
 
 This module adds several available variables.
 
-::: warning KNOWN ISSUES
-
-The value of a built-in variable may be wrong when the directive `error_page` is used, see [Known Issues](issue.md) for details.
-
-:::
-
 ## `$waf_log`
 
 Not an empty string if the firewall is checked in this request, otherwise an empty string. This variable is mainly used in the directive `access_log`, see [Customised Log Format](log.md#customised-log-format).

@@ -15,6 +15,14 @@ lang: en
 
 ### Fixed
 
+* When POST inspection is enabled, POST requests are not logged in the access log.
+
+***
+
+## [5.4.1] - 2021-06-09 UTC+0800
+
+### Fixed
+
 * The value of built-in variables may be wrong when the directive `error_page` is used.
 
 ***
