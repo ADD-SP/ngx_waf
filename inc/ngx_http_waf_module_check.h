@@ -923,6 +923,7 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
         ngx_http_core_run_phases(r);
     } else {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
+        ngx_http_finalize_request(r, NGX_DONE);
         ngx_http_finalize_request(r, srv_conf->waf_http_status);
     }
 }
