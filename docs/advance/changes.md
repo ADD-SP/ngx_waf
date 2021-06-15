@@ -15,6 +15,12 @@ lang: en
 
 ### Fixed
 
+***
+
+## [5.4.2] - 2021-06-15 UTC+0800
+
+### Fixed
+
 * When POST inspection is enabled, POST requests are not logged in the access log.
 
 ***
