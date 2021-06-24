@@ -153,7 +153,7 @@ Please run:
             apk update && apk add libsodium libsodium-dev
     On other OS:
             # You can remove directories libsodium-src and libsodium after installing the ngx_http_waf_module.
-            git clone https://github.com/jedisct1/libsodium --branch stable libsodium-src \\
+            git clone https://github.com/jedisct1/libsodium.git --branch stable libsodium-src \\
         &&  cd libsodium-src \\
         &&  ./configure --prefix=$PWD/libsodium --with-pic \\
         &&  make -j\$(nproc) && make check -j \$(nproc) && make install \\
