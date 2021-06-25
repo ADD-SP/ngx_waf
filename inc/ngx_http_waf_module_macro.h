@@ -276,7 +276,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
-                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION)
+                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI)
 /**
  * @def MODE_STATIC
  * @brief 适用于静态站点的工作模式
@@ -305,7 +305,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
-                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION)
+                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI)
 
 
 /**
