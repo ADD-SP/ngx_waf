@@ -59,9 +59,9 @@ lang: zh-CN
 * COMPAT：兼容模式，用来启用一些兼容性选项去兼容其它的模块或者环境，目前用于兼容 ngx_http_rewrite_module，详见[兼容性说明](/zh-cn/guide/compatibility.md)。
 * STRICT：严格模式，牺牲一些性能进行更多的检查，目前仅在启用了 `COMPAT` 模式时生效，在 ngx_http_rewrite_module 生效前和生效后都进行一轮完整的检查。
 * CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache](#waf-cache)。
-* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE LIB-INJECTION`。
+* STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC COMPAT CACHE LIB-INJECTION-SQLI`。
 * STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC CACHE`。
-* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE LIB-INJECTION`。
+* DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC COMPAT CACHE LIB-INJECTION-SQLI`。
 * FULL: 启用所有的模式。
 
 您可以通过在某个 `mode_type` 前增加 `!` 前缀来关闭该模式，下面是一个例子。

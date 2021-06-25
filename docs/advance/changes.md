@@ -17,6 +17,14 @@ lang: en
 
 ***
 
+## [5.5.0] - 2021-06-25 UTC+0800
+
+### Changed
+
+* Because of high false positives, [libinjection](https://github.com/libinjection/libinjection)-based XSS attack detection has been disabled in working modes `STD` and `DYNAMIC`.
+
+***
+
 ## [5.4.2] - 2021-06-15 UTC+0800
 
 ### Fixed
