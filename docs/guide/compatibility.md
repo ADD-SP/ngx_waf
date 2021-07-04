@@ -6,13 +6,13 @@ lang: en
 
 # Compatibility Statement
 
-## Platform Compatibility
+## OS Compatibility
 
-This module does not provide compatibility support for Windows platforms.
+Compatibility with operating systems other than Linux is not guaranteed.
 
 ## Nginx Compatibility
 
-This module currently supports `nginx-1.18.0` or newer.
+This module only guarantees compatibility with `nginx-1.18.0` or newer versions.
 
 ## Module Compatibility
 

@@ -180,6 +180,15 @@ Set the priority of each inspection process, except for POST detection, which al
 :::
 
 
+::: tip CHANGES IN THE DEVELOPMENT VERSION
+
+The default value is changed to W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
+
+`ADV` is advanced rules.
+
+:::
+
+
 ## `waf_http_status`
 
 * syntax: waf_http_status \[general=*http_status_code*\] \[cc_deny=*http_status_code*]
