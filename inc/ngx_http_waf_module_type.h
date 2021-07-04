@@ -4,6 +4,7 @@
 */
 
 #include <uthash.h>
+#include <utarray.h>
 #include <utlist.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -73,6 +74,53 @@ typedef enum {
     gernal_pool,    /**< ngx_pool_t */
     slab_pool       /**< ngx_slab_pool_t */
 } mem_pool_type_e;
+
+
+typedef enum {
+    VM_CODE_NOP,
+    VM_CODE_PUSH_IP,
+    VM_CODE_PUSH_INT,
+    VM_CODE_PUSH_STR,
+    VM_CODE_PUSH_REGEXP,
+    VM_CODE_PUSH_CLIENT_IP,
+    VM_CODE_PUSH_URL, 
+    VM_CODE_PUSH_QUERY_STRING,
+    VM_CODE_PUSH_REFERER,
+    VM_CODE_PUSH_USER_AGENT,
+    VM_CODE_PUSH_HEADER_IN,
+    VM_CODE_PUSH_COOKIE,
+    VM_CODE_POP, 
+    VM_CODE_TOP, 
+    VM_CODE_OP_NOT,
+    VM_CODE_OP_AND,
+    VM_CODE_OP_OR,
+    VM_CODE_OP_CONTAINS, 
+    VM_CODE_OP_MATCHES, 
+    VM_CODE_OP_EQUALS, 
+    VM_CODE_OP_BELONG_TO,
+    VM_CODE_OP_SQLI_DETN,
+    VM_CODE_OP_XSS_DETN,
+    VM_CODE_ACT_RETURN,
+    VM_CODE_ACT_ALLOW
+} vm_code_type_e;
+
+
+typedef enum {
+    VM_DATA_VOID,
+    VM_DATA_STR,
+    VM_DATA_INT,
+    VM_DATA_BOOL,
+    VM_DATA_REGEXP,
+    VM_DATA_IPV4,
+    VM_DATA_IPV6
+} vm_data_type_e;
+
+
+typedef struct key_value_s {
+    ngx_str_t key;
+    ngx_str_t value;
+    UT_hash_handle  hh;
+} key_value_t;
 
 
 /**
@@ -223,6 +271,7 @@ typedef struct ngx_http_waf_srv_conf_s {
     ip_trie_t                       white_ipv6;                                 /**< IPV6 白名单 */
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
+    UT_array                        advanced_rule;
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
     ip_trie_t                      *ipv4_access_statistics;                     /**< IP 访问频率统计表 */
     ip_trie_t                      *ipv6_access_statistics;                     /**< IP 访问频率统计表 */
@@ -247,8 +296,8 @@ typedef struct ngx_http_waf_srv_conf_s {
 typedef struct ipv4_s {
     u_char                          text[32];       /**< 点分十进制表示法 */
     uint32_t                        prefix;         /**< 相当于 192.168.1.0/24 中的 192.168.1.0 的整数形式 */
-    uint32_t                        suffix;         /**< 相当于 192.168.1.0/24 中的 24 */
-    uint32_t                        suffix_num;
+    uint32_t                        suffix;         /**< 相当于 192.168.1.0/24 中的 24 的位表示（网络字节序） */
+    uint32_t                        suffix_num;     /**< 相当于 192.168.1.0/24 中的 24 */
 } ipv4_t;
 
 
@@ -261,8 +310,30 @@ typedef struct ipv4_s {
 typedef struct ipv6_s {
     u_char                          text[64];       /**< 冒号十六进制表示法 */
     uint8_t                         prefix[16];     /**< 相当于 ffff::ffff/64 中的 ffff::ffff 的整数形式 */
-    uint8_t                         suffix[16];     /**< 相当于 ffff::ffff/64 中的 64 */
-    uint32_t                        suffix_num;
+    uint8_t                         suffix[16];     /**< 相当于 ffff::ffff/64 中的 64 的位表示（网络字节序） */
+    uint32_t                        suffix_num;     /**< 相当于 ffff::ffff/64 中的 64 */
 } ipv6_t;
+
+
+typedef struct vm_stack_item_s {
+    vm_data_type_e type[4];
+    size_t argc;
+    union {
+        int int_val;
+        ngx_str_t str_val;
+        uint8_t bool_val;
+        ngx_regex_elt_t regexp_val;
+        ipv4_t ipv4_val;
+        ipv6_t ipv6_val;
+        inx_addr_t inx_addr_val;
+    } value[4];
+    struct vm_stack_item_s *utstack_handle;
+} vm_stack_item_t;
+
+
+typedef struct vm_code_s {
+    vm_code_type_e type;
+    struct vm_stack_item_s argv;
+} vm_code_t;
 
 #endif // !NGX_HTTP_WAF_MODULE_TYPE_H

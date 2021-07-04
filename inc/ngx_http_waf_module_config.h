@@ -18,12 +18,17 @@
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
 #include <ngx_http_waf_module_under_attack.h>
+#include <ngx_http_waf_module_parser.tab.h>
+#include <ngx_http_waf_module_lexer.h>
+#include <ngx_http_waf_module_vm.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
 
 extern ngx_module_t ngx_http_waf_module;
+
+extern FILE* ngx_http_waf_in;
 
 
 static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r);
@@ -200,18 +205,20 @@ static char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     char* full_path = ngx_palloc(cf->pool, sizeof(char) * NGX_HTTP_WAF_RULE_MAX_LEN);
     char* end = to_c_str((u_char*)full_path, srv_conf->waf_rule_path);
 
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_IPV4_FILE, &srv_conf->black_ipv4, 1);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_IPV6_FILE, &srv_conf->black_ipv6, 2);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_URL_FILE, srv_conf->black_url, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_ARGS_FILE, srv_conf->black_args, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_UA_FILE, srv_conf->black_ua, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_REFERER_FILE, srv_conf->black_referer, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_COOKIE_FILE, srv_conf->black_cookie, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_POST_FILE, srv_conf->black_post, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV4_FILE, &srv_conf->white_ipv4, 1);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV6_FILE, &srv_conf->white_ipv6, 2);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, srv_conf->white_url, 0);
-    NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, srv_conf->white_referer, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV4_FILE, &srv_conf->black_ipv4, 1);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV6_FILE, &srv_conf->black_ipv6, 2);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_URL_FILE, srv_conf->black_url, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ARGS_FILE, srv_conf->black_args, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_UA_FILE, srv_conf->black_ua, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_REFERER_FILE, srv_conf->black_referer, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_COOKIE_FILE, srv_conf->black_cookie, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_POST_FILE, srv_conf->black_post, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV4_FILE, &srv_conf->white_ipv4, 1);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV6_FILE, &srv_conf->white_ipv6, 2);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, srv_conf->white_url, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, srv_conf->white_referer, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ADVANCED_FILE, &(srv_conf->advanced_rule), 3);
+    
 
     ngx_pfree(cf->pool, full_path);
     return NGX_CONF_OK;
@@ -826,7 +833,7 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
     }
 
 
-    if (utarray_len(array) != 11) {
+    if (utarray_len(array) != 12) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: you must specify the priority of all inspections except for POST inspections");
         return NGX_CONF_ERROR;
@@ -887,6 +894,11 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
         else if (strcasecmp("UNDER-ATTACK", (char*)(p->data)) == 0) {
             srv_conf->check_proc[proc_index++] = ngx_http_waf_check_under_attack;
             srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_check_under_attack;
+        }
+
+        else if (strcasecmp("ADV", (char*)(p->data)) == 0) {
+            srv_conf->check_proc[proc_index++] = ngx_http_waf_vm_exec;
+            srv_conf->check_proc_no_cc[proc_no_cc_index++] = ngx_http_waf_vm_exec;
         }
 
         else {
@@ -984,6 +996,8 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->black_post = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
     srv_conf->white_referer = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
+    UT_icd icd = ngx_http_waf_make_utarray_vm_code_icd();
+    utarray_init(&(srv_conf->advanced_rule), &icd);
     srv_conf->shm_zone_cc_deny = NULL;
     srv_conf->ipv4_access_statistics = NULL;
     srv_conf->ipv6_access_statistics = NULL;
@@ -1002,6 +1016,7 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->check_proc[8] = ngx_http_waf_handler_check_white_referer;
     srv_conf->check_proc[9] = ngx_http_waf_handler_check_black_referer;
     srv_conf->check_proc[10] = ngx_http_waf_handler_check_black_cookie;
+    srv_conf->check_proc[11] = ngx_http_waf_vm_exec;
 
 
     ngx_memzero(srv_conf->check_proc_no_cc, sizeof(srv_conf->check_proc_no_cc));
@@ -1015,6 +1030,8 @@ static void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf) {
     srv_conf->check_proc_no_cc[7] = ngx_http_waf_handler_check_white_referer;
     srv_conf->check_proc_no_cc[8] = ngx_http_waf_handler_check_black_referer;
     srv_conf->check_proc_no_cc[9] = ngx_http_waf_handler_check_black_cookie;
+    srv_conf->check_proc_no_cc[10] = ngx_http_waf_vm_exec;
+
 
 
     if (ip_trie_init(&(srv_conf->white_ipv4), std, NULL, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
@@ -1338,107 +1355,118 @@ static ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void
     if (fp == NULL) {
         return NGX_HTTP_WAF_FAIL;
     }
-    while (fgets(str, NGX_HTTP_WAF_RULE_MAX_LEN - 16, fp) != NULL) {
-        ngx_regex_compile_t   regex_compile;
-        u_char                errstr[NGX_MAX_CONF_ERRSTR];
-        ngx_regex_elt_t* ngx_regex_elt;
-        ipv4_t ipv4;
-        inx_addr_t inx_addr;
-        ipv6_t ipv6;
-        ip_trie_node_t* ip_trie_node = NULL;
-        ++line_number;
-        line.data = (u_char*)str;
-        #ifdef __STDC_LIB_EXT1__
-            line.len = strnlen_s((char*)str. sizeof(char) * NGX_HTTP_WAF_RULE_MAX_LEN);
-        #else
-           line.len = strlen((char*)str);
-        #endif
 
-        memset(&ipv4, 0, sizeof(ipv4_t));
-        memset(&inx_addr, 0, sizeof(inx_addr_t));
-        memset(&ipv6, 0, sizeof(ipv6_t));
-
-        if (line.len <= 0) {
-            continue;
+    if (mode == 3) {
+        ngx_http_waf_in = fp;
+        if (ngx_http_waf_parse(container, cf->pool) != 0) {
+            return NGX_HTTP_WAF_FAIL;
         }
+        print_code(container);
+    } else {
+        while (fgets(str, NGX_HTTP_WAF_RULE_MAX_LEN - 16, fp) != NULL) {
+            ngx_regex_compile_t   regex_compile;
+            u_char                errstr[NGX_MAX_CONF_ERRSTR];
+            ngx_regex_elt_t* ngx_regex_elt;
+            ipv4_t ipv4;
+            inx_addr_t inx_addr;
+            ipv6_t ipv6;
+            ip_trie_node_t* ip_trie_node = NULL;
+            ++line_number;
+            line.data = (u_char*)str;
+            #ifdef __STDC_LIB_EXT1__
+                line.len = strnlen_s((char*)str. sizeof(char) * NGX_HTTP_WAF_RULE_MAX_LEN);
+            #else
+            line.len = strlen((char*)str);
+            #endif
 
-        if (line.data[line.len - 1] == '\n') {
-            line.data[line.len - 1] = '\0';
-            --(line.len);
+            memset(&ipv4, 0, sizeof(ipv4_t));
+            memset(&inx_addr, 0, sizeof(inx_addr_t));
+            memset(&ipv6, 0, sizeof(ipv6_t));
+
             if (line.len <= 0) {
                 continue;
             }
-            if (line.data[line.len - 1] == '\r') {
+
+            if (line.data[line.len - 1] == '\n') {
                 line.data[line.len - 1] = '\0';
                 --(line.len);
-            }
-        }
-
-        if (line.len <= 0) {
-            continue;
-        }
-
-        switch (mode) {
-        case 0:
-            ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
-            regex_compile.pattern = line;
-            regex_compile.pool = cf->pool;
-            regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
-            regex_compile.err.data = errstr;
-            if (ngx_regex_compile(&regex_compile) != NGX_OK) {
-                char temp[NGX_HTTP_WAF_RULE_MAX_LEN] = { 0 };
-                to_c_str((u_char*)temp, line);
-                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                    "ngx_waf: In %s:%d, [%s] is not a valid regex string.", file_name, line_number, temp);
-                return NGX_HTTP_WAF_FAIL;
-            }
-            ngx_regex_elt = ngx_array_push((ngx_array_t*)container);
-            ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * NGX_HTTP_WAF_RULE_MAX_LEN);
-            to_c_str(ngx_regex_elt->name, line);
-            ngx_regex_elt->regex = regex_compile.regex;
-            break;
-        case 1:
-            if (parse_ipv4(line, &ipv4) != NGX_HTTP_WAF_SUCCESS) {
-                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                    "ngx_waf: In %s:%d, [%s] is not a valid IPV4 string.", file_name, line_number, ipv4.text);
-                return NGX_HTTP_WAF_FAIL;
-            }
-            inx_addr.ipv4.s_addr = ipv4.prefix;
-            if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv4.suffix_num, ipv4.text, 32) != NGX_HTTP_WAF_SUCCESS) {
-                if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
-                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In %s:%d, the two address blocks [%s] and [%s] have overlapping parts.", 
-                        file_name, line_number, ipv4.text, ip_trie_node->data);
-                } else {
-                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In %s:%d, [%s] cannot be stored because the memory allocation failed.", 
-                        file_name, line_number, ipv4.text);
-                        return NGX_HTTP_WAF_FAIL;
+                if (line.len <= 0) {
+                    continue;
+                }
+                if (line.data[line.len - 1] == '\r') {
+                    line.data[line.len - 1] = '\0';
+                    --(line.len);
                 }
             }
-            break;
-        case 2:
-            if (parse_ipv6(line, &ipv6) != NGX_HTTP_WAF_SUCCESS) {
-                ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                    "ngx_waf: In %s:%d, [%s] is not a valid IPV6 string.", file_name, line_number, ipv6.text);
-                return NGX_HTTP_WAF_FAIL;
+
+            if (line.len <= 0) {
+                continue;
             }
-            ngx_memcpy(inx_addr.ipv6.s6_addr, ipv6.prefix, 16);
-            if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text, 64) != NGX_HTTP_WAF_SUCCESS) {
-                if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+
+            switch (mode) {
+            case 0:
+                ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
+                regex_compile.pattern = line;
+                regex_compile.pool = cf->pool;
+                regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
+                regex_compile.err.data = errstr;
+                if (ngx_regex_compile(&regex_compile) != NGX_OK) {
+                    char temp[NGX_HTTP_WAF_RULE_MAX_LEN] = { 0 };
+                    to_c_str((u_char*)temp, line);
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In %s:%d, the two address blocks [%s] and [%s] have overlapping parts.", 
-                        file_name, line_number, ipv6.text, ip_trie_node->data);
-                } else {
-                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
-                        "ngx_waf: In %s:%d, [%s] cannot be stored because the memory allocation failed.", 
-                        file_name, line_number, ipv6.text);
-                        return NGX_HTTP_WAF_FAIL;
+                        "ngx_waf: In %s:%d, [%s] is not a valid regex string.", file_name, line_number, temp);
+                    return NGX_HTTP_WAF_FAIL;
                 }
+                ngx_regex_elt = ngx_array_push((ngx_array_t*)container);
+                ngx_regex_elt->name = ngx_palloc(cf->pool, sizeof(u_char) * NGX_HTTP_WAF_RULE_MAX_LEN);
+                to_c_str(ngx_regex_elt->name, line);
+                ngx_regex_elt->regex = regex_compile.regex;
+                break;
+            case 1:
+                if (parse_ipv4(line, &ipv4) != NGX_HTTP_WAF_SUCCESS) {
+                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                        "ngx_waf: In %s:%d, [%s] is not a valid IPV4 string.", file_name, line_number, ipv4.text);
+                    return NGX_HTTP_WAF_FAIL;
+                }
+                inx_addr.ipv4.s_addr = ipv4.prefix;
+                if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv4.suffix_num, ipv4.text, 32) != NGX_HTTP_WAF_SUCCESS) {
+                    if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+                        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                            "ngx_waf: In %s:%d, the two address blocks [%s] and [%s] have overlapping parts.", 
+                            file_name, line_number, ipv4.text, ip_trie_node->data);
+                    } else {
+                        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                            "ngx_waf: In %s:%d, [%s] cannot be stored because the memory allocation failed.", 
+                            file_name, line_number, ipv4.text);
+                            return NGX_HTTP_WAF_FAIL;
+                    }
+                }
+                break;
+            case 2:
+                if (parse_ipv6(line, &ipv6) != NGX_HTTP_WAF_SUCCESS) {
+                    ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                        "ngx_waf: In %s:%d, [%s] is not a valid IPV6 string.", file_name, line_number, ipv6.text);
+                    return NGX_HTTP_WAF_FAIL;
+                }
+                ngx_memcpy(inx_addr.ipv6.s6_addr, ipv6.prefix, 16);
+                if (ip_trie_add((ip_trie_t*)container, &inx_addr, ipv6.suffix_num, ipv6.text, 64) != NGX_HTTP_WAF_SUCCESS) {
+                    if (ip_trie_find((ip_trie_t*)container, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+                        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                            "ngx_waf: In %s:%d, the two address blocks [%s] and [%s] have overlapping parts.", 
+                            file_name, line_number, ipv6.text, ip_trie_node->data);
+                    } else {
+                        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
+                            "ngx_waf: In %s:%d, [%s] cannot be stored because the memory allocation failed.", 
+                            file_name, line_number, ipv6.text);
+                            return NGX_HTTP_WAF_FAIL;
+                    }
+                }
+                break;
             }
-            break;
         }
     }
+
+    
     fclose(fp);
     ngx_pfree(cf->pool, str);
     return NGX_HTTP_WAF_SUCCESS;
