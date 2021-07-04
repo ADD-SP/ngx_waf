@@ -1,6 +1,9 @@
 module.exports = {
     base: process.env.docsBaseUrl == undefined ? "/" : process.env.docsBaseUrl,
     plugins: ['fulltext-search'],
+    head: [
+        ['link', { rel: 'icon', href: 'https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/assets/logo.png' }]
+    ],
     locales: {
         '/': {
             lang: "en",
@@ -49,6 +52,7 @@ module.exports = {
                             "/advance/priority.md",
                             "/advance/variable.md",
                             "/advance/log.md",
+                            "/advance/upgrade.md",
                             "/advance/issue.md",
                             "/advance/changes.md"
                         ]
@@ -57,7 +61,6 @@ module.exports = {
                         title: "TODO (Advice Needed)",
                         path: "/todo/overview.html",
                         children: [
-                            "/todo/advanced-rule.md",
                         ]
                     }
                 ]
@@ -90,6 +93,7 @@ module.exports = {
                             "/zh-cn/advance/priority.md",
                             "/zh-cn/advance/variable.md",
                             "/zh-cn/advance/log.md",
+                            "/zh-cn/advance/upgrade.md",
                             "/zh-cn/advance/issue.md",
                             "/zh-cn/advance/changes.md"
                         ]
@@ -98,7 +102,6 @@ module.exports = {
                         title: "开发计划（建议征集）",
                         path: "/zh-cn/todo/overview.html",
                         children: [
-                            "/zh-cn/todo/advanced-rule.md",
                         ]
                     }
                 ]

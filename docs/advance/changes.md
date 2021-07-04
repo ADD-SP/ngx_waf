@@ -7,11 +7,27 @@ lang: en
 
 ## [Unreleased]
 
+### NOTE
+
+* **This release contains some breaking changes.**
+
+* Advanced rules have a high performance cost because the principle is to compile the rules into a series of instructions that are then executed by the VM.
+
+### Upgrade from 5.x.x to 6.x.x
+
+1. Create a new empty file named `advanced` in the rules directory.
+
+2. If the directive `waf_priority` is used, you can delete it or modify it according to the directive in the documentation.
+
 ### Added
+
+* Advanced rules are supported, see the documentation for details.
 
 ### Removed
 
 ### Changed
+
+* Updated the directive `waf_priority`, see the documentation for details.
 
 ### Fixed
 

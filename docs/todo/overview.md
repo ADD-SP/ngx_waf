@@ -10,5 +10,3 @@ This page will list the development plan of the project, including but not limit
 **Look forward to your feedbacks and suggestions soon!**
 
 ## List
-
-* [Advanced rule](advanced-rule.md)

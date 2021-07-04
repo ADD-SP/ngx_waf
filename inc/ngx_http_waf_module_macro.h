@@ -19,6 +19,7 @@
 #define NGX_HTTP_WAF_WHITE_IPV6_FILE         ("white-ipv6")
 #define NGX_HTTP_WAF_WHITE_URL_FILE          ("white-url")
 #define NGX_HTTP_WAF_WHITE_REFERER_FILE      ("white-referer")
+#define NGX_HTTP_WAF_ADVANCED_FILE           ("advanced")
 
 
 #define NGX_HTTP_WAF_FALSE                   (0)
@@ -341,7 +342,7 @@
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */
 /** 
- * @def NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, folder, end, filename, container, mode)
+ * @def ngx_http_waf_check_and_load_conf(cf, folder, end, filename, container, mode)
  * @brief 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中。
  * @param[in] folder 配置文件所在文件夹的绝对路径。
  * @param[in] end folder 字符数组的 '\0' 的地址。
@@ -350,7 +351,7 @@
  * @param[in] mode 配置读取模式。
  * @warning 当文件不存在的时候会直接执行 @code return  NGX_CONF_ERROR; @endcode 语句。
 */
-#define NGX_HTTP_WAF_CHECK_AND_LOAD_CONF(cf, folder, end, filename, container, mode) {                          \
+#define ngx_http_waf_check_and_load_conf(cf, folder, end, filename, container, mode) {                          \
     strcat((folder), (filename));                                                                               \
     if (access((folder), R_OK) != 0) {                                                                          \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
@@ -364,27 +365,33 @@
 }
 
 /**
- * @def NGX_HTTP_WAF_CHECK_FLAG(origin, flag)
+ * @def ngx_http_waf_check_flag(origin, flag)
  * @brief 检查 flag 是否存在于 origin 中，即位操作。
  * @return 存在则返回 NGX_HTTP_WAF_TRUE，反之返回 NGX_HTTP_WAF_FALSE。
  * @retval NGX_HTTP_WAF_TRUE 存在。
  * @retval NGX_HTTP_WAF_FALSE 不存在。
 */
-#define NGX_HTTP_WAF_CHECK_FLAG(origin, flag) (((origin) & (flag)) == (flag) ? NGX_HTTP_WAF_TRUE : NGX_HTTP_WAF_FALSE)
+#define ngx_http_waf_check_flag(origin, flag) (((origin) & (flag)) == (flag) ? NGX_HTTP_WAF_TRUE : NGX_HTTP_WAF_FALSE)
 
 
 /**
- * @def NGX_HTTP_WAF_CHECK_BIT(origin, bit_index)
+ * @def ngx_http_waf_check_bit(origin, bit_index)
  * @brief 检查 origin 的某一位是否为 1。
  * @return 如果为一则返回 NGX_HTTP_WAF_TRUE，反之返回 NGX_HTTP_WAF_FALSE。
  * @retval NGX_HTTP_WAF_TRUE 被测试的位为一。
  * @retval NGX_HTTP_WAF_FALSE 被测试的位为零。
  * @note bit_index 从 0 开始计数，其中 0 代表最低位。
 */
-#define NGX_HTTP_WAF_CHECK_BIT(origin, bit_index) (NGX_HTTP_WAF_CHECK_FLAG((origin), 1 << (bit_index)))
+#define ngx_http_waf_check_bit(origin, bit_index) (ngx_http_waf_check_flag((origin), 1 << (bit_index)))
 
 
-#define NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD() { sizeof(ngx_str_t), NULL, utarray_ngx_str_ctor, utarray_ngx_str_dtor }
+#define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, utarray_ngx_str_ctor, utarray_ngx_str_dtor }
+
+#define ngx_http_waf_make_utarray_vm_code_icd() { sizeof(vm_code_t), NULL, utarray_vm_code_ctor, utarray_vm_code_dtor }
+
+#define ngx_strdup(s) ((u_char*)strdup((char*)(s)));
+
+#define ngx_strcpy(d, s) (strcpy((char*)d, (const char*)s))
 
 
 #endif // !NGX_HTTP_WAF_MODULE_MACRO_H

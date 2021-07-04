@@ -20,7 +20,8 @@ lang: zh-CN
 9. Referer 白名单检测
 10. Referer 黑名单检测
 11. Cookie 黑名单检测
-12. Post 请求体黑名单
+12. 高级规则（仅开发版）
+13. Post 请求体黑名单
 
 
 ::: tip 修改优先级

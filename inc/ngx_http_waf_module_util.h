@@ -68,6 +68,26 @@ static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array);
 
 
 /**
+ * @brief 将一个 Query String 字符串解析为哈希表
+ * @param[in] native_query_string 字符串形式的 Cookie
+ * @param[out] hash_head 保存解析结果的哈希表
+ * @return 成功则返回 SUCCESS，反之则不是。
+ * @warning 使用完毕后请自行释放数组所占用内存。
+*/
+static ngx_int_t parse_query_string(ngx_str_t* native_query_string, key_value_t** hash_head);
+
+
+/**
+ * @brief 将一个 Header 列表解析为哈希表
+ * @param[in] native_header Header 列表
+ * @param[out] hash_head 保存解析结果的哈希表
+ * @return 成功则返回 SUCCESS，反之则不是。
+ * @warning 使用完毕后请自行释放数组所占用内存。
+*/
+static ngx_int_t parse_header(ngx_list_t* native_header, key_value_t** hash_head);
+
+
+/**
  * @brief 字符串分割
  * @param[in] str 要分割的字符串
  * @param[in] sep 分隔符
@@ -77,6 +97,12 @@ static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array);
  * @warning 使用完毕后请自行释放数组所占用内存。
 */ 
 static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array);
+
+
+static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
+
+
+static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
 
 
 /**
@@ -122,10 +148,16 @@ static ngx_int_t rand_str(u_char* dest, size_t len);
 static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len);
 
 
-void utarray_ngx_str_ctor(void *dst, const void *src);
+static void utarray_ngx_str_ctor(void *dst, const void *src);
 
 
-void utarray_ngx_str_dtor(void* elt);
+static void utarray_ngx_str_dtor(void* elt);
+
+
+static void utarray_vm_code_ctor(void *dst, const void *src);
+
+
+static void utarray_vm_code_dtor(void* elt);
 
 
 /**
@@ -185,16 +217,14 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     suffix_num = suffix;
 
     uint8_t temp_suffix[4] = { 0 };
-    int i;
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         uint8_t temp = 0;
         if (suffix >= 8) {
             suffix -=8;
             temp = ~0;
         } 
         else {
-            uint32_t j;
-            for (j = 0; j < suffix; j++) {
+            for (uint32_t j = 0; j < suffix; j++) {
                 temp |= 0x80 >> j;
             }
             suffix = 0;
@@ -203,7 +233,7 @@ static ngx_int_t parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     }
 
     suffix = 0;
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         suffix |= ((uint32_t)temp_suffix[i]) << (i * 8);
     }
 
@@ -268,16 +298,14 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     }
 
     suffix_num = temp_suffix;
-    int i;
-    for (i = 0; i < 16; i++) {
+    for (int i = 0; i < 16; i++) {
         uint8_t temp = 0;
         if (temp_suffix >= 8) {
             temp_suffix -=8;
             temp = ~0;
         } 
         else {
-            uint32_t j;
-            for (j = 0; j < temp_suffix; j++) {
+            for (uint32_t j = 0; j < temp_suffix; j++) {
                 temp |= 0x80 >> j;
             }
             temp_suffix = 0;
@@ -285,7 +313,7 @@ static ngx_int_t parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
         suffix[i] = temp;
     }
 
-    for (i = 0; i < 16; i++) {
+    for (int i = 0; i < 16; i++) {
         prefix[i] &= suffix[i];
     }
 
@@ -349,7 +377,7 @@ static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
+    UT_icd icd = ngx_http_waf_make_utarray_ngx_str_icd();
     utarray_new(*array, &icd);
 
     if (native_cookie == NULL) {
@@ -398,12 +426,124 @@ static ngx_int_t parse_cookie(ngx_str_t* native_cookie, UT_array** array) {
 }
 
 
+static ngx_int_t parse_query_string(ngx_str_t* native_query_string, key_value_t** hash_head) {
+    if (hash_head == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    if (native_query_string == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+
+    UT_array* kvs = NULL;
+
+    ngx_str_split(native_query_string, '&', native_query_string->len, &kvs);
+    ngx_str_t* p = NULL;
+
+    while (p = (ngx_str_t*)utarray_next(kvs, p), p != NULL) {
+        UT_array* key_and_value = NULL;
+        ngx_str_t temp;
+        temp.data = p->data;
+        temp.len = p->len;
+
+        ngx_str_split(&temp, '=', native_query_string->len, &key_and_value);
+
+        if (utarray_len(key_and_value) != 2) {
+            return NGX_HTTP_WAF_FAIL;
+        }
+
+        ngx_str_t* key = NULL;
+        ngx_str_t* value = NULL;
+
+
+        key = (ngx_str_t*)utarray_next(key_and_value, NULL);
+        value = (ngx_str_t*)utarray_next(key_and_value, key);
+
+        key_value_t* qs = malloc(sizeof(key_value_t));
+        ngx_memzero(qs, sizeof(key_value_t));
+        qs->key.data = ngx_strdup(key->data);
+        qs->key.len = key->len;
+        qs->value.data = ngx_strdup(value->data);
+        qs->value.len = value->len;
+
+        HASH_ADD_KEYPTR(hh, *hash_head, qs->key.data, qs->key.len * sizeof(u_char), qs);
+
+        utarray_free(key_and_value);
+    }
+
+    utarray_free(kvs);
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+static ngx_int_t parse_header(ngx_list_t* native_header, key_value_t** hash_head) {
+    if (native_header == NULL || hash_head == NULL) {
+        return NGX_HTTP_WAF_FALSE;
+    }
+
+    ngx_list_part_t* part = &(native_header->part);
+    ngx_table_elt_t* value = part->elts;
+
+    for (size_t i = 0; ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            value = part->elts;
+            i = 0;
+        }
+
+        key_value_t* temp = malloc(sizeof(key_value_t));
+        ngx_memzero(temp, sizeof(key_value_t));
+        temp->key.data = ngx_strdup(value[i].key.data);
+        temp->key.len = value[i].key.len;
+        ngx_strlow(temp->key.data, temp->key.data, temp->key.len);
+        temp->value.data = ngx_strdup(value[i].value.data);
+        temp->value.len = value[i].value.len;
+        HASH_ADD_KEYPTR(hh, *hash_head, temp->key.data, temp->key.len * sizeof(u_char), temp);
+
+    }
+
+    return NGX_HTTP_WAF_TRUE;
+}
+
+
+static ngx_int_t ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
+    size_t prefix = ip & ipv4->suffix;
+
+    if (prefix == ipv4->prefix) {
+        return NGX_HTTP_WAF_MATCHED;
+    }
+
+    return NGX_HTTP_WAF_NOT_MATCHED;
+}
+
+static ngx_int_t ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
+    uint8_t temp_ip[16];
+
+    memcpy(temp_ip, ip, 16);
+
+    for (int i = 0; i < 16; i++) {
+        temp_ip[i] &= ipv6->suffix[i];
+    }
+
+    if (memcmp(temp_ip, ipv6->prefix, sizeof(uint8_t) * 16) != 0) {
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    return NGX_HTTP_WAF_MATCHED;
+}
+
+
 static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array) {
     if (array == NULL) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
+    UT_icd icd = ngx_http_waf_make_utarray_ngx_str_icd();
     utarray_new(*array,&icd);
 
     if (str == NULL) {
@@ -449,7 +589,7 @@ static ngx_int_t ngx_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_ar
 //         return NGX_HTTP_WAF_FAIL;
 //     }
 
-//     UT_icd icd = NGX_HTTP_WAF_MAKE_UTARRAY_NGX_STR_ICD();
+//     UT_icd icd = ngx_http_waf_make_utarray_ngx_str_icd();
 
 //     utarray_new(*array,&icd);
 //     ngx_str_t temp_str;
@@ -546,6 +686,45 @@ void utarray_ngx_str_ctor(void *dst, const void *src) {
 void utarray_ngx_str_dtor(void* elt) {
     ngx_str_t* _elt = (ngx_str_t*)elt;
     free(_elt->data);
+}
+
+
+void utarray_vm_code_ctor(void *dst, const void *src) {
+    vm_code_t* _dst = (vm_code_t*)dst;
+    const vm_code_t* _src = (const vm_code_t*)src;
+    _dst->type = _src->type;
+    _dst->argv.argc = _src->argv.argc;
+    
+
+    for (size_t i = 0; i < _src->argv.argc; i++) {
+        _dst->argv.type[i] = _src->argv.type[i];
+
+        if (_src->argv.type[i] == VM_DATA_STR) {
+            size_t len = _src->argv.value[i].str_val.len;
+            _dst->argv.value[i].str_val.len = len;
+            _dst->argv.value[i].str_val.data = (u_char*)malloc(sizeof(u_char) * (len + 1));
+            ngx_memcpy(_dst->argv.value[i].str_val.data, _src->argv.value[i].str_val.data, sizeof(u_char) * len);
+            _dst->argv.value[i].str_val.data[len] = '\0';
+            _dst->argv.value[i].str_val.len = len;
+        } else {
+            ngx_memcpy(&(_dst->argv.value[i]), &(_src->argv.value[i]), sizeof(_src->argv.value[i]));
+        }
+    }
+}
+
+
+void utarray_vm_code_dtor(void* elt) {
+    vm_code_t* _elt = (vm_code_t*)elt;
+
+    for (size_t i = 0; i < _elt->argv.argc; i++) {
+        switch (_elt->argv.type[i]) {
+            case VM_DATA_STR:
+                free(_elt->argv.value[i].str_val.data);
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 
