@@ -10,9 +10,14 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_token_bucket_set.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h"
+    $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_vm.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_lexer.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_parser.tab.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_lexer.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_parser.tab.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_html5.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_xss.c"
@@ -26,6 +31,88 @@ if [ -n "$LIB_UTHASH" ] ;  then
     ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
 fi
 
+which flex
+if [ $? -ne 0 ] ; then
+    cat << END
+
+$0: error: the $ngx_addon_name module requires the flex.
+
+Please run:
+    On Ubuntu or Debian: 
+        apt-get update && apt-get install --yes flex
+    On CentOS 7:
+        yum -y install flex
+    On Centos 8 or Fedora 33 or Fedora 34:
+        dnf install flex
+    On Alpine:
+        apk update && apk add --upgrade flex
+    On Arch:
+        1. Enable the core repository on /etc/pacman.conf:
+            [core]
+            Include = /etc/pacman.d/mirrorlist
+        2. Install flex xz package:
+            pacman -Syu flex
+    On FreeBSD 12 or FreeBSD 13:
+        pkg install flex
+END
+    exit 1
+
+fi
+
+which bison
+if [ $? -ne 0 ] ; then
+    cat << END
+
+$0: error: the $ngx_addon_name module requires the bison.
+
+Please run:
+    On Ubuntu or Debian: 
+        apt-get update && apt-get install --yes bison
+    On CentOS 7:
+        yum -y install bison
+    On Centos 8 or Fedora 33 or Fedora 34:
+        dnf install bison
+    On Alpine:
+        apk update && apk add --upgrade bison
+    On Arch:
+        1. Enable the core repository on /etc/pacman.conf:
+            [core]
+            Include = /etc/pacman.d/mirrorlist
+        2. Install flex xz package:
+            pacman -Syu bison
+    On FreeBSD 12 or FreeBSD 13:
+        pkg install bison
+
+END
+    exit 1
+
+fi
+
+
+if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" -o ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_lexer.c" ] ; then
+    cat << END
+
+$0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
+
+    cd $ngx_addon_dir && flex flex/lexer.lex && cd $(pwd)
+
+END
+    exit 1
+fi
+
+
+if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" -o ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_parser.tab.c" ] ; then
+    cat << END
+
+$0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
+
+    cd $ngx_addon_dir \\
+&&  bison --defines=inc/ngx_http_waf_module_parser.tab.h -L C -o src/ngx_http_waf_module_parser.tab.c bison/parser.yacc \\
+&&  cd $(pwd)
+
+END
+    exit 1
+fi
 
 
 # Check if the uthash library is installed.

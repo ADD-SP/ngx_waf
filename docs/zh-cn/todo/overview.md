@@ -12,6 +12,4 @@ lang: zh-CN
 
 ## 列表
 
-* [高级规则](advanced-rule.md)
-
 

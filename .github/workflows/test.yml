@@ -48,11 +48,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison
           sudo pip install lastversion
       - name: Download ${{ matrix.nginx-version }}
         run: |
           chmod 777 -R ${{ github.workspace }}
+          sudo make parser
           sudo git clone https://github.com/libinjection/libinjection.git inc/libinjection
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
@@ -70,7 +71,7 @@ jobs:
           else \
             opt='--add-dynamic-module' ;\
           fi
-          ./configure ${opt}=.. --with-cc-opt='-fstack-protector'
+          ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
       - name: Install ${{ matrix.nginx-version }}
         run: |
           cd nginx-src

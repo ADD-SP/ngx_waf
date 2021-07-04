@@ -24,6 +24,7 @@ Handy, High performance Nginx firewall module.
 * Full-featured: The basic functions of the web application firewall are available.
 * Easy to install: The solution is automatically provided when a dependency is missing.
 * Easy to use: directives are easy to understand and you can probably guess what they mean without reading the documentation.
+* Flexible rules: Provide advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
 * High performance: In more extreme tests, QPS(Queries Per Second) is reduced by about 4% after starting this module. See the documentation for details of the tests.
 
 ## Function
@@ -42,6 +43,7 @@ Handy, High performance Nginx firewall module.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.
 * Block the specified Referer.
+* Advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
 
 ## Docs
 

@@ -118,7 +118,7 @@ static ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle) {
 
 static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT) == NGX_HTTP_WAF_TRUE) {
+    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT) == NGX_HTTP_WAF_TRUE) {
         ngx_http_waf_trigger_mem_collation_event(r);
         return check_all(r, NGX_HTTP_WAF_TRUE);
     }
@@ -128,11 +128,11 @@ static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r
 
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_http_waf_srv_conf_t* srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT) == NGX_HTTP_WAF_FALSE) {
         ngx_http_waf_trigger_mem_collation_event(r);
         return check_all(r, NGX_HTTP_WAF_TRUE);
     }
-    else if (NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT | NGX_HTTP_WAF_MODE_EXTRA_STRICT) == NGX_HTTP_WAF_TRUE) {
+    else if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_COMPAT | NGX_HTTP_WAF_MODE_EXTRA_STRICT) == NGX_HTTP_WAF_TRUE) {
         return check_all(r, NGX_HTTP_WAF_FALSE);
     }
     return NGX_DECLINED;
@@ -397,7 +397,7 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         if ((r->method & NGX_HTTP_POST) != 0
             && ctx->read_body_done == NGX_HTTP_WAF_FALSE
             && is_matched != NGX_HTTP_WAF_MATCHED
-            && NGX_HTTP_WAF_CHECK_FLAG(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB) == NGX_HTTP_WAF_TRUE) {
+            && ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB) == NGX_HTTP_WAF_TRUE) {
             r->request_body_in_persistent_file = 0;
             r->request_body_in_clean_file = 0;
             ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;

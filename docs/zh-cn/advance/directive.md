@@ -177,6 +177,14 @@ waf_mode !UA STD;
 
 :::
 
+::: tip 开发版中的变动
+
+默认值被修改为 W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
+
+`ADV` 表示高级规则。
+
+:::
+
 
 ## `waf_http_status`
 
