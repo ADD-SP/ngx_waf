@@ -9,6 +9,14 @@
 static void print_code(UT_array* array);
 
 
+/**
+ * @brief 执行高级规则
+ * @param[out] out_http_status 要返回的 HTTP 状态码
+ * @return 如果命中规则则返回 NGX_HTTP_WAF_MATCHED，反之则为 NGX_HTTP_WAF_NOT_MATCHED。
+*/ 
+static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status);
+
+
 static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     static ngx_str_t s_empty_str = ngx_string("");
     ngx_http_waf_srv_conf_t* srv_conf = NULL;
@@ -42,18 +50,18 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
     
 
-    vm_stack_item_t* stack = NULL;
+    vm_stack_arg_t* stack = NULL;
     vm_code_t* code = NULL;
 
     while (code = (vm_code_t*)utarray_next(&(srv_conf->advanced_rule), code), code != NULL) {
-        vm_stack_item_t* argv = &(code->argv);
+        vm_stack_arg_t* argv = &(code->argv);
         switch (code->type) {
             case VM_CODE_PUSH_INT:
                 break;
             
             case VM_CODE_PUSH_STR:
             {
-                vm_stack_item_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 temp->type[0] = VM_DATA_STR;
                 temp->argc = 1;
                 temp->value[0].str_val.data = ngx_pcalloc(r->pool, sizeof(u_char) * (argv->value[0].str_val.len + 1));
@@ -65,7 +73,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_PUSH_CLIENT_IP:
             {
-                vm_stack_item_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
 
                 if (r->connection->sockaddr->sa_family == AF_INET) {
                     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
@@ -84,7 +92,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_PUSH_URL:
             {
-                vm_stack_item_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 temp->type[0] = VM_DATA_STR;
                 temp->argc = 1;
                 temp->value[0].str_val.data = ngx_pcalloc(r->pool, sizeof(u_char) * (url->len + 1));
@@ -96,7 +104,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_PUSH_USER_AGENT:
             {
-                vm_stack_item_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 temp->type[0] = VM_DATA_STR;
                 temp->argc = 1;
                 temp->value[0].str_val.data = ngx_pcalloc(r->pool, sizeof(u_char) * (user_agent->len + 1));
@@ -108,7 +116,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_PUSH_REFERER:
             {
-                vm_stack_item_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* temp = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 temp->type[0] = VM_DATA_STR;
                 temp->argc = 1;
                 temp->value[0].str_val.data = ngx_pcalloc(r->pool, sizeof(u_char) * (referer->len + 1));
@@ -120,7 +128,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_PUSH_QUERY_STRING:
             {
-                vm_stack_item_t* result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_STR;
                 result->argc = 1;
                 key_value_t* temp = NULL;
@@ -150,7 +158,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
                 free(header_key.data);
                 header_key.len = 0;
 
-                vm_stack_item_t* result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                vm_stack_arg_t* result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_STR;
                 result->argc = 1;
                 
@@ -165,15 +173,10 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
                 STACK_PUSH2(stack, result, utstack_handle);
                 break;
             }
-
-            case VM_CODE_PUSH_IP:
-            case VM_CODE_PUSH_REGEXP:
-                STACK_PUSH2(stack, argv, utstack_handle);
-                break;
             
             case VM_CODE_OP_NOT:
             {
-                vm_stack_item_t* temp = NULL;
+                vm_stack_arg_t* temp = NULL;
                 STACK_POP2(stack, temp, utstack_handle);
                 temp->value[0].bool_val = !temp->value[0].bool_val;
                 STACK_PUSH2(stack, temp, utstack_handle);
@@ -183,10 +186,10 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
             case VM_CODE_OP_AND:
             case VM_CODE_OP_OR:
             {
-                vm_stack_item_t *left = NULL, *right = NULL, *result = NULL;
+                vm_stack_arg_t *left = NULL, *right = NULL, *result = NULL;
                 STACK_POP2(stack, left, utstack_handle);
                 STACK_POP2(stack, right, utstack_handle);
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
                 if (code->type == VM_CODE_OP_AND) {
@@ -200,10 +203,10 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
             
             case VM_CODE_OP_BELONG_TO:
             {
-                vm_stack_item_t *left = NULL, *right = NULL, *result = NULL;
+                vm_stack_arg_t *left = NULL, *right = NULL, *result = NULL;
                 STACK_POP2(stack, left, utstack_handle);
                 STACK_POP2(stack, right, utstack_handle);
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
 
@@ -239,10 +242,10 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_OP_EQUALS:
             {
-                vm_stack_item_t *left = NULL, *right = NULL, *result = NULL;
+                vm_stack_arg_t *left = NULL, *right = NULL, *result = NULL;
                 STACK_POP2(stack, left, utstack_handle);
                 STACK_POP2(stack, right, utstack_handle);
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
                 if (left->type[0] == VM_DATA_STR && right->type[0] == VM_DATA_STR) {
@@ -280,10 +283,10 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_OP_CONTAINS:
             {
-                vm_stack_item_t *left = NULL, *right = NULL, *result = NULL;
+                vm_stack_arg_t *left = NULL, *right = NULL, *result = NULL;
                 STACK_POP2(stack, left, utstack_handle);
                 STACK_POP2(stack, right, utstack_handle);
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
                 if (ngx_strstr(left->value[0].str_val.data, right->value[0].str_val.data) != NULL) {
@@ -297,11 +300,11 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_OP_MATCHES:
             {
-                vm_stack_item_t *left = NULL, *right = NULL, *result = NULL;
+                vm_stack_arg_t *left = NULL, *right = NULL, *result = NULL;
                 STACK_POP2(stack, left, utstack_handle);
                 STACK_POP2(stack, right, utstack_handle);
 
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
 
@@ -332,9 +335,9 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_OP_SQLI_DETN:
             {
-                vm_stack_item_t *operand = NULL, *result = NULL;
+                vm_stack_arg_t *operand = NULL, *result = NULL;
                 STACK_POP2(stack, operand, utstack_handle);
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
                 
@@ -361,9 +364,9 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_OP_XSS_DETN:
             {
-                vm_stack_item_t *operand = NULL, *result = NULL;
+                vm_stack_arg_t *operand = NULL, *result = NULL;
                 STACK_POP2(stack, operand, utstack_handle);
-                result = ngx_pcalloc(r->pool, sizeof(vm_stack_item_t));
+                result = ngx_pcalloc(r->pool, sizeof(vm_stack_arg_t));
                 result->type[0] = VM_DATA_BOOL;
                 result->argc = 1;
                 
@@ -379,7 +382,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_ACT_RETURN:
             {
-                vm_stack_item_t *bool_val = NULL, *id = NULL;
+                vm_stack_arg_t *bool_val = NULL, *id = NULL;
                 STACK_POP2(stack, bool_val, utstack_handle);
                 STACK_POP2(stack, id, utstack_handle);
                 if (bool_val->value->bool_val) {
@@ -396,7 +399,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
             case VM_CODE_ACT_ALLOW:
             {
-                vm_stack_item_t *bool_val = NULL, *id = NULL;
+                vm_stack_arg_t *bool_val = NULL, *id = NULL;
                 STACK_POP2(stack, bool_val, utstack_handle);
                 STACK_POP2(stack, id, utstack_handle);
                 if (bool_val->value->bool_val) {
@@ -418,7 +421,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
     RELEASE:
     while (!STACK_EMPTY(stack)) {
-        vm_stack_item_t* temp = NULL;
+        vm_stack_arg_t* temp = NULL;
         STACK_POP2(stack, temp, utstack_handle);
     }
 
@@ -451,18 +454,8 @@ static void print_code(UT_array* array) {
             case VM_CODE_PUSH_INT:
                 printf("PUSH_INT %d\n", q->argv.value[0].int_val);
                 break;
-            case VM_CODE_PUSH_IP:
-                if (q->argv.type[0] == VM_DATA_IPV4) {
-                    printf("PUSH_IPV4\n");
-                } else if (q->argv.type[0] == VM_DATA_IPV6) {
-                    printf("PUSH_IPV6\n");
-                }
-                break;
             case VM_CODE_PUSH_STR:
                 printf("PUSH_STR %s\n", q->argv.value[0].str_val.data);
-                break;
-            case VM_CODE_PUSH_REGEXP:
-                printf("PUSH_REGEXP %s\n", (char*)(q->argv.value[0].regexp_val.name));
                 break;
             case VM_CODE_PUSH_CLIENT_IP:
                 printf("PUSH_CLIENT_IP\n");
@@ -514,12 +507,6 @@ static void print_code(UT_array* array) {
                 break;
             case VM_CODE_OP_XSS_DETN:
                 printf("OP_XSS_DETN\n");
-                break;
-            case VM_CODE_POP:
-                printf("POP\n");
-                break;
-            case VM_CODE_TOP:
-                printf("TOP\n");
                 break;
             case VM_CODE_NOP:
                 printf("NOP\n");
