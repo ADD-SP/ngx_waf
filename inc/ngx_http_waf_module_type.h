@@ -70,56 +70,65 @@ typedef struct ip_statis_s {
  * @brief 内存池类型
 */
 typedef enum {
-    std,       /**< malloc */
+    std,            /**< malloc */
     gernal_pool,    /**< ngx_pool_t */
     slab_pool       /**< ngx_slab_pool_t */
 } mem_pool_type_e;
 
 
+/**
+ * @enum vm_code_type_e
+ * @brief 虚拟机指令类型
+*/
 typedef enum {
-    VM_CODE_NOP,
-    VM_CODE_PUSH_IP,
-    VM_CODE_PUSH_INT,
-    VM_CODE_PUSH_STR,
-    VM_CODE_PUSH_REGEXP,
-    VM_CODE_PUSH_CLIENT_IP,
-    VM_CODE_PUSH_URL, 
-    VM_CODE_PUSH_QUERY_STRING,
-    VM_CODE_PUSH_REFERER,
-    VM_CODE_PUSH_USER_AGENT,
-    VM_CODE_PUSH_HEADER_IN,
-    VM_CODE_PUSH_COOKIE,
-    VM_CODE_POP, 
-    VM_CODE_TOP, 
-    VM_CODE_OP_NOT,
-    VM_CODE_OP_AND,
-    VM_CODE_OP_OR,
-    VM_CODE_OP_CONTAINS, 
-    VM_CODE_OP_MATCHES, 
-    VM_CODE_OP_EQUALS, 
-    VM_CODE_OP_BELONG_TO,
-    VM_CODE_OP_SQLI_DETN,
-    VM_CODE_OP_XSS_DETN,
-    VM_CODE_ACT_RETURN,
-    VM_CODE_ACT_ALLOW
+    VM_CODE_NOP,                /**< 空指令，什么都不做，继续执行下一条指令。 */
+    VM_CODE_PUSH_INT,           /**< 将一个整数压入栈中。 */
+    VM_CODE_PUSH_STR,           /**< 将一个字符串压入栈中。 */
+    VM_CODE_PUSH_CLIENT_IP,     /**< 将客户端 IP（struct in_addr 或 struct_in6addr）压入栈中。 */
+    VM_CODE_PUSH_URL,           /**< 将 URL 压入栈中。 */
+    VM_CODE_PUSH_QUERY_STRING,  /**< 将查询字符串的 key 对应的 value 压入栈中。 */
+    VM_CODE_PUSH_REFERER,       /**< 将 referer 压入栈中。 */
+    VM_CODE_PUSH_USER_AGENT,    /**< 将 user-agent 压入栈中。 */
+    VM_CODE_PUSH_HEADER_IN,     /**< 将请求头中的 key 对应的 value 压入栈中。 */
+    VM_CODE_PUSH_COOKIE,        /**< 将 cookie 中的 key 对应的 value 压入栈中。 */
+    // VM_CODE_POP,                /**<  */
+    // VM_CODE_TOP,                /**<  */
+    VM_CODE_OP_NOT,             /**< 将栈顶的布尔值反转 */
+    VM_CODE_OP_AND,             /**< 弹出两个布尔值，逻辑与后压入栈中。 */
+    VM_CODE_OP_OR,              /**< 弹出两个布尔值，逻辑或后压入栈中 */
+    VM_CODE_OP_CONTAINS,        /**< 弹出两个字符串，判断第一个弹出的字符串是否是第二个弹出的字符串的子串，并将结果压入栈中 */
+    VM_CODE_OP_MATCHES,         /**< 弹出两个字符串，将第一个字符串编译为正则表达式对第二个字符串进行正则匹配，并将结果压入栈中。 */
+    VM_CODE_OP_EQUALS,          /**< 弹出两个字符串判断两个字符串是否相等，并将结果压入栈中。 */
+    VM_CODE_OP_BELONG_TO,       /**< 依次弹出一个 IP 块和一个 IP，判断 IP 是否包含在 IP 块中，并将结果压入栈中。 */
+    VM_CODE_OP_SQLI_DETN,       /**< 弹出一个字符串检测其中是否存在 SQL 注入，并将结果压入栈中。 */
+    VM_CODE_OP_XSS_DETN,        /**< 弹出一个字符串检测其中是否存在 XSS 攻击，并将结果压入栈中。 */
+    VM_CODE_ACT_RETURN,         /**< 如果栈顶的布尔值为真则返回指定的 http 状态码。 */
+    VM_CODE_ACT_ALLOW           /**< 如果栈顶的布尔值为真则放行本次请求。 */
 } vm_code_type_e;
 
 
+/**
+ * @enum vm_data_type_e
+ * @brief 虚拟机数据类型
+*/
 typedef enum {
-    VM_DATA_VOID,
-    VM_DATA_STR,
-    VM_DATA_INT,
-    VM_DATA_BOOL,
-    VM_DATA_REGEXP,
-    VM_DATA_IPV4,
-    VM_DATA_IPV6
+    VM_DATA_VOID,               /**< 无类型数据，应该被忽略。 */
+    VM_DATA_STR,                /**< 字符串类型 */
+    VM_DATA_INT,                /**< 整数类型 */
+    VM_DATA_BOOL,               /**< 布尔类型 */
+    VM_DATA_IPV4,               /**< IPV4 */
+    VM_DATA_IPV6                /**< IPV6 */
 } vm_data_type_e;
 
 
+/**
+ * @struct key_value_t
+ * @brief 哈希表（字符串 -> 字符串）
+*/
 typedef struct key_value_s {
-    ngx_str_t key;
-    ngx_str_t value;
-    UT_hash_handle  hh;
+    ngx_str_t           key;        /**< 键 */   
+    ngx_str_t           value;      /**< 值 */
+    UT_hash_handle      hh;         /**< uthash 关键成员 */
 } key_value_t;
 
 
@@ -271,7 +280,7 @@ typedef struct ngx_http_waf_srv_conf_s {
     ip_trie_t                       white_ipv6;                                 /**< IPV6 白名单 */
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
-    UT_array                        advanced_rule;
+    UT_array                        advanced_rule;                              /**< 高级规则表 */
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
     ip_trie_t                      *ipv4_access_statistics;                     /**< IP 访问频率统计表 */
     ip_trie_t                      *ipv6_access_statistics;                     /**< IP 访问频率统计表 */
@@ -315,25 +324,34 @@ typedef struct ipv6_s {
 } ipv6_t;
 
 
-typedef struct vm_stack_item_s {
-    vm_data_type_e type[4];
-    size_t argc;
+
+/**
+ * @struct vm_stack_arg_s
+ * @brief 虚拟机指令参数
+*/
+typedef struct vm_stack_arg_s {
+    vm_data_type_e                          type[4];            /**< 每个参数的类型 */
+    size_t                                  argc;               /**< 参数的数量 */
     union {
-        int int_val;
-        ngx_str_t str_val;
-        uint8_t bool_val;
-        ngx_regex_elt_t regexp_val;
-        ipv4_t ipv4_val;
-        ipv6_t ipv6_val;
-        inx_addr_t inx_addr_val;
-    } value[4];
-    struct vm_stack_item_s *utstack_handle;
-} vm_stack_item_t;
+        int         int_val;
+        ngx_str_t   str_val;
+        uint8_t     bool_val;
+        ipv4_t      ipv4_val;
+        ipv6_t      ipv6_val;
+        inx_addr_t  inx_addr_val;
+    }                                       value[4];           /**< 每个参数的值 */
+    struct vm_stack_arg_s                  *utstack_handle;     /**< utstack 关键成员 */
+} vm_stack_arg_t;
 
 
+
+/**
+ * @struct vm_code_t
+ * @brief 虚拟机指令
+*/
 typedef struct vm_code_s {
-    vm_code_type_e type;
-    struct vm_stack_item_s argv;
+    vm_code_type_e          type;   /**< 指令类型 */
+    struct vm_stack_arg_s   argv;   /**< 指令参数 */
 } vm_code_t;
 
 #endif // !NGX_HTTP_WAF_MODULE_TYPE_H

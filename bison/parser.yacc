@@ -9,8 +9,6 @@
     int ngx_http_waf_lex (void);
     void ngx_http_waf_error (UT_array* array, ngx_pool_t* pool, const char* msg);
     void ngx_http_waf_gen_push_str_code(UT_array* array, char* str);
-    // int ngx_http_waf_gen_push_regexp_code(UT_array* array, char* str, ngx_pool_t* pool);
-    int ngx_http_waf_gen_push_ip_code(UT_array* array, char* str);
     void ngx_http_waf_gen_push_client_ip_code(UT_array* array);
     void ngx_http_waf_gen_push_url_code(UT_array* array);
     void ngx_http_waf_gen_push_user_agent_code(UT_array* array);
@@ -392,57 +390,7 @@ void ngx_http_waf_gen_push_cookie_code(UT_array* array, char* index) {
 }
 
 
-// int ngx_http_waf_gen_push_regexp_code(UT_array* array, char* str, ngx_pool_t* pool) {
-//     vm_code_t code;
-//     code.type = VM_CODE_PUSH_REGEXP;
-//     code.argv.argc = 1;
-//     code.argv.type[0] = VM_DATA_REGEXP;
-//     ngx_regex_compile_t   regex_compile;
-//     u_char                errstr[NGX_MAX_CONF_ERRSTR];
-//     ngx_regex_elt_t* ngx_regex_elt = &(code.argv.value[0].regexp_val);
-//     ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
-//     regex_compile.pattern.len = strlen(str);
-//     regex_compile.pattern.data = (u_char*)str;
-//     regex_compile.pool = pool;
-//     regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
-//     regex_compile.err.data = errstr;
-//     if (ngx_regex_compile(&regex_compile) != NGX_OK) {
-//         return 0;
-//     }
-
-//     ngx_regex_elt->name = (u_char*)strdup(str);
-//     ngx_regex_elt->regex = regex_compile.regex;
-
-//     utarray_push_back(array, &code);
-//     return 1;
-// }
-
-
-int
-ngx_http_waf_gen_push_ip_code(UT_array* array, char* str) {
-    vm_code_t code;
-
-    code.type = VM_CODE_PUSH_IP;
-    code.argv.argc = 1;
-
-    ngx_str_t ip_str;
-    ip_str.data = (u_char*)str;
-    ip_str.len = strlen(str);
-    if (parse_ipv4(ip_str, &(code.argv.value[0].ipv4_val)) == NGX_HTTP_WAF_SUCCESS) {
-        code.argv.type[0] = VM_DATA_IPV4;
-    } else if (parse_ipv6(ip_str, &(code.argv.value[0].ipv6_val)) == NGX_HTTP_WAF_SUCCESS) {
-        code.argv.type[0] = VM_DATA_IPV6;
-    } else {
-        return 0;
-    }
-
-    utarray_push_back(array, &code);
-    return 1;
-}
-
-
-void
-ngx_http_waf_gen_push_client_ip_code(UT_array* array) {
+void ngx_http_waf_gen_push_client_ip_code(UT_array* array) {
     vm_code_t code;
     code.type = VM_CODE_PUSH_CLIENT_IP;
     code.argv.argc = 0;
