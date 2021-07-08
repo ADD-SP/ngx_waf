@@ -285,7 +285,7 @@ static ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
                                                 u_char* now,
                                                 size_t now_len) {
     ngx_http_waf_srv_conf_t *srv_conf = (ngx_http_waf_srv_conf_t *)ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    size_t buf_len = sizeof(srv_conf->random_str) + sizeof(inx_addr_t) + uid_len + now_len;
+    size_t buf_len = sizeof(srv_conf->salt) + sizeof(inx_addr_t) + uid_len + now_len;
     u_char *buf = (u_char *)ngx_pnalloc(r->pool, buf_len);
     ngx_memzero(buf, sizeof(u_char) * buf_len);
     inx_addr_t inx_addr;
@@ -304,8 +304,8 @@ static ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
     size_t offset = 0;
 
     /* 写入随机字符串 */
-    ngx_memcpy(buf+ offset, srv_conf->random_str, sizeof(srv_conf->random_str));
-    offset += sizeof(srv_conf->random_str);
+    ngx_memcpy(buf+ offset, srv_conf->salt, sizeof(srv_conf->salt));
+    offset += sizeof(srv_conf->salt);
 
     /* 写入时间戳 */
     ngx_memcpy(buf + offset, now, sizeof(u_char) * now_len);

@@ -101,6 +101,40 @@ waf_mode !UA STD;
 * `size`：用于设置记录 IP 访问次数的内存的大小，如 `20m`、`2048k`，不得小于 `20m`，如不指定则默认为 `20m`。当这段内存耗尽的时候程序会自动重置这块内存以重新统计 IP 的访问次数。
 
 
+::: tip 测试版中的变动
+
+测试版中发生了下列变动。
+
+* 配置语法: waf_cc_deny \<rate=*x/y*\> \[duration=*1h*\]
+
+* `rate`：用于设置统计周期和每个周期内的单个 IP 的请求次数上限。如 `60r/m` 表示每分钟最多请求 60 此，`60r/5m` 表示每五分钟最多请求 60 次，相信你可以猜到 `60r/s`、`60r/5s`、`60r/h`、`60r/5h`、`60r/d` 和 `60r/5d` 的效果。
+
+* 参数 `size` 被删除。
+:::
+
+
+
+## `waf_redis`
+
+* 配置语法: waf_cache \[host=*str*\] \[port=*number*\] \[unix=*/path/to/unix-socket-file*\]
+* 默认配置：—
+* 配置段: server
+
+用于连接 redis。
+
+* `host`：连接所用的 redis 的 IP 地址或域名。如果你设置了该项你必须设置 `port`。
+* `port`：连接 redis 所用的端口号。如果你设置了该项你必须设置 `host`。
+* `unix`：连接 redis 所用的 unix socket 文件的绝对路径。
+
+如果 `unix` 被设置则模块优先使用 unix socket 连接 redis，如果无法连接则会使用 `host:port` 连接。
+
+::: warning 警告
+
+此配置项仅测试版可用。
+
+:::
+
+
 
 ## `waf_cache`
 
@@ -125,6 +159,13 @@ waf_mode !UA STD;
 ::: tip 性能优化建议
 
 `capacity` 过小会导致频繁地淘汰缓存，增加内存碎片，降低性能。所以请根据实际应用场景合理地设置。
+
+:::
+
+
+::: warning 测试版中的变动
+
+`waf_cache` 的所有功能被删除，但是 `waf_cache` 被保留下以便后续扩展功能，如果您使用了这个配置项您应该将其删除。
 
 :::
 
@@ -177,7 +218,7 @@ waf_mode !UA STD;
 
 :::
 
-::: tip 开发版中的变动
+::: tip 测试版中的变动
 
 默认值被修改为 W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
 

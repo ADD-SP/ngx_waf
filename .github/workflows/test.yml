@@ -45,10 +45,14 @@ jobs:
         with:
           python-version: '3.x'
           architecture: 'x64'
+      - uses: docker-practice/actions-setup-docker@master
+      - name: Start redis
+        run: |
+          sudo docker run --rm -d --name redis -p 6379:6379 redis
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison libhiredis-dev libhiredis0.14
           sudo pip install lastversion
       - name: Download ${{ matrix.nginx-version }}
         run: |

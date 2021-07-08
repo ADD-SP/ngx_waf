@@ -7,10 +7,9 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_token_bucket_set.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_spinlock.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_vm.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lexer.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_parser.tab.h"
@@ -206,6 +205,35 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
 Please run cd $ngx_addon_dir && git clone https://github.com/libinjection/libinjection.git inc/libinjection && cd $PWD
+
+END
+    PWD=''
+    exit 1
+fi
+
+
+ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -Wl,-Bstatic -l hiredis -Wl,-Bdynami "
+
+# Check if libhiredis exists.
+ngx_feature="hiredis library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs='#include <hiredis/hiredis.h>'
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+
+Please run:
+        # You can remove directories libhiredis-src and libsodium after installing the ngx_http_waf_module.
+        git clone https://github.com/redis/hiredis.git --branch v1.0.0 libhiredis-src \\
+    &&  cd libhiredis-src \\
+    &&  make -j\$(nproc) && make test -j \$(nproc) && make install \\
+    &&  cd $PWD
 
 END
     PWD=''

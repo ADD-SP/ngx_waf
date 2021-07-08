@@ -12,6 +12,7 @@
 #include <ngx_regex.h>
 #include <ngx_inet.h>
 #include <ngx_http_waf_module_macro.h>
+#include <hiredis/hiredis.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
@@ -121,6 +122,25 @@ typedef enum {
 } vm_data_type_e;
 
 
+typedef enum {
+    REDIS_KEY_TYPE_VOID,
+    REDIS_KEY_TYPE_IP,
+    REDIS_KEY_TYPE_WHITE_URL,
+    REDIS_KEY_TYPE_URL,
+    REDIS_KEY_TYPE_QUERY_STRING,
+    REDIS_KEY_TYPE_USER_AGENT,
+    REDIS_KEY_TYPE_WHITE_REFERER,
+    REDIS_KEY_TYPE_REFERER,
+    REDIS_KEY_TYPE_COOKIE
+} redis_key_type_e;
+
+
+typedef struct spinlock_s {
+    void *srv_conf;
+    u_char* id;
+} spinlock_t;
+
+
 /**
  * @struct key_value_t
  * @brief 哈希表（字符串 -> 字符串）
@@ -144,68 +164,6 @@ typedef struct memo_pool_s {
         ngx_slab_pool_t    *slab_pool;                          /**< slab 内存池 */
     } native_pool;                                              /**< 内存池 */
 } mem_pool_t;
-
-
-/**
- * @struct lru_cache_item_t
- * @brief LRU 缓存项
-*/
-typedef struct lru_cache_item_s {
-    u_char                                 *key;                /**< 用于哈希的关键字 */
-    ngx_uint_t                              key_byte_length;    /**< 关键字占用的字节数 */
-    union {
-        struct lru_cache_item_s     *chain_item;                /**< 当 lru_cache_item_t 被插入哈希表时指向对应的链表节点 */
-        struct {
-            ngx_int_t   match_status;                           /**< 规则是否被匹配到 */
-            u_char*     rule_detail;                            /**< 被匹配到的规则细节 */
-        } value;                                                /**< 当 lru_cache_item_t 被插入链表时保存具体的缓存信息 */
-    } value;
-    struct lru_cache_item_s                *prev;               /**< utlist 关键成员 */
-    struct lru_cache_item_s                *next;               /**< utlist 关键成员 */
-    UT_hash_handle                          hh;                 /**< uthash 关键成员 */
-} lru_cache_item_t;
-
-
-/**
- * @struct lru_cache_manager_t
- * @brief LRU 缓存管理器
-*/
-typedef struct lru_cache_manager_s {
-    time_t                                  last_eliminate;     /**< 最后一次批量淘汰缓存的时间 */
-    mem_pool_t                              pool;               /**< 内存池 */
-    ngx_uint_t                              size;               /**< 当前缓存的项目数 */
-    ngx_uint_t                              capacity;           /**< 最多嫩容纳多少个缓存项 */
-    lru_cache_item_t                       *hash_head;          /**< uthash 的表头 */
-    lru_cache_item_t                       *chain_head;         /**< utlist 的表头 */
-} lru_cache_manager_t;
-
-
-/**
- * @struct token_bucket_t
- * @brief 令牌桶
-*/
-typedef struct token_bucket_s{
-    inx_addr_t      inx_addr;           /**< 作为哈希表中的 key */
-    ngx_uint_t      count;              /**< 令牌剩余量 */
-    ngx_int_t       is_ban;             /**< 令牌桶是否暂时被禁止 */
-    time_t          last_ban_time;      /**< 最后一次开始禁止令牌桶的时间 */
-    UT_hash_handle  hh;                 /**< uthash 关键成员 */
-} token_bucket_t;
-
-
-/**
- * @struct token_bucket_set_t
- * @brief 令牌桶集合
-*/
-typedef struct token_bucket_set_s{
-    mem_pool_t      pool;               /**< 使用的内存池 */
-    ngx_uint_t      ban_duration;       /**< 当令牌桶为空时自动禁止该桶一段时间（分钟）*/
-    time_t          last_put;           /**< 上次集中添加令牌的时间 */
-    time_t          last_clear;         /**< 上次清空令牌桶的时间 */
-    ngx_uint_t      init_count;         /**< 令牌桶内初始的令牌数量 */
-    ngx_uint_t      bucket_count;       /**< 已经有多少个令牌桶 */
-    token_bucket_t *head;               /**< 哈希表标头 */
-} token_bucket_set_t;
 
 
 /**
@@ -252,7 +210,8 @@ typedef struct ngx_http_waf_ctx_s {
  * @brief 每个 server 块的配置块
 */
 typedef struct ngx_http_waf_srv_conf_s {
-    u_char                          random_str[129];                            /**< 随机字符串 */
+    u_char                          salt[129];                                  /**< 随机字符串 */
+    u_char                          redis_key_prefix[17];
     ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_pool_t                     *ngx_pool;                                   /**< 模块所使用的内存池 */
@@ -260,12 +219,14 @@ typedef struct ngx_http_waf_srv_conf_s {
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
     uint64_t                        waf_mode;                                   /**< 检测模式 */
+    ngx_str_t                       waf_redis_host;
+    ngx_int_t                       waf_redis_port;
+    ngx_str_t                       waf_redis_unix;
+    redisContext                   *redis_ctx;
     ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
+    ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
     ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
-    ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
-    ngx_int_t                       waf_inspection_capacity;                    /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_eliminate_inspection_cache_interval;    /**< 批量淘汰缓存的周期（秒） */
-    ngx_int_t                       waf_eliminate_inspection_cache_percent;     /**< 每次批量淘汰多少百分比的缓存（50 表示 50%） */
+    ngx_int_t                       waf_cache_expire;
     ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
     ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
     ip_trie_t                       black_ipv4;                                 /**< IPV4 黑名单 */
@@ -281,17 +242,14 @@ typedef struct ngx_http_waf_srv_conf_s {
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
     UT_array                        advanced_rule;                              /**< 高级规则表 */
-    ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
-    ip_trie_t                      *ipv4_access_statistics;                     /**< IP 访问频率统计表 */
-    ip_trie_t                      *ipv6_access_statistics;                     /**< IP 访问频率统计表 */
-    time_t                         *last_clear_ip_access_statistics;            /**< 最后一次清空 IP 访问频率统计表的时间 */
-    lru_cache_manager_t             black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
-    lru_cache_manager_t             black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
-    lru_cache_manager_t             black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
-    lru_cache_manager_t             black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
-    lru_cache_manager_t             black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
-    lru_cache_manager_t             white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
-    lru_cache_manager_t             white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    spinlock_t                      cc_lock;
+    spinlock_t                      white_url_cache_lock;
+    spinlock_t                      black_url_cache_lock;
+    spinlock_t                      black_args_cache_lock;
+    spinlock_t                      black_ua_cache_lock;
+    spinlock_t                      white_referer_cache_lock;
+    spinlock_t                      black_referer_cache_lock;
+    spinlock_t                      black_cookie_cache_lock;
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
     ngx_http_waf_check_pt           check_proc_no_cc[20];                       /**< 各种检测流程的启动函数，但是不包括 CC 检测 */
 } ngx_http_waf_srv_conf_t;
@@ -353,5 +311,12 @@ typedef struct vm_code_s {
     vm_code_type_e          type;   /**< 指令类型 */
     struct vm_stack_arg_s   argv;   /**< 指令参数 */
 } vm_code_t;
+
+
+typedef struct redis_reply_chain_s {
+    redisReply* reply;
+    struct redis_reply_chain_s* utstack_handle; 
+} redis_reply_chain_t;
+
 
 #endif // !NGX_HTTP_WAF_MODULE_TYPE_H

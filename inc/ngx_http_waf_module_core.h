@@ -32,6 +32,12 @@
 /**
  * @brief 当 Worker 进程启动时调用的函数，用于重置随机数种子。
 */
+static ngx_int_t ngx_http_waf_init_module(ngx_cycle_t *cycle);
+
+
+/**
+ * @brief 当 Worker 进程启动时调用的函数，用于重置随机数种子。
+*/
 static ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle);
 
 
@@ -45,24 +51,6 @@ static ngx_int_t ngx_http_waf_handler_server_rewrite_phase(ngx_http_request_t* r
  * @brief NGX_HTTP_ACCESS_PHASE 阶段的处理函数
 */
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
-
-
-/**
- * @brief 启动内存整理事件
-*/
-static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r);
-
-
-/**
- * @brief 清理 IP 访问频次统计表
-*/
-static void ngx_http_waf_clear_ip_access_statistics(ngx_http_request_t* r);
-
-
-/**
- * @brief 清理缓存的检测结果
-*/
-static void ngx_http_waf_eliminate_inspection_cache(ngx_http_request_t* r);
 
 
 /**

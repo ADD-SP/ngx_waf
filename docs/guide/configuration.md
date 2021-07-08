@@ -32,9 +32,14 @@ http {
         # block the corresponding ip for 60 minutes after exceeding the limit.
         waf_cc_deny rate=1000r/m duration=60m;
 
+        # You do not need to set this if you are using the stable version.
+        # You must set this if you are using a beta version.
+        waf_redis host=127.0.0.1 port=6379;
+
         # Cache detection results for up to 50 detection targets, 
         # effective for all detections 
         # except IP black and white list detection, CC protection and POST detection.
+        # No need to set this if you are using the beta version.
         waf_cache capacity=50;
         ...
     }

@@ -24,15 +24,15 @@ sidebarDepth: 3
 
 ### 拉取远程镜像
 
-本模块会在每次更新稳定版和开发版时上传对应的 Docker 镜像，并在协调世界时（UTC）周日零点零分零秒重新构建所有的镜像。
+本模块会在每次更新稳定版和测试版时上传对应的 Docker 镜像，并在协调世界时（UTC）周日零点零分零秒重新构建所有的镜像。
 
 镜像的 tag 说明：
 
 * `ngx_waf:stable`：基于 `nginx:stable` 构建并安装了稳定版的 `ngx_waf`。
 * `ngx_waf:stable-alpine`：基于 `nginx:stable-alpine` 构建并安装了稳定版的 `ngx_waf`。
-* `ngx_waf:dev`：基于 `nginx:stable` 构建并安装了开发版的 `ngx_waf`。
+* `ngx_waf:dev`：基于 `nginx:stable` 构建并安装了测试版的 `ngx_waf`。
 * `ngx_waf:latest`：同 `ngx_waf:dev`。
-* `ngx_waf:dev-alpine`：基于 `nginx:stable-alpine` 构建并安装了开发版的 `ngx_waf`。
+* `ngx_waf:dev-alpine`：基于 `nginx:stable-alpine` 构建并安装了测试版的 `ngx_waf`。
 
 
 您可以选择下面两条命令中的一条来拉取已经构建好的镜像。
@@ -108,7 +108,7 @@ tar -zxf nginx-1.20.1.tar.gz
 
 ```sh
 cd /usr/local/src
-# 如果你想使用开发版的模块请将 -b master 替换为 -b dev。
+# 如果你想使用测试版的模块请将 -b master 替换为 -b dev。
 git clone -b master https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
 git clone https://github.com/libinjection/libinjection.git inc/libinjection

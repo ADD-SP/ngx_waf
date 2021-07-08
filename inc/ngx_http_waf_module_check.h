@@ -14,8 +14,7 @@
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
-#include <ngx_http_waf_module_lru_cache.h>
-#include <ngx_http_waf_module_token_bucket_set.h>
+#include <ngx_http_waf_module_spinlock.h>
 #include <libinjection/src/libinjection.h>
 #include <libinjection/src/libinjection_sqli.h>
 #include <libinjection/src/libinjection_xss.h>
@@ -25,6 +24,8 @@
 #define NGX_HTTP_WAF_MODLULE_CHECK_H
 
 extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
+
+extern char ngx_http_waf_module_nonce[17];
 
 static void ngx_http_waf_handler_cleanup(void *data);
 
@@ -160,7 +161,8 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         ngx_str_t* str, 
                                                         ngx_array_t* array, 
                                                         const u_char* rule_type, 
-                                                        lru_cache_manager_t* cache, 
+                                                        spinlock_t* lock,
+                                                        redis_key_type_e key_type,
                                                         int check_sql_injection,
                                                         int check_xss);
 
@@ -286,8 +288,6 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
     ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
-    ngx_int_t ip_type = r->connection->sockaddr->sa_family;
-    time_t now = time(NULL);
     
     if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_CC) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -303,9 +303,9 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             "ngx_waf_debug: Detection has begun.");
 
         inx_addr_t inx_addr;
-        ngx_memset(&inx_addr, 0, sizeof(inx_addr_t));
+        ngx_memzero(&inx_addr, sizeof(inx_addr_t));
 
-        if (ip_type == AF_INET) {
+        if (r->connection->sockaddr->sa_family == AF_INET) {
             struct sockaddr_in* s_addr_in = (struct sockaddr_in*)(r->connection->sockaddr);
             ngx_memcpy(&(inx_addr.ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
         } else {
@@ -313,121 +313,108 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             ngx_memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
         }
 
-        double diff_second = 0.0;
-        ngx_int_t limit  = srv_conf->waf_cc_deny_limit;
-        ngx_int_t duration = srv_conf->waf_cc_deny_duration;
-        ip_trie_node_t* node = NULL;
-        ip_statis_t statis;
-        statis.count = 1;
-        statis.start_time = now;
-        ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_cc_deny->shm.addr;
+        if (ngx_http_waf_spinlock_lock(&(srv_conf->cc_lock)) == NGX_HTTP_WAF_SUCCESS) {
+            char buf[2 * sizeof(inx_addr_t) + sizeof(char)];
+            sodium_bin2hex(buf, sizeof(buf), (unsigned char*)(&inx_addr), sizeof(inx_addr_t));
 
-        ngx_shmtx_lock(&shpool->mutex);
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Shared memory is locked.");
-        
+            /* 查询该 IP 是否已经被 CC 防护拦截 */
+            redisReply* reply = redisCommand(srv_conf->redis_ctx,
+                                             "GET %s_%s_keytype%d_%s_cc_deny",
+                                             ngx_http_waf_module_nonce,
+                                             (char*)(srv_conf->redis_key_prefix),
+                                             REDIS_KEY_TYPE_IP,
+                                             buf);
 
-        if (ip_type == AF_INET) {
-            if (ip_trie_find(srv_conf->ipv4_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
-                ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                diff_second = difftime(now, statis.start_time);
-            } else {
-                switch (ip_trie_add(srv_conf->ipv4_access_statistics, &inx_addr, 32, &statis, sizeof(ip_statis_t))) {
-                    case NGX_HTTP_WAF_SUCCESS: 
-                        ip_trie_find(srv_conf->ipv4_access_statistics, &inx_addr, &node);
-                        ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                        break;
-                    case NGX_HTTP_WAF_MALLOC_ERROR: 
-                        *(srv_conf->last_clear_ip_access_statistics) = 0;
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
-                        break;
-                    case NGX_HTTP_WAF_FAIL:
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: Failed to add ipv6 statistics.");
-                        break;
+            /* 如果没有出错 */
+            if (reply != NULL) {
+                /* 如果该 IP 已经被 CC 防护拦截 */
+                if (reply->type == REDIS_REPLY_STRING
+                 && strcmp(reply->str, "true") == 0) {
+                    ret_value = NGX_HTTP_WAF_MATCHED;
+                    ctx->blocked = NGX_HTTP_WAF_TRUE;
+                    *out_http_status = srv_conf->waf_http_status_cc;
+                    freeReplyObject(reply);
+                } else {
+                    freeReplyObject(reply);
+                    reply = NULL;
+
+                    /* 尝试创建该 IP 的访问统计信息 */
+                    reply = redisCommand(srv_conf->redis_ctx,
+                                         "SET %s_%s_keytype%d_%s 1 NX EX %d",
+                                         ngx_http_waf_module_nonce,
+                                         (char*)(srv_conf->redis_key_prefix),
+                                         REDIS_KEY_TYPE_IP,
+                                         buf,
+                                         srv_conf->waf_cc_deny_cycle);
+
+                    /* 如果没有出错 */
+                    if (reply != NULL) {
+                        /* 如果创建成功 */
+                        if (reply->type == REDIS_REPLY_STATUS && strcasecmp(reply->str, "OK")) {
+                            ctx->blocked = NGX_HTTP_WAF_FALSE;
+                            *out_http_status = NGX_DECLINED;
+                            freeReplyObject(reply);
+                        /* 如果已经存在 */
+                        } else if (reply->type == REDIS_REPLY_NIL) {
+                            freeReplyObject(reply);
+                            reply = NULL;
+
+                            /* 增加访问次数 */
+                            reply = redisCommand(srv_conf->redis_ctx,
+                                                 "INCR %s_%s_keytype%d_%s",
+                                                 ngx_http_waf_module_nonce,
+                                                 (char*)(srv_conf->redis_key_prefix),
+                                                 REDIS_KEY_TYPE_IP,
+                                                 buf);
+
+                            /* 如果没有出错且超出访问频率限制 */
+                            if (reply != NULL 
+                             && reply->type == REDIS_REPLY_INTEGER 
+                             && reply->integer > srv_conf->waf_cc_deny_limit) {
+                                freeReplyObject(reply);
+                                reply = NULL;
+
+                                /* 将 IP 标记为被 CC 防护拦截 */
+                                reply = redisCommand(srv_conf->redis_ctx,
+                                                    "SET %s_%s_keytype%d_%s_cc_deny true EX %d",
+                                                    ngx_http_waf_module_nonce,
+                                                    (char*)(srv_conf->redis_key_prefix),
+                                                    REDIS_KEY_TYPE_IP,
+                                                    buf,
+                                                    srv_conf->waf_cc_deny_duration);
+                                ret_value = NGX_HTTP_WAF_MATCHED;
+                                ctx->blocked = NGX_HTTP_WAF_TRUE;
+                                *out_http_status = srv_conf->waf_http_status_cc;
+                                freeReplyObject(reply);
+                            } else {
+                                ctx->blocked = NGX_HTTP_WAF_FALSE;
+                                *out_http_status = NGX_DECLINED;
+                            }
+                        } else {
+                            ctx->blocked = NGX_HTTP_WAF_FALSE;
+                            *out_http_status = NGX_DECLINED;
+                            freeReplyObject(reply);
+                        }
+                    } else {
+                        ctx->blocked = NGX_HTTP_WAF_FALSE;
+                        *out_http_status = NGX_DECLINED;
+                    }
                 }
-            }
-        } else if (ip_type == AF_INET6) {
-            if (ip_trie_find(srv_conf->ipv6_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
-                ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                diff_second = difftime(now, statis.start_time);
             } else {
-                switch (ip_trie_add(srv_conf->ipv6_access_statistics, &inx_addr, 128, &statis, sizeof(ip_statis_t))) {
-                    case NGX_HTTP_WAF_SUCCESS: 
-                        ip_trie_find(srv_conf->ipv6_access_statistics, &inx_addr, &node);
-                        ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                        break;
-                    case NGX_HTTP_WAF_MALLOC_ERROR: 
-                        *(srv_conf->last_clear_ip_access_statistics) = 0;
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
-                        break;
-                    case NGX_HTTP_WAF_FAIL:
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: Failed to add ipv6 statistics.");
-                        break;
-                }
+                ctx->blocked = NGX_HTTP_WAF_FALSE;
+                *out_http_status = NGX_DECLINED;
             }
-        }
 
-        /* 如果是在一分钟内开始统计的 */
-        if (diff_second < 60) {
-            /* 如果访问次数超出上限 */
-            if (statis.count > limit) {
-                goto matched;
-            } else {
-                ++(statis.count);
-                ngx_memcpy(node->data, &statis, sizeof(ip_statis_t));
-            }
+            if (ngx_http_waf_spinlock_unlock(&(srv_conf->cc_lock)) != NGX_HTTP_WAF_SUCCESS) {
+                ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, 
+                    "ngx_waf_debug: Unable to unlock %s.", srv_conf->cc_lock.id);
+                }
+
         } else {
-            /* 如果一分钟前访问次数就超出上限 && 仍然在拉黑时间内 */
-            if (statis.count > limit && diff_second <= duration) {
-                goto matched;
-            } else {
-                /* 重置访问次数和记录时间 */
-                statis.count = 1;
-                statis.start_time = now;
-                ngx_memcpy(node->data, &statis, sizeof(ip_statis_t));
-            }
-        }
-
-        goto not_matched;
-
-        matched: {
-            ctx->blocked = NGX_HTTP_WAF_TRUE;
-            strcpy((char*)ctx->rule_type, "CC-DNEY");
-            strcpy((char*)ctx->rule_deatils, "");
-            *out_http_status = srv_conf->waf_http_status_cc;
-            ret_value = NGX_HTTP_WAF_MATCHED;
-
-            size_t header_key_len = ngx_strlen("Retry-After");
-            ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
-            if (header == NULL) {
-                goto not_matched;
-            }
-
-            /* 如果 hash 字段为 0 则会在遍历 HTTP 头的时候被忽略 */
-            header->hash = 1;
-            header->key.data = ngx_palloc(r->pool, sizeof(u_char) * header_key_len);
-            if (header->key.data == NULL) {
-                goto not_matched;
-            }
-            ngx_memcpy(header->key.data, "Retry-After", header_key_len);
-            header->key.len = header_key_len;
-            header->value.data = ngx_palloc(r->pool, sizeof(u_char) * 20);
-            if (header->value.data == NULL) {
-                goto not_matched;
-            }
-            header->value.len = ngx_sprintf(header->value.data, "%d", duration) - header->value.data;
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, 
+                "ngx_waf_debug: Unable to lock %s.", srv_conf->cc_lock.id);
         }
         
-
-        not_matched:
-        
-        ngx_shmtx_unlock(&shpool->mutex);
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Shared memory is unlocked.");
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Detection is over.");
@@ -460,13 +447,13 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_array_t* regex_array = srv_conf->white_url;
-        lru_cache_manager_t* cache = &(srv_conf->white_url_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r,
                                                             p_uri, 
                                                             regex_array, 
                                                             (u_char*)"WHITE-URL", 
-                                                            cache, 
+                                                            &(srv_conf->white_url_cache_lock),
+                                                            REDIS_KEY_TYPE_WHITE_URL,
                                                             NGX_HTTP_WAF_FALSE, 
                                                             NGX_HTTP_WAF_FALSE);
 
@@ -505,13 +492,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_array_t* regex_array = srv_conf->black_url;
-        lru_cache_manager_t* cache = &(srv_conf->black_url_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_uri, 
                                                             regex_array, 
                                                             (u_char*)"BLACK-URL", 
-                                                            cache, 
+                                                            &(srv_conf->black_url_cache_lock),
+                                                            REDIS_KEY_TYPE_URL,
                                                             NGX_HTTP_WAF_TRUE,
                                                             NGX_HTTP_WAF_FALSE);
 
@@ -550,13 +537,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         ngx_str_t* p_args = &r->args;
         ngx_array_t* regex_array = srv_conf->black_args;
-        lru_cache_manager_t* cache = &(srv_conf->black_args_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_args, 
                                                             regex_array, 
                                                             (u_char*)"BLACK-ARGS", 
-                                                            cache, 
+                                                            &(srv_conf->black_args_cache_lock),
+                                                            REDIS_KEY_TYPE_QUERY_STRING,
                                                             NGX_HTTP_WAF_TRUE,
                                                             NGX_HTTP_WAF_FALSE);
 
@@ -576,7 +563,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
                                                                         key, 
                                                                         regex_array, 
                                                                         (u_char*)"BLACK-ARGS", 
-                                                                        cache, 
+                                                                        &(srv_conf->black_args_cache_lock),
+                                                                        REDIS_KEY_TYPE_QUERY_STRING,
                                                                         NGX_HTTP_WAF_TRUE,
                                                                         NGX_HTTP_WAF_TRUE);
                     if (ret_value == NGX_HTTP_WAF_MATCHED) {
@@ -587,7 +575,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
                                                                         value, 
                                                                         regex_array, 
                                                                         (u_char*)"BLACK-ARGS", 
-                                                                        cache, 
+                                                                        &(srv_conf->black_args_cache_lock),
+                                                                        REDIS_KEY_TYPE_QUERY_STRING,
                                                                         NGX_HTTP_WAF_TRUE,
                                                                         NGX_HTTP_WAF_TRUE);
 
@@ -639,13 +628,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
 
         ngx_str_t* p_ua = &r->headers_in.user_agent->value;
         ngx_array_t* regex_array = srv_conf->black_ua;
-        lru_cache_manager_t* cache = &(srv_conf->black_ua_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_ua, 
                                                             regex_array, 
                                                             (u_char*)"BLACK-UA", 
-                                                            cache, 
+                                                            &(srv_conf->black_ua_cache_lock),
+                                                            REDIS_KEY_TYPE_USER_AGENT,
                                                             NGX_HTTP_WAF_FALSE,
                                                             NGX_HTTP_WAF_FALSE);
 
@@ -688,13 +677,13 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_array_t* regex_array = srv_conf->white_referer;
-        lru_cache_manager_t* cache = &(srv_conf->white_referer_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
                                                             regex_array, 
                                                             (u_char*)"WHITE-REFERER", 
-                                                            cache, 
+                                                            &(srv_conf->white_referer_cache_lock),
+                                                            REDIS_KEY_TYPE_WHITE_REFERER,
                                                             NGX_HTTP_WAF_FALSE,
                                                             NGX_HTTP_WAF_FALSE);
 
@@ -738,13 +727,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_array_t* regex_array = srv_conf->black_referer;
-        lru_cache_manager_t* cache = &(srv_conf->black_referer_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
                                                             regex_array, 
                                                             (u_char*)"BLACK-REFERER", 
-                                                            cache, 
+                                                            &(srv_conf->black_referer_cache_lock),
+                                                            REDIS_KEY_TYPE_REFERER,
                                                             NGX_HTTP_WAF_FALSE,
                                                             NGX_HTTP_WAF_FALSE);
 
@@ -811,13 +800,13 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                 ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
 
                 ngx_array_t* regex_array = srv_conf->black_cookie;
-                lru_cache_manager_t* cache = &(srv_conf->black_cookie_inspection_cache);
 
                 ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                                     &temp, 
                                                                     regex_array, 
                                                                     (u_char*)"BLACK-COOKIE", 
-                                                                    cache, 
+                                                                    &(srv_conf->black_cookie_cache_lock),
+                                                                    REDIS_KEY_TYPE_COOKIE,
                                                                     NGX_HTTP_WAF_TRUE,
                                                                     NGX_HTTP_WAF_TRUE);
 
@@ -826,7 +815,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                                                                         key, 
                                                                         regex_array, 
                                                                         (u_char*)"BLACK-COOKIE", 
-                                                                        cache, 
+                                                                        &(srv_conf->black_cookie_cache_lock),
+                                                                        REDIS_KEY_TYPE_COOKIE,
                                                                         NGX_HTTP_WAF_TRUE,
                                                                         NGX_HTTP_WAF_TRUE);
                 }
@@ -836,7 +826,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                                                                         value, 
                                                                         regex_array, 
                                                                         (u_char*)"BLACK-COOKIE", 
-                                                                        cache, 
+                                                                        &(srv_conf->black_cookie_cache_lock),
+                                                                        REDIS_KEY_TYPE_COOKIE,
                                                                         NGX_HTTP_WAF_TRUE,
                                                                         NGX_HTTP_WAF_TRUE);
                 }
@@ -906,7 +897,8 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
                                             &body_str, 
                                             srv_conf->black_post, 
                                             (u_char*)"BLACK-POST", 
-                                            NULL, 
+                                            NULL,
+                                            REDIS_KEY_TYPE_VOID,
                                             NGX_HTTP_WAF_TRUE,
                                             NGX_HTTP_WAF_TRUE) == NGX_HTTP_WAF_MATCHED) {
         ctx->blocked = NGX_HTTP_WAF_TRUE;
@@ -957,7 +949,8 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         ngx_str_t* str, 
                                                         ngx_array_t* array, 
                                                         const u_char* rule_type, 
-                                                        lru_cache_manager_t* cache, 
+                                                        spinlock_t* lock,
+                                                        redis_key_type_e key_type,
                                                         int check_sql_injection,
                                                         int check_xss) {
     static char s_no_memory[] = "No Memory";
@@ -968,16 +961,73 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     ngx_int_t cache_hit = NGX_HTTP_WAF_FAIL;
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     u_char* rule_detail = NULL;
+    u_char* raw_str = ngx_pcalloc(r->pool, sizeof(u_char) * (str->len + 1));
+    ngx_memcpy(raw_str, str->data, sizeof(u_char) * str->len);
+    raw_str[str->len] = '\0';
 
     if (str == NULL || str->data == NULL || str->len == 0 || array->nelts == 0) {
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET
-        && cache != NULL) {
-        cache_hit = lru_cache_manager_find(cache, str->data, str->len * sizeof(u_char), &is_matched, &rule_detail);
+    if (lock != NULL && ngx_http_waf_spinlock_lock(lock) == NGX_HTTP_WAF_SUCCESS) {
+        ngx_int_t flag = 0;
+        if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE) {
+            redisReply* reply = redisCommand(srv_conf->redis_ctx,
+                                            "HGET %s_%s_keytype%d_%s is_matched",
+                                            ngx_http_waf_module_nonce,
+                                            (char*)(srv_conf->redis_key_prefix),
+                                            key_type,
+                                            (char*)raw_str);
+            
+            if (reply != NULL && reply->type == REDIS_REPLY_STRING) {
+                if (strcmp(reply->str, "true") == 0) {
+                    is_matched = NGX_HTTP_WAF_MATCHED;
+                } else {
+                    is_matched = NGX_HTTP_WAF_NOT_MATCHED;
+                }
+                ++flag;
+            }
+
+            if (reply != NULL) { 
+                freeReplyObject(reply);
+                reply = NULL;
+            }
+
+            reply = redisCommand(srv_conf->redis_ctx,
+                                 "HGET %s_%s_keytype%d_%s rule_detail",
+                                 ngx_http_waf_module_nonce,
+                                 (char*)(srv_conf->redis_key_prefix),
+                                 key_type,
+                                 (char*)raw_str);
+
+
+            if (reply != NULL
+            && reply->type == REDIS_REPLY_STRING) {
+                rule_detail = ngx_pcalloc(r->pool, sizeof(u_char) * (reply->len + 1));
+                strcpy((char*)rule_detail, reply->str);
+                ++flag;
+            }
+
+            if (reply != NULL) { 
+                freeReplyObject(reply);
+                reply = NULL;
+            }
+
+            if (flag == 2) {
+                cache_hit = NGX_HTTP_WAF_SUCCESS;
+            }
+        }
+
+        if (lock != NULL && ngx_http_waf_spinlock_unlock(lock) != NGX_HTTP_WAF_SUCCESS) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf_debug: Unable to unlock %s.", lock->id);
+        }
+    } else if (lock != NULL) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf_debug: Unable to lock %s.", lock->id);
     }
+
+    
+
+    
 
     if (cache_hit != NGX_HTTP_WAF_SUCCESS) {
         if (check_sql_injection == NGX_HTTP_WAF_TRUE
@@ -989,7 +1039,7 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                 FLAG_NONE | FLAG_QUOTE_NONE | FLAG_QUOTE_SINGLE | FLAG_QUOTE_DOUBLE | FLAG_SQL_ANSI | FLAG_SQL_MYSQL);
             if (libinjection_is_sqli(&sf) == 1) {
                 is_matched = NGX_HTTP_WAF_MATCHED;
-                rule_detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
+                rule_detail = ngx_pcalloc(r->pool, sizeof(u_char) * 64);
                 if (rule_detail != NULL) {
                     sprintf((char*)rule_detail, "libinjection_sqli - %s", sf.fingerprint);
                 } else {
@@ -1002,7 +1052,7 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
             && ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS) == NGX_HTTP_WAF_TRUE) {
             if (libinjection_xss((char*)(str->data), str->len) == 1) {
                 is_matched = NGX_HTTP_WAF_MATCHED;
-                rule_detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
+                rule_detail = ngx_pcalloc(r->pool, sizeof(u_char) * 64);
                 if (rule_detail != NULL) {
                     sprintf((char*)rule_detail, "libinjection_xss");
                 } else {
@@ -1024,10 +1074,27 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         }
     }
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET
-        && cache != NULL) {
-        lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
+    if (cache_hit != NGX_HTTP_WAF_SUCCESS && lock != NULL && ngx_http_waf_spinlock_lock(lock) == NGX_HTTP_WAF_SUCCESS) {
+        if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE) {
+            redisReply* reply = redisCommand(srv_conf->redis_ctx,
+                                            "HSET %s_%s_keytype%d_%s is_matched %s rule_detail %s",
+                                            ngx_http_waf_module_nonce,
+                                            (char*)(srv_conf->redis_key_prefix),
+                                            key_type,
+                                            (char*)raw_str,
+                                            is_matched == NGX_HTTP_WAF_MATCHED ? "true" : "false",
+                                            rule_detail == NULL ? "none" : (char*)rule_detail);
+            
+            if (reply != NULL) {
+                freeReplyObject(reply);
+            }
+        }
+
+        if (lock != NULL && ngx_http_waf_spinlock_unlock(lock) != NGX_HTTP_WAF_SUCCESS) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf_debug: Unable to unlock %s.", lock->id);
+        }
+    } else if (lock != NULL) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "ngx_waf_debug: Unable to lock %s.", lock->id);
     }
 
     if (is_matched == NGX_HTTP_WAF_MATCHED) {

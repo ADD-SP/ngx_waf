@@ -32,6 +32,8 @@ RUN set -xe \
             libmaxminddb-dev \
             flex \
             bison \
+            hiredis \
+            hiredis-dev \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \

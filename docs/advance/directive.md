@@ -100,6 +100,41 @@ Set the parameters related to CC protection.
 * `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`. When this memory is exhausted, the program will automatically reset this memory to recount the IP accesses.
 
 
+::: tip CHANGES IN THE BETA
+
+The following changes have been made in the beta.
+
+* syntax: waf_cc_deny \<rate=*x/y*\> \[duration=*1h*\]
+
+* `rate`: Used to set the statistics period and the maximum number of requests for a single IP within each period. For example, `60r/m` means a maximum of 60 requests per minute, `60r/5m` means a maximum of 60 requests per five minutes, and I'm sure you can guess the effect of `60r/s`, `60r/5s`, `60r/h`, `60r/5h`, `60r/d` and `60r/5d`.
+
+* The parameter `size` is removed.
+
+:::
+
+
+
+## `waf_redis`
+
+* syntax: waf_cache \[host=*str*\] \[port=*number*\] \[unix=*/path/to/unix-socket-file*\]
+* default: -
+* context: server
+
+Used to connect to redis.
+
+* `host`: The IP address or domain name of the redis used for the connection. If you set this item you must set `port`.
+* `port`: The port number to use to connect to redis. If you set this item you must set `host`.
+* `unix`: The absolute path to the unix socket file used to connect to redis.
+
+If `unix` is set, the module gives preference to unix sockets to connect to redis, or `host:port` if it cannot connect.
+
+::: warning WARNING
+
+This configuration item is only available for the beta.
+
+:::
+
+
 
 ## `waf_cache`
 
@@ -180,7 +215,7 @@ Set the priority of each inspection process, except for POST detection, which al
 :::
 
 
-::: tip CHANGES IN THE DEVELOPMENT VERSION
+::: tip CHANGES IN THE BETA
 
 The default value is changed to W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
 

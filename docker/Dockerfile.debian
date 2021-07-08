@@ -31,6 +31,8 @@ RUN set -xe \
             libsodium-dev \
             libmaxminddb0 \
             libmaxminddb-dev \
+            libhiredis-dev \
+            libhiredis0.14 \
             flex \
             bison \
     &&  if [ ${CHANGE_SOURCE} == true ] ; then \

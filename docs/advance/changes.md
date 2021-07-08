@@ -19,15 +19,31 @@ lang: en
 
 2. If the directive `waf_priority` is used, you can delete it or modify it according to the directive in the documentation.
 
+3. If the directive `waf_cc_deny` is used, you need to modify the directive according to the documentation.
+
+4. Install redis and use the directive `waf_redis` correctly.
+
+5. All functions of the directive `waf_cache` are removed, but `waf_cache` is reserved for subsequent extensions, so if you use this directive you should remove it.
+
 ### Added
 
 * Advanced rules are supported, see the documentation for details.
+
+* A new directive `waf_redis` has been added to connect to redis and you must set this.
 
 ### Removed
 
 ### Changed
 
+* Use redis instead of shared memory for CC protection.
+
+* Use redis to cache the results of inspection results.
+
 * Updated the directive `waf_priority`, see the documentation for details.
+
+* Updated the directive `waf_cc_deny`, see the documentation for details.
+
+* All functions of the directive `waf_cache` are removed, but `waf_cache` is reserved for subsequent extensions, so if you use this directive you should remove it.
 
 ### Fixed
 

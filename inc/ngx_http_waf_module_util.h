@@ -148,6 +148,9 @@ static ngx_int_t rand_str(u_char* dest, size_t len);
 static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len);
 
 
+static ngx_int_t ensure_redis_ctx_healthy(ngx_http_waf_srv_conf_t* srv_conf);
+
+
 static void utarray_ngx_str_ctor(void *dst, const void *src);
 
 
@@ -669,6 +672,50 @@ static ngx_int_t sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t b
     free(out);
     
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+static ngx_int_t ensure_redis_ctx_healthy(ngx_http_waf_srv_conf_t* srv_conf) {
+    if (srv_conf->redis_ctx == NULL || srv_conf->redis_ctx->err != 0) {
+        struct timeval tv;
+        tv.tv_sec = 1;
+
+        if (srv_conf->redis_ctx != NULL && srv_conf->redis_ctx->err != 0) {
+            redisFree(srv_conf->redis_ctx);
+            srv_conf->redis_ctx = NULL;
+        }
+
+        if (srv_conf->waf_redis_unix.len != 0) {
+            srv_conf->redis_ctx = redisConnectUnixWithTimeout((const char*)(srv_conf->waf_redis_unix.data), tv);
+        } else if (srv_conf->waf_redis_host.len != 0 && srv_conf->waf_redis_port != NGX_CONF_UNSET) {
+            srv_conf->redis_ctx = redisConnectWithTimeout((const char*)(srv_conf->waf_redis_host.data),
+                                                          srv_conf->waf_redis_port,
+                                                          tv);
+        }
+
+        if (srv_conf->redis_ctx == NULL) {
+            return NGX_HTTP_WAF_FALSE;
+        }
+
+        if (srv_conf->redis_ctx->err != 0) {
+            redisFree(srv_conf->redis_ctx);
+            srv_conf->redis_ctx = NULL;
+            return NGX_HTTP_WAF_FALSE;
+        }
+    }
+
+    redisReply* reply = redisCommand(srv_conf->redis_ctx, "PING");
+
+    if (reply != NULL && reply->type == REDIS_REPLY_STATUS && strcasecmp(reply->str, "PONG") == 0) {
+        freeReplyObject(reply);
+        return NGX_HTTP_WAF_TRUE;
+    }
+
+    if (reply != NULL) {
+        freeReplyObject(reply);
+    }
+
+    return NGX_HTTP_WAF_FALSE;
 }
 
 

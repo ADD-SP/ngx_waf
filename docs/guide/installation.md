@@ -26,7 +26,7 @@ it is recommended that you pull the image built by the author directly.
 
 ### Pulling Remote Images
 
-This module uploads the corresponding Docker images each time the stable and development versions are updated, 
+This module uploads the corresponding Docker images each time the stable and beta versions are updated, 
 and rebuilds all images at 00:00:00 UTC on Sunday.
 
 You can choose one of the following two commands to pull an image that has already been built.
@@ -99,7 +99,7 @@ Then download the source code of this module, the following will use the stable 
 
 ```sh
 cd /usr/local/src
-# If you want to use the development version please replace '-b master' with '-b dev'.
+# If you want to use the beta please replace '-b master' with '-b dev'.
 git clone -b master https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
 git clone https://github.com/libinjection/libinjection.git inc/libinjection
