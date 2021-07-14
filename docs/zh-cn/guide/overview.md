@@ -31,7 +31,8 @@ lang: zh-CN
 ## 联系方式
 
 * Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)
-* Telegram 群组: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
+* Telegram 群组（英文）: [https://t.me/group_ngx_waf](https://t.me/group_ngx_waf)
+* Telegram 群主（中文）：[https://t.me/group_ngx_waf_cn](https://t.me/group_ngx_waf_cn)
 
 ## 性能测试
 

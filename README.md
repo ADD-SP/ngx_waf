@@ -12,7 +12,8 @@
 [![Semantic Versioning 2.0.0](https://img.shields.io/badge/Semantic%20Versioning-2.0.0-blue)](https://semver.org/)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
-[![Chat](https://img.shields.io/badge/Discussion-Telegram%20Group-blue)](https://t.me/ngx_waf_group)
+[![Discussion EN](https://img.shields.io/badge/Discussion%20EN-Telegram%20Group-blue)](https://t.me/group_ngx_waf)
+[![Discussion CN](https://img.shields.io/badge/Discussion%20CN-Telegram%20Group-blue)](https://t.me/group_ngx_waf_cn)
 
 English | [简体中文](README-ZH-CN.md)
 
@@ -51,7 +52,8 @@ Handy, High performance Nginx firewall module.
 ## Contact
 
 * Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)
-* Telegram Group: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
+* Telegram Group (English): [https://t.me/group_ngx_waf](https://t.me/group_ngx_waf)
+* Telegram Group (Chinese): [https://t.me/group_ngx_waf_cn](https://t.me/group_ngx_waf_cn)
 
 ## License
 
