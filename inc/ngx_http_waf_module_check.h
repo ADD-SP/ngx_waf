@@ -145,7 +145,7 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
 /**
  * @brief 获取模块上下文和 server 块配置。
 */
-static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_srv_conf_t** srv_conf, ngx_http_waf_ctx_t** ctx);
+static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_conf_t** conf, ngx_http_waf_ctx_t** ctx);
 
 
 /**
@@ -174,12 +174,12 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
         "ngx_waf_debug: Start inspecting the IP whitelist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -192,7 +192,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
             struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-            if (ip_trie_find(&srv_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(&loc_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -204,7 +204,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_
             inx_addr_t inx_addr;
             
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
-            if (ip_trie_find(&srv_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(&loc_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -228,12 +228,12 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
         "ngx_waf_debug: Start inspecting the IP blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -247,7 +247,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
             inx_addr_t inx_addr;
             
             ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-            if (ip_trie_find(&srv_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(&loc_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -258,11 +258,11 @@ static ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_
             struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
-            if (ip_trie_find(&srv_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(&loc_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
-                *out_http_status = srv_conf->waf_http_status;
+                *out_http_status = loc_conf->waf_http_status;
                 ret_value = NGX_HTTP_WAF_MATCHED;
             }
         }
@@ -282,19 +282,19 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
         "ngx_waf_debug: Start the CC inspection process.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
     ngx_int_t ip_type = r->connection->sockaddr->sa_family;
     time_t now = time(NULL);
     
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_CC) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_CC) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
-    } else if (srv_conf->waf_cc_deny_limit == NGX_CONF_UNSET
-        || srv_conf->waf_cc_deny_duration == NGX_CONF_UNSET) {
+    } else if (loc_conf->waf_cc_deny_limit == NGX_CONF_UNSET
+        || loc_conf->waf_cc_deny_duration == NGX_CONF_UNSET) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -314,13 +314,13 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
         }
 
         double diff_second = 0.0;
-        ngx_int_t limit  = srv_conf->waf_cc_deny_limit;
-        ngx_int_t duration = srv_conf->waf_cc_deny_duration;
+        ngx_int_t limit  = loc_conf->waf_cc_deny_limit;
+        ngx_int_t duration = loc_conf->waf_cc_deny_duration;
         ip_trie_node_t* node = NULL;
         ip_statis_t statis;
         statis.count = 1;
         statis.start_time = now;
-        ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)srv_conf->shm_zone_cc_deny->shm.addr;
+        ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)loc_conf->shm_zone_cc_deny->shm.addr;
 
         ngx_shmtx_lock(&shpool->mutex);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -328,17 +328,17 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
         
 
         if (ip_type == AF_INET) {
-            if (ip_trie_find(srv_conf->ipv4_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(loc_conf->ipv4_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
                 ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
                 diff_second = difftime(now, statis.start_time);
             } else {
-                switch (ip_trie_add(srv_conf->ipv4_access_statistics, &inx_addr, 32, &statis, sizeof(ip_statis_t))) {
+                switch (ip_trie_add(loc_conf->ipv4_access_statistics, &inx_addr, 32, &statis, sizeof(ip_statis_t))) {
                     case NGX_HTTP_WAF_SUCCESS: 
-                        ip_trie_find(srv_conf->ipv4_access_statistics, &inx_addr, &node);
+                        ip_trie_find(loc_conf->ipv4_access_statistics, &inx_addr, &node);
                         ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
                         break;
                     case NGX_HTTP_WAF_MALLOC_ERROR: 
-                        *(srv_conf->last_clear_ip_access_statistics) = 0;
+                        *(loc_conf->last_clear_ip_access_statistics) = 0;
                         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                             "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
                         goto no_memory;
@@ -351,17 +351,17 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
                 }
             }
         } else if (ip_type == AF_INET6) {
-            if (ip_trie_find(srv_conf->ipv6_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(loc_conf->ipv6_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
                 ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
                 diff_second = difftime(now, statis.start_time);
             } else {
-                switch (ip_trie_add(srv_conf->ipv6_access_statistics, &inx_addr, 128, &statis, sizeof(ip_statis_t))) {
+                switch (ip_trie_add(loc_conf->ipv6_access_statistics, &inx_addr, 128, &statis, sizeof(ip_statis_t))) {
                     case NGX_HTTP_WAF_SUCCESS: 
-                        ip_trie_find(srv_conf->ipv6_access_statistics, &inx_addr, &node);
+                        ip_trie_find(loc_conf->ipv6_access_statistics, &inx_addr, &node);
                         ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
                         break;
                     case NGX_HTTP_WAF_MALLOC_ERROR: 
-                        *(srv_conf->last_clear_ip_access_statistics) = 0;
+                        *(loc_conf->last_clear_ip_access_statistics) = 0;
                         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                             "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
                         goto no_memory;
@@ -402,7 +402,7 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             strcpy((char*)ctx->rule_type, "CC-DNEY");
             strcpy((char*)ctx->rule_deatils, "");
-            *out_http_status = srv_conf->waf_http_status_cc;
+            *out_http_status = loc_conf->waf_http_status_cc;
             ret_value = NGX_HTTP_WAF_MATCHED;
 
             size_t header_key_len = ngx_strlen("Retry-After");
@@ -450,12 +450,12 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
         "ngx_waf_debug: Start inspecting the URL whitelist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -464,8 +464,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_str_t* p_uri = &r->uri;
-        ngx_array_t* regex_array = srv_conf->white_url;
-        lru_cache_manager_t* cache = &(srv_conf->white_url_inspection_cache);
+        ngx_array_t* regex_array = loc_conf->white_url;
+        lru_cache_manager_t* cache = &(loc_conf->white_url_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r,
                                                             p_uri, 
@@ -495,12 +495,12 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
         "ngx_waf_debug: Start inspecting the URL blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -509,8 +509,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_str_t* p_uri = &r->uri;
-        ngx_array_t* regex_array = srv_conf->black_url;
-        lru_cache_manager_t* cache = &(srv_conf->black_url_inspection_cache);
+        ngx_array_t* regex_array = loc_conf->black_url;
+        lru_cache_manager_t* cache = &(loc_conf->black_url_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_uri, 
@@ -522,7 +522,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = srv_conf->waf_http_status;
+            *out_http_status = loc_conf->waf_http_status;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -540,12 +540,12 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
         "ngx_waf_debug: Start inspecting the ARGS blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_ARGS | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_ARGS | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -554,8 +554,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_str_t* p_args = &r->args;
-        ngx_array_t* regex_array = srv_conf->black_args;
-        lru_cache_manager_t* cache = &(srv_conf->black_args_inspection_cache);
+        ngx_array_t* regex_array = loc_conf->black_args;
+        lru_cache_manager_t* cache = &(loc_conf->black_args_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_args, 
@@ -607,7 +607,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = srv_conf->waf_http_status;
+            *out_http_status = loc_conf->waf_http_status;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -625,12 +625,12 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
         "ngx_waf_debug: Start inspecting the User-Agent blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_UA | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_UA | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -643,8 +643,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_str_t* p_ua = &r->headers_in.user_agent->value;
-        ngx_array_t* regex_array = srv_conf->black_ua;
-        lru_cache_manager_t* cache = &(srv_conf->black_ua_inspection_cache);
+        ngx_array_t* regex_array = loc_conf->black_ua;
+        lru_cache_manager_t* cache = &(loc_conf->black_ua_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_ua, 
@@ -656,7 +656,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = srv_conf->waf_http_status;
+            *out_http_status = loc_conf->waf_http_status;
         }
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -674,12 +674,12 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
         "ngx_waf_debug: Start inspecting the Referer whitelist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -692,8 +692,8 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
-        ngx_array_t* regex_array = srv_conf->white_referer;
-        lru_cache_manager_t* cache = &(srv_conf->white_referer_inspection_cache);
+        ngx_array_t* regex_array = loc_conf->white_referer;
+        lru_cache_manager_t* cache = &(loc_conf->white_referer_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
@@ -724,12 +724,12 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
         "ngx_waf_debug: Start inspecting the Referer blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -742,8 +742,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
             "ngx_waf_debug: Inspection has begun.");
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
-        ngx_array_t* regex_array = srv_conf->black_referer;
-        lru_cache_manager_t* cache = &(srv_conf->black_referer_inspection_cache);
+        ngx_array_t* regex_array = loc_conf->black_referer;
+        lru_cache_manager_t* cache = &(loc_conf->black_referer_inspection_cache);
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
@@ -755,7 +755,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            *out_http_status = srv_conf->waf_http_status;
+            *out_http_status = loc_conf->waf_http_status;
         }
 
 
@@ -774,12 +774,12 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
         "ngx_waf_debug: Start inspecting the Cookie blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_COOKIE | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_COOKIE | r->method) == NGX_HTTP_WAF_FALSE) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -815,8 +815,8 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                 ngx_memcpy(temp.data, key->data, key->len);
                 ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
 
-                ngx_array_t* regex_array = srv_conf->black_cookie;
-                lru_cache_manager_t* cache = &(srv_conf->black_cookie_inspection_cache);
+                ngx_array_t* regex_array = loc_conf->black_cookie;
+                lru_cache_manager_t* cache = &(loc_conf->black_cookie_inspection_cache);
 
                 ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                                     &temp, 
@@ -850,7 +850,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                 
                 if (ret_value == NGX_HTTP_WAF_MATCHED) {
                     ctx->blocked = NGX_HTTP_WAF_TRUE;
-                    *out_http_status = srv_conf->waf_http_status;
+                    *out_http_status = loc_conf->waf_http_status;
                     break;
                 }
 
@@ -879,8 +879,8 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
 
     double start_clock = (double)clock();
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t content_length = ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len);
     ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
@@ -909,7 +909,7 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
 
     if (ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                             &body_str, 
-                                            srv_conf->black_post, 
+                                            loc_conf->black_post, 
                                             (u_char*)"BLACK-POST", 
                                             NULL, 
                                             NGX_HTTP_WAF_TRUE,
@@ -929,12 +929,12 @@ static void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
     } else {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
         ngx_http_finalize_request(r, NGX_DONE);
-        ngx_http_finalize_request(r, srv_conf->waf_http_status);
+        ngx_http_finalize_request(r, loc_conf->waf_http_status);
     }
 }
 
 
-static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_srv_conf_t** srv_conf, ngx_http_waf_ctx_t** ctx) {
+static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_conf_t** conf, ngx_http_waf_ctx_t** ctx) {
     if (ctx != NULL) {
         *ctx = NULL;
         *ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
@@ -950,8 +950,8 @@ static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_sr
             "ngx_waf_debug: The module context has been obtained.");
     }
     
-    if (srv_conf != NULL) {
-        *srv_conf = ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    if (conf != NULL) {
+        *conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The configuration of the module has been obtained.");
     }
@@ -967,9 +967,9 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         int check_xss) {
     static char s_no_memory[] = "No Memory";
 
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_conf_t* loc_conf = NULL;
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     ngx_int_t cache_hit = NGX_HTTP_WAF_FAIL;
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     u_char* rule_detail = NULL;
@@ -978,15 +978,15 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
+        && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
         && cache != NULL) {
         cache_hit = lru_cache_manager_find(cache, str->data, str->len * sizeof(u_char), &is_matched, &rule_detail);
     }
 
     if (cache_hit != NGX_HTTP_WAF_SUCCESS) {
         if (check_sql_injection == NGX_HTTP_WAF_TRUE
-            && ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI) == NGX_HTTP_WAF_TRUE) {
+            && ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI) == NGX_HTTP_WAF_TRUE) {
             sfilter sf;
             libinjection_sqli_init(&sf, 
                                 (char*)(str->data), 
@@ -1004,7 +1004,7 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         }
 
         if (check_xss
-            && ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS) == NGX_HTTP_WAF_TRUE) {
+            && ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS) == NGX_HTTP_WAF_TRUE) {
             if (libinjection_xss((char*)(str->data), str->len) == 1) {
                 is_matched = NGX_HTTP_WAF_MATCHED;
                 rule_detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
@@ -1029,8 +1029,8 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         }
     }
 
-    if (ngx_http_waf_check_flag(srv_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && srv_conf->waf_inspection_capacity != NGX_CONF_UNSET
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
+        && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
         && cache != NULL) {
         lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
     }

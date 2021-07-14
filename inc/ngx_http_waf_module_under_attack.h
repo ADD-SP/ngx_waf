@@ -46,10 +46,10 @@ static ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_
         "ngx_waf_debug: Enter the Under-Attack processing flow.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (srv_conf->waf_under_attack == 0 || srv_conf->waf_under_attack == NGX_CONF_UNSET) {
+    if (loc_conf->waf_under_attack == 0 || loc_conf->waf_under_attack == NGX_CONF_UNSET) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -58,8 +58,8 @@ static ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_
     }
 
     if (ngx_strncmp(r->uri.data, 
-                    srv_conf->waf_under_attack_uri.data, 
-                    ngx_max(r->uri.len, srv_conf->waf_under_attack_uri.len)) == 0) {
+                    loc_conf->waf_under_attack_uri.data, 
+                    ngx_max(r->uri.len, loc_conf->waf_under_attack_uri.len)) == 0) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -284,8 +284,8 @@ static ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
                                                 size_t dst_len, 
                                                 u_char* now,
                                                 size_t now_len) {
-    ngx_http_waf_srv_conf_t *srv_conf = (ngx_http_waf_srv_conf_t *)ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
-    size_t buf_len = sizeof(srv_conf->random_str) + sizeof(inx_addr_t) + uid_len + now_len;
+    ngx_http_waf_conf_t *loc_conf = (ngx_http_waf_conf_t *)ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    size_t buf_len = sizeof(loc_conf->random_str) + sizeof(inx_addr_t) + uid_len + now_len;
     u_char *buf = (u_char *)ngx_pnalloc(r->pool, buf_len);
     ngx_memzero(buf, sizeof(u_char) * buf_len);
     inx_addr_t inx_addr;
@@ -304,8 +304,8 @@ static ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
     size_t offset = 0;
 
     /* 写入随机字符串 */
-    ngx_memcpy(buf+ offset, srv_conf->random_str, sizeof(srv_conf->random_str));
-    offset += sizeof(srv_conf->random_str);
+    ngx_memcpy(buf+ offset, loc_conf->random_str, sizeof(loc_conf->random_str));
+    offset += sizeof(loc_conf->random_str);
 
     /* 写入时间戳 */
     ngx_memcpy(buf + offset, now, sizeof(u_char) * now_len);
@@ -328,7 +328,7 @@ static ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
 
 static void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r) {
     size_t s_header_location_key_len = sizeof("Location");
-    ngx_http_waf_srv_conf_t *srv_conf = (ngx_http_waf_srv_conf_t *)ngx_http_get_module_srv_conf(r, ngx_http_waf_module);
+    ngx_http_waf_conf_t *loc_conf = (ngx_http_waf_conf_t *)ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
 
     
     ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
@@ -338,13 +338,13 @@ static void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r) {
     ngx_memcpy(header->key.data, "Location", s_header_location_key_len - 1);
     header->key.len = s_header_location_key_len - 1;
 
-    header->value.data = ngx_pnalloc(r->pool, sizeof(u_char) * (srv_conf->waf_under_attack_uri.len + r->uri.len + 32));
-    ngx_memzero(header->value.data, sizeof(u_char) * (srv_conf->waf_under_attack_uri.len + r->uri.len + 1));
+    header->value.data = ngx_pnalloc(r->pool, sizeof(u_char) * (loc_conf->waf_under_attack_uri.len + r->uri.len + 32));
+    ngx_memzero(header->value.data, sizeof(u_char) * (loc_conf->waf_under_attack_uri.len + r->uri.len + 1));
     u_char* uri = ngx_pnalloc(r->pool, sizeof(u_char) * (r->uri.len + 1));
     ngx_memzero(uri, sizeof(u_char) * (r->uri.len + 1));
     ngx_memcpy(uri, r->uri.data, sizeof(u_char) * r->uri.len);
     header->value.len = sprintf((char*)header->value.data, "%s?target=%s",
-            (char*)srv_conf->waf_under_attack_uri.data,
+            (char*)loc_conf->waf_under_attack_uri.data,
             (char*)uri);
     ngx_pfree(r->pool, uri);
 
