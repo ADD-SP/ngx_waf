@@ -248,14 +248,13 @@ typedef struct ngx_http_waf_ctx_s {
 
 
 /**
- * @struct ngx_http_waf_srv_conf_t
+ * @struct ngx_http_waf_conf_t
  * @brief 每个 server 块的配置块
 */
-typedef struct ngx_http_waf_srv_conf_s {
+typedef struct ngx_http_waf_conf_s {
     u_char                          random_str[129];                            /**< 随机字符串 */
     ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
-    ngx_pool_t                     *ngx_pool;                                   /**< 模块所使用的内存池 */
     ngx_uint_t                      alloc_times;                                /**< 当前已经从内存池中申请过多少次内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
@@ -293,8 +292,7 @@ typedef struct ngx_http_waf_srv_conf_s {
     lru_cache_manager_t             white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
     lru_cache_manager_t             white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
-    ngx_http_waf_check_pt           check_proc_no_cc[20];                       /**< 各种检测流程的启动函数，但是不包括 CC 检测 */
-} ngx_http_waf_srv_conf_t;
+} ngx_http_waf_conf_t;
 
 
 /**

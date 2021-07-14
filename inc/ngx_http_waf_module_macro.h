@@ -221,17 +221,10 @@
 
 
 /**
- * @def NGX_HTTP_WAF_MODE_EXTRA_COMPAT
- * @brief 兼容模式，启用一些兼容性功能。
-*/
-#define NGX_HTTP_WAF_MODE_EXTRA_COMPAT                       (NGX_HTTP_WAF_MODE_INSPECT_CC << 1)
-
-
-/**
  * @def NGX_HTTP_WAF_MODE_EXTRA_STRICT
  * @brief 严格模式，牺牲一些性能进行更多的检查，但是花费的时间不会发生数量级上的变化。
 */
-#define NGX_HTTP_WAF_MODE_EXTRA_STRICT                       (NGX_HTTP_WAF_MODE_EXTRA_COMPAT << 1)
+#define NGX_HTTP_WAF_MODE_EXTRA_STRICT                       (NGX_HTTP_WAF_MODE_INSPECT_CC << 1)
 
 /**
  * @def NGX_HTTP_WAF_MODE_EXTRA_CACHE
@@ -262,6 +255,24 @@
                                                             | NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS)
 
 
+#define NGX_HTTP_WAF_MODE_ALL_METHOD             (NGX_HTTP_WAF_MODE_INSPECT_GET          \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_HEAD         \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_POST         \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_PUT          \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_DELETE       \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_MKCOL        \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_COPY         \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_MOVE         \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_OPTIONS      \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_PROPFIND     \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_PROPPATCH    \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_LOCK         \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_UNLOCK       \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_PATCH        \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_TRACE)
+
+
+
 /**
  * @def MODE_STD
  * @brief 标准工作模式
@@ -275,7 +286,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_GET          \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_POST         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI)
 /**
@@ -304,7 +314,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_GET          \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_POST         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI)
 
@@ -334,7 +343,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_PATCH        \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_TRACE        \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_COMPAT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_STRICT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION)
@@ -355,11 +363,11 @@
     strcat((folder), (filename));                                                                               \
     if (access((folder), R_OK) != 0) {                                                                          \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
-        return NGX_CONF_ERROR;                                                                                  \
+        return NGX_HTTP_WAF_FAIL;                                                                                  \
     }                                                                                                           \
     if (load_into_container((cf), (folder), (container), (mode)) == NGX_HTTP_WAF_FAIL) {                                     \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Cannot read configuration.");    \
-        return NGX_CONF_ERROR;                                                                                  \
+        return NGX_HTTP_WAF_FAIL;                                                                                  \
     }                                                                                                           \
     *(end) = '\0';                                                                                              \
 }

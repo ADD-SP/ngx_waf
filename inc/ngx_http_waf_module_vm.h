@@ -19,9 +19,9 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
 
 static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     static ngx_str_t s_empty_str = ngx_string("");
-    ngx_http_waf_srv_conf_t* srv_conf = NULL;
+    ngx_http_waf_conf_t* loc_conf = NULL;
     ngx_http_waf_ctx_t* ctx = NULL; 
-    ngx_http_waf_get_ctx_and_conf(r, &srv_conf, &ctx);
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     
     ngx_int_t ret = NGX_HTTP_WAF_NOT_MATCHED;
 
@@ -53,7 +53,7 @@ static ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http
     vm_stack_arg_t* stack = NULL;
     vm_code_t* code = NULL;
 
-    while (code = (vm_code_t*)utarray_next(&(srv_conf->advanced_rule), code), code != NULL) {
+    while (code = (vm_code_t*)utarray_next(&(loc_conf->advanced_rule), code), code != NULL) {
         vm_stack_arg_t* argv = &(code->argv);
         switch (code->type) {
             case VM_CODE_PUSH_INT:
