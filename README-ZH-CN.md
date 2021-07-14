@@ -14,7 +14,8 @@
 [![语义化版本 2.0.0](https://img.shields.io/badge/%E8%AF%AD%E4%B9%89%E5%8C%96%E7%89%88%E6%9C%AC-2.0.0-blue)](https://semver.org/lang/zh-CN/)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
-[![Chat](https://img.shields.io/badge/Discussion-Telegram%20Group-blue)](https://t.me/ngx_waf_group)
+[![Discussion EN](https://img.shields.io/badge/Discussion%20EN-Telegram%20Group-blue)](https://t.me/group_ngx_waf)
+[![Discussion CN](https://img.shields.io/badge/Discussion%20CN-Telegram%20Group-blue)](https://t.me/group_ngx_waf_cn)
 
 [English](README.md) | 简体中文
 
@@ -50,7 +51,8 @@
 ## 联系方式
 
 * Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)
-* Telegram 群组: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
+* Telegram 群组（英文）: [https://t.me/group_ngx_waf](https://t.me/group_ngx_waf)
+* Telegram 群主（中文）：[https://t.me/group_ngx_waf_cn](https://t.me/group_ngx_waf_cn)
 
 ## 开源许可证
 

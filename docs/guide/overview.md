@@ -35,7 +35,8 @@ Handy, High performance Nginx firewall module.
 ## Contact
 
 * Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)
-* Telegram Group: [https://t.me/ngx_waf_group](https://t.me/ngx_waf_group)
+* Telegram Group (English): [https://t.me/group_ngx_waf](https://t.me/group_ngx_waf)
+* Telegram Group (Chinese): [https://t.me/group_ngx_waf_cn](https://t.me/group_ngx_waf_cn)
 
 ## Performance Test
 
