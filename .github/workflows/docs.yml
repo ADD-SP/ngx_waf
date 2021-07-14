@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '14.15.5'
       - name: Build & Deploy
-        uses: jenkey2011/vuepress-deploy@master
+        uses: jenkey2011/vuepress-deploy@v1.8.1
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           TARGET_BRANCH: gh-pages
