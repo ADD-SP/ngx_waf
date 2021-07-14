@@ -341,10 +341,12 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
                         *(srv_conf->last_clear_ip_access_statistics) = 0;
                         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                             "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
+                        goto no_memory;
                         break;
                     case NGX_HTTP_WAF_FAIL:
                         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                             "ngx_waf_debug: Failed to add ipv6 statistics.");
+                        goto exception;
                         break;
                 }
             }
@@ -362,10 +364,12 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
                         *(srv_conf->last_clear_ip_access_statistics) = 0;
                         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                             "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
+                        goto no_memory;
                         break;
                     case NGX_HTTP_WAF_FAIL:
                         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                             "ngx_waf_debug: Failed to add ipv6 statistics.");
+                        goto exception;
                         break;
                 }
             }
@@ -422,7 +426,8 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             header->value.len = ngx_sprintf(header->value.data, "%d", duration) - header->value.data;
         }
         
-
+        exception:
+        no_memory:
         not_matched:
         
         ngx_shmtx_unlock(&shpool->mutex);

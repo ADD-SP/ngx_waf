@@ -303,18 +303,28 @@ static ngx_int_t ip_trie_clear(ip_trie_t* trie) {
     }
 
     circular_doublly_linked_list_t* item = NULL;
+    ip_trie_node_t* node = NULL;
 
     while ((item = head->next), (item != NULL && item != head)) {
+        node = item->data;
+        if (node->data != NULL) {
+            mem_pool_free(&trie->pool, node->data);
+        }
         mem_pool_free(&trie->pool, item->data);
         CDL_DELETE(head, item);
         free(item);
     }
 
-    mem_pool_free(&trie->pool, head->data);
-    item = head;
-    CDL_DELETE(head, head);
-    free(item);
-    
+    if (item != NULL) {
+        node = item->data; 
+        if (node->data != NULL) {
+            mem_pool_free(&trie->pool, node->data);
+        }
+        mem_pool_free(&trie->pool, head->data);
+        item = head;
+        CDL_DELETE(head, head);
+        free(item);
+    }
 
     trie->root->left = NULL;
     trie->root->right = NULL;
