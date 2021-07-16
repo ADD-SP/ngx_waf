@@ -252,6 +252,7 @@ typedef struct ngx_http_waf_ctx_s {
  * @brief 每个 server 块的配置块
 */
 typedef struct ngx_http_waf_conf_s {
+    struct ngx_http_waf_conf_s     *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
     u_char                          random_str[129];                            /**< 随机字符串 */
     ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
@@ -284,13 +285,13 @@ typedef struct ngx_http_waf_conf_s {
     ip_trie_t                      *ipv4_access_statistics;                     /**< IP 访问频率统计表 */
     ip_trie_t                      *ipv6_access_statistics;                     /**< IP 访问频率统计表 */
     time_t                         *last_clear_ip_access_statistics;            /**< 最后一次清空 IP 访问频率统计表的时间 */
-    lru_cache_manager_t             black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
-    lru_cache_manager_t             black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
-    lru_cache_manager_t             black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
-    lru_cache_manager_t             black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
-    lru_cache_manager_t             black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
-    lru_cache_manager_t             white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
-    lru_cache_manager_t             white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    lru_cache_manager_t            *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
+    lru_cache_manager_t            *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
+    lru_cache_manager_t            *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
+    lru_cache_manager_t            *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
+    lru_cache_manager_t            *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
+    lru_cache_manager_t            *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
+    lru_cache_manager_t            *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_conf_t;
 

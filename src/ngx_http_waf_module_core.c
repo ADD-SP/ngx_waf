@@ -118,7 +118,8 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start the memory collection event trigger process.");
 
-    ngx_http_waf_conf_t* loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
     time_t now = time(NULL);
 
     if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
@@ -152,58 +153,62 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
 
     ngx_int_t is_need_eliminate_cache = NGX_HTTP_WAF_FALSE;
     ngx_int_t interval = loc_conf->waf_eliminate_inspection_cache_interval;
+
+    if (loc_conf->waf_inspection_capacity == NGX_CONF_UNSET) {
+        return;
+    }
     
 
-    if (difftime(now, loc_conf->black_url_inspection_cache.last_eliminate) > interval) {
+    if (difftime(now, loc_conf->black_url_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_url_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     } 
     
-    else if (difftime(now, loc_conf->black_args_inspection_cache.last_eliminate) > interval) {
+    else if (difftime(now, loc_conf->black_args_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_args_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     } 
     
-    else if (difftime(now, loc_conf->black_ua_inspection_cache.last_eliminate) > interval) {
+    else if (difftime(now, loc_conf->black_ua_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_ua_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     } 
     
-    else if (difftime(now, loc_conf->black_referer_inspection_cache.last_eliminate) > interval) {
+    else if (difftime(now, loc_conf->black_referer_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_referer_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     } 
     
-    else if (difftime(now, loc_conf->black_cookie_inspection_cache.last_eliminate) > interval) {
+    else if (difftime(now, loc_conf->black_cookie_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in black_cookie_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     } 
     
-    else if (difftime(now, loc_conf->white_url_inspection_cache.last_eliminate) > interval) {
+    else if (difftime(now, loc_conf->white_url_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in white_url_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     } 
     
-    else if (difftime(now, loc_conf->white_referer_inspection_cache.last_eliminate) > interval) {
+    else if (difftime(now, loc_conf->white_referer_inspection_cache->last_eliminate) > interval) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The cache in white_referer_inspection_cache will trigger memory collection process.");
         is_need_eliminate_cache = NGX_HTTP_WAF_TRUE;
     }
 
     if (is_need_eliminate_cache == NGX_HTTP_WAF_TRUE) {
-        loc_conf->black_url_inspection_cache.last_eliminate = now;
-        loc_conf->black_args_inspection_cache.last_eliminate = now;
-        loc_conf->black_ua_inspection_cache.last_eliminate = now;
-        loc_conf->black_referer_inspection_cache.last_eliminate = now;
-        loc_conf->black_cookie_inspection_cache.last_eliminate = now;
-        loc_conf->white_url_inspection_cache.last_eliminate = now;
-        loc_conf->white_referer_inspection_cache.last_eliminate = now;
+        loc_conf->black_url_inspection_cache->last_eliminate = now;
+        loc_conf->black_args_inspection_cache->last_eliminate = now;
+        loc_conf->black_ua_inspection_cache->last_eliminate = now;
+        loc_conf->black_referer_inspection_cache->last_eliminate = now;
+        loc_conf->black_cookie_inspection_cache->last_eliminate = now;
+        loc_conf->white_url_inspection_cache->last_eliminate = now;
+        loc_conf->white_referer_inspection_cache->last_eliminate = now;
         ngx_http_waf_eliminate_inspection_cache(r);
     }
 
@@ -214,7 +219,8 @@ static void ngx_http_waf_trigger_mem_collation_event(ngx_http_request_t* r) {
 
 
 static void ngx_http_waf_clear_ip_access_statistics(ngx_http_request_t* r) {
-    ngx_http_waf_conf_t* loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The IP statistics cleanup process has been started.");
@@ -244,44 +250,45 @@ static void ngx_http_waf_eliminate_inspection_cache(ngx_http_request_t* r) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The batch cache elimination process has been started.");
 
-    ngx_http_waf_conf_t* loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The configuration of the module has been obtained.");
     
     double percent = loc_conf->waf_eliminate_inspection_cache_percent / 100.0;
 
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->black_url_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->black_url_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from black_url_inspection_cache.");
     }
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->black_args_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->black_args_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from black_args_inspection_cache.");
     }
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->black_ua_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->black_ua_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from black_ua_inspection_cache.");
     }
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->black_referer_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->black_referer_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from black_referer_inspection_cache.");
     }
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->black_cookie_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->black_cookie_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from black_cookie_inspection_cache.");
     }
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->white_url_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->white_url_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from white_url_inspection_cache.");
     }
 
-    if (lru_cache_manager_eliminate_percent(&loc_conf->white_referer_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
+    if (lru_cache_manager_eliminate_percent(loc_conf->white_referer_inspection_cache, percent) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Unable to clear cache from white_referer_inspection_cache.");
     }

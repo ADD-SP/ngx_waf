@@ -918,24 +918,32 @@ static char* ngx_http_waf_merge_srv_conf(ngx_conf_t *cf, void *prev, void *conf)
         child->waf_mode = parent->waf_mode;
     }
 
-    ngx_int_t tmp1 = child->waf_cc_deny_limit;
-    ngx_conf_merge_value(child->waf_cc_deny_limit, parent->waf_cc_deny_limit, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_cc_deny_duration, parent->waf_cc_deny_duration, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_cc_deny_shm_zone_size, parent->waf_cc_deny_shm_zone_size, NGX_CONF_UNSET);
+    // ngx_int_t tmp1 = child->waf_cc_deny_limit;
+    // ngx_conf_merge_value(child->waf_cc_deny_limit, parent->waf_cc_deny_limit, NGX_CONF_UNSET);
+    // ngx_conf_merge_value(child->waf_cc_deny_duration, parent->waf_cc_deny_duration, NGX_CONF_UNSET);
+    // ngx_conf_merge_value(child->waf_cc_deny_shm_zone_size, parent->waf_cc_deny_shm_zone_size, NGX_CONF_UNSET);
 
-    if (tmp1 == NGX_CONF_UNSET 
-    &&  child->waf_cc_deny_limit != NGX_CONF_UNSET
-    &&  ngx_http_waf_init_cc_shm(cf, child) != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
+    if (child->waf_cc_deny_limit == NGX_CONF_UNSET) {
+        child->parent = parent;
     }
     
     
-    tmp1 = child->waf_inspection_capacity;
+    ngx_int_t tmp1 = child->waf_inspection_capacity;
     ngx_conf_merge_value(child->waf_inspection_capacity, parent->waf_inspection_capacity, NGX_CONF_UNSET);
-    if (tmp1 == NGX_CONF_UNSET 
-    &&  child->waf_inspection_capacity != NGX_CONF_UNSET
-    &&  ngx_http_waf_init_lru_cache(cf, child) != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
+    ngx_conf_merge_value(child->waf_eliminate_inspection_cache_interval, 
+                        parent->waf_eliminate_inspection_cache_interval, 
+                        NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_eliminate_inspection_cache_percent, 
+                        parent->waf_eliminate_inspection_cache_percent, 
+                        NGX_CONF_UNSET);
+    if (tmp1 == NGX_CONF_UNSET && child->waf_inspection_capacity != NGX_CONF_UNSET) {
+        child->black_url_inspection_cache = parent->black_url_inspection_cache;
+        child->black_args_inspection_cache = parent->black_args_inspection_cache;
+        child->black_ua_inspection_cache = parent->black_ua_inspection_cache;
+        child->black_referer_inspection_cache = parent->black_referer_inspection_cache;
+        child->black_cookie_inspection_cache = parent->black_cookie_inspection_cache;
+        child->white_url_inspection_cache = parent->white_url_inspection_cache;
+        child->white_referer_inspection_cache = parent->white_referer_inspection_cache;
     }
 
     return NGX_CONF_OK;
@@ -1376,8 +1384,8 @@ static ngx_http_waf_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
     conf->waf_inspection_capacity = NGX_CONF_UNSET;
-    conf->waf_eliminate_inspection_cache_interval = 60 * 60;
-    conf->waf_eliminate_inspection_cache_percent = 50;
+    conf->waf_eliminate_inspection_cache_interval = NGX_CONF_UNSET;
+    conf->waf_eliminate_inspection_cache_percent = NGX_CONF_UNSET;
     conf->waf_http_status = 403;
     conf->waf_http_status_cc = 503;
     conf->black_url = ngx_array_create(cf->pool, 10, sizeof(ngx_regex_elt_t));
@@ -1473,43 +1481,51 @@ static ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_conf_t* c
 
 
 static ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_conf_t* conf) {
-    if (lru_cache_manager_init(&(conf->black_url_inspection_cache), 
+    conf->black_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->black_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->black_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->black_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+
+    if (lru_cache_manager_init(conf->black_url_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_url_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (lru_cache_manager_init(&(conf->black_args_inspection_cache), 
+    if (lru_cache_manager_init(conf->black_args_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_args_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (lru_cache_manager_init(&(conf->black_ua_inspection_cache), 
+    if (lru_cache_manager_init(conf->black_ua_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_ua_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (lru_cache_manager_init(&(conf->black_referer_inspection_cache), 
+    if (lru_cache_manager_init(conf->black_referer_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_referer_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (lru_cache_manager_init(&(conf->black_cookie_inspection_cache), 
+    if (lru_cache_manager_init(conf->black_cookie_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_cookie_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (lru_cache_manager_init(&(conf->white_url_inspection_cache), 
+    if (lru_cache_manager_init(conf->white_url_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize white_url_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (lru_cache_manager_init(&(conf->white_referer_inspection_cache), 
+    if (lru_cache_manager_init(conf->white_referer_inspection_cache, 
                                  conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize white_referer_inspection_cache.");
         return NGX_HTTP_WAF_FAIL;
