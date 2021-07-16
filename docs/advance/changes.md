@@ -19,11 +19,40 @@ lang: en
 
 2. If the directive `waf_priority` is used, you can delete it or modify it according to the directive in the documentation.
 
+### Pre-built modules
+
+We now provide pre-compiled modules that can be used as long as the following requirements are met.
+
+1. The version of nginx must be the latest stable or mainline version.
+2. The C standard library implementation must be the GNU implementation or the MUSL implementation.
+
+> The download script will automatically check if the second condition is met.
+
+You can execute `assets/download.sh` to download the corresponding version of the module and save it to the current directory. Here is the use case.
+
+```shell
+# nginx-stable ngx_waf-stable
+sh assets/download stable stable
+
+# nginx-mainline ngx_waf-stable
+sh assets/download mainline stable
+
+# nginx-stable ngx_waf-beta
+sh assets/download stable beta
+
+# nginx-mainline ngx_waf-beta
+sh assets/download mainline beta
+```
+
+> Each update takes about an hour and a half to compile the module, so it is recommended that you download the updated module more than two hours after the update, otherwise you may download the old module.
+
 ### Added
 
 * Advanced rules are supported, see the documentation for details.
 
 ### Removed
+
+* Remove mode `COMPAT`, no longer fully compatible with `ngx_http_rewrite_module`.
 
 ### Changed
 
