@@ -9,3 +9,4 @@ inc/ngx_http_waf_module_lexer.h
 inc/ngx_http_waf_module_parser.tab.h
 src/ngx_http_waf_module_lexer.c
 src/ngx_http_waf_module_parser.tab.c
+*.so
