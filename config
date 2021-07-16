@@ -120,7 +120,7 @@ ngx_feature="uthash library"
 ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs="#include <uthash.h>"
+ngx_feature_incs="#include <utstack.h>"
 ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
@@ -130,11 +130,6 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
 Please run:
-    On Ubuntu or Debian: 
-            apt-get update && apt-get install --yes uthash-dev
-    On Alpine: 
-            apk update && apk add uthash-dev
-    On other OS:
             cd /usr/local/src \\
         &&  git clone https://github.com/troydhanson/uthash.git \\
         &&  export LIB_UTHASH=/usr/local/src/uthash \\
