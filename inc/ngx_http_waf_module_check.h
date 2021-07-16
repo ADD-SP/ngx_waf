@@ -465,7 +465,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_array_t* regex_array = loc_conf->white_url;
-        lru_cache_manager_t* cache = &(loc_conf->white_url_inspection_cache);
+        lru_cache_manager_t* cache = loc_conf->white_url_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r,
                                                             p_uri, 
@@ -510,7 +510,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_array_t* regex_array = loc_conf->black_url;
-        lru_cache_manager_t* cache = &(loc_conf->black_url_inspection_cache);
+        lru_cache_manager_t* cache = loc_conf->black_url_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_uri, 
@@ -555,7 +555,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         ngx_str_t* p_args = &r->args;
         ngx_array_t* regex_array = loc_conf->black_args;
-        lru_cache_manager_t* cache = &(loc_conf->black_args_inspection_cache);
+        lru_cache_manager_t* cache = loc_conf->black_args_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_args, 
@@ -644,7 +644,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
 
         ngx_str_t* p_ua = &r->headers_in.user_agent->value;
         ngx_array_t* regex_array = loc_conf->black_ua;
-        lru_cache_manager_t* cache = &(loc_conf->black_ua_inspection_cache);
+        lru_cache_manager_t* cache = loc_conf->black_ua_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_ua, 
@@ -693,7 +693,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_array_t* regex_array = loc_conf->white_referer;
-        lru_cache_manager_t* cache = &(loc_conf->white_referer_inspection_cache);
+        lru_cache_manager_t* cache = loc_conf->white_referer_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
@@ -743,7 +743,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_array_t* regex_array = loc_conf->black_referer;
-        lru_cache_manager_t* cache = &(loc_conf->black_referer_inspection_cache);
+        lru_cache_manager_t* cache = loc_conf->black_referer_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
@@ -816,7 +816,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                 ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
 
                 ngx_array_t* regex_array = loc_conf->black_cookie;
-                lru_cache_manager_t* cache = &(loc_conf->black_cookie_inspection_cache);
+                lru_cache_manager_t* cache = loc_conf->black_cookie_inspection_cache;
 
                 ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                                     &temp, 
@@ -952,6 +952,17 @@ static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_co
     
     if (conf != NULL) {
         *conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+        ngx_http_waf_conf_t* parent = (*conf)->parent;
+        while ((*conf)->waf_cc_deny_limit == NGX_CONF_UNSET && parent != NULL) {
+            (*conf)->waf_cc_deny_limit = parent->waf_cc_deny_limit;
+            (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
+            (*conf)->waf_cc_deny_shm_zone_size = parent->waf_cc_deny_shm_zone_size;
+            (*conf)->shm_zone_cc_deny = parent->shm_zone_cc_deny;
+            (*conf)->ipv4_access_statistics = parent->ipv4_access_statistics;
+            (*conf)->ipv6_access_statistics = parent->ipv6_access_statistics;
+            (*conf)->last_clear_ip_access_statistics = parent->last_clear_ip_access_statistics;
+            parent = parent->parent;
+        }
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The configuration of the module has been obtained.");
     }
