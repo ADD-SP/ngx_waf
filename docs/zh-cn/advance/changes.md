@@ -28,6 +28,8 @@ lang: zh-CN
 
 * 更新了配置项 `waf_priority`，详情见文档。
 
+* 现在你可以在 `http`、`server` 和 `location` 块中使用本模块的所有配置项。
+
 ## 修复
 
 

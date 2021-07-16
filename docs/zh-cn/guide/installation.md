@@ -6,64 +6,6 @@ sidebarDepth: 3
 
 # 安装
 
-本模块提供两种安装方式，分别是 Docker 和编译安装。
-
-## Docker
-
-本模块提供了两种获取 Docker 镜像方式，拉取远程镜像和本地构建镜像。
-
-镜像基于 Docker 官方的镜像构建，默认规则文件已经拷贝到镜像中的 `/etc/nginx/waf-rules/` 中，
-使用方法同 [Docker 官方镜像文档](https://hub.docker.com/_/nginx/)。
-
-::: tip 注意
-
-许多人对于非 Docker 官方的镜像信任度较低，我也是。如果您也是的话建议您在本地构建镜像。
-如果您愿意信任本模块的作者的话，建议您直接拉取作者构建好的镜像。
-
-:::
-
-### 拉取远程镜像
-
-本模块会在每次更新稳定版和开发版时上传对应的 Docker 镜像，并在协调世界时（UTC）周日零点零分零秒重新构建所有的镜像。
-
-镜像的 tag 说明：
-
-* `ngx_waf:stable`：基于 `nginx:stable` 构建并安装了稳定版的 `ngx_waf`。
-* `ngx_waf:stable-alpine`：基于 `nginx:stable-alpine` 构建并安装了稳定版的 `ngx_waf`。
-* `ngx_waf:dev`：基于 `nginx:stable` 构建并安装了开发版的 `ngx_waf`。
-* `ngx_waf:latest`：同 `ngx_waf:dev`。
-* `ngx_waf:dev-alpine`：基于 `nginx:stable-alpine` 构建并安装了开发版的 `ngx_waf`。
-
-
-您可以选择下面两条命令中的一条来拉取已经构建好的镜像。
-
-```sh
-docker pull addsp/ngx_waf:stable
-
-docker pull addsp/ngx_waf:stable-alpine
-```
-
-### 本地构建
-
-本模块在根目录提供了两个 Dockerfile 文件用来指导镜像的构建，
-分别是 `docker/Dockerfile.alpine` 和 `docker/Dockerfile.debian`，
-前者是基于 `nginx:stable-alpine` 构建，后者则是基于 `nginx:stable` 构建。
-
-您可以选择下面两条命令中的一条构建镜像。
-
-```sh
-docker build -t nginx:stable-alpine-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.alpine .
-
-docker build -t nginx:stable-with-ngx_waf --build-arg=CHANGE_SOURCE=true -f docker/Dockerfile.debian .
-```
-
-::: tip 注意
-
-当 `CHANGE_SOURCE` 为 `true` 时会使用中国境内的软件源来加速资源下载速度，反之则使用默认软件源。
-本参数默认值为 `false`。
-
-:::
-
 ## 编译安装
 
 nginx 提供两种安装模块的方式，即「静态链接」和「动态加载」，通过两种方式安装的模块也分别称为「静态模块」和「动态模块」。

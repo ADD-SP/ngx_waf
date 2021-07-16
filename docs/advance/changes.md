@@ -29,6 +29,8 @@ lang: en
 
 * Updated the directive `waf_priority`, see the documentation for details.
 
+* You can now use all the directives of this module in blocks `http`, `server` and `location`
+
 ### Fixed
 
 ***
