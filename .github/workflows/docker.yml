@@ -41,10 +41,8 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
-            linux/ppc641e
             linux/s390x
-            linux/389
-            linux/mips641e
+            linux/386
             linux/arm/v7
             linux/arm/v6
       - name: Build and push (dev)
@@ -61,10 +59,8 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
-            linux/ppc641e
             linux/s390x
-            linux/389
-            linux/mips641e
+            linux/386
             linux/arm/v7
             linux/arm/v6
 
