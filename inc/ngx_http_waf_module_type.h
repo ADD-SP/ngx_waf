@@ -292,6 +292,7 @@ typedef struct ngx_http_waf_conf_s {
     lru_cache_manager_t            *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
     lru_cache_manager_t            *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
     lru_cache_manager_t            *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_conf_t;
 
