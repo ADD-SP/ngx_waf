@@ -13,6 +13,33 @@ lang: zh-CN
 
 * 高级规则的执行速度较慢，因为其原理是将规则编译成一系列指令，然后由虚拟机执行。
 
+### 预构建模块
+
+现在我们提供了提前编译好的模块，只要满足了下列要求即可使用。
+
+1. nginx 的版本必须是最新的 stable 或 mainline 版本。
+2. 您使用的 C 语言的标准库实现必须是 GNU 实现或者 musl 实现。
+
+> 下载脚本会自动检查是否满足第二个条件。
+
+您可以执行 `assets/download.sh` 来下载对应版本的模块并保存到当前目录。下面是用例。
+
+```shell
+# nginx-stable ngx_waf-stable
+sh assets/download stable stable
+
+# nginx-mainline ngx_waf-stable
+sh assets/download mainline stable
+
+# nginx-stable ngx_waf-beta
+sh assets/download stable beta
+
+# nginx-mainline ngx_waf-beta
+sh assets/download mainline beta
+```
+
+> 每次更新都需要花费约一个半小时的时间来编译模块，所以推荐在更新超过两个小时后再下载更新后的模块，否则可能会下载到旧的模块。
+
 ### 从 5.x.x 升级到 6.x.x
 
 1. 在规则目录下新建一个名为 `advanced` 的空文件。
@@ -23,6 +50,8 @@ lang: zh-CN
 * 支持了高级规则，详情见文档。
 
 ### 移除
+
+* 移除 `COMPAT` 模式，不再完全兼容 `ngx_http_rewrite_module`。
 
 ### 变动
 
