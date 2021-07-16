@@ -744,6 +744,8 @@ static char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void
     ngx_str_t* p_str = cf->args->elts;
     // u_char error_str[256];
 
+    loc_conf->is_custom_priority = NGX_HTTP_WAF_TRUE;
+
     UT_array* array = NULL;
     if (ngx_str_split(p_str + 1, ' ', 20, &array) != NGX_HTTP_WAF_SUCCESS) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
@@ -944,6 +946,11 @@ static char* ngx_http_waf_merge_srv_conf(ngx_conf_t *cf, void *prev, void *conf)
         child->black_cookie_inspection_cache = parent->black_cookie_inspection_cache;
         child->white_url_inspection_cache = parent->white_url_inspection_cache;
         child->white_referer_inspection_cache = parent->white_referer_inspection_cache;
+    }
+
+    if (parent->is_custom_priority == NGX_HTTP_WAF_TRUE
+    &&  child->is_custom_priority == NGX_HTTP_WAF_FALSE) {
+        ngx_memcpy(child->check_proc, parent->check_proc, sizeof(parent->check_proc));
     }
 
     return NGX_CONF_OK;
@@ -1402,6 +1409,7 @@ static ngx_http_waf_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->ipv4_access_statistics = NULL;
     conf->ipv6_access_statistics = NULL;
     conf->last_clear_ip_access_statistics = NULL;
+    conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
 
 
     ngx_memzero(conf->check_proc, sizeof(conf->check_proc));
