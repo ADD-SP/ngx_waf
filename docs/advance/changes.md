@@ -17,6 +17,16 @@ lang: en
 
 ***
 
+## [5.5.1] - 2021-07-16 UTC+0800
+
+### Fixed
+
+* Segmentation fault.
+
+* Memory leak.
+
+***
+
 ## [5.5.0] - 2021-06-25 UTC+0800
 
 ### Changed
