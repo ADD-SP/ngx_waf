@@ -1,6 +1,8 @@
-ARG VERSION=stable
-FROM nginx:${VERSION}-alpine as base
+ARG NGX_VER=stable
+FROM nginx:${NGX_VER}-alpine as base
 ARG CHANGE_SOURCE=false
+ARG NGX_VER=stable
+ARG LIB_SODIUM_VER=1.0.18-RELEASE
 
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
@@ -37,7 +39,7 @@ RUN set -xe \
     &&  (cd ngx_waf && make parser) \
     &&  git clone https://github.com/troydhanson/uthash.git \
     &&  export LIB_UTHASH=/usr/local/src/uthash \
-    &&  git clone https://github.com/jedisct1/libsodium.git --branch stable libsodium-src \
+    &&  git clone https://github.com/jedisct1/libsodium.git --branch ${LIB_SODIUM_VER} libsodium-src \
     &&  cd libsodium-src \
     &&  ./configure --prefix=/usr/local/src/libsodium --with-pic \
     &&  make -j$(nproc) && make check -j$(nproc) && make install \
@@ -45,7 +47,7 @@ RUN set -xe \
     &&  cd .. \
     # &&  lastversion --download="openssl.tar.gz" --at=github openssl \
     # &&  mkdir openssl && tar -zxf "openssl.tar.gz" -C openssl --strip-components=1 \
-    &&  lastversion --download="nginx.tar.gz" --major mainline https://nginx.org \
+    &&  lastversion --download="nginx.tar.gz" --major ${NGX_VER} https://nginx.org \
     &&  mkdir nginx && tar -zxf "nginx.tar.gz" -C nginx --strip-components=1 \
     &&  cd nginx \
     &&  ./configure \
