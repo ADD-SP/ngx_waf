@@ -153,6 +153,12 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')) }}
     needs: ['native', 'docker', 'docs']
     steps:
+      - name: Set up Python3
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+      - name: Set up lastversion
+        run: pip3 install lastversion
       - name: 'Trigger workflow: docs'
         if: ${{ github.event_name != 'workflow_dispatch' }}
         run: |
@@ -164,8 +170,16 @@ jobs:
       - name: 'Trigger workflow: docker'
         if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev' }}
         run: |
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/docker.yml/dispatches \
-            -d '{"ref":"${{ github.ref }}"}'
+          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}"                                        \
+            -X POST                                                                                         \
+            -H "Accept: application/vnd.github.v3+json"                                                     \
+            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/docker.yml/dispatches             \
+            -d "{                                                                                           \
+                  \"ref\":\"${{ github.ref }}\",                                                            \
+                  \"inputs\": {                                                                             \
+                    \"ngx_stable_version_number\": \"`lastversion https://nginx.org --major stable`\",      \
+                    \"ngx_mainline_version_number\": \"`lastversion https://nginx.org --major mainline`\",  \
+                    \"module_stable_version_number\": \"`lastversion ADD-SP/ngx_waf --at=github`\",         \
+                    \"module_beta_version_number\": \"`lastversion ADD-SP/ngx_waf --at=github --pre`\"    \
+                  }                                                                                         \
+                }"
