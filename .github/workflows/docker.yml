@@ -2,6 +2,19 @@ name: docker
 
 on:
   workflow_dispatch:
+    inputs:
+      ngx_stable_version_number:
+        description: 'literal'
+        required: true
+      ngx_mainline_version_number:
+        description: 'literal'
+        required: true
+      module_stable_version_number:
+        description: 'literal'
+        required: true
+      module_beta_version_number:
+        description: 'literal'
+        required: true
 
 defaults:
   run:
@@ -27,34 +40,92 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (master)
-        if: ${{ github.ref == 'refs/heads/master' }}
+      - name: Build and push (ngx-stable-module-stable-x)
+        if: ${{ github.ref == 'refs/heads/master' && matrix.version == 'stable' }}
         env:
           NGX_VERSION: ${{ matrix.version }}
           TARGET: ${{ matrix.target }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
           file: docker/Dockerfile.${{ env.TARGET }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
           push: true
-          tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-stable-${{ env.TARGET }}
+          tags: | 
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
             linux/arm64
             linux/386
             linux/arm/v7
             linux/arm/v6
-      - name: Build and push (dev)
-        if: ${{ github.ref == 'refs/heads/dev' }}
+      - name: Build and push (ngx-mainline-module-stable-x)
+        if: ${{ github.ref == 'refs/heads/master' && matrix.version == 'mainline' }}
         env:
           NGX_VERSION: ${{ matrix.version }}
           TARGET: ${{ matrix.target }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
           file: docker/Dockerfile.${{ env.TARGET }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
           push: true
-          tags: ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-beta-${{ env.TARGET }}
+          tags: | 
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
+          platforms: |
+            linux/amd64
+            linux/arm64
+            linux/386
+            linux/arm/v7
+            linux/arm/v6
+      - name: Build and push (ngx-stable-module-beta-x)
+        if: ${{ github.ref == 'refs/heads/dev' && matrix.version == 'stable' }}
+        env:
+          NGX_VERSION: ${{ matrix.version }}
+          TARGET: ${{ matrix.target }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_beta_version_number }}
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: docker/Dockerfile.${{ env.TARGET }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
+          push: true
+          tags: | 
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
+          platforms: |
+            linux/amd64
+            linux/arm64
+            linux/386
+            linux/arm/v7
+            linux/arm/v6
+      - name: Build and push (ngx-mainline-module-beta-x)
+        if: ${{ github.ref == 'refs/heads/dev' && matrix.version == 'mainline' }}
+        env:
+          NGX_VERSION: ${{ matrix.version }}
+          TARGET: ${{ matrix.target }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_beta_version_number }}
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: docker/Dockerfile.${{ env.TARGET }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
+          push: true
+          tags: | 
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
             linux/arm64
