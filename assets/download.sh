@@ -37,16 +37,20 @@ echo 'yes'
 
 echo -n "checking for libc implementation ... "
 
+imp=''
+
 tmp=`find -L /lib* -regex \.*libc\.so.*` 2> /dev/null
 
 echo "$tmp" | grep gnu > /dev/null
 if [ $? -eq 0 ] ; then
     echo 'yes'
+    imp='glibc'
     echo ' + GNU C libary'
 else
     echo "$tmp" | grep musl > /dev/null
     if [ $? -eq 0 ] ; then
         echo 'yes'
+        imp='musl'
         echo ' + musl C libary'
     else
         echo 'no'
@@ -54,8 +58,8 @@ else
     fi
 fi
 
-echo -n "pulling remote image addsp/ngx_waf-prebuild:ngx-$1-module-$2 ... "
-tmp=`docker pull "addsp/ngx_waf-prebuild:ngx-$1-module-$2"` 2> /dev/null
+echo -n "pulling remote image addsp/ngx_waf-prebuild:ngx-$1-module-$2-$tmp ... "
+tmp=`docker pull "addsp/ngx_waf-prebuild:ngx-$1-module-$2-$tmp"` 2> /dev/null
 if [ $? -ne 0 ] ; then
     echo 'no'
     exit 121
@@ -70,7 +74,7 @@ do
     tmpdir=`head -10 /dev/urandom | md5sum - | cut -c 1-32`
 done
 
-tmp=`docker run --rm -d -v "$(pwd)/$tmpdir":/out "addsp/ngx_waf-prebuild:ngx-$1-module-$2" cp /modules/ngx_http_waf_module.so /out` 2> /dev/null
+tmp=`docker run --rm -d -v "$(pwd)/$tmpdir":/out "addsp/ngx_waf-prebuild:ngx-$1-module-$2-$tmp" cp /modules/ngx_http_waf_module.so /out` 2> /dev/null
 
 cp "$(pwd)/$tmpdir/ngx_http_waf_module.so" ./
 rm -rf "$(pwd)/$tmpdir"
