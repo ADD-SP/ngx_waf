@@ -1212,29 +1212,7 @@ static ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *
     ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
     ngx_http_waf_conf_t* loc_conf = (ngx_http_waf_conf_t*)(zone->data);
 
-    loc_conf->ipv4_access_statistics = ngx_slab_calloc(shpool, sizeof(ip_trie_t));
-    if (loc_conf->ipv4_access_statistics == NULL) {
-        return NGX_ERROR;
-    }
-    if (ip_trie_init(loc_conf->ipv4_access_statistics, 
-                              slab_pool, shpool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_ERROR;
-    }
-
-    loc_conf->ipv6_access_statistics = ngx_slab_calloc(shpool, sizeof(ip_trie_t));
-    if (loc_conf->ipv6_access_statistics == NULL) {
-        return NGX_ERROR;
-    }
-    if (ip_trie_init(loc_conf->ipv6_access_statistics, 
-                              slab_pool, shpool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_ERROR;
-    }
-
-    loc_conf->last_clear_ip_access_statistics = ngx_slab_calloc(shpool, sizeof(time_t));
-    if (loc_conf->last_clear_ip_access_statistics == NULL) {
-        return NGX_ERROR;
-    }
-    *(loc_conf->last_clear_ip_access_statistics) = time(NULL);
+    lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, slab_pool, shpool);
 
     return NGX_OK;
 }
@@ -1406,9 +1384,7 @@ static ngx_http_waf_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     UT_icd icd = ngx_http_waf_make_utarray_vm_code_icd();
     utarray_init(&(conf->advanced_rule), &icd);
     conf->shm_zone_cc_deny = NULL;
-    conf->ipv4_access_statistics = NULL;
-    conf->ipv6_access_statistics = NULL;
-    conf->last_clear_ip_access_statistics = NULL;
+    conf->ip_access_statistics = NULL;
     conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
 
 
@@ -1489,55 +1465,34 @@ static ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_conf_t* c
 
 
 static ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_conf_t* conf) {
-    conf->black_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
-    conf->black_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
-    conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
-    conf->black_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
-    conf->black_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
-    conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
-    conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_manager_t));
+    conf->black_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->black_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->black_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->black_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
 
-    if (lru_cache_manager_init(conf->black_url_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_url_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
+    lru_cache_init(&conf->black_url_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
 
-    if (lru_cache_manager_init(conf->black_args_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_args_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
+    lru_cache_init(&conf->black_args_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
 
-    if (lru_cache_manager_init(conf->black_ua_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_ua_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
+    lru_cache_init(&conf->black_ua_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
 
-    if (lru_cache_manager_init(conf->black_referer_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_referer_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
+    lru_cache_init(&conf->black_referer_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
 
-    if (lru_cache_manager_init(conf->black_cookie_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize black_cookie_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
+    lru_cache_init(&conf->black_cookie_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
 
-    if (lru_cache_manager_init(conf->white_url_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize white_url_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
-
-    if (lru_cache_manager_init(conf->white_referer_inspection_cache, 
-                                 conf->waf_inspection_capacity, std, NULL) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: Failed to initialize white_referer_inspection_cache.");
-        return NGX_HTTP_WAF_FAIL;
-    }
+    lru_cache_init(&conf->white_url_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
+    
+    lru_cache_init(&conf->white_referer_inspection_cache, 
+                    conf->waf_inspection_capacity, std, NULL);
 
     return NGX_HTTP_WAF_SUCCESS;
 }

@@ -38,6 +38,10 @@
 
 #define NGX_HTTP_WAF_MALLOC_ERROR            (3)
 
+#define NGX_HTTP_WAF_KEY_EXISTS              (4)
+
+#define NGX_HTTP_WAF_KEY_NOT_EXISTS            (5)
+
 
 /**
  * @def NGX_HTTP_WAF_RULE_MAX_LEN
