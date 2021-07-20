@@ -61,8 +61,16 @@ typedef struct circular_doublly_linked_list_s {
 
 typedef struct ip_statis_s {
     ngx_int_t      count;          /**< 访问次数 */
-    time_t          start_time;     /**< 何时开始记录 */
+    ngx_int_t       is_blocked;
+    time_t          record_time;     /**< 何时开始记录 */
+    time_t          block_time;
 } ip_statis_t;
+
+
+typedef struct check_result_s {
+    ngx_int_t is_matched;
+    u_char* detail;
+} check_result_t;
 
 
 /**
@@ -146,38 +154,34 @@ typedef struct memo_pool_s {
 } mem_pool_t;
 
 
-/**
- * @struct lru_cache_item_t
- * @brief LRU 缓存项
-*/
+typedef struct lru_cache_result_s {
+    int status;
+    void **data;
+} lru_cache_result_t;
+
+
+typedef lru_cache_result_t lru_cache_add_result_t;
+
+typedef lru_cache_result_t lru_cache_find_result_t;
+
+
 typedef struct lru_cache_item_s {
-    u_char                                 *key;                /**< 用于哈希的关键字 */
-    ngx_uint_t                              key_byte_length;    /**< 关键字占用的字节数 */
-    union {
-        struct lru_cache_item_s     *chain_item;                /**< 当 lru_cache_item_t 被插入哈希表时指向对应的链表节点 */
-        struct {
-            ngx_int_t   match_status;                           /**< 规则是否被匹配到 */
-            u_char*     rule_detail;                            /**< 被匹配到的规则细节 */
-        } value;                                                /**< 当 lru_cache_item_t 被插入链表时保存具体的缓存信息 */
-    } value;
-    struct lru_cache_item_s                *prev;               /**< utlist 关键成员 */
-    struct lru_cache_item_s                *next;               /**< utlist 关键成员 */
-    UT_hash_handle                          hh;                 /**< uthash 关键成员 */
+    u_char                             *key_ptr;            /**< 用于哈希的关键字 */
+    size_t                              key_byte_length;    /**< 关键字占用的字节数 */
+    void                               *data;
+    struct lru_cache_item_s            *prev;               /**< utlist 关键成员 */
+    struct lru_cache_item_s            *next;               /**< utlist 关键成员 */
+    UT_hash_handle                      hh;                 /**< uthash 关键成员 */
 } lru_cache_item_t;
 
 
-/**
- * @struct lru_cache_manager_t
- * @brief LRU 缓存管理器
-*/
-typedef struct lru_cache_manager_s {
-    time_t                                  last_eliminate;     /**< 最后一次批量淘汰缓存的时间 */
-    mem_pool_t                              pool;               /**< 内存池 */
-    ngx_uint_t                              size;               /**< 当前缓存的项目数 */
-    ngx_uint_t                              capacity;           /**< 最多嫩容纳多少个缓存项 */
-    lru_cache_item_t                       *hash_head;          /**< uthash 的表头 */
-    lru_cache_item_t                       *chain_head;         /**< utlist 的表头 */
-} lru_cache_manager_t;
+typedef struct lru_cache_s {
+    time_t                            last_eliminate;     /**< 最后一次批量淘汰缓存的时间 */
+    mem_pool_t                        pool;               /**< 内存池 */
+    size_t                        capacity;           /**< 最多嫩容纳多少个缓存项 */
+    lru_cache_item_t                 *hash_head;          /**< uthash 的表头 */
+    lru_cache_item_t                 *chain_head;         /**< utlist 的表头 */
+} lru_cache_t;
 
 
 /**
@@ -282,16 +286,14 @@ typedef struct ngx_http_waf_conf_s {
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
     UT_array                        advanced_rule;                              /**< 高级规则表 */
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
-    ip_trie_t                      *ipv4_access_statistics;                     /**< IP 访问频率统计表 */
-    ip_trie_t                      *ipv6_access_statistics;                     /**< IP 访问频率统计表 */
-    time_t                         *last_clear_ip_access_statistics;            /**< 最后一次清空 IP 访问频率统计表的时间 */
-    lru_cache_manager_t            *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
-    lru_cache_manager_t            *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
-    lru_cache_manager_t            *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
-    lru_cache_manager_t            *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
-    lru_cache_manager_t            *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
-    lru_cache_manager_t            *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
-    lru_cache_manager_t            *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    lru_cache_t                      *ip_access_statistics;                     /**< IP 访问频率统计表 */
+    lru_cache_t            *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
+    lru_cache_t            *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
+    lru_cache_t            *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
+    lru_cache_t            *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
+    lru_cache_t            *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
+    lru_cache_t            *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
+    lru_cache_t            *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_conf_t;

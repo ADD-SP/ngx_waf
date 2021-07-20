@@ -160,7 +160,7 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         ngx_str_t* str, 
                                                         ngx_array_t* array, 
                                                         const u_char* rule_type, 
-                                                        lru_cache_manager_t* cache, 
+                                                        lru_cache_t* cache, 
                                                         int check_sql_injection,
                                                         int check_xss);
 
@@ -312,93 +312,69 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             struct sockaddr_in6* s_addr_in6 = (struct sockaddr_in6*)(r->connection->sockaddr);
             ngx_memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
         }
-
-        double diff_second = 0.0;
         ngx_int_t limit  = loc_conf->waf_cc_deny_limit;
         ngx_int_t duration = loc_conf->waf_cc_deny_duration;
-        ip_trie_node_t* node = NULL;
-        ip_statis_t statis;
-        statis.count = 1;
-        statis.start_time = now;
+        ip_statis_t* statis = NULL;
         ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)loc_conf->shm_zone_cc_deny->shm.addr;
 
         ngx_shmtx_lock(&shpool->mutex);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Shared memory is locked.");
-        
 
-        if (ip_type == AF_INET) {
-            if (ip_trie_find(loc_conf->ipv4_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
-                ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                diff_second = difftime(now, statis.start_time);
-            } else {
-                switch (ip_trie_add(loc_conf->ipv4_access_statistics, &inx_addr, 32, &statis, sizeof(ip_statis_t))) {
-                    case NGX_HTTP_WAF_SUCCESS: 
-                        ip_trie_find(loc_conf->ipv4_access_statistics, &inx_addr, &node);
-                        ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                        break;
-                    case NGX_HTTP_WAF_MALLOC_ERROR: 
-                        *(loc_conf->last_clear_ip_access_statistics) = 0;
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
-                        goto no_memory;
-                        break;
-                    case NGX_HTTP_WAF_FAIL:
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: Failed to add ipv6 statistics.");
-                        goto exception;
-                        break;
-                }
-            }
-        } else if (ip_type == AF_INET6) {
-            if (ip_trie_find(loc_conf->ipv6_access_statistics, &inx_addr, &node) == NGX_HTTP_WAF_SUCCESS) {
-                ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                diff_second = difftime(now, statis.start_time);
-            } else {
-                switch (ip_trie_add(loc_conf->ipv6_access_statistics, &inx_addr, 128, &statis, sizeof(ip_statis_t))) {
-                    case NGX_HTTP_WAF_SUCCESS: 
-                        ip_trie_find(loc_conf->ipv6_access_statistics, &inx_addr, &node);
-                        ngx_memcpy(&statis, node->data, sizeof(ip_statis_t));
-                        break;
-                    case NGX_HTTP_WAF_MALLOC_ERROR: 
-                        *(loc_conf->last_clear_ip_access_statistics) = 0;
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: No shared memory, memory collection event has been triggered.");
-                        goto no_memory;
-                        break;
-                    case NGX_HTTP_WAF_FAIL:
-                        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                            "ngx_waf_debug: Failed to add ipv6 statistics.");
-                        goto exception;
-                        break;
-                }
+        // randombytes_buf(&inx_addr, sizeof(inx_addr_t));
+
+        lru_cache_find_result_t tmp0 = lru_cache_find(loc_conf->ip_access_statistics, &inx_addr, sizeof(inx_addr_t));
+        if (tmp0.status == NGX_HTTP_WAF_KEY_EXISTS) {
+            statis = *(tmp0).data;
+        } else {
+            lru_cache_add_result_t tmp1 = lru_cache_add(loc_conf->ip_access_statistics, &inx_addr, sizeof(inx_addr_t));
+            if (tmp1.status == NGX_HTTP_WAF_SUCCESS) {
+                statis = mem_pool_calloc(&loc_conf->ip_access_statistics->pool, sizeof(ip_statis_t));
+                assert(statis != NULL);
+                statis->count = 1;
+                statis->is_blocked = NGX_HTTP_WAF_FALSE;
+                statis->record_time = now;
+                statis->block_time = 0;
+
+                *(tmp1.data) = statis;
             }
         }
 
-        /* 如果是在一分钟内开始统计的 */
-        if (diff_second < 60) {
-            /* 如果访问次数超出上限 */
-            if (statis.count > limit) {
+        double diff_second_record = difftime(now, statis->record_time);
+        double diff_second_block = difftime(now, statis->block_time);
+
+        if (statis->is_blocked == NGX_HTTP_WAF_TRUE) {
+            if (diff_second_block < duration) {
                 goto matched;
             } else {
-                ++(statis.count);
-                ngx_memcpy(node->data, &statis, sizeof(ip_statis_t));
+                statis->count = 1;
+                statis->is_blocked = NGX_HTTP_WAF_FALSE;
+                statis->record_time = now;
+                statis->block_time = 0;
+            }
+        } else if (diff_second_record <= 60) {
+            if (statis->count > limit) {
+                goto matched;
+            } else {
+                ++(statis->count);
             }
         } else {
-            /* 如果一分钟前访问次数就超出上限 && 仍然在拉黑时间内 */
-            if (statis.count > limit && diff_second <= duration) {
-                goto matched;
-            } else {
-                /* 重置访问次数和记录时间 */
-                statis.count = 1;
-                statis.start_time = now;
-                ngx_memcpy(node->data, &statis, sizeof(ip_statis_t));
-            }
+            statis->count = 1;
+            statis->is_blocked = NGX_HTTP_WAF_FALSE;
+            statis->record_time = now;
+            statis->block_time = 0;
         }
+
 
         goto not_matched;
 
         matched: {
+            
+            if (statis->is_blocked == NGX_HTTP_WAF_FALSE) {
+                statis->is_blocked = NGX_HTTP_WAF_TRUE;
+                statis->block_time = now;
+            }
+
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             strcpy((char*)ctx->rule_type, "CC-DNEY");
             strcpy((char*)ctx->rule_deatils, "");
@@ -426,8 +402,8 @@ static ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t*
             header->value.len = ngx_sprintf(header->value.data, "%d", duration) - header->value.data;
         }
         
-        exception:
-        no_memory:
+        // exception:
+        // no_memory:
         not_matched:
         
         ngx_shmtx_unlock(&shpool->mutex);
@@ -465,7 +441,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_array_t* regex_array = loc_conf->white_url;
-        lru_cache_manager_t* cache = loc_conf->white_url_inspection_cache;
+        lru_cache_t* cache = loc_conf->white_url_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r,
                                                             p_uri, 
@@ -510,7 +486,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx
 
         ngx_str_t* p_uri = &r->uri;
         ngx_array_t* regex_array = loc_conf->black_url;
-        lru_cache_manager_t* cache = loc_conf->black_url_inspection_cache;
+        lru_cache_t* cache = loc_conf->black_url_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_uri, 
@@ -555,7 +531,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ng
 
         ngx_str_t* p_args = &r->args;
         ngx_array_t* regex_array = loc_conf->black_args;
-        lru_cache_manager_t* cache = loc_conf->black_args_inspection_cache;
+        lru_cache_t* cache = loc_conf->black_args_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_args, 
@@ -644,7 +620,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t*
 
         ngx_str_t* p_ua = &r->headers_in.user_agent->value;
         ngx_array_t* regex_array = loc_conf->black_ua;
-        lru_cache_manager_t* cache = loc_conf->black_ua_inspection_cache;
+        lru_cache_t* cache = loc_conf->black_ua_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_ua, 
@@ -693,7 +669,7 @@ static ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_array_t* regex_array = loc_conf->white_referer;
-        lru_cache_manager_t* cache = loc_conf->white_referer_inspection_cache;
+        lru_cache_t* cache = loc_conf->white_referer_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
@@ -743,7 +719,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r,
 
         ngx_str_t* p_referer = &r->headers_in.referer->value;
         ngx_array_t* regex_array = loc_conf->black_referer;
-        lru_cache_manager_t* cache = loc_conf->black_referer_inspection_cache;
+        lru_cache_t* cache = loc_conf->black_referer_inspection_cache;
 
         ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                             p_referer, 
@@ -816,7 +792,7 @@ static ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, 
                 ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
 
                 ngx_array_t* regex_array = loc_conf->black_cookie;
-                lru_cache_manager_t* cache = loc_conf->black_cookie_inspection_cache;
+                lru_cache_t* cache = loc_conf->black_cookie_inspection_cache;
 
                 ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                                                     &temp, 
@@ -958,9 +934,7 @@ static void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_co
             (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
             (*conf)->waf_cc_deny_shm_zone_size = parent->waf_cc_deny_shm_zone_size;
             (*conf)->shm_zone_cc_deny = parent->shm_zone_cc_deny;
-            (*conf)->ipv4_access_statistics = parent->ipv4_access_statistics;
-            (*conf)->ipv6_access_statistics = parent->ipv6_access_statistics;
-            (*conf)->last_clear_ip_access_statistics = parent->last_clear_ip_access_statistics;
+            (*conf)->ip_access_statistics = parent->ip_access_statistics;
             parent = parent->parent;
         }
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -973,7 +947,7 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         ngx_str_t* str, 
                                                         ngx_array_t* array, 
                                                         const u_char* rule_type, 
-                                                        lru_cache_manager_t* cache, 
+                                                        lru_cache_t* cache, 
                                                         int check_sql_injection,
                                                         int check_xss) {
     static char s_no_memory[] = "No Memory";
@@ -982,8 +956,9 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     ngx_int_t cache_hit = NGX_HTTP_WAF_FAIL;
-    ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
-    u_char* rule_detail = NULL;
+    check_result_t result;
+    result.is_matched = NGX_HTTP_WAF_NOT_MATCHED;
+    result.detail = NULL;
 
     if (str == NULL || str->data == NULL || str->len == 0 || array->nelts == 0) {
         return NGX_HTTP_WAF_NOT_MATCHED;
@@ -992,7 +967,11 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
         && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
         && cache != NULL) {
-        cache_hit = lru_cache_manager_find(cache, str->data, str->len * sizeof(u_char), &is_matched, &rule_detail);
+        lru_cache_find_result_t tmp = lru_cache_find(cache, str->data, sizeof(u_char) * str->len);
+        if (tmp.status == NGX_HTTP_WAF_KEY_EXISTS) {
+            cache_hit = NGX_HTTP_WAF_SUCCESS;
+            ngx_memcpy(&result, *(tmp.data), sizeof(check_result_t));
+        }
     }
 
     if (cache_hit != NGX_HTTP_WAF_SUCCESS) {
@@ -1004,12 +983,12 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                 str->len,  
                                 FLAG_NONE | FLAG_QUOTE_NONE | FLAG_QUOTE_SINGLE | FLAG_QUOTE_DOUBLE | FLAG_SQL_ANSI | FLAG_SQL_MYSQL);
             if (libinjection_is_sqli(&sf) == 1) {
-                is_matched = NGX_HTTP_WAF_MATCHED;
-                rule_detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
-                if (rule_detail != NULL) {
-                    sprintf((char*)rule_detail, "libinjection_sqli - %s", sf.fingerprint);
+                result.is_matched = NGX_HTTP_WAF_MATCHED;
+                result.detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
+                if (result.detail != NULL) {
+                    sprintf((char*)result.detail, "libinjection_sqli - %s", sf.fingerprint);
                 } else {
-                    rule_detail = (u_char*)s_no_memory;
+                    result.detail = (u_char*)s_no_memory;
                 }
             }
         }
@@ -1017,23 +996,23 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         if (check_xss
             && ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS) == NGX_HTTP_WAF_TRUE) {
             if (libinjection_xss((char*)(str->data), str->len) == 1) {
-                is_matched = NGX_HTTP_WAF_MATCHED;
-                rule_detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
-                if (rule_detail != NULL) {
-                    sprintf((char*)rule_detail, "libinjection_xss");
+                result.is_matched = NGX_HTTP_WAF_MATCHED;
+                result.detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
+                if (result.detail != NULL) {
+                    sprintf((char*)result.detail, "libinjection_xss");
                 } else {
-                    rule_detail = (u_char*)s_no_memory;
+                    result.detail = (u_char*)s_no_memory;
                 }
             }
         }
 
-        if (rule_detail == NULL) {
+        if (result.detail == NULL) {
             ngx_regex_elt_t* p = (ngx_regex_elt_t*)(array->elts);
             for (size_t i = 0; i < array->nelts; i++, p++) {
                 ngx_int_t rc = ngx_regex_exec(p->regex, str, NULL, 0);
                 if (rc >= 0) {
-                    is_matched = NGX_HTTP_WAF_MATCHED;
-                    rule_detail = p->name;
+                    result.is_matched = NGX_HTTP_WAF_MATCHED;
+                    result.detail = p->name;
                     break;
                 }
             }
@@ -1043,15 +1022,20 @@ static ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
         && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
         && cache != NULL) {
-        lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
+        // lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
+        lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char));
+        if (tmp.status == NGX_HTTP_WAF_SUCCESS) {
+            *(tmp.data) = malloc(sizeof(check_result_t));
+            ngx_memcpy(*(tmp.data), &result, sizeof(check_result_t));
+        }
     }
 
-    if (is_matched == NGX_HTTP_WAF_MATCHED) {
+    if (result.is_matched == NGX_HTTP_WAF_MATCHED) {
         strcpy((char*)ctx->rule_type, (char*)rule_type);
-        strcpy((char*)ctx->rule_deatils, (char*)rule_detail);
+        strcpy((char*)ctx->rule_deatils, (char*)result.detail);
     }
 
-    return is_matched;
+    return result.is_matched;
 }
 
 
