@@ -9,7 +9,7 @@ lang: en
 
 * syntax: waf \<*on* | *off*\>
 * default: waf *off*
-* context: server
+* context: http, server, location
 
 Whether to enable this module.
 
@@ -17,7 +17,7 @@ Whether to enable this module.
 
 * syntax: waf_rule_path \<*dir*\>
 * default: —
-* context: server
+* context: http, server, location
 
 The absolute path to the directory where the rule file is located, and must end with `/`.
 
@@ -25,7 +25,7 @@ The absolute path to the directory where the rule file is located, and must end 
 
 * syntax: waf_mode \<*mode_type*\> ...
 * default: —
-* context: server
+* context: http, server, location
 
 Specify the working mode of the firewall, specifying at least one mode and up to eight modes.
 
@@ -91,7 +91,7 @@ The mode of `CC` is independent of other modes, and whether it takes effect or n
 
 * syntax: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
 * default: —
-* context: server
+* context: http, server, location
 
 Set the parameters related to CC protection.
 
@@ -105,7 +105,7 @@ Set the parameters related to CC protection.
 
 * syntax: waf_cache \<capacity=*n*\> \[interval=*1h*\] \[percent=*50*\]
 * default: —
-* context: server
+* context: http, server, location
 
 Set the parameters related to cache rule inspection results.
 
@@ -135,7 +135,7 @@ So please set it reasonably according to your actual needs.
 
 * syntax: waf_under_attack \<*on* | *off*\> \[uri=*str*\]
 * default: waf_under_attack off
-* context: server
+* context: http, server, location
 
 If your site is under attack you can try using this directive.
 Turning it on forces a five-second delay on each user's first visit and automatically jumps to the page pointed to by `uri`.
@@ -156,8 +156,8 @@ Naturally, you can also write your own html file and point to it with `uri`.
 ## `waf_priority`
 
 * syntax: waf_priority "*str*"
-* default: waf_priority "W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE"
-* context: server
+* default: waf_priority "W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
+* context: http, server, location
 
 Set the priority of each inspection process, except for POST detection, which always has the lowest priority.
 
@@ -172,6 +172,7 @@ Set the priority of each inspection process, except for POST detection, which al
 * `W-REFERER`: Referer whitelist inspection
 * `REFERER`: Referer blacklist inspection
 * `COOKIE`: Cookie blacklist inspection
+* `ADV`: Advanced rules.
 
 ::: warning WARNING
 
@@ -180,20 +181,11 @@ Set the priority of each inspection process, except for POST detection, which al
 :::
 
 
-::: tip CHANGES IN THE DEVELOPMENT VERSION
-
-The default value is changed to W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
-
-`ADV` is advanced rules.
-
-:::
-
-
 ## `waf_http_status`
 
 * syntax: waf_http_status \[general=*http_status_code*\] \[cc_deny=*http_status_code*]
 * default: waf_http_status general=403 cc_deny=503
-* context: server
+* context: http, server, location
 
 This directive is used to set the HTTP status code returned when a request is blocked.
 

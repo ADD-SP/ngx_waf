@@ -10,7 +10,7 @@ Handy, High performance Nginx firewall module.
 ## Why ngx_waf
 
 * Full-featured: The basic functions of the web application firewall are available.
-* Easy to install. The solution is automatically provided when a dependency is missing.
+* Easy to install. In most cases you can download and use pre-built modules instead of compiling the code.
 * Easy to use: directives are easy to understand and you can probably guess what they mean without reading the documentation.
 * Flexible rules: Provide advanced rules that combine actions (such as block or allow) with multiple conditional expressions
 * High performance: In more extreme tests, QPS (Queries Per Second) is reduced by about 4% after starting this module. See the documentation for details of the tests.
