@@ -9,7 +9,7 @@ lang: zh-CN
 
 * 配置语法: waf \<*on* | *off*\>
 * 默认配置：waf *off*
-* 配置段: server
+* 配置段: http, server, location
 
 是否启用本模块。
 
@@ -17,7 +17,7 @@ lang: zh-CN
 
 * 配置语法: waf_rule_path <\*dir*\>
 * 默认配置：——
-* 配置段: server
+* 配置段: http, server, location
 
 规则文件所在目录，且必须以`/`结尾。
 
@@ -25,7 +25,7 @@ lang: zh-CN
 
 * 配置语法: waf_mode \<*mode_type*\> ...
 * 默认配置：——
-* 配置段: server
+* 配置段: http, server, location
 
 指定防火墙的工作模式，至少指定一个模式，最多指定八个模式。
 
@@ -92,7 +92,7 @@ waf_mode !UA STD;
 
 * 配置语法: waf_cc_deny \<rate=*n*r/m\> \[duration=*1h*\] \[size=*20m*\]
 * 默认配置：—
-* 配置段: server
+* 配置段: http, server, location
 
 设置 CC 防护相关的参数。
 
@@ -106,7 +106,7 @@ waf_mode !UA STD;
 
 * 配置语法: waf_cache \<capacity=*n*\> \[interval=*1h*\] \[percent=*50*\]
 * 默认配置：—
-* 配置段: server
+* 配置段: http, server, location
 
 设置缓存规则检查结果相关的参数。
 
@@ -133,7 +133,7 @@ waf_mode !UA STD;
 
 * 配置语法: waf_under_attack \<*on* | *off*\> \[uri=*str*\]
 * 默认配置：waf_under_attack off
-* 配置段: server
+* 配置段: http, server, location
 
 如果您的站点正在受到攻击可以尝试使用此配置。
 开启后每个用户首次访问会强制延迟五秒，并自动跳转到 `uri` 所指向的网页。
@@ -154,8 +154,8 @@ waf_mode !UA STD;
 ## `waf_priority`
 
 * 配置语法: waf_priority "*str*"
-* 默认配置：waf_priority "W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE"
-* 配置段: server
+* 默认配置：waf_priority "W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
+* 配置段: http, server, location
 
 设置各个检测项目的优先级，除了 POST 检测，POST 检测的优先级永远最低。
 
@@ -170,18 +170,11 @@ waf_mode !UA STD;
 * `W-REFERER`：Referer 白名单检测
 * `REFERER`：Referer 黑名单检测
 * `COOKIE`：Cookie 黑名单检测
+* `ADV`：表示高级规则。
 
 ::: warning 警告
 
 `str` 必须使用单引号或者双引号包裹，且 `str` 必须包含全部的检测项目。
-
-:::
-
-::: tip 开发版中的变动
-
-默认值被修改为 W-IP IP CC UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE ADV"
-
-`ADV` 表示高级规则。
 
 :::
 
@@ -190,7 +183,7 @@ waf_mode !UA STD;
 
 * 配置语法: waf_http_status \[general=*http_status_code*\] \[cc_deny=*http_status_code*\]
 * 默认配置: waf_http_status general=403 cc_deny=503
-* 配置段: server
+* 配置段: http, server, location
 
 此指令用于设置请求被拦截时返回的 HTTP 状态码。
 

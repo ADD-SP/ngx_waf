@@ -7,6 +7,21 @@ lang: en
 
 ## [Unreleased]
 
+### Added
+
+### Removed
+
+### Changed
+
+* Improved performance of CC protection.
+
+### Fixed
+
+
+***
+
+## [6.0.0] - 2021-07-21 UTC+0800
+
 ### NOTE
 
 * **This release contains some breaking changes.**
@@ -60,7 +75,6 @@ sh assets/download mainline beta
 
 * You can now use all the directives of this module in blocks `http`, `server` and `location`
 
-### Fixed
 
 ***
 

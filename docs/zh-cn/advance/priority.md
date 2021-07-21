@@ -20,7 +20,7 @@ lang: zh-CN
 9. Referer 白名单检测
 10. Referer 黑名单检测
 11. Cookie 黑名单检测
-12. 高级规则（仅开发版）
+12. 高级规则
 13. Post 请求体黑名单
 
 
