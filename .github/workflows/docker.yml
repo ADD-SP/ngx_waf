@@ -21,11 +21,11 @@ defaults:
     shell: bash
 
 jobs:
-  module:
+  ngx-stable-module-stable:
     runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
     strategy:
       matrix:
-        version: ['stable', 'mainline']
         target: ['glibc', 'musl']
     steps:
       - uses: actions/checkout@v2
@@ -41,9 +41,7 @@ jobs:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
       - name: Build and push (ngx-stable-module-stable-x)
-        if: ${{ github.ref == 'refs/heads/master' && matrix.version == 'stable' }}
         env:
-          NGX_VERSION: ${{ matrix.version }}
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
           MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
@@ -53,9 +51,12 @@ jobs:
           file: docker/Dockerfile.${{ env.TARGET }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
+          build-args: NGX_VER=stable
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-stable-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
@@ -63,12 +64,29 @@ jobs:
             linux/386
             linux/arm/v7
             linux/arm/v6
-      - name: Build and push (ngx-mainline-module-stable-x)
-        if: ${{ github.ref == 'refs/heads/master' && matrix.version == 'mainline' }}
+  ngx-mainline-module-stable:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    strategy:
+      matrix:
+        target: ['glibc', 'musl']
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER_NAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+      - name: Build and push (ngx-stable-module-stable-x)
         env:
-          NGX_VERSION: ${{ matrix.version }}
           TARGET: ${{ matrix.target }}
-          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
           MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
         uses: docker/build-push-action@v2
         with:
@@ -76,9 +94,12 @@ jobs:
           file: docker/Dockerfile.${{ env.TARGET }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
+          build-args: NGX_VER=mainline
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-stable-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
@@ -86,22 +107,42 @@ jobs:
             linux/386
             linux/arm/v7
             linux/arm/v6
-      - name: Build and push (ngx-stable-module-beta-x)
-        if: ${{ github.ref == 'refs/heads/dev' && matrix.version == 'stable' }}
+  ngx-stable-module-beta:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/dev' }}
+    strategy:
+      matrix:
+        target: ['glibc', 'musl']
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER_NAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+      - name: Build and push (ngx-stable-module-stable-x)
         env:
-          NGX_VERSION: ${{ matrix.version }}
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
-          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_beta_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
           file: docker/Dockerfile.${{ env.TARGET }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
+          build-args: NGX_VER=stable
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-beta-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
@@ -109,22 +150,42 @@ jobs:
             linux/386
             linux/arm/v7
             linux/arm/v6
-      - name: Build and push (ngx-mainline-module-beta-x)
-        if: ${{ github.ref == 'refs/heads/dev' && matrix.version == 'mainline' }}
+  ngx-mainline-module-beta:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/dev' }}
+    strategy:
+      matrix:
+        target: ['glibc', 'musl']
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER_NAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+      - name: Build and push (ngx-stable-module-stable-x)
         env:
-          NGX_VERSION: ${{ matrix.version }}
           TARGET: ${{ matrix.target }}
-          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
-          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_beta_version_number }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
           file: docker/Dockerfile.${{ env.TARGET }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
+          build-args: NGX_VER=mainline
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION }}-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-beta-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
