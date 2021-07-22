@@ -9,7 +9,7 @@
     #include <utarray.h>
     #include <ngx_core.h>
     #include <ngx_http_waf_module_parser.tab.h>
-    #define VM_DEBUG
+    // #define VM_DEBUG
     void ngx_http_waf_error(UT_array* array, ngx_pool_t* pool, const char* msg);
 %}
 
