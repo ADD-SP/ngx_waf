@@ -10,7 +10,7 @@
     #include <ngx_core.h>
     #include <ngx_http_waf_module_parser.tab.h>
     #define VM_DEBUG
-    void yyerror (UT_array* array, const char* msg);
+    void ngx_http_waf_error(UT_array* array, ngx_pool_t* pool, const char* msg);
 %}
 
 
