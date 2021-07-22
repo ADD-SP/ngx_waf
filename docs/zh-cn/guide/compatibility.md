@@ -19,7 +19,28 @@ lang: zh-CN
 ### ngx_http_rewrite_module
 
 本模块与 [ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html) 
-存在兼容性问题。当使用了 `return` 或 `rewrite` 指令时可能会导致本模块的检测流程被跳过。
+存在兼容性问题。
 
-解决方式见 [waf_mode](/zh-cn/advance/directive.md#waf-mode)。
+* 当 `return` 指令生效时模块不会生效。
+* 当 `rewrite` 指令造成了返回（如 302 重定向）时模块不会生效。
+
+::: tip 使用 `try_files` 代替 `rewrite`
+
+你可能会有下列的配置。
+
+```nginx
+if (!-e $request_filename) {
+    rewrite (.*) /index.php
+}
+```
+
+你可以用下面的配置来替换。
+
+```nginx
+try_files $uri $uri/ /index.php;
+```
+
+详情见 [rewrite](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html#rewrite) 和 [try_files](https://nginx.org/en/docs/http/ngx_http_core_module.html#try_files)。
+
+:::
 

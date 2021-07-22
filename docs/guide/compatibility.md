@@ -20,7 +20,27 @@ This module only guarantees compatibility with `nginx-1.18.0` or newer versions.
 
 There is a compatibility issue between ngx_waf and 
 [ngx_http_rewrite_module](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html). 
-The ngx_waf inspection process may be skipped when the `return` or `rewrite` directives are used.
 
-See [waf_mode](/advance/directive.md#waf-mode) for the solution.
+* The module does not take effect if the request directive `return` takes effect.
+* The module does not take effect if the request directive `rewrite` results in a return (e.g., a 302 redirect).
+
+::: tip Replace `rewrite` with `try_files`.
+
+You may have the following configuration.
+
+``nginx
+if (! -e $request_filename) {
+    rewrite (. *) /index.php
+}
+```
+
+You can replace it with the following configuration.
+
+``nginx
+try_files $uri $uri/ /index.php;
+```
+
+See [rewrite](https://nginx.org/en/docs/http/ngx_http_rewrite_module.html#rewrite) and [try_files](https://nginx.org/en/docs/http/ngx_) for details http_core_module.html#try_files).
+
+:::
 
