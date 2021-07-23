@@ -183,6 +183,12 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
 */
 ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode);
 
+
+ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+
+
+ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+
 /**
  * @}
 */
