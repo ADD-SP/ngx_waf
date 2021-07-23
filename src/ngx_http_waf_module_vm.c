@@ -36,7 +36,7 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
     vm_stack_arg_t* stack = NULL;
     vm_code_t* code = NULL;
 
-    while (code = (vm_code_t*)utarray_next(&(loc_conf->advanced_rule), code), code != NULL) {
+    while (code = (vm_code_t*)utarray_next(loc_conf->advanced_rule, code), code != NULL) {
         vm_stack_arg_t* argv = &(code->argv);
         switch (code->type) {
             case VM_CODE_PUSH_INT:

@@ -260,7 +260,7 @@ typedef struct ngx_http_waf_conf_s {
     u_char                          random_str[129];                            /**< 随机字符串 */
     ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
-    ngx_uint_t                      alloc_times;                                /**< 当前已经从内存池中申请过多少次内存 */
+    ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
     uint64_t                        waf_mode;                                   /**< 检测模式 */
@@ -272,28 +272,28 @@ typedef struct ngx_http_waf_conf_s {
     ngx_int_t                       waf_eliminate_inspection_cache_percent;     /**< 每次批量淘汰多少百分比的缓存（50 表示 50%） */
     ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
     ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
-    ip_trie_t                       black_ipv4;                                 /**< IPV4 黑名单 */
-    ip_trie_t                       black_ipv6;                                 /**< IPV6 黑名单 */
+    ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
+    ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
     ngx_array_t                    *black_url;                                  /**< URL 黑名单 */
     ngx_array_t                    *black_args;                                 /**< args 黑名单 */
     ngx_array_t                    *black_ua;                                   /**< user-agent 黑名单 */
     ngx_array_t                    *black_referer;                              /**< Referer 黑名单 */
     ngx_array_t                    *black_cookie;                               /**< Cookie 黑名单 */
     ngx_array_t                    *black_post;                                 /**< 请求体内容黑名单 */
-    ip_trie_t                       white_ipv4;                                 /**< IPV4 白名单 */
-    ip_trie_t                       white_ipv6;                                 /**< IPV6 白名单 */
+    ip_trie_t                      *white_ipv4;                                 /**< IPV4 白名单 */
+    ip_trie_t                      *white_ipv6;                                 /**< IPV6 白名单 */
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
-    UT_array                        advanced_rule;                              /**< 高级规则表 */
+    UT_array                       *advanced_rule;                              /**< 高级规则表 */
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
-    lru_cache_t                      *ip_access_statistics;                     /**< IP 访问频率统计表 */
-    lru_cache_t            *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
-    lru_cache_t            *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
-    lru_cache_t            *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
-    lru_cache_t            *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
-    lru_cache_t            *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
-    lru_cache_t            *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
-    lru_cache_t            *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    lru_cache_t                    *ip_access_statistics;                       /**< IP 访问频率统计表 */
+    lru_cache_t                    *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
+    lru_cache_t                    *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
+    lru_cache_t                    *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
+    lru_cache_t                    *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
+    lru_cache_t                    *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
+    lru_cache_t                    *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
+    lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_conf_t;

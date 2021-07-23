@@ -25,7 +25,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
             struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-            if (ip_trie_find(&loc_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(loc_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -37,7 +37,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
             inx_addr_t inx_addr;
             
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
-            if (ip_trie_find(&loc_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(loc_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -80,7 +80,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
             inx_addr_t inx_addr;
             
             ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-            if (ip_trie_find(&loc_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(loc_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -91,7 +91,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
             struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
-            if (ip_trie_find(&loc_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+            if (ip_trie_find(loc_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -793,7 +793,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     result.is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     result.detail = NULL;
 
-    if (str == NULL || str->data == NULL || str->len == 0 || array->nelts == 0) {
+    if (str == NULL || str->data == NULL || str->len == 0 || array == NULL) {
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
