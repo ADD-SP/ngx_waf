@@ -6,59 +6,22 @@ sidebarDepth: 3
 
 # 安装
 
-大多数情况下您可以使用我们的脚本下载并加载预构建的模块，而不是编译代码。
-
-## 下载预构建的模块
-
-您可以通过执行脚本 `assets/download.sh` 来下载动态模块。下面是一些用例。
-
-```
-# 用于 nginx-1.20.1 的稳定版的模块
-sh assets/download.sh 1.20.1 stable
-
-# 用于 nginx-1.21.1 的稳定版的模块
-sh assets/download.sh 1.21.1 stable
-
-# 用于 nginx-1.20.1 的测试版的模块
-sh assets/download.sh 1.20.1 beta
-
-# 用于 nginx-1.21.1 的测试版的模块
-sh assets/download.sh 1.21.1 beta
-```
-
-执行脚本后你会看到类似下面这样的输出。
-
-```
-checking for command ... yes
-checking for libc implementation ... yes
- + GNU C libary
-Pulling remote image addsp/ngx_waf-prebuild:ngx-1.21.1-module-beta-glibc
-......
-......
-......
-Download complete!
-```
-
-如果你看到 `Download complete!` 则说明下载成功，模块会被保存在当前目录下。
-你可以将其拷贝到一个目录下，然后在 `nginx.conf` 的顶部添加一行。
-
-```nginx
-load_module "/path/to/ngx_http_waf_module.so";
-```
-
-然后关闭 nginx 并运行 `nginx -t`。如果没有出错则说明模块被正常加载，如果显示 `is not binary compatible in` 则说明您的 nginx 不支持预构建的模块，请编译安装模块。
-
-
-::: tip 注意
-
-当我们更新了模块后，大约需要两个小时来编译和上传模块。
-
-:::
-
-
-## 编译安装
-
 nginx 提供两种安装模块的方式，即「静态链接」和「动态加载」，通过两种方式安装的模块也分别称为「静态模块」和「动态模块」。
+
+你可以通过运行脚本 `assets/guide.sh` 来选择使用静态模块还是动态模块。
+
+```shell
+sh assets/guide.sh
+
+# It is recommended that you use dynamic modules.
+# 如果输出上面这行则建议使用动态模块。
+
+# It is recommended that you use static modules.
+# 如果输出上面这行则建议使用静态模块。
+```
+
+
+## 静态模块
 
 ::: warning 注意
 
@@ -83,7 +46,6 @@ configure arguments: --with-mail=dynamic --with-openssl=/usr/local/src/openssl-O
 
 :::
 
-### 静态模块
 
 安装静态模块需要重新编译整个 nginx，花费的时间相对于安装动态模块比较长。
 
@@ -151,7 +113,57 @@ cp objs/nginx /usr/local/nginx/sbin/nginx
 
 :::
 
-### 动态模块
+## 动态模块
+
+### 下载预构建的模块
+
+您可以通过执行脚本 `assets/download.sh` 来下载动态模块。下面是一些用例。
+
+```shell
+# 用于 nginx-1.20.1 的稳定版的模块
+sh assets/download.sh 1.20.1 stable
+
+# 用于 nginx-1.21.1 的稳定版的模块
+sh assets/download.sh 1.21.1 stable
+
+# 用于 nginx-1.20.1 的测试版的模块
+sh assets/download.sh 1.20.1 beta
+
+# 用于 nginx-1.21.1 的测试版的模块
+sh assets/download.sh 1.21.1 beta
+```
+
+执行脚本后你会看到类似下面这样的输出。
+
+```
+checking for command ... yes
+checking for libc implementation ... yes
+ + GNU C libary
+Pulling remote image addsp/ngx_waf-prebuild:ngx-1.21.1-module-beta-glibc
+......
+......
+......
+Download complete!
+```
+
+如果你看到 `Download complete!` 则说明下载成功，模块会被保存在当前目录下。
+你可以将其拷贝到一个目录下，然后在 `nginx.conf` 的顶部添加一行。
+
+```nginx
+load_module "/path/to/ngx_http_waf_module.so";
+```
+
+然后关闭 nginx 并运行 `nginx -t`。如果没有出错则说明模块被正常加载，反之则说明您的 nginx 不支持预构建的模块，请编译安装模块。
+
+
+::: tip 注意
+
+当我们更新了模块后，大约需要两个小时来编译和上传模块。
+
+:::
+
+
+### 编译动态模块
 
 编译安装动态模块并不需要重新编译整个 nginx，只需要重新编译所有的模块，所以
 速度相对静态模块快一些，这也是本文档推荐的方式。
