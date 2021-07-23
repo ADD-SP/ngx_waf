@@ -6,58 +6,16 @@ sidebarDepth: 3
 
 # Installation Guide
 
-## Downloading pre-built modules
+nginx provides two ways to install modules, namely 'statically linked' and 'dynamically loaded', and the modules installed in each way are called 'static modules' and dynamic modules'.
 
-You can download dynamic modules by executing the script `assets/download.sh`. Here are some use cases.
+You can choose whether to use static or dynamic modules by running the script `assets/guide.sh`.
 
-```
-# Stable module for nginx-1.20.1
-sh assets/download.sh 1.20.1 stable
-
-# Stable module for nginx-1.21.1
-sh assets/download.sh 1.21.1 stable
-
-# Beta module for nginx-1.20.1
-sh assets/download.sh 1.20.1 beta
-
-# Beta module for nginx-1.21.1
-sh assets/download.sh 1.21.1 beta
+```shell
+sh assets/guide.sh
 ```
 
-After executing the script you will see output like the following.
 
-```
-checking for command ... yes
-checking for libc implementation ... yes
- + GNU C libary
-Pulling remote image addsp/ngx_waf-prebuild:ngx-1.21.1-module-beta-glibc
-......
-......
-......
-Download complete!
-```
-
-If you see ``Download complete!`` then the download was successful and the module will be saved in the current directory.
-You can copy it to a directory and add a line to the top of `nginx.conf`.
-
-```nginx
-load_module "/path/to/ngx_http_waf_module.so";
-```
-
-Then shut down nginx and run `nginx -t`. If there are no errors then the module is loaded properly, if it shows `is not binary compatible in` then your nginx does not support pre-built modules, please compile and install the module.
-
-
-::: tip NOTE
-
-Once we have updated the module it takes about two hours to compile and upload the module.
-
-:::
-
-
-## Compile And Install
-
-nginx provides two ways to install modules, namely "static linking" and "dynamic loading", 
-and the modules installed in these two ways are called "static modules" and "dynamic modules" respectively.
+## Static Modules
 
 ::: warning NOTE
 
@@ -85,7 +43,6 @@ Be sure to remember what comes after `configure arguments:`, which will be repla
 
 :::
 
-### Static Modules
 
 Installing a static module requires recompiling the entire nginx, which takes longer than installing a dynamic module.
 
@@ -154,7 +111,56 @@ If you do not want to not nginx when replacing binaries, you can refer to the [o
 
 :::
 
-### Dynamic Modules
+## Dynamic Modules
+
+### Downloading pre-built modules
+
+You can download dynamic modules by executing the script `assets/download.sh`. Here are some use cases.
+
+```shell
+# Stable module for nginx-1.20.1
+sh assets/download.sh 1.20.1 stable
+
+# Stable module for nginx-1.21.1
+sh assets/download.sh 1.21.1 stable
+
+# Beta module for nginx-1.20.1
+sh assets/download.sh 1.20.1 beta
+
+# Beta module for nginx-1.21.1
+sh assets/download.sh 1.21.1 beta
+```
+
+After executing the script you will see output like the following.
+
+```
+checking for command ... yes
+checking for libc implementation ... yes
+ + GNU C libary
+Pulling remote image addsp/ngx_waf-prebuild:ngx-1.21.1-module-beta-glibc
+......
+......
+......
+Download complete!
+```
+
+If you see ``Download complete!`` then the download was successful and the module will be saved in the current directory.
+You can copy it to a directory and add a line to the top of `nginx.conf`.
+
+```nginx
+load_module "/path/to/ngx_http_waf_module.so";
+```
+
+Then close nginx and run `nginx -t`. If there are no errors, the module is loaded properly, otherwise your nginx does not support pre-built modules, so compile and install the module.
+
+
+::: tip NOTE
+
+Once we have updated the module it takes about two hours to compile and upload the module.
+
+:::
+
+### Compile and install
 
 Compiling and installing dynamic modules does not require recompiling the entire nginx, 
 only all modules, which is faster than static modules, 
