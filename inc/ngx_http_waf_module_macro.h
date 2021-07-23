@@ -225,16 +225,10 @@
 
 
 /**
- * @def NGX_HTTP_WAF_MODE_EXTRA_STRICT
- * @brief 严格模式，牺牲一些性能进行更多的检查，但是花费的时间不会发生数量级上的变化。
-*/
-#define NGX_HTTP_WAF_MODE_EXTRA_STRICT                       (NGX_HTTP_WAF_MODE_INSPECT_CC << 1)
-
-/**
  * @def NGX_HTTP_WAF_MODE_EXTRA_CACHE
  * @brief 启用缓存，但是不缓存 POST 检查。
 */
-#define NGX_HTTP_WAF_MODE_EXTRA_CACHE                        (NGX_HTTP_WAF_MODE_EXTRA_STRICT << 1)
+#define NGX_HTTP_WAF_MODE_EXTRA_CACHE                        (NGX_HTTP_WAF_MODE_INSPECT_CC << 1)
 
 
 /**
@@ -347,7 +341,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_PATCH        \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_TRACE        \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_STRICT         \
                                                 | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION)
 
@@ -397,9 +390,9 @@
 #define ngx_http_waf_check_bit(origin, bit_index) (ngx_http_waf_check_flag((origin), 1 << (bit_index)))
 
 
-#define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, utarray_ngx_str_ctor, utarray_ngx_str_dtor }
+#define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, ngx_http_waf_utarray_ngx_str_ctor, ngx_http_waf_utarray_ngx_str_dtor }
 
-#define ngx_http_waf_make_utarray_vm_code_icd() { sizeof(vm_code_t), NULL, utarray_vm_code_ctor, utarray_vm_code_dtor }
+#define ngx_http_waf_make_utarray_vm_code_icd() { sizeof(vm_code_t), NULL, ngx_http_waf_utarray_vm_code_ctor, ngx_http_waf_utarray_vm_code_dtor }
 
 #define ngx_strdup(s) ((u_char*)strdup((char*)(s)));
 

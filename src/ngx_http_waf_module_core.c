@@ -102,18 +102,18 @@ ngx_module_t ngx_http_waf_module = {
 };
 
 
-static ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle) {
+ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle) {
     randombytes_stir();
     return NGX_OK;
 }
 
 
-static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
-    return check_all(r, NGX_HTTP_WAF_TRUE);
+ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
+    return ngx_http_waf_check_all(r, NGX_HTTP_WAF_TRUE);
 }
 
 
-static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
+ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The scheduler has been started.");
 
@@ -214,6 +214,6 @@ static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
 }
 
 
-static void ngx_http_waf_handler_cleanup(void *data) {
+void ngx_http_waf_handler_cleanup(void *data) {
     return;
 }

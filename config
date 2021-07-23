@@ -7,7 +7,6 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_token_bucket_set.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
@@ -16,6 +15,14 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_parser.tab.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_check.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_config.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_ip_trie.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_lru_cache.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_mem_pool.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_under_attack.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_util.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_vm.c \
     $ngx_addon_dir/src/ngx_http_waf_module_lexer.c \
     $ngx_addon_dir/src/ngx_http_waf_module_parser.tab.c \
     $ngx_addon_dir/inc/libinjection/src/libinjection_html5.c \

@@ -55,7 +55,7 @@ RUN set -xe \
         # --with-openssl=/usr/local/src/openssl \
         --add-dynamic-module=/usr/local/src/ngx_waf \
         --with-compat \
-        --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' \
+        --with-cc-opt='-fstack-protector-strong' \
     &&  make modules -j$(nproc)
 
 
