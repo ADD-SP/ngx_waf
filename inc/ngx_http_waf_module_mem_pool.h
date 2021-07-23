@@ -18,7 +18,7 @@
  * @param[in] native_pool 内存池
  * @return 如果成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
-static ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_pool);
+ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_pool);
 
 /**
  * @brief 申请一段连续的内存
@@ -26,7 +26,7 @@ static ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* nat
  * @param[in] byte_size 内存的字节数
  * @return 成功则返回内存首地址，反之为 NULL。
 */
-static void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size);
+void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size);
 
 /**
  * @brief 释放一段连续的内存
@@ -34,44 +34,6 @@ static void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size);
  * @param[in] buffer 内存的首地址
  * @return 成功则返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
-static ngx_int_t mem_pool_free(mem_pool_t* pool, void* buffer);
-
-static ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_pool) {
-    if (pool == NULL || (type != std && native_pool == NULL)) {
-        return NGX_HTTP_WAF_FAIL;
-    }
-
-    pool->type = type;
-    
-    switch (type) {
-        case std: break;
-        case gernal_pool: pool->native_pool.gernal_pool = (ngx_pool_t*)native_pool; break;
-        case slab_pool: pool->native_pool.slab_pool = (ngx_slab_pool_t*)native_pool; break;
-    }
-
-    return NGX_HTTP_WAF_SUCCESS;
-}
-
-static void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size) {
-    void* addr;
-    switch (pool->type) {
-        case std: addr = malloc(byte_size); ngx_memzero(addr, byte_size);break;
-        case gernal_pool: addr = ngx_pcalloc(pool->native_pool.gernal_pool, byte_size); break;
-        case slab_pool: addr = ngx_slab_calloc_locked(pool->native_pool.slab_pool, byte_size); break;
-        default: addr = NULL; break;
-    }
-    return addr;
-}
-
-static ngx_int_t mem_pool_free(mem_pool_t* pool, void* buffer) {
-    switch (pool->type) {
-        case std: free(buffer); break;
-        case gernal_pool: ngx_pfree(pool->native_pool.gernal_pool, buffer); break;
-        case slab_pool: ngx_slab_free_locked(pool->native_pool.slab_pool, buffer); break;
-        default: return NGX_HTTP_WAF_FAIL;
-    }
-    return NGX_HTTP_WAF_SUCCESS;
-}
-
+ngx_int_t mem_pool_free(mem_pool_t* pool, void* buffer);
 
 #endif

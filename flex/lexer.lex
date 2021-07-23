@@ -1,4 +1,6 @@
 %option noyywrap
+%option noinput
+%option nounput
 %option yylineno
 %option outfile="src/ngx_http_waf_module_lexer.c" header-file="inc/ngx_http_waf_module_lexer.h"
 %option prefix="ngx_http_waf_"

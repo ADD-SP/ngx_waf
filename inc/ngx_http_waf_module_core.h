@@ -32,13 +32,13 @@
 /**
  * @brief 当 Worker 进程启动时调用的函数，用于重置随机数种子。
 */
-static ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle);
+ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle);
 
 
 /**
  * @brief NGX_HTTP_ACCESS_PHASE 阶段的处理函数
 */
-static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
+ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 
 /**
@@ -49,10 +49,10 @@ static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
  * @retval NGX_DECLINED 放行本次请求
  * @retval NGX_DONE 将在其它地方进行检查，通常是因为执行了 POST 检测
 */
-static ngx_int_t check_all(ngx_http_request_t* r, ngx_int_t is_check_cc);
+ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc);
 
 
-static void ngx_http_waf_handler_cleanup(void *data);
+void ngx_http_waf_handler_cleanup(void *data);
 
 /**
  * @}
