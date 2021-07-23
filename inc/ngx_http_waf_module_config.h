@@ -11,7 +11,6 @@
 
 #include <string.h>
 #include <utarray.h>
-#include <ngx_cycle.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
