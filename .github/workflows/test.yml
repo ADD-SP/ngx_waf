@@ -179,7 +179,6 @@ jobs:
                   \"inputs\": {                                                                             \
                     \"ngx_stable_version_number\": \"`lastversion https://nginx.org --major stable`\",      \
                     \"ngx_mainline_version_number\": \"`lastversion https://nginx.org --major mainline`\",  \
-                    \"module_stable_version_number\": \"`lastversion ADD-SP/ngx_waf --at=github`\",         \
-                    \"module_beta_version_number\": \"`lastversion ADD-SP/ngx_waf --at=github --pre`\"    \
+                    \"module_version_number\": \"`cat assets/version.txt`\"                                 \
                   }                                                                                         \
                 }"
