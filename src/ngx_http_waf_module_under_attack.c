@@ -6,7 +6,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         "ngx_waf_debug: Enter the Under-Attack processing flow.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     if (loc_conf->waf_under_attack == 0 || loc_conf->waf_under_attack == NGX_CONF_UNSET) {
@@ -244,7 +244,7 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
                                                 size_t dst_len, 
                                                 u_char* now,
                                                 size_t now_len) {
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
     size_t buf_len = sizeof(loc_conf->random_str) + sizeof(inx_addr_t) + uid_len + now_len;
     u_char *buf = (u_char *)ngx_pnalloc(r->pool, buf_len);
@@ -289,7 +289,7 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
 
 void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r) {
     size_t s_header_location_key_len = sizeof("Location");
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     

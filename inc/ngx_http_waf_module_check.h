@@ -23,6 +23,10 @@
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
 #define NGX_HTTP_WAF_MODLULE_CHECK_H
 
+
+/**
+ * @brief 用来挂载到清理请求资源的函数，主要用来存储和获取 ngx_http_waf_ctx_t。
+*/
 void ngx_http_waf_handler_cleanup(void *data);
 
 /**
@@ -142,7 +146,7 @@ void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
 /**
  * @brief 获取模块上下文和 server 块配置。
 */
-void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_conf_t** conf, ngx_http_waf_ctx_t** ctx);
+void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx);
 
 
 /**

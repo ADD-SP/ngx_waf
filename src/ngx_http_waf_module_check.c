@@ -7,7 +7,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
         "ngx_waf_debug: Start inspecting the IP whitelist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -61,7 +61,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
         "ngx_waf_debug: Start inspecting the IP blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -115,7 +115,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
         "ngx_waf_debug: Start the CC inspection process.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -259,7 +259,7 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t*
         "ngx_waf_debug: Start inspecting the URL whitelist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -304,7 +304,7 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t*
         "ngx_waf_debug: Start inspecting the URL blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -349,7 +349,7 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t
         "ngx_waf_debug: Start inspecting the ARGS blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -434,7 +434,7 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx
         "ngx_waf_debug: Start inspecting the User-Agent blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -483,7 +483,7 @@ ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_in
         "ngx_waf_debug: Start inspecting the Referer whitelist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -533,7 +533,7 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_in
         "ngx_waf_debug: Start inspecting the Referer blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -583,7 +583,7 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
         "ngx_waf_debug: Start inspecting the Cookie blacklist.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -688,7 +688,7 @@ void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
 
     double start_clock = (double)clock();
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_int_t content_length = ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len);
@@ -743,7 +743,7 @@ void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
 }
 
 
-void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_conf_t** conf, ngx_http_waf_ctx_t** ctx) {
+void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx) {
     if (ctx != NULL) {
         *ctx = NULL;
         *ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
@@ -761,7 +761,7 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_conf_t** 
     
     if (conf != NULL) {
         *conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
-        ngx_http_waf_conf_t* parent = (*conf)->parent;
+        ngx_http_waf_loc_conf_t* parent = (*conf)->parent;
         while ((*conf)->waf_cc_deny_limit == NGX_CONF_UNSET && parent != NULL) {
             (*conf)->waf_cc_deny_limit = parent->waf_cc_deny_limit;
             (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
@@ -785,7 +785,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
                                                         int check_xss) {
     char s_no_memory[] = "No Memory";
 
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     ngx_int_t cache_hit = NGX_HTTP_WAF_FAIL;

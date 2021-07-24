@@ -11,7 +11,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
         ngx_http_waf_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_waf_conf_t, waf),
+        offsetof(ngx_http_waf_loc_conf_t, waf),
         NULL
    },
    {
@@ -19,7 +19,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
         ngx_http_waf_rule_path_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_waf_conf_t, waf_rule_path),
+        offsetof(ngx_http_waf_loc_conf_t, waf_rule_path),
         NULL
    },
    {
@@ -81,10 +81,6 @@ static ngx_http_module_t ngx_http_waf_module_ctx = {
     NULL, 
     NULL, 
     NULL,
-    // ngx_http_waf_create_main_conf,
-    // ngx_http_waf_init_main_conf,
-    // ngx_http_waf_create_srv_conf,
-    // ngx_http_waf_merge_srv_conf,
     ngx_http_waf_create_loc_conf,
     ngx_http_waf_merge_loc_conf
 };
@@ -122,7 +118,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         "ngx_waf_debug: The scheduler has been started.");
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     ngx_int_t http_status = NGX_DECLINED;
