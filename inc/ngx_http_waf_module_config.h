@@ -119,22 +119,6 @@ ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_vari
 ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
 
-void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
-
-
-/**
- * @brief 初始化配置存储块的结构体
- * @warning 本函数中存在兼容 Mainline 版本的 nginx 的代码。当 nginx-1.18.0 不再是最新的 stable 版本的时候可能需要改动。 
-*/
-void* ngx_http_waf_create_srv_conf(ngx_conf_t* cf);
-
-
-char* ngx_http_waf_init_main_conf(ngx_conf_t *cf, void *conf);
-
-
-char* ngx_http_waf_merge_srv_conf(ngx_conf_t *cf, void *prev, void *conf);
-
-
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf);
 
 
@@ -152,21 +136,21 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 /**
  * @brief 用于 CC 防护的共享内存的初始时的回调函数
  * @param[in] zone 正在初始化的共享内存
- * @param[in] data ngx_http_waf_conf_t
+ * @param[in] data ngx_http_waf_loc_conf_t
 */
 ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *data);
 
 
-ngx_http_waf_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf);
+ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf);
 
 
-ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
-ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
-ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
 /**
@@ -184,10 +168,10 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
 ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode);
 
 
-ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
-ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_conf_t* conf);
+ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 /**
  * @}

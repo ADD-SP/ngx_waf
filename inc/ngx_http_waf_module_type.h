@@ -252,11 +252,11 @@ typedef struct ngx_http_waf_ctx_s {
 
 
 /**
- * @struct ngx_http_waf_conf_t
+ * @struct ngx_http_waf_loc_conf_t
  * @brief 每个 server 块的配置块
 */
-typedef struct ngx_http_waf_conf_s {
-    struct ngx_http_waf_conf_s     *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
+typedef struct ngx_http_waf_loc_conf_s {
+    struct ngx_http_waf_loc_conf_s *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
     u_char                          random_str[129];                            /**< 随机字符串 */
     ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
@@ -296,7 +296,7 @@ typedef struct ngx_http_waf_conf_s {
     lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
-} ngx_http_waf_conf_t;
+} ngx_http_waf_loc_conf_t;
 
 
 /**

@@ -196,32 +196,32 @@ ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** i
 }
 
 
-// static ngx_int_t ip_trie_delete(ip_trie_t* trie, inx_addr_t* inx_addr) {
+// ngx_int_t ip_trie_delete(ip_trie_t* trie, inx_addr_t* inx_addr) {
 //     if (trie == NULL || inx_addr == NULL) {
-//         return FAIL;
+//         return NGX_HTTP_WAF_FAIL;
 //     }
 
 //     ip_trie_node_t* node = NULL;
 //     ngx_int_t ret = ip_trie_find(trie, inx_addr, &node);
-//     if (ret != TRUE) {
+//     if (ret != NGX_HTTP_WAF_TRUE) {
 //         return ret;
 //     }
 
 //     node->data_byte_length = 0;
-//     node->is_ip = FALSE;
+//     node->is_ip = NGX_HTTP_WAF_FALSE;
 
 //     ret = mem_pool_free(&trie->pool, node->data);
-//     if (ret != SUCCESS) {
+//     if (ret != NGX_HTTP_WAF_SUCCESS) {
 //         return ret;
 //     }
     
 //     node->data = NULL;
 
-//     return SUCCESS;
+//     return NGX_HTTP_WAF_SUCCESS;
 // }
 
 
-// static ngx_int_t ip_trie_clear(ip_trie_t* trie) {
+// ngx_int_t ip_trie_clear(ip_trie_t* trie) {
 //     circular_doublly_linked_list_t* head = NULL;
 
 //     _ip_trie_traversal(trie->root, &head);
@@ -260,7 +260,7 @@ ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** i
 // }
 
 
-// static void _ip_trie_traversal(ip_trie_node_t* node, circular_doublly_linked_list_t** head) {
+// void _ip_trie_traversal(ip_trie_node_t* node, circular_doublly_linked_list_t** head) {
 //     if (node == NULL) {
 //         return;
 //     }

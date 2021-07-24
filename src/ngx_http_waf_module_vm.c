@@ -2,7 +2,7 @@
 
 ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     static ngx_str_t s_empty_str = ngx_string("");
-    ngx_http_waf_conf_t* loc_conf = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_ctx_t* ctx = NULL; 
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     
