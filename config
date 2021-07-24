@@ -101,7 +101,7 @@ if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" -o ! -e "${ngx_addo
 
 $0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
 
-    cd $ngx_addon_dir && flex flex/lexer.lex && cd $(pwd)
+    cd $ngx_addon_dir && make && cd $(pwd)
 
 END
     exit 1
@@ -113,9 +113,7 @@ if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" -o ! -e "${ngx
 
 $0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
 
-    cd $ngx_addon_dir \\
-&&  bison --defines=inc/ngx_http_waf_module_parser.tab.h -L C -o src/ngx_http_waf_module_parser.tab.c bison/parser.yacc \\
-&&  cd $(pwd)
+    cd $ngx_addon_dir && make && cd $(pwd)
 
 END
     exit 1
