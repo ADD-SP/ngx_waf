@@ -17,6 +17,8 @@ lang: en
 
 ### Fixed
 
+* Extreme cases may waste a lot of memory.
+
 
 ***
 
