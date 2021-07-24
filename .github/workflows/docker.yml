@@ -9,10 +9,7 @@ on:
       ngx_mainline_version_number:
         description: 'literal'
         required: true
-      module_stable_version_number:
-        description: 'literal'
-        required: true
-      module_beta_version_number:
+      module_version_number:
         description: 'literal'
         required: true
 
@@ -44,7 +41,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
-          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
@@ -87,7 +84,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
-          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
@@ -130,7 +127,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
-          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
@@ -173,7 +170,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
-          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_stable_version_number }}
+          MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_version_number }}
         uses: docker/build-push-action@v2
         with:
           context: .
