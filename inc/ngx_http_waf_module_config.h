@@ -119,9 +119,15 @@ ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_vari
 ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
 
+/**
+ * @brief 初始化结构体 ngx_http_waf_loc_conf_t
+*/
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf);
 
 
+/**
+ * @brief 合并各个配置段的 ngx_http_waf_loc_conf_t
+*/
 char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf);
 
 
@@ -141,15 +147,27 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf);
 ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *data);
 
 
+/**
+ * @brief 初始化结构体 ngx_http_waf_loc_conf_t
+*/
 ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf);
 
 
+/**
+ * @brief 初始化用于 CC 防护的共享内存。
+*/
 ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
+/**
+ * @brief 初始化 LRU 缓存。
+*/
 ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
+/**
+ * @brief 读取所有的规则。
+*/
 ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
@@ -168,9 +186,17 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* co
 ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode);
 
 
+/**
+ * @brief 分配用于存放规则的内存。
+ * @note 如果已经分配则什么都不做。
+*/
 ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
+/**
+ * @brief 释放用于存储规则的内存。
+ * @note 如果已经释放或者从未分配则什么都不做。
+*/
 ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 /**
