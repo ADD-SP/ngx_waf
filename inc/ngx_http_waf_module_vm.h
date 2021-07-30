@@ -7,9 +7,9 @@
 #include <ngx_http_waf_module_util.h>
 #include <ngx_inet.h>
 #include <utstack.h>
-#include <libinjection/src/libinjection.h>
-#include <libinjection/src/libinjection_sqli.h>
-#include <libinjection/src/libinjection_xss.h>
+#include <libinjection.h>
+#include <libinjection_sqli.h>
+#include <libinjection_xss.h>
 
 void ngx_http_waf_print_code(UT_array* array);
 
