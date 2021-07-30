@@ -200,11 +200,6 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
-    /* 默认每隔 60 分钟批量清理一次缓存 */
-    loc_conf->waf_eliminate_inspection_cache_interval = 1 * 60 * 60;
-    /* 默认每次清理一般的缓存 */
-    loc_conf->waf_eliminate_inspection_cache_percent = 50;
-
     for (size_t i = 1; i < cf->args->nelts; i++) {
         UT_array* array = NULL;
         if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
@@ -227,20 +222,12 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             }
 
         } else if (ngx_strcmp("interval", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
-            loc_conf->waf_eliminate_inspection_cache_interval = ngx_http_waf_parse_time(p->data);
-            if (loc_conf->waf_eliminate_inspection_cache_interval == NGX_ERROR) {
-                goto error;
-            }
+            ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_EINVAL, 
+                "Since v6.0.1, the parameter 'interval' is deprecated and it is recommended that you remove this parameter.");
 
         } else if (ngx_strcmp("percent", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
-            loc_conf->waf_eliminate_inspection_cache_percent = ngx_atoi(p->data, p->len);
-            if (loc_conf->waf_eliminate_inspection_cache_percent == NGX_ERROR
-                || loc_conf->waf_eliminate_inspection_cache_percent <= 0
-                || loc_conf->waf_eliminate_inspection_cache_percent > 100) {
-                goto error;
-            }
+            ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_EINVAL, 
+                "Since v6.0.1, the parameter 'percent' is deprecated and it is recommended that you remove this parameter.");
         } else {
             goto error;
         }
@@ -475,12 +462,6 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     
     ngx_int_t tmp1 = child->waf_inspection_capacity;
     ngx_conf_merge_value(child->waf_inspection_capacity, parent->waf_inspection_capacity, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_eliminate_inspection_cache_interval, 
-                        parent->waf_eliminate_inspection_cache_interval, 
-                        NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_eliminate_inspection_cache_percent, 
-                        parent->waf_eliminate_inspection_cache_percent, 
-                        NGX_CONF_UNSET);
     if (tmp1 == NGX_CONF_UNSET && child->waf_inspection_capacity != NGX_CONF_UNSET) {
         child->black_url_inspection_cache = parent->black_url_inspection_cache;
         child->black_args_inspection_cache = parent->black_args_inspection_cache;
@@ -901,8 +882,6 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
     conf->waf_inspection_capacity = NGX_CONF_UNSET;
-    conf->waf_eliminate_inspection_cache_interval = NGX_CONF_UNSET;
-    conf->waf_eliminate_inspection_cache_percent = NGX_CONF_UNSET;
     conf->waf_http_status = 403;
     conf->waf_http_status_cc = 503;
     conf->shm_zone_cc_deny = NULL;
