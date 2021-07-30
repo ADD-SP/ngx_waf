@@ -8,8 +8,24 @@ lang: en
 ## [Unreleased]
 
 ### Added
+ 
 
 ### Removed
+
+
+### Changed
+
+
+### Fixed
+
+
+***
+
+## [6.0.1] - 2021-07-30 UTC+0800
+
+### Deprecated 
+
+* Deprecates the parameters `interval` and `percent` of the directive `waf_cache`, but does not remove them, only that they no longer have any effect. These two parameters will be removed in the future.
 
 ### Changed
 
@@ -17,7 +33,7 @@ lang: en
 
 ### Fixed
 
-* Extreme cases may waste a lot of memory.
+* Extreme cases may waste a lot of memory. Thanks to [@RekGRpth](https://github.com/RekGRpth) for their help.
 
 
 ***

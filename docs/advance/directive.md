@@ -101,15 +101,13 @@ Set the parameters related to CC protection.
 
 ## `waf_cache`
 
-* syntax: waf_cache \<capacity=*n*\> \[interval=*1h*\] \[percent=*50*\]
+* syntax: waf_cache \<capacity=*n*\>
 * default: —
 * context: http, server, location
 
 Set the parameters related to cache rule inspection results.
 
 * `capacity`: For some inspection items with caching mechanism enabled, the maximum number of inspection results per inspection item to be cached for each inspection target.
-* `interval`: Set the period of the batch cull cache in minutes, such as `60s`, `60m`, `60h` and `60d`, or `1h` if not specified. If not specified, the default is `1h`, which is one hour.
-* `percent`: What percentage of the cache is eliminated each time the batch eliminates the cache. Specify an integer greater than 0 and less than or equal to 100. A setting of 50 means that half of the cache is eliminated. If not specified, the default is `50`.
 
 
 ::: tip Cache-enabled inspections

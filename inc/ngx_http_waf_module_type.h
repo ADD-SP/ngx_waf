@@ -288,8 +288,6 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
     ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
     ngx_int_t                       waf_inspection_capacity;                    /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_eliminate_inspection_cache_interval;    /**< 批量淘汰缓存的周期（秒） */
-    ngx_int_t                       waf_eliminate_inspection_cache_percent;     /**< 每次批量淘汰多少百分比的缓存（50 表示 50%） */
     ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
     ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
