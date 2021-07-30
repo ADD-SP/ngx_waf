@@ -99,9 +99,23 @@ ngx_int_t ngx_http_waf_parse_header(ngx_list_t* native_header, key_value_t** has
 ngx_int_t ngx_http_waf_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array);
 
 
+/**
+ * @brief IPV4 网段比较
+ * @param[in] ip 某个 IP
+ * @param[in] ipv4 某个 IP 或者某个网段
+ * @return 网段匹配则返回 MATCHED，反之则为 NOT_MATCHED。
+ * @note 所有参数均为网络字节序
+*/
 ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
 
 
+/**
+ * @brief IPV4 网段比较
+ * @param[in] ip 某个 IP
+ * @param[in] ipv6 某个 IP 或者某个网段
+ * @return 网段匹配则返回 MATCHED，反之则为 NOT_MATCHED。
+ * @note 所有参数均为网络字节序
+*/
 ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
 
 

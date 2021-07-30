@@ -1,6 +1,6 @@
 /**
  * @file ngx_http_waf_module_lru_cache.h.h
- * @brief IP 令牌桶集合
+ * @brief LRU 缓存管理器
 */
 
 #ifndef __NGX_HTTP_WAF_MODULE_LRU_CACHE_H__

@@ -59,17 +59,25 @@ typedef struct circular_doublly_linked_list_s {
 } circular_doublly_linked_list_t;
 
 
+/**
+ * @struct ip_statis_t
+ * @brief 用于记录 CC 防护信息
+*/
 typedef struct ip_statis_s {
-    ngx_int_t      count;          /**< 访问次数 */
-    ngx_int_t       is_blocked;
-    time_t          record_time;     /**< 何时开始记录 */
-    time_t          block_time;
+    ngx_int_t       count;              /**< 访问次数 */
+    ngx_int_t       is_blocked;         /**< 是否已经被拦截 */
+    time_t          record_time;        /**< 何时开始记录 */
+    time_t          block_time;         /**< 何时开始拦截 */
 } ip_statis_t;
 
 
+/**
+ * @struct check_result_t
+ * @brief 规则减价结果
+*/
 typedef struct check_result_s {
-    ngx_int_t is_matched;
-    u_char* detail;
+    ngx_int_t       is_matched;         /**< 是否被某条规则匹配到 */
+    u_char         *detail;             /**< 匹配到的规则的详情 */
 } check_result_t;
 
 
@@ -154,6 +162,10 @@ typedef struct memo_pool_s {
 } mem_pool_t;
 
 
+/**
+ * @struct lru_cache_result_t
+ * @brief LRU 操作结果
+*/
 typedef struct lru_cache_result_s {
     int status;
     void **data;
@@ -165,20 +177,28 @@ typedef lru_cache_result_t lru_cache_add_result_t;
 typedef lru_cache_result_t lru_cache_find_result_t;
 
 
+/**
+ * @struct lru_cache_item_t
+ * @brief LRU 缓存项
+*/
 typedef struct lru_cache_item_s {
     u_char                             *key_ptr;            /**< 用于哈希的关键字 */
     size_t                              key_byte_length;    /**< 关键字占用的字节数 */
-    void                               *data;
+    void                               *data;               /**< 缓存项的具体数据 */
     struct lru_cache_item_s            *prev;               /**< utlist 关键成员 */
     struct lru_cache_item_s            *next;               /**< utlist 关键成员 */
     UT_hash_handle                      hh;                 /**< uthash 关键成员 */
 } lru_cache_item_t;
 
 
+/**
+ * @struct lru_cache_t
+ * @brief LRU 缓存管理器
+*/
 typedef struct lru_cache_s {
     time_t                            last_eliminate;     /**< 最后一次批量淘汰缓存的时间 */
     mem_pool_t                        pool;               /**< 内存池 */
-    size_t                        capacity;           /**< 最多嫩容纳多少个缓存项 */
+    size_t                            capacity;           /**< 最多嫩容纳多少个缓存项 */
     lru_cache_item_t                 *hash_head;          /**< uthash 的表头 */
     lru_cache_item_t                 *chain_head;         /**< utlist 的表头 */
 } lru_cache_t;
