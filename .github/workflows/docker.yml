@@ -80,10 +80,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-stable-module-stable-x)
+      - name: Build and push (ngx-mainline-module-stable-x)
         env:
           TARGET: ${{ matrix.target }}
-          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
           MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_version_number }}
         uses: docker/build-push-action@v2
         with:
@@ -123,7 +123,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-stable-module-stable-x)
+      - name: Build and push (ngx-stable-module-beta-x)
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
@@ -166,10 +166,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-stable-module-stable-x)
+      - name: Build and push (ngx-mainline-module-beta-x)
         env:
           TARGET: ${{ matrix.target }}
-          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
+          NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
           MODULE_VERSION_NUMBER: ${{ github.event.inputs.module_version_number }}
         uses: docker/build-push-action@v2
         with:
