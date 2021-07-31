@@ -18,6 +18,7 @@ lang: en
 
 ### Fixed
 
+* The whitelist of URLs and Referers in the upper-level configuration cannot be inherited properly.
 
 ***
 
