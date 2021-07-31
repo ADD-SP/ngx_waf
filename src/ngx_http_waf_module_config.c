@@ -349,8 +349,6 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         ngx_http_waf_parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
         ngx_http_waf_parse_priority("UNDER-ATTACK", ngx_http_waf_check_under_attack);
         ngx_http_waf_parse_priority("ADV", ngx_http_waf_vm_exec);
-        ngx_http_waf_parse_priority("CC", ngx_http_waf_handler_check_cc);
-        ngx_http_waf_parse_priority("CC", ngx_http_waf_handler_check_cc);
 
         #undef ngx_http_waf_parse_priority
 
