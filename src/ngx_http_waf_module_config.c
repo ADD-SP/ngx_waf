@@ -435,6 +435,8 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         child->black_ipv6 = parent->black_ipv6;
         child->white_ipv4 = parent->white_ipv4;
         child->white_ipv6 = parent->white_ipv6;
+        child->white_url = parent->white_url;
+        child->white_referer = parent->white_referer;
         child->black_url = parent->black_url;
         child->black_args = parent->black_args;
         child->black_ua = parent->black_ua;
