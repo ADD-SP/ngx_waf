@@ -1,6 +1,21 @@
 #include <ngx_http_waf_module_lru_cache.h>
 
 
+lru_cache_item_t* _lru_cache_hash_find(lru_cache_t* lru, void* key, size_t key_len);
+
+
+void _lru_cache_hash_add(lru_cache_t* lru, lru_cache_item_t* item);
+
+
+void _lru_cache_hash_delete(lru_cache_t* lru, lru_cache_item_t* item);
+
+
+void* _lru_cache_hash_calloc(lru_cache_t* lru, size_t n);
+
+
+void _lru_cache_hash_free(lru_cache_t* lru, void* addr);
+
+
 void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_type_e pool_type, void* native_pool) {
     assert(lru != NULL);
 
