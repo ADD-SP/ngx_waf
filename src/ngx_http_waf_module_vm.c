@@ -8,6 +8,10 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
     
     ngx_int_t ret = NGX_HTTP_WAF_NOT_MATCHED;
 
+    if (utarray_len(loc_conf->advanced_rule) == 0) {
+        return ret;
+    }
+
     // ipv4_t client_ipv4;
 
     ngx_str_t* url = &(r->uri);
@@ -406,19 +410,19 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
 
     key_value_t *temp0 = NULL, *temp1 = NULL;
     HASH_ITER(hh, query_string, temp0, temp1) {
+        HASH_DEL(query_string, temp0);
         free(temp0->key.data);
         free(temp0->value.data);
         free(temp0);
-        HASH_DEL(query_string, temp0);
     }
 
     temp0 = NULL;
     temp1 = NULL;
     HASH_ITER(hh, header_in, temp0, temp1) {
-        free(temp0->key.data);
+        HASH_DEL(header_in, temp0);
+                free(temp0->key.data);
         free(temp0->value.data);
         free(temp0);
-        HASH_DEL(header_in, temp0);
     }
 
     return ret;
