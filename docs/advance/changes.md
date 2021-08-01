@@ -18,6 +18,15 @@ lang: en
 
 ### Fixed
 
+
+***
+
+## [6.0.3] - 2021-08-02 UTC+0800
+
+### Fixed
+
+* A segmentation fault may be raised when releasing resources from a virtual machine.
+
 ***
 
 ## [6.0.2] - 2021-08-01 UTC+0800
