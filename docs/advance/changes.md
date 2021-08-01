@@ -18,7 +18,13 @@ lang: en
 
 ### Fixed
 
-* The whitelist of URLs and Referers in the upper-level configuration cannot be inherited properly.
+***
+
+## [6.0.2] - 2021-08-01 UTC+0800
+
+### Fixed
+
+* The whitelist of URL and Referer in the upper-level configuration cannot be inherited properly.
 
 ***
 
