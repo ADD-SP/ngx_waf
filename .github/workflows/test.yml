@@ -24,12 +24,12 @@ jobs:
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
-            -d '{"ref":"refs/heads/master"}'
+            -d '{"ref":"refs/heads/lts"}'
           curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
-            -d '{"ref":"refs/heads/dev"}'
+            -d '{"ref":"refs/heads/current"}'
   native:
     runs-on: ubuntu-latest
     if: ${{ github.event_name	!= 'schedule' }}
@@ -140,8 +140,7 @@ jobs:
       - uses: actions/checkout@v2
         with: 
           ref: ${{ github.ref }}
-      - name: Install Nodejs
-        uses: actions/setup-node@v2
+      - uses: actions/setup-node@v2
         with:
           node-version: '14.15.5'
       - name: Build
@@ -156,8 +155,7 @@ jobs:
       - uses: actions/checkout@v2
         with: 
           ref: ${{ github.ref }}
-      - name: Set up Python3
-        uses: actions/setup-python@v2
+      - uses: actions/setup-python@v2
         with:
           python-version: '3.x'
       - name: Set up lastversion
@@ -171,7 +169,7 @@ jobs:
             https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/docs.yml/dispatches \
             -d '{"ref":"${{ github.ref }}"}'
       - name: 'Trigger workflow: docker'
-        if: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev' }}
+        if: ${{ github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current' }}
         run: |
           curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}"                                        \
             -X POST                                                                                         \
