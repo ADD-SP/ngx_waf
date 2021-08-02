@@ -276,10 +276,10 @@ if test -n "$ngx_module_link"; then
     ngx_module_srcs=$srcs
     ngx_module_libs=$ngx_http_waf_module_libs
     
-    # Let ngx_http_rewrite_module initialize before this module,
-    # so that this module can take effect before ngx_http_rewrite_module,
+    # Let ngx_http_access_module initialize before this module,
+    # so that this module can take effect after ngx_http_access_module,
     # because the initialization order and the effective order are reversed.
-    # ngx_module_order="ngx_http_rewrite_module ${ngx_addon_name}"
+    ngx_module_order="${ngx_addon_name} ngx_http_access_module"
 
     . auto/module
 else

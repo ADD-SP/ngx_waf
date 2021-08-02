@@ -13,6 +13,10 @@ IP 检查和 CC 防御花费常数时间，其它的检查花费 `O(nm)` 的时�
 
 LRU
 
+## ngx_http_access_module
+
+当本模块与 `ngx_http_access_module` 一起使用时，`ngx_http_access_module` 会先于本模块运行。
+
 ## post检测失效
 
 本模块出于性能考虑只会在 Post 请求体在内存中时检查，若不在内存中则跳过检查。
