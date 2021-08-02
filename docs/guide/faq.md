@@ -13,6 +13,10 @@ IP inspection and CC defense take constant time, other inspections take `O(nm)`,
 
 LRU
 
+## ngx_http_access_module
+
+When this module is used with `ngx_http_access_module`, `ngx_http_access_module` will run before this module.
+
 ## Post Inspection Failure
 
 For performance reasons, this module will inspect whether it is in the memory before inspecting the request body. If it is, it will inspect normally, otherwise skip the inspection. You can try to edit nginx.conf.
