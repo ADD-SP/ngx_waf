@@ -420,7 +420,7 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
     temp1 = NULL;
     HASH_ITER(hh, header_in, temp0, temp1) {
         HASH_DEL(header_in, temp0);
-                free(temp0->key.data);
+        free(temp0->key.data);
         free(temp0->value.data);
         free(temp0);
     }
