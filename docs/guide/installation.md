@@ -6,6 +6,8 @@ sidebarDepth: 3
 
 # Installation Guide
 
+Please read the [Version Description](version.md) first to pick the right version.
+
 nginx provides two ways to install modules, namely 'statically linked' and 'dynamically loaded', and the modules installed in each way are called 'static modules' and dynamic modules'.
 
 You can choose whether to use static or dynamic modules by running the script `assets/guide.sh`.
@@ -59,8 +61,7 @@ Then download the source code of this module, the following will use the stable 
 
 ```sh
 cd /usr/local/src
-# If you want to use the development version please replace '-b master' with '-b dev'.
-git clone -b master https://github.com/ADD-SP/ngx_waf.git
+git clone -b lts https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
 git clone https://github.com/libinjection/libinjection.git inc/libinjection
 ```
@@ -69,7 +70,7 @@ Next you should run the configuration script.
 
 ```sh
 cd /usr/local/src/nginx-1.20.1
-./configure ARG --add-module=/usr/local/src/ngx_waf
+./configure ARG --add-module=/usr/local/src/ngx_waf --with-debug
 ```
 
 ::: warning NOTE
@@ -118,17 +119,17 @@ If you do not want to not nginx when replacing binaries, you can refer to the [o
 You can download dynamic modules by executing the script `assets/download.sh`. Here are some use cases.
 
 ```shell
-# Stable module for nginx-1.20.1
-sh assets/download.sh 1.20.1 stable
+# LTS module for nginx-1.20.1
+sh assets/download.sh 1.20.1 lts
 
-# Stable module for nginx-1.21.1
-sh assets/download.sh 1.21.1 stable
+# LTS module for nginx-1.21.1
+sh assets/download.sh 1.21.1 lts
 
-# Beta module for nginx-1.20.1
-sh assets/download.sh 1.20.1 beta
+# Current module for nginx-1.20.1
+sh assets/download.sh 1.20.1 current
 
-# Beta module for nginx-1.21.1
-sh assets/download.sh 1.21.1 beta
+# Current module for nginx-1.21.1
+sh assets/download.sh 1.21.1 current
 ```
 
 After executing the script you will see output like the following.
@@ -137,7 +138,7 @@ After executing the script you will see output like the following.
 checking for command ... yes
 checking for libc implementation ... yes
  + GNU C libary
-Pulling remote image addsp/ngx_waf-prebuild:ngx-1.21.1-module-beta-glibc
+Pulling remote image addsp/ngx_waf-prebuild:ngx-1.21.1-module-lts-glibc
 ......
 ......
 ......
@@ -171,7 +172,7 @@ The process of downloading nginx source code and module source code is the same 
 Run the configuration script
 
 ```sh
-./configure --add-dynamic-module=/usr/local/src/ngx_waf --with-compat
+./configure --add-dynamic-module=/usr/local/src/ngx_waf --with-compat --with-debug
 ```
 
 ::: warning NOTE

@@ -6,6 +6,8 @@ sidebarDepth: 3
 
 # 安装
 
+请先阅读[版本说明](version.md)来挑选合适的版本。
+
 nginx 提供两种安装模块的方式，即「静态链接」和「动态加载」，通过两种方式安装的模块也分别称为「静态模块」和「动态模块」。
 
 你可以通过运行脚本 `assets/guide.sh` 来选择使用静态模块还是动态模块。
@@ -62,8 +64,7 @@ tar -zxf nginx-1.20.1.tar.gz
 
 ```sh
 cd /usr/local/src
-# 如果你想使用开发版的模块请将 -b master 替换为 -b dev。
-git clone -b master https://github.com/ADD-SP/ngx_waf.git
+git clone -b lts https://github.com/ADD-SP/ngx_waf.git
 cd ngx_waf
 git clone https://github.com/libinjection/libinjection.git inc/libinjection
 ```
@@ -120,17 +121,17 @@ cp objs/nginx /usr/local/nginx/sbin/nginx
 您可以通过执行脚本 `assets/download.sh` 来下载动态模块。下面是一些用例。
 
 ```shell
-# 用于 nginx-1.20.1 的稳定版的模块
-sh assets/download.sh 1.20.1 stable
+# 用于 nginx-1.20.1 的 LTS 版的模块
+sh assets/download.sh 1.20.1 lts
 
-# 用于 nginx-1.21.1 的稳定版的模块
-sh assets/download.sh 1.21.1 stable
+# 用于 nginx-1.21.1 的 LTS 版的模块
+sh assets/download.sh 1.21.1 lts
 
-# 用于 nginx-1.20.1 的测试版的模块
-sh assets/download.sh 1.20.1 beta
+# 用于 nginx-1.20.1 的最新版的模块
+sh assets/download.sh 1.20.1 current
 
-# 用于 nginx-1.21.1 的测试版的模块
-sh assets/download.sh 1.21.1 beta
+# 用于 nginx-1.21.1 的最新版的模块
+sh assets/download.sh 1.21.1 current
 ```
 
 执行脚本后你会看到类似下面这样的输出。

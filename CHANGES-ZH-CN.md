@@ -1,1 +1,1 @@
-请看 [docs/zh-cn/advance/changes.md](docs/zh-cn/advance/changes.md)。
+请看 [docs/zh-cn/changes/overview.md](docs/zh-cn/changes/overview.md)。

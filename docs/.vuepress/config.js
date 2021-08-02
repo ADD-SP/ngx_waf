@@ -54,7 +54,6 @@ module.exports = {
                             "/advance/log.md",
                             "/advance/upgrade.md",
                             "/advance/issue.md",
-                            "/advance/changes.md"
                         ]
                     },
                     {
@@ -63,6 +62,20 @@ module.exports = {
                         children: [
                             "/practice/overview.md",
                             "/practice/limit-the-rate-per-arbitrary-url.md"
+                        ]
+                    },
+                    {
+                        title: "Change Log",
+                        path: "/changes/overview.html",
+                        children: [
+                            "/changes/overview.md",
+                            "/changes/lts.md",
+                            "/changes/current.md",
+                            "/changes/6_0_x.md",
+                            "/changes/5_x_x.md",
+                            "/changes/4_x_x.md",
+                            "/changes/3_x_x.md",
+                            "/changes/2_x_x.md"
                         ]
                     },
                     {
@@ -103,7 +116,6 @@ module.exports = {
                             "/zh-cn/advance/log.md",
                             "/zh-cn/advance/upgrade.md",
                             "/zh-cn/advance/issue.md",
-                            "/zh-cn/advance/changes.md"
                         ]
                     },
                     {
@@ -112,6 +124,20 @@ module.exports = {
                         children: [
                             "/zh-cn/practice/overview.md",
                             "/zh-cn/practice/limit-the-rate-per-arbitrary-url.md"
+                        ]
+                    },
+                    {
+                        title: "更新日志",
+                        path: "/zh-cn/changes/overview.html",
+                        children: [
+                            "/zh-cn/changes/overview.md",
+                            "/zh-cn/changes/lts.md",
+                            "/zh-cn/changes/current.md",
+                            "/zh-cn/changes/6_0_x.md",
+                            "/zh-cn/changes/5_x_x.md",
+                            "/zh-cn/changes/4_x_x.md",
+                            "/zh-cn/changes/3_x_x.md",
+                            "/zh-cn/changes/2_x_x.md"
                         ]
                     },
                     {

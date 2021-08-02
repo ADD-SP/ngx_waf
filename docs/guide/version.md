@@ -9,32 +9,26 @@ lang: en
 
 This project follows the [Semantic Versioning 2.0.0](https://semver.org/).
 
-## Stable
+## Long-term Support (LTS)
 
-The stable version is guaranteed to be ready to use and contains features that are more stable.
-You can get the source code of the stable version of the module with the following command.
+*LTS* is maintained for at least one year, and only bugs will be fixed during the maintenance period, especially serious bugs, and some minor bugs may not be fixed.
+
+In most cases, this version is more stable, but there are no functional updates.
 
 ```sh
 git clone -b master https://github.com/ADD-SP/ngx_waf.git
+
+# OR
+
+git clone -b lts https://github.com/ADD-SP/ngx_waf.git
 ```
 
-## Development
+## Current
 
-The development version is guaranteed to work in most cases, 
-with some additional changes included relative to the stable version, 
-such as new features, bug fixes and functional changes.
-You can get the module source code for the development version with the following command.
+Bugs are also fixed in the *Current* version, but the *Current* version includes all updates, such as new features, feature changes, feature deletions, performance optimizations, etc.
+
+This version is not as stable as LTS, but includes functional updates.
 
 ```sh
-git clone -b dev https://github.com/ADD-SP/ngx_waf.git
+git clone -b current https://github.com/ADD-SP/ngx_waf.git
 ```
-
-## Branch Description
-
-* master: The branch where the stable version is located, and which is guaranteed to be available at all times.
-* dev: The branch where the development version is located, and which is guaranteed to be available in most cases.
-* feature-xxxx: The new feature development branch, which is not guaranteed to be available, 
-will be merged into the `dev` when development is complete.
-* bugfix-xxxx: bug-fixing branch, which is not guaranteed to be available and will generally be merged into the `dev` when the fix is complete.
-* hotfix-xxxx: hotfix branch, not guaranteed availability, will be merged to `master` and `dev` when the fix is complete. 
-* change-xxxx: Feature change branches, which are not guaranteed to be available, will be merged into the `dev` when development is complete.

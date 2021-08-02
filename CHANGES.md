@@ -1,1 +1,1 @@
-See [docs/advance/changes.md](docs/advance/changes.md).
+See [docs/changes/overview.md](docs/changes/overview.md).
