@@ -18,9 +18,9 @@ defaults:
     shell: bash
 
 jobs:
-  ngx-stable-module-stable:
+  ngx-stable-module-lts:
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/lts' }}
     strategy:
       matrix:
         target: ['glibc', 'musl']
@@ -37,7 +37,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-stable-module-stable-x)
+      - name: Build and push (ngx-stable-module-lts-x)
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
@@ -51,9 +51,9 @@ jobs:
           build-args: NGX_VER=stable
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-lts-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-lts-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
@@ -61,9 +61,9 @@ jobs:
             linux/386
             linux/arm/v7
             linux/arm/v6
-  ngx-mainline-module-stable:
+  ngx-mainline-module-lts:
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{ github.ref == 'refs/heads/lts' }}
     strategy:
       matrix:
         target: ['glibc', 'musl']
@@ -80,7 +80,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-mainline-module-stable-x)
+      - name: Build and push (ngx-mainline-module-lts-x)
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
@@ -94,9 +94,9 @@ jobs:
           build-args: NGX_VER=mainline
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-lts-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-stable-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-lts-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
@@ -104,9 +104,9 @@ jobs:
             linux/386
             linux/arm/v7
             linux/arm/v6
-  ngx-stable-module-beta:
+  ngx-stable-module-current:
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/dev' }}
+    if: ${{ github.ref == 'refs/heads/current' }}
     strategy:
       matrix:
         target: ['glibc', 'musl']
@@ -123,7 +123,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-stable-module-beta-x)
+      - name: Build and push (ngx-stable-module-current-x)
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_stable_version_number }}
@@ -137,9 +137,9 @@ jobs:
           build-args: NGX_VER=stable
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-current-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-stable-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-current-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
@@ -147,9 +147,9 @@ jobs:
             linux/386
             linux/arm/v7
             linux/arm/v6
-  ngx-mainline-module-beta:
+  ngx-mainline-module-current:
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/dev' }}
+    if: ${{ github.ref == 'refs/heads/current' }}
     strategy:
       matrix:
         target: ['glibc', 'musl']
@@ -166,7 +166,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER_NAME }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
-      - name: Build and push (ngx-mainline-module-beta-x)
+      - name: Build and push (ngx-mainline-module-current-x)
         env:
           TARGET: ${{ matrix.target }}
           NGX_VERSION_NUMBER: ${{ github.event.inputs.ngx_mainline_version_number }}
@@ -180,9 +180,9 @@ jobs:
           build-args: NGX_VER=mainline
           push: true
           tags: | 
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-current-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-mainline-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
-            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-beta-${{ env.TARGET }}
+            ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-current-${{ env.TARGET }}
             ${{ secrets.DOCKER_USER_NAME }}/ngx_waf-prebuild:ngx-${{ env.NGX_VERSION_NUMBER }}-module-${{ env.MODULE_VERSION_NUMBER }}-${{ env.TARGET }}
           platforms: |
             linux/amd64
