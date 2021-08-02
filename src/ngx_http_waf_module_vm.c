@@ -8,6 +8,10 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
     
     ngx_int_t ret = NGX_HTTP_WAF_NOT_MATCHED;
 
+    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_ADV | r->method) == NGX_HTTP_WAF_FALSE) {
+        return ret;
+    }
+
     if (utarray_len(loc_conf->advanced_rule) == 0) {
         return ret;
     }

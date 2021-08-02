@@ -45,6 +45,8 @@ lang: zh-CN
 * UNLOCK: 当`Http.Method=UNLOCK`时启动检查。
 * PATCH: 当`Http.Method=PATCH`时启动检查。
 * TRAC: 当`Http.Method=TRAC`时启动检查。
+* CMN-METH：等价于 `HEAD GET POST`。
+* ALL-METH：任意的 HTTP 请求方法都会启动检查。
 * IP: 启用 IP 地址的检查规则。
 * URL: 启用 url 的检查规则。
 * RBODY: 启用 POST 请求体的检查规则。
@@ -52,11 +54,12 @@ lang: zh-CN
 * UA: 启用 user-agent 的检查规则。
 * COOKIE: 启用 cookie 的检查规则。
 * REFERER: 启用 referer 的检查规则。
-* CC: 启用 CC 防御。当你启用了此模式，你必须设置 [waf_cc_deny](#waf-cc-deny)。
+* CC: 启用 CC 防御。**当你启用了此模式，你必须设置 [waf_cc_deny](#waf-cc-deny)。**
+* ADV：启用高级规则。
 * LIB-INJECTION-SQLI：使用 [libinjection](https://github.com/libinjection/libinjection) 检测 SQL 注入。
 * LIB-INJECTION-XSS：使用 [libinjection](https://github.com/libinjection/libinjection) 检测 XSS 攻击。
 * LIB-INJECTION：等价于 `LIB-INJECTION-SQLI LIB-INJECTION-XSS`。
-* CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。当你启用了此模式，你必须设置 [waf_cache](#waf-cache)。
+* CACHE：启用缓存。启用此模式后会缓存检查的结果，下次检查相同的目标时就不需要重复检查了。不过不会缓存 POST 体的检查结果。比如一个 URL 经过检查后并没有在黑名单中，那么下次检查相同的 URL 时就无需再次检查 URL 黑名单了。**当你启用了此模式，你必须设置 [waf_cache](#waf-cache)**。
 * STD：标准工作模式，等价于 `HEAD GET POST IP URL RBODY ARGS UA CC CACHE LIB-INJECTION-SQLI`。
 * STATIC：适用于静态站点的工作模式，等价于 `HEAD GET IP URL UA CC CACHE`。
 * DYNAMIC：适用于动态站点的工作模式，等价于 `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC CACHE LIB-INJECTION-SQLI`。

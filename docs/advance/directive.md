@@ -45,6 +45,8 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * UNLOCK: Start the inspection process when `Http.Method=UNLOCK`.
 * PATCH: Start the inspection process when `Http.Method=PATCH`.
 * TRAC: Start the inspection process when `Http.Method=TRAC`.
+* CMN-METH: Equivalent to `HEAD GET POST`.
+* ALL-METH: Any HTTP request method will start the inspection process.
 * IP: Enable IP address inspecting rules.
 * URL: Enable URL inspecting rules.
 * RBODY: Enable POST request body inspecting rules.
@@ -52,17 +54,18 @@ Specify the working mode of the firewall, specifying at least one mode and up to
 * UA: Enable UA inspecting rules.
 * COOKIE: Enable COOKIE inspecting rules.
 * REFERER: Enable REFERER inspecting rules.
-* CC: Enable 'Anti Challenge Collapsar'. When you enable this mode, you must set [waf_cc_deny](#waf-cc-deny).
+* CC: Enable 'Anti Challenge Collapsar'. **When you enable this mode, you must set [waf_cc_deny](#waf-cc-deny)**.
+* ADV: Enable the advanced rules.
 * LIB-INJECTION-SQLI: Use [libinjection](https://github.com/libinjection/libinjection) to detect SQL injection.
 * LIB-INJECTION-XSS: Use [libinjection](https://github.com/libinjection/libinjection) to detect XSS attacks.
 * LIB-INJECTION: Equivalent to `LIB-INJECTION-SQLI LIB-INJECTION-XSS`.
-* CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. When you enable this mode, you must set [waf_cache](#waf-cache).
+* CACHE: Enable caching. Enabling this mode will cache the result of the inspection, so that the next time the same target is inspected, there is no need to repeat the inspection. However, the results of the POST body inspection are not cached. For example, if a URL is not in the blacklist after inspection, the next time the same URL is inspected, the cache can be read directly. **When you enable this mode, you must set [waf_cache](#waf-cache)**.
 * STD: Standard working mode, equivalent to `HEAD GET POST IP URL RBODY ARGS UA CC CACHE LIB-INJECTION-SQLI`.
 * STATIC: working mode for static sites, equivalent to `HEAD GET IP URL UA CC CACHE`.
 * DYNAMIC: working mode for dynamic sites, equivalent to `HEAD GET POST IP URL ARGS UA RBODY COOKIE CC CACHE LIB-INJECTION-SQLI`.
 * FULL: Enable all modes.
 
-You can turn off a mode by prefixing a `mode_type` with `! ` prefix to a `mode_type` to turn it off. 
+You can turn off a mode by prefixing `mode_type` with the prefix `!` to turn off a mode.
 The following is an example of using the standard working mode, but without inspecting the User-Agent.
 
 ```nginx
