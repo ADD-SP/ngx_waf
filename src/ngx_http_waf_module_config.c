@@ -78,6 +78,8 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         ngx_http_waf_parse_mode("UNLOCK", "!UNLOCK", NGX_HTTP_WAF_MODE_INSPECT_UNLOCK);
         ngx_http_waf_parse_mode("PATCH", "!PATCH", NGX_HTTP_WAF_MODE_INSPECT_PATCH);
         ngx_http_waf_parse_mode("TRACE", "!TRACE", NGX_HTTP_WAF_MODE_INSPECT_TRACE);
+        ngx_http_waf_parse_mode("CMN-METH", "!CMN-METH", NGX_HTTP_WAF_MODE_CMN_METH);
+        ngx_http_waf_parse_mode("ALL-METH", "!ALL-METH", NGX_HTTP_WAF_MODE_ALL_METH);
         ngx_http_waf_parse_mode("IP", "!IP", NGX_HTTP_WAF_MODE_INSPECT_IP);
         ngx_http_waf_parse_mode("URL", "!URL", NGX_HTTP_WAF_MODE_INSPECT_URL);
         ngx_http_waf_parse_mode("RBODY", "!RBODY", NGX_HTTP_WAF_MODE_INSPECT_RB);
@@ -86,6 +88,7 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         ngx_http_waf_parse_mode("COOKIE", "!COOKIE", NGX_HTTP_WAF_MODE_INSPECT_COOKIE);
         ngx_http_waf_parse_mode("REFERER", "!REFERER", NGX_HTTP_WAF_MODE_INSPECT_REFERER);
         ngx_http_waf_parse_mode("CC", "!CC", NGX_HTTP_WAF_MODE_INSPECT_CC);
+        ngx_http_waf_parse_mode("ADV", "!ADV", NGX_HTTP_WAF_MODE_INSPECT_ADV);
         ngx_http_waf_parse_mode("STD", "!STD", NGX_HTTP_WAF_MODE_STD);
         ngx_http_waf_parse_mode("STATIC", "!STATIC", NGX_HTTP_WAF_MODE_STATIC);
         ngx_http_waf_parse_mode("DYNAMIC", "!DYNAMIC", NGX_HTTP_WAF_MODE_DYNAMIC);
