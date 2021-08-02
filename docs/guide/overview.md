@@ -15,7 +15,7 @@ Handy, High performance Nginx firewall module.
 * Flexible rules: Provide advanced rules that combine actions (such as block or allow) with multiple conditional expressions
 * High performance: In more extreme tests, QPS (Queries Per Second) is reduced by about 4% after starting this module. See the documentation for details of the tests.
 
-## Function
+## Features
 
 * Anti SQL injection (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).

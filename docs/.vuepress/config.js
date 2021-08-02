@@ -58,6 +58,14 @@ module.exports = {
                         ]
                     },
                     {
+                        title: "Best Practices",
+                        path: "/practice/overview.html",
+                        children: [
+                            "/practice/overview.md",
+                            "/practice/limit-the-rate-per-arbitrary-url.md"
+                        ]
+                    },
+                    {
                         title: "TODO (Advice Needed)",
                         path: "/todo/overview.html",
                         children: [
@@ -96,6 +104,14 @@ module.exports = {
                             "/zh-cn/advance/upgrade.md",
                             "/zh-cn/advance/issue.md",
                             "/zh-cn/advance/changes.md"
+                        ]
+                    },
+                    {
+                        title: "最佳实践",
+                        path: "/zh-cn/practice/overview.html",
+                        children: [
+                            "/zh-cn/practice/overview.md",
+                            "/zh-cn/practice/limit-the-rate-per-arbitrary-url.md"
                         ]
                     },
                     {
