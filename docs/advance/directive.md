@@ -101,6 +101,12 @@ Set the parameters related to CC protection.
 * `size`: Used to set the size of the memory for recording IP accesses, such as `20m`, `2048k`, must not be less than `20m`, if not specified, the default is `20m`. When this memory is exhausted, the program will automatically reset this memory to recount the IP accesses.
 
 
+::: tip CHANGES IN 'Current' VERSION
+
+It is not allowed to use this directive in the context `http`.
+
+:::
+
 
 ## `waf_cache`
 
@@ -148,6 +154,19 @@ The page pointed to by `uri` should automatically jump to the page the user want
 `assets/under-attack.html` is a sample page, you should copy this file to your web directory and configure `uri` correctly.
 
 Naturally, you can also write your own html file and point to it with `uri`.
+
+:::
+
+
+::: tip CHANGES IN 'Current' VERSION
+
+In the LTS version we implemented this feature through redirects, but many reasons (such as caching and CDN) would cause the redirects to fail or not validate the cookie properly.
+So we changed the implementation so that we return the specified page by changing the response body in a way that does not cause the URI to change.
+
+We also added the response header `Cache-Control: no-store` to avoid the impact of caching.
+
+* Removed the parameter `uri`.
+* Added parameter `file`, the value of which should be the absolute path to an HTML file, e.g. `file=/path/to/under-attack.html`. This HTML has only one function, i.e. it refreshes automatically after five seconds.
 
 :::
 
