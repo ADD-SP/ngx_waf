@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* Changed the way Under Attack Mode is implemented. It is no longer implemented using redirects, but by modifying the response body.
+
+* Removed directive `uri` from configuration item `waf_under_attack`, see documentation for details.
+
+* Added a directive `file` to the configuration item `waf_under_attack` whose value should be the absolute path to an HTML file, see the documentation for details.
+
+* The directive `waf_cc_deny` is not allowed at the context `http`。
 
 ### Fixed
 
