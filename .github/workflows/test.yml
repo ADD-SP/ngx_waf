@@ -149,7 +149,7 @@ jobs:
           sudo yarn docs:build
   triger:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}
     needs: ['native', 'docker', 'docs']
     steps:
       - uses: actions/checkout@v2
