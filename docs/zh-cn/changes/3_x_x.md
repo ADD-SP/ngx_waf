@@ -5,8 +5,6 @@ lang: zh-CN
 
 # 更新日志（3.x.x）
 
-本项目绝大多数的更新都会记录在这个文件中。
-
 本文件的格式基于[如何维护更新日志](https://keepachangelog.com/zh-CN/1.0.0)，
 并且本项目遵守[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
 
