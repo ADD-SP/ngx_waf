@@ -7,6 +7,8 @@ lang: en
 
 This project maintains two release flow, *Long-term Support (LTS)* and *Current*.
 
+<img :src="$withBase('/versioning.svg')" alt="versioning">
+
 ## [Long-term Support (LTS)](lts.md)
 
 *LTS* is maintained for at least one year, and only bugs will be fixed during the maintenance period, especially serious bugs, and some minor bugs may not be fixed.
