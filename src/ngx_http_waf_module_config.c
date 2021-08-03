@@ -263,6 +263,12 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_under_attack = 1;
+    } else {
+        loc_conf->waf_under_attack = 0;
+    }
+
+    if (loc_conf->waf_under_attack == 0) {
+        return NGX_CONF_OK;
     }
 
     if (cf->args->nelts != 3) {
@@ -282,15 +288,34 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
         ngx_str_t* p = NULL;
         p = (ngx_str_t*)utarray_next(array, p);
 
-        if (ngx_strcmp("uri", p->data) == 0) {
+        if (ngx_strcmp("file", p->data) == 0) {
             p = (ngx_str_t*)utarray_next(array, p);
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
-            loc_conf->waf_under_attack_uri.data = ngx_palloc(cf->pool, sizeof(u_char) * (p->len + 1));
-            ngx_memzero(loc_conf->waf_under_attack_uri.data, sizeof(u_char) * (p->len + 1));
-            ngx_memcpy(loc_conf->waf_under_attack_uri.data, p->data, sizeof(u_char) * p->len);
-            loc_conf->waf_under_attack_uri.len = p->len;
+
+            FILE* fp = fopen((char*)p->data, "r");
+
+            if (fp == NULL) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOENT, 
+                    "ngx_waf: Unable to open file %s.", p->data);
+                return NGX_CONF_ERROR;
+            }
+
+            fseek(fp, 0, SEEK_END);
+            size_t file_size = ftell(fp);
+            loc_conf->waf_under_attack_len = file_size;
+            loc_conf->waf_under_attack_html = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
+
+            fseek(fp, 0, SEEK_SET);
+            if (fread(loc_conf->waf_under_attack_html, sizeof(u_char), file_size, fp) != file_size) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EPERM, 
+                    "ngx_waf: Failed to read file %s completely..", p->data);
+                return NGX_CONF_ERROR;
+            }
+
+            fclose(fp);
+
 
         } else {
             goto error;
@@ -429,6 +454,8 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         return NGX_CONF_OK;
     }
 
+    child->parent = parent;
+
     ngx_conf_merge_value(child->waf, parent->waf, NGX_CONF_UNSET);
 
     if (child->waf_rule_path.len == NGX_CONF_UNSET_SIZE) {
@@ -448,20 +475,14 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     }
     
 
-    ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
-    if (child->waf_under_attack_uri.len == NGX_CONF_UNSET_SIZE) {
-        ngx_memcpy(&(child->waf_under_attack_uri), &(parent->waf_under_attack_uri), sizeof(ngx_str_t));
-    }
+    // ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
+    // ngx_conf_merge_ptr_value(child->waf_under_attack_html, parent->waf_under_attack_html, NGX_CONF_UNSET_PTR);
+    
 
 
     if (child->waf_mode == 0) {
         child->waf_mode = parent->waf_mode;
     }
-
-    if (child->waf_cc_deny_limit == NGX_CONF_UNSET) {
-        child->parent = parent;
-    }
-    
     
     ngx_int_t tmp1 = child->waf_inspection_capacity;
     ngx_conf_merge_value(child->waf_inspection_capacity, parent->waf_inspection_capacity, NGX_CONF_UNSET);
@@ -691,6 +712,12 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     }
     *h = ngx_http_waf_handler_access_phase;
 
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_CONTENT_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+    *h = ngx_http_waf_handler_content_phase;
+
     ngx_str_t waf_log_name = ngx_string("waf_log");
     ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
     waf_log->get_handler = ngx_http_waf_log_get_handler;
@@ -879,8 +906,7 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_rule_path.len = NGX_CONF_UNSET_SIZE;
     conf->waf_mode = 0;
     conf->waf_under_attack = NGX_CONF_UNSET;
-    conf->waf_under_attack_uri.data = NULL;
-    conf->waf_under_attack_uri.len = NGX_CONF_UNSET_SIZE;
+    conf->waf_under_attack_html = NGX_CONF_UNSET_PTR;
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;

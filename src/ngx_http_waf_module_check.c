@@ -770,6 +770,14 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
             (*conf)->ip_access_statistics = parent->ip_access_statistics;
             parent = parent->parent;
         }
+
+        parent = (*conf)->parent;
+        while ((*conf)->waf_under_attack_html == NGX_CONF_UNSET_PTR && parent != NULL) {
+            (*conf)->waf_under_attack = parent->waf_under_attack;
+            (*conf)->waf_under_attack_html = parent->waf_under_attack_html;
+            parent = parent->parent;
+        }
+
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: The configuration of the module has been obtained.");
     }

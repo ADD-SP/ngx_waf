@@ -112,6 +112,55 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     return ngx_http_waf_check_all(r, NGX_HTTP_WAF_TRUE);
 }
 
+ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (ctx->under_attack == NGX_HTTP_WAF_FALSE) {
+        return NGX_DECLINED;
+    }
+
+    ngx_int_t rc = ngx_http_discard_request_body(r);
+
+    if (rc != NGX_OK) {
+        return rc;
+    }
+
+    ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    if (buf == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+    }
+
+    buf->pos = ngx_pcalloc(r->pool, loc_conf->waf_under_attack_len);
+    if (buf->pos == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+    }
+    ngx_memcpy(buf->pos, loc_conf->waf_under_attack_html, loc_conf->waf_under_attack_len);
+    buf->last = buf->pos + loc_conf->waf_under_attack_len;
+    buf->memory = 1;
+    buf->last_buf = 1;
+
+    ngx_chain_t* out = ngx_pcalloc(r->pool, sizeof(ngx_chain_t));
+    if (out == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+    }
+
+    out->buf = buf;
+    out->next = NULL;
+
+    ngx_str_set(&r->headers_out.content_type, "text/html");
+    r->headers_out.content_length_n = loc_conf->waf_under_attack_len;
+    r->headers_out.status = NGX_HTTP_SERVICE_UNAVAILABLE;
+
+    rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+        return rc;
+    }
+
+    return ngx_http_output_filter(r, out);
+}
+
 
 ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -144,6 +193,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             ctx->read_body_done = NGX_HTTP_WAF_FALSE;
             ctx->checked = NGX_HTTP_WAF_FALSE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
+            ctx->under_attack = NGX_HTTP_WAF_FALSE;
             ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
             ctx->rule_type[0] = '\0';
             ctx->rule_deatils[0] = '\0';

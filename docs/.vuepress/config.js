@@ -2,7 +2,8 @@ module.exports = {
     base: process.env.docsBaseUrl == undefined ? "/" : process.env.docsBaseUrl,
     plugins: ['fulltext-search'],
     head: [
-        ['link', { rel: 'icon', href: 'https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/assets/logo.png' }]
+        ['link', { rel: 'icon', href: 'https://cdn.jsdelivr.net/gh/ADD-SP/ngx_waf@master/assets/logo.png' }],
+        ['meta', { name: 'robots', content: 'noindex, nofollow, noarchive, nosnippet, noimageindex, noodp, notranslate, max-video-preview:-1'}]
     ],
     locales: {
         '/': {
@@ -79,8 +80,8 @@ module.exports = {
                         ]
                     },
                     {
-                        title: "TODO (Advice Needed)",
-                        path: "/todo/overview.html",
+                        title: "Roadmap (Advice Needed)",
+                        path: "/roadmap/overview.html",
                         children: [
                         ]
                     }
@@ -142,7 +143,7 @@ module.exports = {
                     },
                     {
                         title: "开发计划（建议征集）",
-                        path: "/zh-cn/todo/overview.html",
+                        path: "/zh-cn/roadmap/overview.html",
                         children: [
                         ]
                     }
