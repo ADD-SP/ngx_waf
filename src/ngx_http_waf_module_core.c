@@ -153,6 +153,24 @@ ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r) {
     r->headers_out.content_length_n = loc_conf->waf_under_attack_len;
     r->headers_out.status = NGX_HTTP_SERVICE_UNAVAILABLE;
 
+    ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
+    if (header == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+    }
+    header->hash = 1;
+    header->lowcase_key = (u_char*)"retry-after";
+    ngx_str_set(&header->key, "Retry-After");
+    ngx_str_set(&header->value, "5");
+
+    header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
+    if (header == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+    }
+    header->hash = 1;
+    header->lowcase_key = (u_char*)"cache-control";
+    ngx_str_set(&header->key, "Cache-control");
+    ngx_str_set(&header->value, "no-store");
+
     rc = ngx_http_send_header(r);
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
         return rc;

@@ -93,7 +93,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     if (__waf_under_attack_time.data == NULL || __waf_under_attack_uid.data == NULL || __waf_under_attack_verification.data == NULL) {
         ngx_http_waf_gen_cookie(r);
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx_and_header_location(r);
+        ngx_http_waf_gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Failed to parse cookies");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -119,7 +119,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     if (ngx_memcmp(__waf_under_attack_verification.data, cur_verification, sizeof(u_char) * NGX_HTTP_WAF_SHA256_HEX_LEN) != 0) {
         ngx_http_waf_gen_cookie(r);
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx_and_header_location(r);
+        ngx_http_waf_gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Wrong __waf_under_attack_verification.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -134,7 +134,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     if (client_time == NGX_ERROR || difftime(time(NULL), client_time) > 60 * 30) {
         ngx_http_waf_gen_cookie(r);
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx_and_header_location(r);
+        ngx_http_waf_gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Wrong __waf_under_attack_verification.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -142,7 +142,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         return NGX_HTTP_WAF_MATCHED;
     } else if (difftime(time(NULL), client_time) <= 5) {
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx_and_header_location(r);
+        ngx_http_waf_gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Not five seconds have passed.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -277,18 +277,9 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
 }
 
 
-void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r) {
-    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+void ngx_http_waf_gen_ctx(ngx_http_request_t *r) {
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
-
-    
-    ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
-    header->hash = 1;
-    header->lowcase_key = (u_char*)"retry-after";
-    ngx_str_set(&header->key, "Retry-After");
-    ngx_str_set(&header->value, "5");
-
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     
     ctx->blocked = NGX_HTTP_WAF_TRUE;
     ctx->under_attack = NGX_HTTP_WAF_TRUE;
