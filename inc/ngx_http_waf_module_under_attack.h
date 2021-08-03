@@ -38,7 +38,7 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
                                                 size_t now_len);
 
 
-void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r);
+void ngx_http_waf_gen_ctx(ngx_http_request_t *r);
 
 
 #endif
