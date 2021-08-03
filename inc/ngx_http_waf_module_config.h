@@ -27,6 +27,8 @@
 
 ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
+ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r);
+
 /**
  * @defgroup config 配置读取和处理模块
  * @brief 读取 nginx.conf 内的配置以及规则文件。

@@ -17,16 +17,6 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    if (ngx_strncmp(r->uri.data, 
-                    loc_conf->waf_under_attack_uri.data, 
-                    ngx_max(r->uri.len, loc_conf->waf_under_attack_uri.len)) == 0) {
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Processing is complete.");
-        return NGX_HTTP_WAF_NOT_MATCHED;
-    }
-
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Begin the processing flow.");
 
@@ -102,7 +92,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     /* 如果 cookie 不完整 */
     if (__waf_under_attack_time.data == NULL || __waf_under_attack_uid.data == NULL || __waf_under_attack_verification.data == NULL) {
         ngx_http_waf_gen_cookie(r);
-        *out_http_status = 303;
+        *out_http_status = NGX_DECLINED;
         ngx_http_waf_gen_ctx_and_header_location(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Failed to parse cookies");
@@ -128,7 +118,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
                                   NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN);
     if (ngx_memcmp(__waf_under_attack_verification.data, cur_verification, sizeof(u_char) * NGX_HTTP_WAF_SHA256_HEX_LEN) != 0) {
         ngx_http_waf_gen_cookie(r);
-        *out_http_status = 303;
+        *out_http_status = NGX_DECLINED;
         ngx_http_waf_gen_ctx_and_header_location(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Wrong __waf_under_attack_verification.");
@@ -143,7 +133,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     /* 如果 Cookie 不合法 或 已经超过 30 分钟 */
     if (client_time == NGX_ERROR || difftime(time(NULL), client_time) > 60 * 30) {
         ngx_http_waf_gen_cookie(r);
-        *out_http_status = 303;
+        *out_http_status = NGX_DECLINED;
         ngx_http_waf_gen_ctx_and_header_location(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Wrong __waf_under_attack_verification.");
@@ -151,7 +141,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
             "ngx_waf_debug: Processing is complete.");
         return NGX_HTTP_WAF_MATCHED;
     } else if (difftime(time(NULL), client_time) <= 5) {
-        *out_http_status = 303;
+        *out_http_status = NGX_DECLINED;
         ngx_http_waf_gen_ctx_and_header_location(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Not five seconds have passed.");
@@ -288,31 +278,20 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
 
 
 void ngx_http_waf_gen_ctx_and_header_location(ngx_http_request_t *r) {
-    size_t s_header_location_key_len = sizeof("Location");
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     
     ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
     header->hash = 1;
-    header->key.data = ngx_pnalloc(r->pool, sizeof(u_char) * (s_header_location_key_len + 1));
-    ngx_memzero(header->key.data, sizeof(u_char) * (s_header_location_key_len + 1));
-    ngx_memcpy(header->key.data, "Location", s_header_location_key_len - 1);
-    header->key.len = s_header_location_key_len - 1;
+    header->lowcase_key = (u_char*)"retry-after";
+    ngx_str_set(&header->key, "Retry-After");
+    ngx_str_set(&header->value, "5");
 
-    header->value.data = ngx_pnalloc(r->pool, sizeof(u_char) * (loc_conf->waf_under_attack_uri.len + r->uri.len + 32));
-    ngx_memzero(header->value.data, sizeof(u_char) * (loc_conf->waf_under_attack_uri.len + r->uri.len + 1));
-    u_char* uri = ngx_pnalloc(r->pool, sizeof(u_char) * (r->uri.len + 1));
-    ngx_memzero(uri, sizeof(u_char) * (r->uri.len + 1));
-    ngx_memcpy(uri, r->uri.data, sizeof(u_char) * r->uri.len);
-    header->value.len = sprintf((char*)header->value.data, "%s?target=%s",
-            (char*)loc_conf->waf_under_attack_uri.data,
-            (char*)uri);
-    ngx_pfree(r->pool, uri);
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+    
     ctx->blocked = NGX_HTTP_WAF_TRUE;
+    ctx->under_attack = NGX_HTTP_WAF_TRUE;
     strcpy((char*)ctx->rule_type, "UNDER-ATTACK");
     ctx->rule_deatils[0] = '\0';
 }

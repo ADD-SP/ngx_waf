@@ -264,6 +264,7 @@ typedef struct ip_trie_s {
 typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       checked;                                    /**< 是否启动了检测流程 */
     ngx_int_t                       blocked;                                    /**< 是否拦截了本次请求 */
+    ngx_int_t                       under_attack;                               /**< 是否触发了 Under Attack Mode */
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
     u_char                          rule_type[128];                             /**< 触发的规则类型 */
     u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
@@ -278,7 +279,8 @@ typedef struct ngx_http_waf_ctx_s {
 typedef struct ngx_http_waf_loc_conf_s {
     struct ngx_http_waf_loc_conf_s *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
     u_char                          random_str[129];                            /**< 随机字符串 */
-    ngx_str_t                       waf_under_attack_uri;                       /**< 五秒盾的 URI */
+    size_t                          waf_under_attack_len;
+    u_char                         *waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */

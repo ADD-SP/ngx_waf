@@ -7,9 +7,7 @@
     <title>Please wait 5 seconds.</title>
     <script> 
         setTimeout(() => {
-            var urlParams = new URLSearchParams(location.search);
-            var uri = urlParams.get('target');
-            window.location.href = uri;
+            location.reload();
         }, 6000);
     </script>
 </head>
