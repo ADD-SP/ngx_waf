@@ -37,6 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 * Added three options to the directive `waf_mode`.
-    * ADV: control switch advanced rules.
+    * ADV: Enable the  advanced rules.
     * CMN-METH: Equivalent to `head get post`.
     * ALL-METH: Any http request method will start checking.
