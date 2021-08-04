@@ -492,13 +492,13 @@ ngx_int_t ngx_http_waf_rand_str(u_char* dest, size_t len) {
 }
 
 
-ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len) {
+ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size_t buf_len) {
     if (dst == NULL  || dst_len < crypto_hash_sha256_BYTES * 2 + 1 || buf == NULL || buf_len == 0) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    unsigned char* out = malloc(sizeof(u_char) * crypto_hash_sha256_BYTES);
-    ngx_memzero(out, sizeof(u_char) * crypto_hash_sha256_BYTES);
+    unsigned char* out = malloc(crypto_hash_sha256_BYTES);
+    ngx_memzero(out, crypto_hash_sha256_BYTES);
 
     crypto_hash_sha256(out, buf, buf_len);
     sodium_bin2hex((char*)dst, dst_len, out, crypto_hash_sha256_BYTES);

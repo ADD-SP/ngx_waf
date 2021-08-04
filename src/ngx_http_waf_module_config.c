@@ -475,8 +475,9 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     }
     
 
-    // ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
-    // ngx_conf_merge_ptr_value(child->waf_under_attack_html, parent->waf_under_attack_html, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_under_attack_html, parent->waf_under_attack_html, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_size_value(child->waf_under_attack_len, parent->waf_under_attack_len, NGX_CONF_UNSET_SIZE);
     
 
 
@@ -889,7 +890,7 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
 
 
 ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
-    u_char s_rand_str[129] = { 0 };
+    static u_char s_rand_str[129] = { 0 };
     if (s_rand_str[0] == '\0') {
         ngx_http_waf_rand_str(s_rand_str, 128);
     }
@@ -907,6 +908,7 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_mode = 0;
     conf->waf_under_attack = NGX_CONF_UNSET;
     conf->waf_under_attack_html = NGX_CONF_UNSET_PTR;
+    conf->waf_under_attack_len = NGX_CONF_UNSET_SIZE;
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
