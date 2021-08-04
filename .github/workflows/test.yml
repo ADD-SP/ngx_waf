@@ -131,26 +131,10 @@ jobs:
         uses: docker/setup-buildx-action@v1
       - name: Build module
         run: docker build --file docker/Dockerfile.${{ matrix.target }} --build-arg=VERSION=${{ matrix.version }} .
-  docs:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name	!= 'schedule' }}
-    env:
-      docsBaseUrl: '/ngx_waf/'
-    steps:
-      - uses: actions/checkout@v2
-        with: 
-          ref: ${{ github.ref }}
-      - uses: actions/setup-node@v2
-        with:
-          node-version: '14.15.5'
-      - name: Build
-        run: |
-          sudo yarn
-          sudo yarn docs:build
   triger:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}
-    needs: ['native', 'docker', 'docs']
+    needs: ['native', 'docker']
     steps:
       - uses: actions/checkout@v2
         with: 
@@ -160,14 +144,6 @@ jobs:
           python-version: '3.x'
       - name: Set up lastversion
         run: pip3 install lastversion
-      - name: 'Trigger workflow: docs'
-        if: ${{ github.event_name != 'workflow_dispatch' }}
-        run: |
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/docs.yml/dispatches \
-            -d '{"ref":"${{ github.ref }}"}'
       - name: 'Trigger workflow: docker'
         if: ${{ github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current' }}
         run: |
