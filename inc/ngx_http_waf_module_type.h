@@ -12,6 +12,7 @@
 #include <ngx_regex.h>
 #include <ngx_inet.h>
 #include <ngx_http_waf_module_macro.h>
+#include <sodium.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
@@ -79,6 +80,13 @@ typedef struct check_result_s {
     ngx_int_t       is_matched;         /**< 是否被某条规则匹配到 */
     u_char         *detail;             /**< 匹配到的规则的详情 */
 } check_result_t;
+
+
+typedef struct under_attack_info_s {
+    u_char time[20 + 1];
+    u_char uid[64 + 1];
+    u_char code[crypto_hash_sha256_BYTES * 2 + 1];
+} under_attack_info_t;
 
 
 /**

@@ -145,7 +145,7 @@ char* ngx_http_waf_to_c_str(u_char* destination, ngx_str_t ngx_str);
 /**
  * @brief 生成一个 C 风格的随机字符串
  * @param[out] dest 存储 C 风格字符串的字符数组
- * @param[in] len 要生成的字符串的长度，不包含结尾的 \0 。
+ * @param[in] len 要生成的字符串的长度，不包含结尾的终止符
  * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 ngx_int_t ngx_http_waf_rand_str(u_char* dest, size_t len);
@@ -154,12 +154,12 @@ ngx_int_t ngx_http_waf_rand_str(u_char* dest, size_t len);
 /**
  * @brief 计算 SHA256 并返回 16 进制字符串。
  * @param[out] dst 存储 SHA256 字符串的缓冲区
- * @param[in] dst_len 不包含结尾的 \0
+ * @param[in] dst_len 包含终止符
  * @param[in] buf 用来计算数据所在的缓冲区
  * @param[in] buf_len 缓冲区长度
  * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
-ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const u_char* buf, size_t buf_len);
+ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size_t buf_len);
 
 
 void ngx_http_waf_utarray_ngx_str_ctor(void *dst, const void *src);

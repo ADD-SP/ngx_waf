@@ -14,10 +14,13 @@ extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
+ngx_int_t ngx_http_waf_gen_under_attack_info(ngx_http_request_t* r, under_attack_info_t* under_attack);
+
+
 /**
  * @brief 生成用于验证五秒盾的三个 Cookie
 */
-ngx_int_t ngx_http_waf_gen_cookie(ngx_http_request_t *r);
+ngx_int_t ngx_http_waf_gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_attack);
 
 
 /**
@@ -29,13 +32,7 @@ ngx_int_t ngx_http_waf_gen_cookie(ngx_http_request_t *r);
  * @param[in] now 对应 Cookie __waf_under_attack_time
  * @param[in] now_len 不包括结尾的 \0
 */
-ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r, 
-                                                u_char* uid, 
-                                                size_t uid_len, 
-                                                u_char* dst, 
-                                                size_t dst_len, 
-                                                u_char* now,
-                                                size_t now_len);
+ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r, under_attack_info_t* under_attack);
 
 
 void ngx_http_waf_gen_ctx(ngx_http_request_t *r);
