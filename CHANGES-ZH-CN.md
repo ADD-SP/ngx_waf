@@ -1,1 +1,1 @@
-请看 [docs/zh-cn/changes/overview.md](docs/zh-cn/changes/overview.md)。
+见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。
