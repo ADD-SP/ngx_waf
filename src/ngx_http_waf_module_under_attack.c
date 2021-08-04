@@ -150,7 +150,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Processing is complete.");
         return NGX_HTTP_WAF_MATCHED;
-    } else if (difftime(time(NULL), client_time) <= 5) {
+    } else if (difftime(time(NULL), client_time) < 5) {
         *out_http_status = 303;
         ngx_http_waf_gen_ctx_and_header_location(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 

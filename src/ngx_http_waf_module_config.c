@@ -862,7 +862,7 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
 
 
 ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
-    u_char s_rand_str[129] = { 0 };
+    static u_char s_rand_str[129] = { 0 };
     if (s_rand_str[0] == '\0') {
         ngx_http_waf_rand_str(s_rand_str, 128);
     }
