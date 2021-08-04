@@ -5,7 +5,7 @@
 </p>
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
-[![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/)
+[![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf-docs/)
 [![docker](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
 
@@ -46,8 +46,8 @@ Handy, High performance Nginx firewall module.
 ## Docs
 
 * Recommended link: [https://docs.addesp.com/ngx_waf/](https://docs.addesp.com/ngx_waf/)
-* Alternate link 1: [https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf/)
-* Alternate link 2: [https://ngx-waf.pages.dev/](https://ngx-waf.pages.dev/)
+* Alternate link 1: [https://add-sp.github.io/ngx_waf-docs/](https://add-sp.github.io/ngx_waf-docs/)
+* Alternate link 2: [https://ngx-waf-docs.pages.dev/](https://ngx-waf-docs.pages.dev/)
 
 ## Contact
 

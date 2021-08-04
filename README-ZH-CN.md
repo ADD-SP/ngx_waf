@@ -7,7 +7,7 @@
 
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
-[![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/zh-cn/)
+[![docs](https://github.com/ADD-SP/ngx_waf/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf-docs/zh-cn/)
 [![docker](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
 
@@ -45,8 +45,8 @@
 ## 使用文档
 
 * 推荐链接：[https://docs.addesp.com/ngx_waf/zh-cn/](https://docs.addesp.com/ngx_waf/zh-cn/)
-* 备用链接 1：[https://add-sp.github.io/ngx_waf/zh-cn/](https://add-sp.github.io/ngx_waf/zh-cn/)
-* 备用链接 2：[https://ngx-waf.pages.dev/zh-cn/](https://ngx-waf.pages.dev/zh-cn/)
+* 备用链接 1：[https://add-sp.github.io/ngx_waf-docs/zh-cn/](https://add-sp.github.io/ngx_waf-docs/zh-cn/)
+* 备用链接 2：[https://ngx-waf-docs.pages.dev/zh-cn/](https://ngx-waf-docs.pages.dev/zh-cn/)
 
 ## 联系方式
 
