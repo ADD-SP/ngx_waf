@@ -46,8 +46,8 @@ Handy, High performance Nginx firewall module.
 ## Docs
 
 * Recommended link: [https://docs.addesp.com/ngx_waf/](https://docs.addesp.com/ngx_waf/)
-* Alternate link 1: [https://add-sp.github.io/ngx_waf/](https://add-sp.github.io/ngx_waf-docs/)
-* Alternate link 2: [https://ngx-waf.pages.dev/](https://ngx-waf-docs.pages.dev/)
+* Alternate link 1: [https://add-sp.github.io/ngx_waf-docs/](https://add-sp.github.io/ngx_waf-docs/)
+* Alternate link 2: [https://ngx-waf-docs.pages.dev/](https://ngx-waf-docs.pages.dev/)
 
 ## Contact
 
