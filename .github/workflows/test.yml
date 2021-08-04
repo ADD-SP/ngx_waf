@@ -134,7 +134,7 @@ jobs:
   triger:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}
-    needs: ['native', 'docker', 'docs']
+    needs: ['native', 'docker']
     steps:
       - uses: actions/checkout@v2
         with: 
