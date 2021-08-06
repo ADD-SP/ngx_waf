@@ -137,7 +137,7 @@ ngx_int_t ngx_http_waf_gen_under_attack_info(ngx_http_request_t* r, under_attack
     #elif (NGX_TIME_T_SIZE == 8)
         sprintf((char*)under_attack->time, "%lld", (long long)now);
     #else
-        return NGX_HTTP_WAF_FAIL;
+        #error The size of time_t is unexpected.
     #endif
 
     if (ngx_http_waf_rand_str(under_attack->uid, sizeof(under_attack->uid) - 1) != NGX_HTTP_WAF_SUCCESS) {
@@ -196,8 +196,8 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r, under_attack_info
 
     struct {
         inx_addr_t inx_addr;
-        u_char time[20 + 1];
-        u_char uid[64 + 1];
+        u_char time[NGX_TIME_T_LEN + 1];
+        u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
         u_char salt[129];
     } buf;
     ngx_memzero(&buf, sizeof(buf));
@@ -209,10 +209,13 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r, under_attack_info
         struct sockaddr_in *sin = (struct sockaddr_in *)r->connection->sockaddr;
         ngx_memcpy(&(buf.inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
 
-    } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+    } 
+#if (NGX_HAVE_INET6)
+    else if (r->connection->sockaddr->sa_family == AF_INET6) {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)r->connection->sockaddr;
         ngx_memcpy(&(buf.inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
     }
+#endif
 
     ngx_memzero(under_attack->code, sizeof(under_attack->code));
     return ngx_http_waf_sha256(under_attack->code, sizeof(under_attack->code), &buf, sizeof(buf));

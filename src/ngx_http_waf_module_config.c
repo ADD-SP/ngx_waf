@@ -459,17 +459,18 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_value(child->waf, parent->waf, NGX_CONF_UNSET);
 
     if (child->waf_rule_path.len == NGX_CONF_UNSET_SIZE) {
-        child->black_ipv4 = parent->black_ipv4;
-        child->black_ipv6 = parent->black_ipv6;
         child->white_ipv4 = parent->white_ipv4;
+        child->black_ipv4 = parent->black_ipv4;
+#if (NGX_HAVE_INET6)
         child->white_ipv6 = parent->white_ipv6;
+        child->black_ipv6 = parent->black_ipv6;
+#endif
         child->white_url = parent->white_url;
         child->white_referer = parent->white_referer;
         child->black_url = parent->black_url;
         child->black_args = parent->black_args;
         child->black_ua = parent->black_ua;
         child->black_post = parent->black_post;
-        child->black_ipv4 = parent->black_ipv4;
         child->black_cookie = parent->black_cookie;
         child->advanced_rule = parent->advanced_rule;
     }
@@ -785,7 +786,9 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
             ngx_regex_elt_t* ngx_regex_elt;
             ipv4_t ipv4;
             inx_addr_t inx_addr;
+#if (NGX_HAVE_INET6)
             ipv6_t ipv6;
+#endif
             ip_trie_node_t* ip_trie_node = NULL;
             ++line_number;
             line.data = (u_char*)str;
@@ -797,7 +800,9 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
 
             memset(&ipv4, 0, sizeof(ipv4_t));
             memset(&inx_addr, 0, sizeof(inx_addr_t));
+#if (NGX_HAVE_INET6)
             memset(&ipv6, 0, sizeof(ipv6_t));
+#endif
 
             if (line.len <= 0) {
                 continue;
@@ -858,6 +863,7 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
                     }
                 }
                 break;
+#if (NGX_HAVE_INET6)
             case 2:
                 if (ngx_http_waf_parse_ipv6(line, &ipv6) != NGX_HTTP_WAF_SUCCESS) {
                     ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, 
@@ -878,6 +884,7 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
                     }
                 }
                 break;
+#endif
             }
         }
     }
@@ -1001,7 +1008,9 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* co
     char* end = ngx_http_waf_to_c_str((u_char*)full_path, conf->waf_rule_path);
 
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV4_FILE, conf->black_ipv4, 1);
+#if (NGX_HAVE_INET6)
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV6_FILE, conf->black_ipv6, 2);
+#endif
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_URL_FILE, conf->black_url, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ARGS_FILE, conf->black_args, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_UA_FILE, conf->black_ua, 0);
@@ -1009,7 +1018,9 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* co
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_COOKIE_FILE, conf->black_cookie, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_POST_FILE, conf->black_post, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV4_FILE, conf->white_ipv4, 1);
+#if (NGX_HAVE_INET6)
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV6_FILE, conf->white_ipv6, 2);
+#endif
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, conf->white_url, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, conf->white_referer, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ADVANCED_FILE, conf->advanced_rule, 3);
@@ -1034,10 +1045,12 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
     conf->black_post = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->white_url = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->white_referer = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    conf->black_ipv4 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
-    conf->black_ipv6 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
     conf->white_ipv4 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
+    conf->black_ipv4 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
+#if (NGX_HAVE_INET6)
     conf->white_ipv6 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
+    conf->black_ipv6 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
+#endif
     conf->advanced_rule = ngx_pcalloc(cf->pool, sizeof(UT_array));
 
     if (conf->black_url == NULL
@@ -1048,10 +1061,12 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
     ||  conf->black_post == NULL
     ||  conf->white_url == NULL
     ||  conf->white_referer == NULL
-    ||  conf->black_ipv4 == NULL
-    ||  conf->black_ipv6 == NULL
     ||  conf->white_ipv4 == NULL
+    ||  conf->black_ipv4 == NULL
+#if (NGX_HAVE_INET6)
     ||  conf->white_ipv6 == NULL
+    ||  conf->black_ipv6 == NULL
+#endif
     ||  conf->advanced_rule == NULL) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
@@ -1066,12 +1081,13 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (ip_trie_init(conf->white_ipv6, gernal_pool, cf->pool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
+    if (ip_trie_init(conf->black_ipv4, gernal_pool, cf->pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (ip_trie_init(conf->black_ipv4, gernal_pool, cf->pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
+#if (NGX_HAVE_INET6)
+    if (ip_trie_init(conf->white_ipv6, gernal_pool, cf->pool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
@@ -1080,6 +1096,7 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
+#endif
 
     conf->is_alloc = NGX_HTTP_WAF_TRUE;
 
@@ -1097,10 +1114,12 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
         ngx_pfree(cf->pool, conf->black_post);
         ngx_pfree(cf->pool, conf->white_url);
         ngx_pfree(cf->pool, conf->white_referer);
-        ngx_pfree(cf->pool, conf->black_ipv4);
-        ngx_pfree(cf->pool, conf->black_ipv6);
         ngx_pfree(cf->pool, conf->white_ipv4);
+        ngx_pfree(cf->pool, conf->black_ipv4);
+#if (NGX_HAVE_INET6)
         ngx_pfree(cf->pool, conf->white_ipv6);
+        ngx_pfree(cf->pool, conf->black_ipv6);
+#endif
         ngx_pfree(cf->pool, conf->advanced_rule);
 
         conf->black_url = NULL;
@@ -1111,11 +1130,12 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
         conf->black_post = NULL;
         conf->white_url = NULL;
         conf->white_referer = NULL;
-        conf->black_ipv4 = NULL;
-        conf->black_ipv6 = NULL;
         conf->white_ipv4 = NULL;
+        conf->black_ipv4 = NULL;
+#if (NGX_HAVE_INET6)
         conf->white_ipv6 = NULL;
-        conf->white_ipv6 = NULL;
+        conf->black_ipv6 = NULL;
+#endif
 
         conf->is_alloc = NGX_HTTP_WAF_FALSE;
     }
