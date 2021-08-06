@@ -256,10 +256,13 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r,
         struct sockaddr_in *sin = (struct sockaddr_in *)r->connection->sockaddr;
         ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
 
-    } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+    } 
+#if (NGX_HAVE_INET6)
+    else if (r->connection->sockaddr->sa_family == AF_INET6) {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)r->connection->sockaddr;
         ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
     }
+#endif
 
     
     size_t offset = 0;
