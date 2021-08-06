@@ -127,28 +127,6 @@ ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r) {
         return rc;
     }
 
-    ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
-    if (buf == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-    }
-
-    buf->pos = ngx_pcalloc(r->pool, loc_conf->waf_under_attack_len);
-    if (buf->pos == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-    }
-    ngx_memcpy(buf->pos, loc_conf->waf_under_attack_html, loc_conf->waf_under_attack_len);
-    buf->last = buf->pos + loc_conf->waf_under_attack_len;
-    buf->memory = 1;
-    buf->last_buf = 1;
-
-    ngx_chain_t* out = ngx_pcalloc(r->pool, sizeof(ngx_chain_t));
-    if (out == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-    }
-
-    out->buf = buf;
-    out->next = NULL;
-
     ngx_str_set(&r->headers_out.content_type, "text/html");
     r->headers_out.content_length_n = loc_conf->waf_under_attack_len;
     r->headers_out.status = NGX_HTTP_SERVICE_UNAVAILABLE;
@@ -176,7 +154,33 @@ ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r) {
         return rc;
     }
 
-    return ngx_http_output_filter(r, out);
+    if (r->method != NGX_HTTP_HEAD) {
+        ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+        if (buf == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+        }
+
+        buf->pos = ngx_pcalloc(r->pool, loc_conf->waf_under_attack_len);
+        if (buf->pos == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+        }
+        ngx_memcpy(buf->pos, loc_conf->waf_under_attack_html, loc_conf->waf_under_attack_len);
+        buf->last = buf->pos + loc_conf->waf_under_attack_len;
+        buf->memory = 1;
+        buf->last_buf = 1;
+
+        ngx_chain_t* out = ngx_pcalloc(r->pool, sizeof(ngx_chain_t));
+        if (out == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+        }
+
+        out->buf = buf;
+        out->next = NULL;
+
+        return ngx_http_output_filter(r, out);
+    }
+
+    return NGX_OK;
 }
 
 

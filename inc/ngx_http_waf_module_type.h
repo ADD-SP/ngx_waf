@@ -33,7 +33,9 @@ typedef ngx_int_t (*ngx_http_waf_check_pt)(ngx_http_request_t* r, ngx_int_t* out
 */
 typedef union inx_addr_u {
     struct in_addr  ipv4;
+#if (NGX_HAVE_INET6)
     struct in6_addr ipv6;
+#endif
 } inx_addr_t;
 
 
@@ -83,8 +85,8 @@ typedef struct check_result_s {
 
 
 typedef struct under_attack_info_s {
-    u_char time[20 + 1];
-    u_char uid[64 + 1];
+    u_char time[NGX_TIME_T_LEN + 1];
+    u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
     u_char code[crypto_hash_sha256_BYTES * 2 + 1];
 } under_attack_info_t;
 
@@ -141,7 +143,9 @@ typedef enum {
     VM_DATA_INT,                /**< 整数类型 */
     VM_DATA_BOOL,               /**< 布尔类型 */
     VM_DATA_IPV4,               /**< IPV4 */
+#if (NGX_HAVE_INET6)
     VM_DATA_IPV6                /**< IPV6 */
+#endif
 } vm_data_type_e;
 
 
@@ -301,7 +305,9 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
     ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
+#if (NGX_HAVE_INET6)
     ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
+#endif
     ngx_array_t                    *black_url;                                  /**< URL 黑名单 */
     ngx_array_t                    *black_args;                                 /**< args 黑名单 */
     ngx_array_t                    *black_ua;                                   /**< user-agent 黑名单 */
@@ -309,7 +315,9 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_array_t                    *black_cookie;                               /**< Cookie 黑名单 */
     ngx_array_t                    *black_post;                                 /**< 请求体内容黑名单 */
     ip_trie_t                      *white_ipv4;                                 /**< IPV4 白名单 */
+#if (NGX_HAVE_INET6)
     ip_trie_t                      *white_ipv6;                                 /**< IPV6 白名单 */
+#endif
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
     UT_array                       *advanced_rule;                              /**< 高级规则表 */
@@ -346,12 +354,14 @@ typedef struct ipv4_s {
  * @note 注意，无论是 prefix[16] 还是 suffix[16]，他们中的每一项都是网络字节序。
  * 数组的下标同理，下标零代表最高位，下标十五代表最低位。
 */
+#if (NGX_HAVE_INET6)
 typedef struct ipv6_s {
     u_char                          text[64];       /**< 冒号十六进制表示法 */
     uint8_t                         prefix[16];     /**< 相当于 ffff::ffff/64 中的 ffff::ffff 的整数形式 */
     uint8_t                         suffix[16];     /**< 相当于 ffff::ffff/64 中的 64 的位表示（网络字节序） */
     uint32_t                        suffix_num;     /**< 相当于 ffff::ffff/64 中的 64 */
 } ipv6_t;
+#endif
 
 
 
@@ -367,7 +377,9 @@ typedef struct vm_stack_arg_s {
         ngx_str_t   str_val;
         uint8_t     bool_val;
         ipv4_t      ipv4_val;
+#if (NGX_HAVE_INET6)
         ipv6_t      ipv6_val;
+#endif
         inx_addr_t  inx_addr_val;
     }                                       value[4];           /**< 每个参数的值 */
     struct vm_stack_arg_s                  *utstack_handle;     /**< utstack 关键成员 */

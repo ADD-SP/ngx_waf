@@ -100,7 +100,9 @@ ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suffix_num
             cur_node->right = new_node;
         }
         
-    } else if (trie->ip_type == AF_INET6) {
+    } 
+#if (NGX_HAVE_INET6)
+    else if (trie->ip_type == AF_INET6) {
         while (bit_index < suffix_num - 1) {
             uint8_index = bit_index / 8;
             if (cur_node == NULL) {
@@ -142,6 +144,7 @@ ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suffix_num
             cur_node->right = new_node;
         }
     }
+#endif
 
     return NGX_HTTP_WAF_SUCCESS;
 }
@@ -175,7 +178,9 @@ ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** i
             ++bit_index;
         }
         
-    } else if (trie->ip_type == AF_INET6) {
+    } 
+#if (NGX_HAVE_INET6)
+    else if (trie->ip_type == AF_INET6) {
         while (bit_index < 128 && cur_node != NULL && cur_node->is_ip != NGX_HTTP_WAF_TRUE) {
             int uint8_index = bit_index / 8;
             if (ngx_http_waf_check_bit(inx_addr->ipv6.s6_addr[uint8_index], 7 - (bit_index % 8)) != NGX_HTTP_WAF_TRUE) {
@@ -186,6 +191,7 @@ ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** i
             ++bit_index;
         }
     }
+#endif
 
     if (cur_node != NULL && cur_node->is_ip == NGX_HTTP_WAF_TRUE) {
         is_found = NGX_HTTP_WAF_SUCCESS;

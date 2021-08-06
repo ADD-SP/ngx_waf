@@ -70,13 +70,11 @@
 #define NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE               (1024 * 1024 * 20)
 
 
-#define NGX_HTTP_WAF_UNDER_ATTACH_UID_LEN                        (64)
-
-
-#define NGX_HTTP_WAF_UNDER_ATTACH_TIME_LEN                       (16)
-
-
-#define NGX_HTTP_WAF_SHA256_HEX_LEN                              (crypto_hash_sha256_BYTES * 2)
+/**
+ * @def NGX_HTTP_WAF_UID_LEN
+ * @brief 用于 Under Attack 模式的 UID 字符串的长度
+*/
+#define NGX_HTTP_WAF_UID_LEN                                     (64)
 
 
 /**
@@ -366,11 +364,11 @@
     strcat((folder), (filename));                                                                               \
     if (access((folder), R_OK) != 0) {                                                                          \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
-        return NGX_HTTP_WAF_FAIL;                                                                                  \
+        return NGX_HTTP_WAF_FAIL;                                                                               \
     }                                                                                                           \
-    if (load_into_container((cf), (folder), (container), (mode)) == NGX_HTTP_WAF_FAIL) {                                     \
+    if (load_into_container((cf), (folder), (container), (mode)) == NGX_HTTP_WAF_FAIL) {                        \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Cannot read configuration.");    \
-        return NGX_HTTP_WAF_FAIL;                                                                                  \
+        return NGX_HTTP_WAF_FAIL;                                                                               \
     }                                                                                                           \
     *(end) = '\0';                                                                                              \
 }
