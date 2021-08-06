@@ -32,7 +32,9 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
                 *out_http_status = NGX_DECLINED;
                 ret_value = NGX_HTTP_WAF_MATCHED;
             }
-        } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+        }
+#if (NGX_HAVE_INET6) 
+        else if (r->connection->sockaddr->sa_family == AF_INET6) {
             struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             
@@ -45,6 +47,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
                 ret_value = NGX_HTTP_WAF_MATCHED;
             }
         }
+#endif
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection is over.");
@@ -87,7 +90,9 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
                 *out_http_status = NGX_HTTP_FORBIDDEN;
                 ret_value = NGX_HTTP_WAF_MATCHED;
             }
-        } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+        } 
+#if (NGX_HAVE_INET6)
+        else if (r->connection->sockaddr->sa_family == AF_INET6) {
             struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
             inx_addr_t inx_addr;
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
@@ -99,6 +104,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
                 ret_value = NGX_HTTP_WAF_MATCHED;
             }
         }
+#endif
 
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection is over.");
@@ -141,10 +147,13 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
         if (ip_type == AF_INET) {
             struct sockaddr_in* s_addr_in = (struct sockaddr_in*)(r->connection->sockaddr);
             ngx_memcpy(&(inx_addr.ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
-        } else {
+        } 
+#if (NGX_HAVE_INET6)
+        else if (ip_type == AF_INET6) {
             struct sockaddr_in6* s_addr_in6 = (struct sockaddr_in6*)(r->connection->sockaddr);
             ngx_memcpy(&(inx_addr.ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
         }
+#endif
         ngx_int_t limit  = loc_conf->waf_cc_deny_limit;
         ngx_int_t duration = loc_conf->waf_cc_deny_duration;
         ip_statis_t* statis = NULL;
@@ -170,6 +179,10 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
                 statis->block_time = 0;
 
                 *(tmp1.data) = statis;
+            } else {
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                ret_value = NGX_HTTP_WAF_MATCHED;
+                goto exception;
             }
         }
 
@@ -213,29 +226,32 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
             strcpy((char*)ctx->rule_deatils, "");
             *out_http_status = loc_conf->waf_http_status_cc;
             ret_value = NGX_HTTP_WAF_MATCHED;
+            time_t remain = duration - (now - statis->block_time);
 
-            size_t header_key_len = ngx_strlen("Retry-After");
             ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
             if (header == NULL) {
-                goto not_matched;
+                goto no_action;
             }
 
             /* 如果 hash 字段为 0 则会在遍历 HTTP 头的时候被忽略 */
             header->hash = 1;
-            header->key.data = ngx_palloc(r->pool, sizeof(u_char) * header_key_len);
-            if (header->key.data == NULL) {
-                goto not_matched;
-            }
-            ngx_memcpy(header->key.data, "Retry-After", header_key_len);
-            header->key.len = header_key_len;
-            header->value.data = ngx_palloc(r->pool, sizeof(u_char) * 20);
+            ngx_str_set(&header->key, "Retry-After");
+            header->value.data = ngx_palloc(r->pool, NGX_TIME_T_LEN + 1);
             if (header->value.data == NULL) {
-                goto not_matched;
+                goto no_action;
             }
-            header->value.len = ngx_sprintf(header->value.data, "%d", duration) - header->value.data;
+
+            #if (NGX_TIME_T_SIZE == 4)
+                header->value.len = sprintf((char*)header->value.data, "%d", (int)remain);
+            #elif (NGX_TIME_T_SIZE == 8)
+                header->value.len = sprintf((char*)header->value.data, "%lld", (long long)remain);
+            #else
+                #error The size of time_t is unexpected
+            #endif
         }
         
-        // exception:
+        exception:
+        no_action:
         // no_memory:
         not_matched:
         
@@ -621,6 +637,12 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
                 ngx_str_t temp;
                 temp.len = key->len + value->len;
                 temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
+
+                if (temp.data == NULL) {
+                    utarray_free(cookies);
+                    goto exception;
+                }
+
                 ngx_memcpy(temp.data, key->data, key->len);
                 ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
 
@@ -672,6 +694,8 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
             }
         }
 
+        exception:
+
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection is over.");
     }
@@ -695,6 +719,13 @@ void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
     ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
     ngx_str_t body_str;
     body_str.data = ngx_palloc(r->pool, content_length);
+
+    if (body_str.data == NULL) {
+        ngx_http_finalize_request(r, NGX_DONE);
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return;
+    }
+
     body_str.len = 0;
 
     ctx->read_body_done = NGX_HTTP_WAF_TRUE;

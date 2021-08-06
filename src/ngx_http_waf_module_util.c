@@ -81,6 +81,7 @@ ngx_int_t ngx_http_waf_parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
 }
 
 
+#if (NGX_HAVE_INET6)
 ngx_int_t ngx_http_waf_parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     uint8_t prefix[16] = { 0 };
     uint8_t suffix[16] = { 0 };
@@ -159,6 +160,7 @@ ngx_int_t ngx_http_waf_parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
 
     return NGX_HTTP_WAF_SUCCESS;
 }
+#endif
 
 
 ngx_int_t ngx_http_waf_parse_time(u_char* str) {
@@ -358,6 +360,7 @@ ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
 }
 
 
+#if (NGX_HAVE_INET6)
 ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
     uint8_t temp_ip[16];
 
@@ -373,6 +376,7 @@ ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
 
     return NGX_HTTP_WAF_MATCHED;
 }
+#endif
 
 
 ngx_int_t ngx_http_waf_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_array** array) {

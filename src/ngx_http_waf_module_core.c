@@ -129,7 +129,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_cleanup_t* cln = ngx_palloc(r->pool, sizeof(ngx_http_cleanup_t));
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
         if (ctx == NULL || cln == NULL) {
-            http_status = NGX_ERROR;
+            http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, 
                 "ngx_waf: The request context could not be created because the memory allocation failed.");
             ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 

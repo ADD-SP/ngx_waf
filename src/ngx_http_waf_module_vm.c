@@ -70,12 +70,14 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
                     struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
                     temp->type[0] = VM_DATA_IPV4;
                     ngx_memcpy(&(temp->value[0].inx_addr_val.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
-                } else if (r->connection->sockaddr->sa_family == AF_INET6) {
+                } 
+#if (NGX_HAVE_INET6)
+                else if (r->connection->sockaddr->sa_family == AF_INET6) {
                     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
                     temp->type[0] = VM_DATA_IPV6;
                     ngx_memcpy(&(temp->value[0].inx_addr_val.ipv6), &(sin6->sin6_addr), sizeof(struct in_addr));
                 }
-                
+#endif
                 temp->argc = 1;
                 STACK_PUSH2(stack, temp, utstack_handle);
                 break;
@@ -213,7 +215,9 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
                         result->value[0].bool_val = 0;
                     }
                     
-                } else if (left->type[0] == VM_DATA_IPV6 && right->type[0] == VM_DATA_STR) {
+                } 
+#if (NGX_HAVE_INET6)
+                else if (left->type[0] == VM_DATA_IPV6 && right->type[0] == VM_DATA_STR) {
                     ipv6_t ipv6;
                     if (ngx_http_waf_parse_ipv6(right->value[0].str_val, &ipv6) == NGX_HTTP_WAF_SUCCESS) {
                         if (ngx_http_waf_ipv6_netcmp(left->value[0].inx_addr_val.ipv6.s6_addr, &ipv6) == NGX_HTTP_WAF_MATCHED) {
@@ -224,7 +228,9 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
                     } else {
                         result->value[0].bool_val = 0;
                     }
-                } else {
+                } 
+#endif
+                else {
                     result->value[0].bool_val = 0;
                 }
                 STACK_PUSH2(stack, result, utstack_handle);
@@ -255,7 +261,9 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
                                                                 sizeof(struct in_addr));
                     }
                     
-                } else if (left->type[0] == VM_DATA_IPV6 && right->type[0] == VM_DATA_STR) {
+                } 
+#if (NGX_HAVE_INET6)
+                else if (left->type[0] == VM_DATA_IPV6 && right->type[0] == VM_DATA_STR) {
                     struct in6_addr addr6;
                     if (inet_pton(AF_INET6, (char*)right->value[0].str_val.data, &addr6) != 1) {
                         result->value[0].bool_val = 0;
@@ -264,7 +272,9 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
                                                                &addr6, 
                                                                 sizeof(struct in6_addr));
                     }
-                } else {
+                } 
+#endif
+                else {
                     result->value[0].bool_val = 0;
                 }
 

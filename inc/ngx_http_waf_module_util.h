@@ -37,7 +37,9 @@ ngx_int_t ngx_http_waf_parse_ipv4(ngx_str_t text, ipv4_t* ipv4);
  * @retval SUCCESS 转换成功
  * @retval FAIL 转化错误
 */
+#if (NGX_HAVE_INET6)
 ngx_int_t ngx_http_waf_parse_ipv6(ngx_str_t text, ipv6_t* ipv6);
+#endif
 
 
 /**
@@ -116,7 +118,9 @@ ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
  * @return 网段匹配则返回 MATCHED，反之则为 NOT_MATCHED。
  * @note 所有参数均为网络字节序
 */
+#if (NGX_HAVE_INET6)
 ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
+#endif
 
 
 /**
