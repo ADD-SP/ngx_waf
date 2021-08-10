@@ -2,7 +2,7 @@
 
 ngx_int_t ngx_http_waf_parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
     uint32_t prefix = 0;
-    uint32_t suffix = 0;
+    uint32_t suffix = UINT32_MAX;
     uint32_t suffix_num = 0;
 
     if (ipv4 == NULL) {
@@ -43,10 +43,13 @@ ngx_int_t ngx_http_waf_parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
         ++c;
     }
     while (*c != '\0') {
+        if (suffix == UINT32_MAX) {
+            suffix = 0;
+        }
         suffix = suffix * 10 + (*c - '0');
         ++c;
     }
-    if (suffix == 0) {
+    if (suffix == UINT32_MAX) {
         suffix = 32;
     }
 
@@ -121,15 +124,18 @@ ngx_int_t ngx_http_waf_parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
     }
     ngx_memcpy(prefix, &addr6.s6_addr, 16);
 
-    uint32_t temp_suffix = 0;
+    uint32_t temp_suffix = UINT32_MAX;
     if (*c == '/') {
         ++c;
     }
     while (*c != '\0') {
+        if (temp_suffix == UINT32_MAX) {
+            temp_suffix = 0;
+        }
         temp_suffix = temp_suffix * 10 + (*c - '0');
         ++c;
     }
-    if (temp_suffix == 0) {
+    if (temp_suffix == UINT32_MAX) {
         temp_suffix = 128;
     }
 
