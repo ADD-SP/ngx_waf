@@ -14,6 +14,7 @@ ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* native_
     trie->ip_type = ip_type;
     trie->root = (ip_trie_node_t*)mem_pool_calloc(&trie->pool, sizeof(ip_trie_node_t));
     trie->size = 0;
+    trie->match_all = NGX_HTTP_WAF_FALSE;
 
     if (trie->root == NULL) {
         return NGX_HTTP_WAF_MALLOC_ERROR;
@@ -46,6 +47,14 @@ ngx_int_t ip_trie_add(ip_trie_t* trie, inx_addr_t* inx_addr, uint32_t suffix_num
     
     new_node->is_ip = NGX_HTTP_WAF_TRUE;
     ngx_memcpy(new_node->data, data, data_byte_length);
+    new_node->data_byte_length = data_byte_length;
+
+    if (suffix_num == 0) {
+        trie->match_all = NGX_HTTP_WAF_TRUE;
+        mem_pool_free(&trie->pool, trie->root);
+        trie->root = new_node;
+        return NGX_HTTP_WAF_SUCCESS;
+    }
 
     ip_trie_node_t* prev_node = trie->root;
     ip_trie_node_t* cur_node = trie->root;
@@ -156,6 +165,11 @@ ngx_int_t ip_trie_find(ip_trie_t* trie, inx_addr_t* inx_addr, ip_trie_node_t** i
     }
 
     *ip_trie_node = NULL;
+
+    if (trie->match_all == NGX_HTTP_WAF_TRUE) {
+        *ip_trie_node = trie->root;
+        return NGX_HTTP_WAF_SUCCESS;
+    }
 
     ip_trie_node_t* cur_node = trie->root;
     ngx_int_t is_found = NGX_HTTP_WAF_FAIL;

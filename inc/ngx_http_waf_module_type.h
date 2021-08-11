@@ -256,6 +256,7 @@ typedef struct ip_trie_node_s {
 typedef struct ip_trie_s {
     int                 ip_type;        /**< 存储的 IP 地址的类型。 */
     ip_trie_node_t     *root;           /**< 前缀树树根。 */
+    int                 match_all;      /**< 当遇到前缀长度为零（0.0.0.0/0）的地址时为真，代表所有查询均返回真。 */
     size_t              size;           /**< 已经存储的 IP 数量。 */
     mem_pool_t          pool;           /**< 使用的内存池 */
 } ip_trie_t;
