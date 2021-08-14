@@ -154,7 +154,8 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             }
 
             q = (ngx_str_t*)utarray_next(temp, q);
-            if (q->data[0] != 'm' || q->len != 1) {
+            loc_conf->waf_cc_deny_cycle = ngx_http_waf_parse_time(q->data);
+            if (loc_conf->waf_cc_deny_cycle == NGX_ERROR || loc_conf->waf_cc_deny_cycle <= 0) {
                 goto error;
             }
 
@@ -918,6 +919,7 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_under_attack_len = NGX_CONF_UNSET_SIZE;
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
+    conf->waf_cc_deny_cycle = NGX_CONF_UNSET;
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
     conf->waf_inspection_capacity = NGX_CONF_UNSET;
     conf->waf_http_status = 403;
