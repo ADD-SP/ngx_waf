@@ -166,6 +166,17 @@ ngx_int_t ngx_http_waf_parse_ipv6(ngx_str_t text, ipv6_t* ipv6) {
 ngx_int_t ngx_http_waf_parse_time(u_char* str) {
     ngx_int_t ret = 0;
     size_t len = ngx_strlen(str);
+    
+    if (len == 1) {
+        switch (str[0]) {
+            case 's': return 1; break;
+            case 'm': return 1 * 60; break;
+            case 'h': return 1 * 60 * 60; break;
+            case 'd': return 1 * 60 * 60 * 24; break;
+            default: return NGX_ERROR; break;
+        }
+    }
+
     if (len < 2) {
         return NGX_ERROR;
     }
@@ -190,6 +201,17 @@ ngx_int_t ngx_http_waf_parse_time(u_char* str) {
 ngx_int_t ngx_http_waf_parse_size(u_char* str) {
     ngx_int_t ret = 0;
     size_t len = ngx_strlen(str);
+    
+    if (len == 1) {
+        switch (str[0]) {
+            case 's': return 1; break;
+            case 'm': return 1 * 60; break;
+            case 'h': return 1 * 60 * 60; break;
+            case 'd': return 1 * 60 * 60 * 24; break;
+            default: return NGX_ERROR; break;
+        }
+    }
+
     if (len < 2) {
         return NGX_ERROR;
     }
@@ -200,9 +222,10 @@ ngx_int_t ngx_http_waf_parse_size(u_char* str) {
     }
 
     switch (str[len - 1]) {
-        case 'k': ret *= 1 * 1024; break;
-        case 'm': ret *= 1 * 1024 * 1024; break;
-        case 'g': ret *= 1 * 1024 * 1024 * 1024; break;
+        case 's': ret *= 1; break;
+        case 'm': ret *= 1 * 60; break;
+        case 'h': ret *= 1 * 60 * 60; break;
+        case 'd': ret *= 1 * 60 * 60 * 24; break;
         default: return NGX_ERROR; break;
     }
 
