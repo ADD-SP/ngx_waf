@@ -198,7 +198,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
                 statis->record_time = now;
                 statis->block_time = 0;
             }
-        } else if (diff_second_record <= 60) {
+        } else if (diff_second_record <= loc_conf->waf_cc_deny_cycle) {
             if (statis->count > limit) {
                 goto matched;
             } else {
@@ -796,6 +796,7 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
         while ((*conf)->waf_cc_deny_limit == NGX_CONF_UNSET && parent != NULL) {
             (*conf)->waf_cc_deny_limit = parent->waf_cc_deny_limit;
             (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
+            (*conf)->waf_cc_deny_cycle = parent->waf_cc_deny_cycle;
             (*conf)->waf_cc_deny_shm_zone_size = parent->waf_cc_deny_shm_zone_size;
             (*conf)->shm_zone_cc_deny = parent->shm_zone_cc_deny;
             (*conf)->ip_access_statistics = parent->ip_access_statistics;
