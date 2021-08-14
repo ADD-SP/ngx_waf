@@ -301,6 +301,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     uint64_t                        waf_mode;                                   /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
+    ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
     ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
     ngx_int_t                       waf_inspection_capacity;                    /**< 用于缓存检查结果的共享内存的大小（字节） */
     ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
