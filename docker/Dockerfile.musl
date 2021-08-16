@@ -61,3 +61,4 @@ RUN set -xe \
 
 FROM busybox:stable-musl
 COPY --from=base /usr/local/src/nginx/objs/ngx_http_waf_module.so /modules/ngx_http_waf_module.so
+COPY ./assets /assets
