@@ -136,15 +136,6 @@ ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR; 
     }
     header->hash = 1;
-    header->lowcase_key = (u_char*)"retry-after";
-    ngx_str_set(&header->key, "Retry-After");
-    ngx_str_set(&header->value, "6");
-
-    header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
-    if (header == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-    }
-    header->hash = 1;
     header->lowcase_key = (u_char*)"cache-control";
     ngx_str_set(&header->key, "Cache-control");
     ngx_str_set(&header->value, "no-store");
