@@ -95,8 +95,19 @@ END
 
 fi
 
+is_gen='true'
 
-if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" -o ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_lexer.c" ] ; then
+if [ ! -e  "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" ] ; then
+    is_gen='false'
+elif [ ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_lexer.c" ] ; then
+    is_gen='false'
+elif [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" ] ; then
+    is_gen='false'
+elif [ ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_parser.tab.c" ] ; then
+    is_gen='false'
+fi
+
+if [ $is_gen != 'true' ] ; then
     cat << END
 
 $0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
@@ -106,19 +117,6 @@ $0: error: the $ngx_addon_name module requires the following command to be run t
 END
     exit 1
 fi
-
-
-if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" -o ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_parser.tab.c" ] ; then
-    cat << END
-
-$0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
-
-    cd $ngx_addon_dir && make && cd $(pwd)
-
-END
-    exit 1
-fi
-
 
 # Check if the uthash library is installed.
 ngx_feature="uthash library"
