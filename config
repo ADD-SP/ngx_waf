@@ -96,19 +96,19 @@ END
 fi
 
 
-if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" -o ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_lexer.c" ] ; then
-    cat << END
+is_gen='true'
 
-$0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
-
-    cd $ngx_addon_dir && make && cd $(pwd)
-
-END
-    exit 1
+if [ ! -e  "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" ] ; then
+    is_gen='false'
+elif [ ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_lexer.c" ] ; then
+    is_gen='false'
+elif [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" ] ; then
+    is_gen='false'
+elif [ ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_parser.tab.c" ] ; then
+    is_gen='false'
 fi
 
-
-if [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" -o ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_parser.tab.c" ] ; then
+if [ $is_gen != 'true' ] ; then
     cat << END
 
 $0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
