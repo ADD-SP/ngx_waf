@@ -87,7 +87,7 @@ typedef struct check_result_s {
 typedef struct under_attack_info_s {
     u_char time[NGX_TIME_T_LEN + 1];
     u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
-    u_char code[crypto_hash_sha256_BYTES * 2 + 1];
+    u_char hmac[crypto_hash_sha256_BYTES * 2 + 1];
 } under_attack_info_t;
 
 
@@ -277,8 +277,10 @@ typedef struct ip_trie_s {
 typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       checked;                                    /**< 是否启动了检测流程 */
     ngx_int_t                       blocked;                                    /**< 是否拦截了本次请求 */
+    ngx_int_t                       captcha;                                    /**< 是否需要执行验证码 */
     ngx_int_t                       under_attack;                               /**< 是否触发了 Under Attack Mode */
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
+    ngx_buf_t                       req_body;                                   /**< 请求体 */
     u_char                          rule_type[128];                             /**< 触发的规则类型 */
     u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
     ngx_int_t                       read_body_done;                             /**< 是否已经读取完请求体 */
@@ -292,9 +294,29 @@ typedef struct ngx_http_waf_ctx_s {
 typedef struct ngx_http_waf_loc_conf_s {
     struct ngx_http_waf_loc_conf_s *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
     u_char                          random_str[129];                            /**< 随机字符串 */
-    size_t                          waf_under_attack_len;
+    ngx_int_t                       waf_verify_bot;
+    ngx_int_t                       waf_verify_bot_type;
+    ngx_array_t                    *waf_verify_bot_google_ua_regexp;
+    ngx_array_t                    *waf_verify_bot_bing_ua_regexp;
+    ngx_array_t                    *waf_verify_bot_baidu_ua_regexp;
+    ngx_array_t                    *waf_verify_bot_yandex_ua_regexp;
+    ngx_array_t                    *waf_verify_bot_google_domain_regexp;
+    ngx_array_t                    *waf_verify_bot_bing_domain_regexp;
+    ngx_array_t                    *waf_verify_bot_baidu_domain_regexp;
+    ngx_array_t                    *waf_verify_bot_yandex_domain_regexp;
+    size_t                          waf_under_attack_len;                       /**< 五秒盾的 HTML 数据的大小 */
     u_char                         *waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
+    ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */
+    ngx_int_t                       waf_captcha_type;                           /**< 验证码的类型 */
+    ngx_str_t                       waf_captcha_hCaptcha_secret;                /**< hCaptcha 的 secret */
+    ngx_str_t                       waf_captcha_reCAPTCHA_secret;               /**< Google reCPATCHA 的 secret */
+    double                          waf_captcha_reCAPTCHAv3_score;              /**< Google reCAPTCHAv3 的下限分数 */
+    ngx_str_t                       waf_captcha_api;                            /**< 验证码提供商的 API */
+    ngx_str_t                       waf_captcha_verify_url;                     /**< 本模块接管的用于验证的 URL */
+    ngx_int_t                       waf_captcha_expire;                         /**< 验证码的有效期 */
+    u_char                         *waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
+    size_t                          waf_captcha_html_len;                       /**< 验证码页面的 HTML 数据的大小 */
     ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  

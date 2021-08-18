@@ -40,7 +40,25 @@
 
 #define NGX_HTTP_WAF_KEY_EXISTS              (4)
 
-#define NGX_HTTP_WAF_KEY_NOT_EXISTS            (5)
+#define NGX_HTTP_WAF_KEY_NOT_EXISTS          (5)
+
+#define NGX_HTTP_WAF_FAKE_BOT                (6)
+
+
+#define NGX_HTTP_WAF_HCAPTCHA                (1)
+
+#define NGX_HTTP_WAF_RECAPTCHA_V2            (2)
+
+#define NGX_HTTP_WAF_RECAPTCHA_V3            (3)
+
+
+#define NGX_HTTP_WAF_GOOGLE_BOT              (1)
+
+#define NGX_HTTP_WAF_BING_BOT                (NGX_HTTP_WAF_GOOGLE_BOT << 1)
+
+#define NGX_HTTP_WAF_BAIDU_SPIDER            (NGX_HTTP_WAF_BING_BOT << 1)
+
+#define NGX_HTTP_WAF_YANDEX_BOT              (NGX_HTTP_WAF_BAIDU_SPIDER << 1)
 
 
 /**

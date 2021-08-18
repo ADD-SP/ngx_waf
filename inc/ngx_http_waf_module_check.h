@@ -140,7 +140,7 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
 /**
  * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
 */
-void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
+ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 /**

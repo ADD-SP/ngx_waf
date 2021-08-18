@@ -62,6 +62,8 @@ Handy, High performance Nginx firewall module.
 ## Thanks
 
 * [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
+* [libcurl](https://curl.se/libcurl/): The multiprotocol file transfer library .
+* [cJSON](https://github.com/DaveGamble/cJSON): Ultralightweight JSON parser in ANSI C.
 * [libinjection](https://github.com/libinjection/libinjection): SQL / SQLI tokenizer parser analyzer.
 * [libsodium](https://github.com/jedisct1/libsodium): A modern, portable, easy to use crypto library.
 * [lastversion](https://github.com/dvershinin/lastversion): A command line tool that helps you download or install a specific version of a project.

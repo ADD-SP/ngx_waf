@@ -3,8 +3,9 @@ node_modules
 docs/.vuepress/dist
 yarn.lock
 package-lock.json
-inc/libinjection
-inc/libsodium
+lib/libinjection
+lib/libsodium
+lib/cJSON
 inc/ngx_http_waf_module_lexer.h
 inc/ngx_http_waf_module_parser.tab.h
 src/ngx_http_waf_module_lexer.c

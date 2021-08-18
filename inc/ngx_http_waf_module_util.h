@@ -10,6 +10,7 @@
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <sodium.h>
+#include <curl/curl.h>
 
 /**
  * @defgroup util 工具代码
@@ -77,6 +78,9 @@ ngx_int_t ngx_http_waf_parse_cookie(ngx_str_t* native_cookie, UT_array** array);
  * @warning 使用完毕后请自行释放数组所占用内存。
 */
 ngx_int_t ngx_http_waf_parse_query_string(ngx_str_t* native_query_string, key_value_t** hash_head);
+
+
+ngx_int_t ngx_http_waf_parse_form_string(ngx_str_t* raw, key_value_t** hash_head);
 
 
 /**
@@ -164,6 +168,18 @@ ngx_int_t ngx_http_waf_rand_str(u_char* dest, size_t len);
  * @return 成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
 ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size_t buf_len);
+
+
+ngx_int_t ngx_http_waf_http_post(const char* url, char* in, char** out);
+
+
+ngx_int_t ngx_http_waf_make_regexp(ngx_pool_t* pool, ngx_str_t str, ngx_regex_elt_t* elt);
+
+
+ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx_array_t* array);
+
+
+size_t ngx_http_waf_curl_write_handler(void *contents, size_t size, size_t nmemb, void *userp);
 
 
 void ngx_http_waf_utarray_ngx_str_ctor(void *dst, const void *src);

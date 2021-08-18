@@ -101,7 +101,7 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         #undef ngx_http_waf_parse_mode
 
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-            "ngx_waf: invalid value. Please visit https://docs.addesp.com/ngx_waf/advance/syntax.html or https://add-sp.github.io/ngx_waf/advance/syntax.html or https://ngx-waf.pages.dev/advance/syntax.html");
+            "ngx_waf: invalid value.");
         return NGX_CONF_ERROR;
     }
 
@@ -334,6 +334,154 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 }
 
 
+char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+    loc_conf->waf_captcha = NGX_CONF_UNSET;
+    loc_conf->waf_captcha_expire = 60 * 30;
+    loc_conf->waf_captcha_reCAPTCHAv3_score = 0.5;
+    ngx_str_set(&loc_conf->waf_captcha_verify_url, "/captcha");
+
+    if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
+        loc_conf->waf_captcha = 1;
+    } else {
+        loc_conf->waf_captcha = 0;
+    }
+
+    if (loc_conf->waf_captcha == 0) {
+        return NGX_CONF_OK;
+    }
+
+    if (cf->args->nelts < 4) {
+        goto error;
+    }
+
+    for (size_t i = 2; i < cf->args->nelts; i++) {
+        UT_array* array = NULL;
+        if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
+            goto error;
+        }
+
+        if (utarray_len(array) != 2) {
+            goto error;
+        }
+
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
+
+        if (ngx_strcmp("file", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            if (p == NULL || p->data == NULL || p->len == 0) {
+                goto error;
+            }
+
+            FILE* fp = fopen((char*)p->data, "r");
+
+            if (fp == NULL) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOENT, 
+                    "ngx_waf: Unable to open file %s.", p->data);
+                return NGX_CONF_ERROR;
+            }
+
+            fseek(fp, 0, SEEK_END);
+            size_t file_size = ftell(fp);
+            loc_conf->waf_captcha_html_len = file_size;
+            loc_conf->waf_captcha_html = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
+
+            fseek(fp, 0, SEEK_SET);
+            if (fread(loc_conf->waf_captcha_html, sizeof(u_char), file_size, fp) != file_size) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EPERM, 
+                    "ngx_waf: Failed to read file %s completely..", p->data);
+                return NGX_CONF_ERROR;
+            }
+
+            fclose(fp);
+
+        } else if (ngx_strcmp("prov", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            if (p == NULL || p->data == NULL || p->len == 0) {
+                goto error;
+            }
+            
+            if (ngx_strcmp(p->data, "hCaptcha") == 0) {
+                loc_conf->waf_captcha_type = NGX_HTTP_WAF_HCAPTCHA;
+            } else if (ngx_strcmp(p->data, "reCAPTCHAv2") == 0) {
+                loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V2;
+            } else if (ngx_strcmp(p->data, "reCAPTCHAv3") == 0) {
+                loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V3;
+            } else {
+                goto error;
+            }
+        } else if (ngx_strcmp("secret", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            if (p == NULL || p->data == NULL || p->len == 0) {
+                goto error;
+            }
+
+            loc_conf->waf_captcha_hCaptcha_secret.data = ngx_pcalloc(cf->pool, p->len + 1);
+            ngx_memcpy(loc_conf->waf_captcha_hCaptcha_secret.data, p->data, p->len);
+            loc_conf->waf_captcha_hCaptcha_secret.len = p->len;
+
+            loc_conf->waf_captcha_reCAPTCHA_secret.data = ngx_pcalloc(cf->pool, p->len + 1);
+            ngx_memcpy(loc_conf->waf_captcha_reCAPTCHA_secret.data, p->data, p->len);
+            loc_conf->waf_captcha_reCAPTCHA_secret.len = p->len;
+        } else if (ngx_strcmp("expire", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            loc_conf->waf_captcha_expire = ngx_http_waf_parse_time(p->data);
+            if (loc_conf->waf_captcha_expire == NGX_ERROR) {
+                goto error;
+            }
+        } else if (ngx_strcmp("score", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            loc_conf->waf_captcha_reCAPTCHAv3_score = atof((char*)p->data);
+            if (loc_conf->waf_captcha_reCAPTCHAv3_score < 0.0 && loc_conf->waf_captcha_reCAPTCHAv3_score > 1.0) {
+                goto error;
+            }
+        } else if (ngx_strcmp("api", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            loc_conf->waf_captcha_api.data = ngx_pcalloc(cf->pool, p->len + 1);
+            ngx_memcpy(loc_conf->waf_captcha_api.data, p->data, p->len);
+            loc_conf->waf_captcha_api.len = p->len;
+        } else if (ngx_strcmp("verfiy", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            loc_conf->waf_captcha_verify_url.data = ngx_pcalloc(cf->pool, p->len + 1);
+            ngx_memcpy(loc_conf->waf_captcha_verify_url.data, p->data, p->len);
+            loc_conf->waf_captcha_verify_url.len = p->len;
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
+    }
+
+    if (loc_conf->waf_captcha_api.data == NULL || loc_conf->waf_captcha_api.len == 0) {
+            switch (loc_conf->waf_captcha_type) {
+            case NGX_HTTP_WAF_HCAPTCHA:
+                ngx_str_set(&loc_conf->waf_captcha_api, "https://hcaptcha.com/siteverify");
+                break;
+            case NGX_HTTP_WAF_RECAPTCHA_V2:
+                ngx_str_set(&loc_conf->waf_captcha_api, "https://www.recaptcha.net/recaptcha/api/siteverify");
+                break;
+            case NGX_HTTP_WAF_RECAPTCHA_V3:
+                ngx_str_set(&loc_conf->waf_captcha_api, "https://www.recaptcha.net/recaptcha/api/siteverify");
+                break;
+            default:
+                goto error;
+        }
+    }
+
+
+
+    return NGX_CONF_OK;
+
+    error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
+}
+
+
 char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
@@ -349,7 +497,7 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
     }
 
 
-    if (utarray_len(array) != 12) {
+    if (utarray_len(array) != 15) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: you must specify the priority of all inspections except for POST inspections");
         return NGX_CONF_ERROR;
@@ -376,8 +524,11 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         ngx_http_waf_parse_priority("W-REFERER", ngx_http_waf_handler_check_white_referer);
         ngx_http_waf_parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
         ngx_http_waf_parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
-        ngx_http_waf_parse_priority("UNDER-ATTACK", ngx_http_waf_check_under_attack);
+        ngx_http_waf_parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
         ngx_http_waf_parse_priority("ADV", ngx_http_waf_vm_exec);
+        ngx_http_waf_parse_priority("RBODY", ngx_http_waf_handler_check_black_post);
+        ngx_http_waf_parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
+        ngx_http_waf_parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
 
         #undef ngx_http_waf_parse_priority
 
@@ -389,6 +540,212 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
     utarray_free(array);
 
     return NGX_CONF_OK;
+}
+
+
+char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    static char* s_google_bot_ua_regexp[] = {
+        "Googlebot",
+        "Google Favicon",
+        "Googlebot-News",
+        "Googlebot-Image",
+        "Googlebot-Video",
+        "Google-Read-Aloud",
+        "AdsBot-Google",
+        "AdsBot-Google-Mobile",
+        "AdsBot-Google-Mobile-Apps",
+        "APIs-Google",
+        "googleweblight",
+        "Storebot-Google",
+        "DuplexWeb-Google",
+        // "FeedFetcher-Google",
+        "Mediapartners-Google",
+        NULL
+    };
+
+    static char* s_google_bot_domain_regexp[] = {
+        "googlebot\\.com$",
+        "google\\.com$",
+        NULL
+    };
+
+    static char* s_bing_bot_ua_regexp[] = {
+        "bingbot",
+        "adidxbot",
+        "BingPreview",
+        NULL
+    };
+
+    static char* s_bing_bot_domain_regexp[] = {
+        "search\\.msn\\.com$",
+        NULL
+    };
+
+    static char* s_baidu_spider_ua_regexp[] = {
+        "Baiduspider",
+        "Baiduspider-ads",
+        "Baiduspider-cpro",
+        "Baiduspider-favo",
+        "Baiduspider-news",
+        "Baiduspider-video",
+        "Baiduspider-image",
+        NULL
+    };
+
+    static char* s_baidu_spider_domain_regexp[] = {
+        "baidu\\.com$",
+        "baidu\\.jp$",
+        NULL
+    };
+
+    static char* s_yandex_bot_ua_regexp[] = {
+        "YandexBot",
+        "YandexRCA",
+        "YandexNews",
+        "YandexAdNet",
+        "YandexMedia",
+        "YandexBlogs",
+        "YandexTurbo",
+        "YandexVideo",
+        "YandexDirect",
+        "YandexVertis",
+        "YandexMarket",
+        "YandexOntoDB",
+        "YandexImages",
+        "YandexTracker",
+        "YandexMetrika",
+        "YandexPartner",
+        "YandexSpravBot",
+        "YandexCalendar",
+        "YandexFavicons",
+        "YandexMobileBot",
+        "YandexWebmaster",
+        "YandexVerticals",
+        "YandexOntoDBAPI",
+        "YandexDirectDyn",
+        "YandexSitelinks",
+        "YaDirectFetcher",
+        "YandexForDomain",
+        "YandexSearchShop",
+        "YandexVideoParser",
+        "YandexPagechecker",
+        "YandexImageResizer",
+        "YandexAccessibilityBot",
+        "YandexMobileScreenShotBot",
+        NULL
+    };
+
+    static char* s_yandex_bot_yandex_domain_regexp[] = {
+        "yandex\\.com$",
+        "yandex\\.net$",
+        "yandex\\.ru$",
+        NULL
+    };
+
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+    loc_conf->waf_verify_bot = NGX_CONF_UNSET;
+    loc_conf->waf_verify_bot_type = 0;
+
+    if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
+        loc_conf->waf_verify_bot = 1;
+    } else if (ngx_strncmp(p_str[1].data, "strict", ngx_min(p_str[1].len, 6)) == 0) {
+        loc_conf->waf_verify_bot = 2;
+    } else {
+        loc_conf->waf_verify_bot = 0;
+    }
+
+    if (loc_conf->waf_verify_bot == 0) {
+        return NGX_CONF_OK;
+    }
+
+
+    loc_conf->waf_verify_bot_google_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_google_bot_ua_regexp, loc_conf->waf_verify_bot_google_ua_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+    loc_conf->waf_verify_bot_google_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_google_bot_domain_regexp, loc_conf->waf_verify_bot_google_domain_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+    
+
+    loc_conf->waf_verify_bot_bing_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_bing_bot_ua_regexp, loc_conf->waf_verify_bot_bing_ua_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+    loc_conf->waf_verify_bot_bing_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_bing_bot_domain_regexp, loc_conf->waf_verify_bot_bing_domain_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+
+    loc_conf->waf_verify_bot_baidu_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_baidu_spider_ua_regexp, loc_conf->waf_verify_bot_baidu_ua_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+    loc_conf->waf_verify_bot_baidu_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_baidu_spider_domain_regexp, loc_conf->waf_verify_bot_baidu_domain_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+
+    loc_conf->waf_verify_bot_yandex_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_yandex_bot_ua_regexp, loc_conf->waf_verify_bot_yandex_ua_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+    loc_conf->waf_verify_bot_yandex_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_yandex_bot_yandex_domain_regexp, loc_conf->waf_verify_bot_yandex_domain_regexp) 
+            != NGX_HTTP_WAF_SUCCESS) {
+        return NGX_CONF_ERROR;
+    }
+
+    
+
+    for (size_t i = 2; i < cf->args->nelts; i++) {
+        #define ngx_http_waf_parse(str, flag)                                                               \
+        if (ngx_strncasecmp(p_str[i].data, (u_char*)(str), ngx_min(p_str[i].len, sizeof(str) - 1)) == 0     \
+        &&  p_str[i].len == sizeof(str) - 1) {                                                              \
+            loc_conf->waf_verify_bot_type |= flag;                                                          \
+            continue;                                                                                       \
+        }                                                                                                   \
+
+        ngx_http_waf_parse("GoogleBot", NGX_HTTP_WAF_GOOGLE_BOT);
+        ngx_http_waf_parse("BingBot", NGX_HTTP_WAF_BING_BOT);
+        ngx_http_waf_parse("BaiduSpider", NGX_HTTP_WAF_BAIDU_SPIDER);
+        ngx_http_waf_parse("YandexBot", NGX_HTTP_WAF_YANDEX_BOT);
+        
+        goto error;
+
+        #undef ngx_http_waf_parse
+    }
+
+    if (loc_conf->waf_verify_bot_type == 0) {
+        loc_conf->waf_verify_bot_type = NGX_HTTP_WAF_GOOGLE_BOT 
+                                      | NGX_HTTP_WAF_BING_BOT 
+                                      | NGX_HTTP_WAF_BAIDU_SPIDER 
+                                      | NGX_HTTP_WAF_YANDEX_BOT;
+    }
+
+    return NGX_CONF_OK;
+
+    error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
 }
 
 
@@ -480,7 +837,31 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
     ngx_conf_merge_ptr_value(child->waf_under_attack_html, parent->waf_under_attack_html, NGX_CONF_UNSET_PTR);
     ngx_conf_merge_size_value(child->waf_under_attack_len, parent->waf_under_attack_len, NGX_CONF_UNSET_SIZE);
-    
+    ngx_conf_merge_value(child->waf_captcha_reCAPTCHAv3_score, parent->waf_captcha_reCAPTCHAv3_score, NGX_CONF_UNSET);
+
+    if (child->waf_captcha_hCaptcha_secret.data == NULL || child->waf_captcha_hCaptcha_secret.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_hCaptcha_secret), &(parent->waf_captcha_hCaptcha_secret), sizeof(ngx_str_t));
+    }
+
+    if (child->waf_captcha_reCAPTCHA_secret.data == NULL || child->waf_captcha_reCAPTCHA_secret.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_reCAPTCHA_secret), &(parent->waf_captcha_reCAPTCHA_secret), sizeof(ngx_str_t));
+    }
+
+    ngx_conf_merge_value(child->waf_captcha, parent->waf_captcha, NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_captcha_html, parent->waf_captcha_html, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_size_value(child->waf_captcha_html_len, parent->waf_captcha_html_len, NGX_CONF_UNSET_SIZE);
+
+    ngx_conf_merge_value(child->waf_verify_bot, parent->waf_verify_bot, NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_verify_bot_type, parent->waf_verify_bot_type, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_google_ua_regexp, parent->waf_verify_bot_google_ua_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_bing_ua_regexp, parent->waf_verify_bot_bing_ua_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_baidu_ua_regexp, parent->waf_verify_bot_baidu_ua_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_yandex_ua_regexp, parent->waf_verify_bot_yandex_ua_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_google_domain_regexp, parent->waf_verify_bot_google_domain_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_bing_domain_regexp, parent->waf_verify_bot_bing_domain_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_baidu_domain_regexp, parent->waf_verify_bot_baidu_domain_regexp, NGX_CONF_UNSET_PTR);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_yandex_domain_regexp, parent->waf_verify_bot_yandex_domain_regexp, NGX_CONF_UNSET_PTR);
 
 
     if (child->waf_mode == 0) {
@@ -914,9 +1295,24 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf = NGX_CONF_UNSET;
     conf->waf_rule_path.len = NGX_CONF_UNSET_SIZE;
     conf->waf_mode = 0;
+    conf->waf_verify_bot = NGX_CONF_UNSET;
+    conf->waf_verify_bot_type = NGX_CONF_UNSET;
+    conf->waf_verify_bot_google_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_bing_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_baidu_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_yandex_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_google_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_bing_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_baidu_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_yandex_domain_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_under_attack = NGX_CONF_UNSET;
     conf->waf_under_attack_html = NGX_CONF_UNSET_PTR;
     conf->waf_under_attack_len = NGX_CONF_UNSET_SIZE;
+    conf->waf_captcha = NGX_CONF_UNSET;
+    conf->waf_captcha_html = NGX_CONF_UNSET_PTR;
+    conf->waf_captcha_html_len = NGX_CONF_UNSET_SIZE;
+    conf->waf_captcha_expire = NGX_CONF_UNSET;
+    conf->waf_captcha_reCAPTCHAv3_score = NGX_CONF_UNSET;
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     conf->waf_cc_deny_cycle = NGX_CONF_UNSET;
@@ -930,16 +1326,19 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
 
     conf->check_proc[0] = ngx_http_waf_handler_check_white_ip;
     conf->check_proc[1] = ngx_http_waf_handler_check_black_ip;
-    conf->check_proc[2] = ngx_http_waf_handler_check_cc;
-    conf->check_proc[3] = ngx_http_waf_check_under_attack;
-    conf->check_proc[4] = ngx_http_waf_handler_check_white_url;
-    conf->check_proc[5] = ngx_http_waf_handler_check_black_url;
-    conf->check_proc[6] = ngx_http_waf_handler_check_black_args;
-    conf->check_proc[7] = ngx_http_waf_handler_check_black_user_agent;
-    conf->check_proc[8] = ngx_http_waf_handler_check_white_referer;
-    conf->check_proc[9] = ngx_http_waf_handler_check_black_referer;
-    conf->check_proc[10] = ngx_http_waf_handler_check_black_cookie;
-    conf->check_proc[11] = ngx_http_waf_vm_exec;
+    conf->check_proc[2] = ngx_http_waf_handler_verify_bot;
+    conf->check_proc[3] = ngx_http_waf_handler_check_cc;
+    conf->check_proc[4] = ngx_http_waf_handler_captcha;
+    conf->check_proc[5] = ngx_http_waf_handler_under_attack;
+    conf->check_proc[6] = ngx_http_waf_handler_check_white_url;
+    conf->check_proc[7] = ngx_http_waf_handler_check_black_url;
+    conf->check_proc[8] = ngx_http_waf_handler_check_black_args;
+    conf->check_proc[9] = ngx_http_waf_handler_check_black_user_agent;
+    conf->check_proc[10] = ngx_http_waf_handler_check_white_referer;
+    conf->check_proc[11] = ngx_http_waf_handler_check_black_referer;
+    conf->check_proc[12] = ngx_http_waf_handler_check_black_cookie;
+    conf->check_proc[13] = ngx_http_waf_vm_exec;
+    conf->check_proc[14] = ngx_http_waf_handler_check_black_post;
 
     return conf;
 }
