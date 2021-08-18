@@ -10,9 +10,12 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_captcha.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_verify_bot.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_vm.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lexer.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_parser.tab.h"
+    $ngx_addon_dir/inc/ngx_http_waf_module_parser.tab.h \
+    $ngx_addon_dir/lib/cjson/cJSON.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_check.c \
@@ -21,22 +24,21 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_lru_cache.c \
     $ngx_addon_dir/src/ngx_http_waf_module_mem_pool.c \
     $ngx_addon_dir/src/ngx_http_waf_module_under_attack.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_captcha.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_verify_bot.c \
     $ngx_addon_dir/src/ngx_http_waf_module_util.c \
     $ngx_addon_dir/src/ngx_http_waf_module_vm.c \
     $ngx_addon_dir/src/ngx_http_waf_module_lexer.c \
     $ngx_addon_dir/src/ngx_http_waf_module_parser.tab.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_html5.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_xss.c"
+    $ngx_addon_dir/lib/libinjection/src/libinjection_html5.c \
+    $ngx_addon_dir/lib/libinjection/src/libinjection_sqli.c \
+    $ngx_addon_dir/lib/libinjection/src/libinjection_xss.c \
+    $ngx_addon_dir/lib/cjson/cJSON.c"
 
 
 ngx_http_waf_module_libs=""
 
-ngx_http_waf_module_inc_path="$ngx_addon_dir/inc "
-
-if [ -n "$LIB_UTHASH" ] ;  then
-    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
-fi
+ngx_http_waf_module_inc_path="$ngx_addon_dir/inc $ngx_addon_dir/lib"
 
 which flex
 if [ $? -ne 0 ] ; then
@@ -118,6 +120,79 @@ END
     exit 1
 fi
 
+if [ -n "$LIB_CURL" ] ; then
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib -l curl "
+    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} -I ${LIB_CURL}/include  "
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l curl "
+fi
+
+# Check if the curl library is installed.
+ngx_feature="curl library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs="#include <curl/curl.h>"
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+Please run:
+    On Ubuntu or Debian: 
+            apt-get update && apt-get install --yes libcurl4-openssl-dev
+    On Centos8:
+            dnf install libcurl && dnf install libcurl-devel
+    On Centos7:
+            yum update && yum install -y libcurl libcurl-devel
+    On other OS:
+            cd /usr/local/src \\
+        &&  wget https://curl.se/download/curl-7.78.0.tar.gz \\
+        &&  mkdir curl \\
+        &&  tar -zxf curl-7.78.0.tar.gz -C curl --strip-components=1 \\
+        &&  cd curl \\
+        &&  ./configure --without-ssl --prefix=/usr/local/src/curl/build \\
+        &&  make -j \$(nproc) \\
+        &&  make install \\
+        &&  export LIB_CURL=/usr/local/src/curl/build \\
+        &&  cd $PWD
+END
+    PWD=''
+    exit 1
+fi
+
+
+# Check if the cJSON library is installed.
+ngx_feature="cJSON library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs="#include <cjson/cJSON.h>"
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+Please run:
+        cd $ngx_addon_dir \\
+    &&  git clone https://github.com/DaveGamble/cJSON.git lib/cjson
+    &&  cd $PWD
+END
+    PWD=''
+    exit 1
+fi
+
+
+
+if [ -n "$LIB_UTHASH" ] ;  then
+    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
+fi
+
+
 # Check if the uthash library is installed.
 ngx_feature="uthash library"
 ngx_feature_name=
@@ -182,7 +257,7 @@ END
 fi
 
 
-ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${ngx_addon_dir}/inc/libinjection/src"
+ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${ngx_addon_dir}/lib/libinjection/src"
 
 
 # Check if libinjection exists.
@@ -207,7 +282,7 @@ if [ $ngx_found = no  ] ; then
     cat << END
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
-Please run cd $ngx_addon_dir && git clone https://github.com/libinjection/libinjection.git inc/libinjection && cd $PWD
+Please run cd $ngx_addon_dir && git clone https://github.com/libinjection/libinjection.git lib/libinjection && cd $PWD
 
 END
     PWD=''

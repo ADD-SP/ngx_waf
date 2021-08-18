@@ -17,6 +17,8 @@
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
 #include <ngx_http_waf_module_under_attack.h>
+#include <ngx_http_waf_module_captcha.h>
+#include <ngx_http_waf_module_verify_bot.h>
 #include <ngx_http_waf_module_parser.tab.h>
 #include <ngx_http_waf_module_lexer.h>
 #include <ngx_http_waf_module_vm.h>
@@ -74,13 +76,25 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
 
 /**
+ * @brief 读取配置项 waf_captcha，该项用来设置验证码相关的参数。
+*/
+char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
  * @brief 读取配置项 waf_priority，该项用来设置检查项目的优先级。
 */
 char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**
- * @brief 读取配置项 waf_http_status，该项用来设置检查项目的优先级。
+ * @brief 读取配置项 waf_verify_bot，该项用来设置友好爬虫的验证。
+*/
+char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
+ * @brief 读取配置项 waf_http_status，该项用来设置返回的状态码。
 */
 char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 

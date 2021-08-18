@@ -61,6 +61,8 @@
 ## 感谢
 
 * [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
+* [libcurl](https://curl.se/libcurl/)：支持多种协议文件传输库。
+* [cJSON](https://github.com/DaveGamble/cJSON)：C 语言的轻量级 JSON 解析库。
 * [libinjection](https://github.com/libinjection/libinjection)：SQL 注入检测库。
 * [libsodium](https://github.com/jedisct1/libsodium)：C 语言密码函数库。
 * [lastversion](https://github.com/dvershinin/lastversion)：一个轻巧的命令行工具，帮助你下载或安装一个项目的特定版本。

@@ -35,7 +35,8 @@ RUN set -xe \
         fi \
     &&  pip3 install lastversion
 RUN set -xe \
-    &&  (cd ngx_waf && git clone https://github.com/libinjection/libinjection.git inc/libinjection) \
+    &&  (cd ngx_waf && git clone https://github.com/libinjection/libinjection.git lib/libinjection) \
+    &&  (cd ngx_waf && git clone https://github.com/DaveGamble/cJSON.git lib/cjson) \
     &&  (cd ngx_waf && make parser) \
     &&  git clone https://github.com/troydhanson/uthash.git \
     &&  export LIB_UTHASH=/usr/local/src/uthash \
@@ -44,6 +45,15 @@ RUN set -xe \
     &&  ./configure --prefix=/usr/local/src/libsodium --with-pic \
     &&  make -j$(nproc) && make check -j$(nproc) && make install \
     &&  export LIB_SODIUM=/usr/local/src/libsodium \
+    &&  cd .. \
+    &&  wget https://curl.se/download/curl-7.78.0.tar.gz \
+    &&  mkdir curl \
+    &&  tar -zxf curl-7.78.0.tar.gz -C curl --strip-components=1 \
+    &&  cd curl \
+    &&  ./configure --without-ssl --prefix=/usr/local/src/curl/build \
+    &&  make -j $(nproc) \
+    &&  make install \
+    &&  export LIB_CURL=/usr/local/src/curl/build \
     &&  cd .. \
     # &&  lastversion --download="openssl.tar.gz" --at=github openssl \
     # &&  mkdir openssl && tar -zxf "openssl.tar.gz" -C openssl --strip-components=1 \

@@ -703,39 +703,17 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
 }
 
 
-void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
+ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Start inspecting the Post-Body blacklist.");
 
-    double start_clock = (double)clock();
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    ngx_int_t content_length = ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len);
-    ngx_chain_t* buf_chain = r->request_body == NULL ? NULL : r->request_body->bufs;
     ngx_str_t body_str;
-    body_str.data = ngx_palloc(r->pool, content_length);
-    body_str.len = 0;
-
-    ctx->read_body_done = NGX_HTTP_WAF_TRUE;
-
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Inspection has begun.");
-
-
-    ngx_int_t cur_buf_pos = 0;
-    for (ngx_chain_t* i = buf_chain; i != NULL; i = i->next) {
-        if (!ngx_buf_in_memory_only(i->buf)) {
-            ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                "ngx_waf_debug: The buffer is skipped because the Post-Body is not in memory.");
-        } else {
-            ngx_int_t buf_len = sizeof(u_char) * (i->buf->last - i->buf->pos);
-            body_str.len += buf_len;
-            ngx_memcpy(body_str.data + cur_buf_pos, i->buf->pos, buf_len);
-            cur_buf_pos += buf_len;
-        }
-    }
+    body_str.data = ctx->req_body.pos;
+    body_str.len = ctx->req_body.last - ctx->req_body.pos;
 
     if (ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
                                             &body_str, 
@@ -750,16 +728,11 @@ void ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Inspection is over.");
 
-    double end_clock = (double)clock();
-    ctx->spend += (end_clock - start_clock) / CLOCKS_PER_SEC * 1000;
-
     if (ctx->blocked != NGX_HTTP_WAF_TRUE) {
-        ngx_http_finalize_request(r, NGX_DONE);
-        ngx_http_core_run_phases(r);
+        return NGX_HTTP_WAF_NOT_MATCHED;
     } else {
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
-        ngx_http_finalize_request(r, NGX_DONE);
-        ngx_http_finalize_request(r, loc_conf->waf_http_status);
+        *out_http_status = loc_conf->waf_http_status;
+        return NGX_HTTP_WAF_MATCHED;
     }
 }
 

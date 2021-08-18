@@ -1,7 +1,21 @@
 #include <ngx_http_waf_module_under_attack.h>
 
+static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, under_attack_info_t* under_attack);
 
-ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+/**
+ * @brief 生成用于验证五秒盾的三个 Cookie
+*/
+static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_attack);
+
+/**
+ * @brief 生成 Cookie 完整性校验码
+*/
+static ngx_int_t _gen_verification(ngx_http_request_t *r, under_attack_info_t* under_attack);
+
+static void _gen_ctx(ngx_http_request_t *r);
+
+
+ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
         "ngx_waf_debug: Enter the Under-Attack processing flow.");
 
@@ -62,12 +76,12 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
                 ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
                         "ngx_waf_debug: Successfully get __waf_under_attack_uid.");
             }
-            else if (ngx_strcmp(key->data, "__waf_under_attack_verification") == 0) {
+            else if (ngx_strcmp(key->data, "__waf_under_attack_hmac") == 0) {
                 ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Being parsed __waf_under_attack_verification.");
-                ngx_memcpy(under_attack_client.code, value->data, ngx_min(sizeof(under_attack_client.code) - 1, value->len));
+                        "ngx_waf_debug: Being parsed __waf_under_attack_hmac.");
+                ngx_memcpy(under_attack_client.hmac, value->data, ngx_min(sizeof(under_attack_client.hmac) - 1, value->len));
                 ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Successfully get __waf_under_attack_verification.");
+                        "ngx_waf_debug: Successfully get __waf_under_attack_hmac.");
             }
 
         } while (p != NULL);
@@ -83,17 +97,17 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     ngx_memcpy(&under_attack_expect, &under_attack_client, sizeof(under_attack_info_t));
 
 
-    if (ngx_http_waf_gen_verification(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+    if (_gen_verification(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
         *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
         return NGX_HTTP_WAF_MATCHED;
     }
 
     /* 验证 token 是否正确 */
     if (ngx_memcmp(&under_attack_client, &under_attack_expect, sizeof(under_attack_info_t)) != 0) {
-        ngx_http_waf_gen_under_attack_info(r, &under_attack_expect);
-        ngx_http_waf_gen_cookie(r, &under_attack_expect);
+        _gen_under_attack_info(r, &under_attack_expect);
+        _gen_cookie(r, &under_attack_expect);
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx(r);
+        _gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Wrong __waf_under_attack_verification.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -106,10 +120,10 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
     time_t client_time = ngx_atoi(under_attack_client.time, ngx_strlen(under_attack_client.time));
     /* 如果 Cookie 不合法 或 已经超过 30 分钟 */
     if (client_time == NGX_ERROR || difftime(time(NULL), client_time) > 60 * 30) {
-        ngx_http_waf_gen_under_attack_info(r, &under_attack_expect);
-        ngx_http_waf_gen_cookie(r, &under_attack_expect);
+        _gen_under_attack_info(r, &under_attack_expect);
+        _gen_cookie(r, &under_attack_expect);
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx(r);
+        _gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Wrong __waf_under_attack_verification.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -117,7 +131,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         return NGX_HTTP_WAF_MATCHED;
     } else if (difftime(time(NULL), client_time) <= 5) {
         *out_http_status = NGX_DECLINED;
-        ngx_http_waf_gen_ctx(r);
+        _gen_ctx(r);
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Not five seconds have passed.");
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
@@ -129,7 +143,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
 }
 
 
-ngx_int_t ngx_http_waf_gen_under_attack_info(ngx_http_request_t* r, under_attack_info_t* under_attack) {
+static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, under_attack_info_t* under_attack) {
     time_t now = time(NULL);
 
     #if (NGX_TIME_T_SIZE == 4)
@@ -144,11 +158,11 @@ ngx_int_t ngx_http_waf_gen_under_attack_info(ngx_http_request_t* r, under_attack
         return NGX_HTTP_WAF_FAIL;
     }
 
-    return ngx_http_waf_gen_verification(r, under_attack);
+    return _gen_verification(r, under_attack);
 }
 
 
-ngx_int_t ngx_http_waf_gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_attack) {
+static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_attack) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
@@ -182,15 +196,15 @@ ngx_int_t ngx_http_waf_gen_cookie(ngx_http_request_t *r, under_attack_info_t* un
     header->hash = 1;
     header->lowcase_key = (u_char*)"set-cookie";
     ngx_str_set(&header->key, "Set-Cookie");
-    header->value.data = ngx_pnalloc(r->pool, sizeof(under_attack->code) + 64);
-    header->value.len = sprintf((char*)header->value.data, "__waf_under_attack_verification=%s; Path=/", under_attack->code);
+    header->value.data = ngx_pnalloc(r->pool, sizeof(under_attack->hmac) + 64);
+    header->value.len = sprintf((char*)header->value.data, "__waf_under_attack_hmac=%s; Path=/", under_attack->hmac);
 
 
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
-ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r, under_attack_info_t* under_attack) {
+static ngx_int_t _gen_verification(ngx_http_request_t *r, under_attack_info_t* under_attack) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
@@ -217,12 +231,12 @@ ngx_int_t ngx_http_waf_gen_verification(ngx_http_request_t *r, under_attack_info
     }
 #endif
 
-    ngx_memzero(under_attack->code, sizeof(under_attack->code));
-    return ngx_http_waf_sha256(under_attack->code, sizeof(under_attack->code), &buf, sizeof(buf));
+    ngx_memzero(under_attack->hmac, sizeof(under_attack->hmac));
+    return ngx_http_waf_sha256(under_attack->hmac, sizeof(under_attack->hmac), &buf, sizeof(buf));
 }
 
 
-void ngx_http_waf_gen_ctx(ngx_http_request_t *r) {
+static void _gen_ctx(ngx_http_request_t *r) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     

@@ -303,7 +303,7 @@ ngx_int_t ngx_http_waf_parse_query_string(ngx_str_t* native_query_string, key_va
 
         ngx_http_waf_str_split(&temp, '=', native_query_string->len, &key_and_value);
 
-        if (utarray_len(key_and_value) != 2) {
+        if (utarray_len(key_and_value) > 2 && utarray_len(key_and_value) < 1) {
             return NGX_HTTP_WAF_FAIL;
         }
 
@@ -318,8 +318,11 @@ ngx_int_t ngx_http_waf_parse_query_string(ngx_str_t* native_query_string, key_va
         ngx_memzero(qs, sizeof(key_value_t));
         qs->key.data = ngx_strdup(key->data);
         qs->key.len = key->len;
-        qs->value.data = ngx_strdup(value->data);
-        qs->value.len = value->len;
+
+        if (value != NULL) {
+            qs->value.data = ngx_strdup(value->data);
+            qs->value.len = value->len;
+        }
 
         HASH_ADD_KEYPTR(hh, *hash_head, qs->key.data, qs->key.len * sizeof(u_char), qs);
 
@@ -328,6 +331,11 @@ ngx_int_t ngx_http_waf_parse_query_string(ngx_str_t* native_query_string, key_va
 
     utarray_free(kvs);
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+ngx_int_t ngx_http_waf_parse_form_string(ngx_str_t* raw, key_value_t** hash_head) {
+    return ngx_http_waf_parse_query_string(raw, hash_head);
 }
 
 
@@ -526,6 +534,92 @@ ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size
     free(out);
     
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+ngx_int_t ngx_http_waf_http_post(const char* url, char* in, char** out) {
+    CURL* curl_handle = curl_easy_init();
+    ngx_buf_t buf;
+    buf.pos = malloc(1);
+    buf.last = buf.pos;
+    buf.memory = 1;
+
+    curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, ngx_http_waf_curl_write_handler);
+    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, in);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&buf);
+    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+
+    CURLcode res = curl_easy_perform(curl_handle);
+    ngx_int_t ret = NGX_HTTP_WAF_FAIL;
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        free(buf.pos);
+        ret = NGX_HTTP_WAF_FAIL;
+    } else {
+        *out = (char*)buf.pos;
+        ret = NGX_HTTP_WAF_SUCCESS;
+    }
+
+    curl_easy_cleanup(curl_handle);
+    return ret;
+}
+
+ngx_int_t ngx_http_waf_make_regexp(ngx_pool_t* pool, ngx_str_t str, ngx_regex_elt_t* elt) {
+    ngx_regex_compile_t   regex_compile;
+    u_char                errstr[NGX_MAX_CONF_ERRSTR];
+
+    if (pool == NULL || elt == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    ngx_memzero(&regex_compile, sizeof(ngx_regex_compile_t));
+    regex_compile.pattern = str;
+    regex_compile.pool = pool;
+    regex_compile.err.len = NGX_MAX_CONF_ERRSTR;
+    regex_compile.err.data = errstr;
+    if (ngx_regex_compile(&regex_compile) != NGX_OK) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+    elt->name = ngx_pnalloc(pool, str.len + 1);
+    ngx_memcpy(elt->name, str.data, str.len);
+    elt->name[str.len] = '\0';
+    elt->regex = regex_compile.regex;
+
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx_array_t* array) {
+    for (int i = 0; strv[i] != NULL; i++) {
+        ngx_str_t str;
+        str.data = (u_char*)strv[i];
+        str.len = strlen(strv[i]);
+        ngx_regex_elt_t* elt = ngx_array_push(array);
+        if (ngx_http_waf_make_regexp(pool, str, elt) != NGX_HTTP_WAF_SUCCESS) {
+            return NGX_HTTP_WAF_FAIL;
+        }
+    }
+
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+size_t ngx_http_waf_curl_write_handler(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    ngx_buf_t* buf = (ngx_buf_t*)userp;
+    size_t offset = buf->last - buf->pos;
+    
+    char *ptr = realloc(buf->pos, buf->last - buf->pos + realsize + 1);
+    assert(ptr != NULL);
+
+    buf->pos = (u_char*)ptr;
+    buf->last = buf->pos + offset;
+    ngx_memcpy(buf->last, contents, realsize);
+    buf->last += realsize;
+    *(buf->last) = 0;
+    
+    return realsize;
 }
 
 

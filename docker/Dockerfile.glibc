@@ -27,7 +27,8 @@ RUN set -xe \
             libxml2-dev \ 
             libgeoip-dev \ 
             libgd-dev \ 
-            libperl-dev \ 
+            libperl-dev \
+            libcurl4-openssl-dev \
             python3 \
             python3-pip \
             libmaxminddb0 \
@@ -39,7 +40,8 @@ RUN set -xe \
         fi \
     &&  pip3 install lastversion
 RUN set -xe \
-    &&  (cd ngx_waf && git clone https://github.com/libinjection/libinjection.git inc/libinjection) \
+    &&  (cd ngx_waf && git clone https://github.com/libinjection/libinjection.git lib/libinjection) \
+    &&  (cd ngx_waf && git clone https://github.com/DaveGamble/cJSON.git lib/cjson) \
     &&  (cd ngx_waf && make parser) \
     &&  git clone https://github.com/troydhanson/uthash.git \
     &&  export LIB_UTHASH=/usr/local/src/uthash \
