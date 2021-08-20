@@ -32,7 +32,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
    },
     {
         ngx_string("waf_cc_deny"),
-        NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE123,
+        NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1234,
         ngx_http_waf_cc_deny_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
         0,
@@ -40,7 +40,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
    },
    {
         ngx_string("waf_cache"),
-        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE123,
+        NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1234,
         ngx_http_waf_cache_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
         0,

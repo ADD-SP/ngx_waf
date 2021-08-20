@@ -294,19 +294,32 @@ typedef struct ngx_http_waf_ctx_s {
 typedef struct ngx_http_waf_loc_conf_s {
     struct ngx_http_waf_loc_conf_s *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
     u_char                          random_str[129];                            /**< 随机字符串 */
-    ngx_int_t                       waf_verify_bot;
-    ngx_int_t                       waf_verify_bot_type;
-    ngx_array_t                    *waf_verify_bot_google_ua_regexp;
-    ngx_array_t                    *waf_verify_bot_bing_ua_regexp;
-    ngx_array_t                    *waf_verify_bot_baidu_ua_regexp;
-    ngx_array_t                    *waf_verify_bot_yandex_ua_regexp;
-    ngx_array_t                    *waf_verify_bot_google_domain_regexp;
-    ngx_array_t                    *waf_verify_bot_bing_domain_regexp;
-    ngx_array_t                    *waf_verify_bot_baidu_domain_regexp;
-    ngx_array_t                    *waf_verify_bot_yandex_domain_regexp;
+    ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
+    ngx_int_t                       waf;                                        /**< 是否启用本模块 */
+    ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
+    uint64_t                        waf_mode;                                   /**< 检测模式 */
+    ngx_int_t                       waf_cc_deny;                                /**< 是否启用 CC 防护 */
+    ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
+    ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
+    ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
+    ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
+    ngx_int_t                       waf_cache;                                  /**< 是否启用缓存 */
+    ngx_int_t                       waf_cache_capacity;                         /**< 用于缓存检查结果的共享内存的大小（字节） */
+    ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
+    ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
+    ngx_int_t                       waf_verify_bot;                             /**< 0 为关闭，1 为开启但不拦截疑似的假 Bot，2 会拦截疑似的假 Bot */
+    ngx_int_t                       waf_verify_bot_type;                        /**< 位图，表示检测哪些 Bot */
+    ngx_array_t                    *waf_verify_bot_google_ua_regexp;            /**< Googlebot 的合法 User-Agent */
+    ngx_array_t                    *waf_verify_bot_bing_ua_regexp;              /**< Bingbot 的合法 User-Agent */
+    ngx_array_t                    *waf_verify_bot_baidu_ua_regexp;             /**< BaiduSpider 的合法 User-Agent */
+    ngx_array_t                    *waf_verify_bot_yandex_ua_regexp;            /**< Yandexbot 的合法 User-Agent */
+    ngx_array_t                    *waf_verify_bot_google_domain_regexp;        /**< Googlebot 的合法的主机名 */
+    ngx_array_t                    *waf_verify_bot_bing_domain_regexp;          /**< Bingbot 的合法的主机名 */
+    ngx_array_t                    *waf_verify_bot_baidu_domain_regexp;         /**< BaiduSpider 的合法的主机名 */
+    ngx_array_t                    *waf_verify_bot_yandex_domain_regexp;        /**< Yandexbot 的合法的主机名 */
+    ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     size_t                          waf_under_attack_len;                       /**< 五秒盾的 HTML 数据的大小 */
     u_char                         *waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
-    ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */
     ngx_int_t                       waf_captcha_type;                           /**< 验证码的类型 */
     ngx_str_t                       waf_captcha_hCaptcha_secret;                /**< hCaptcha 的 secret */
@@ -317,17 +330,6 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_captcha_expire;                         /**< 验证码的有效期 */
     u_char                         *waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
     size_t                          waf_captcha_html_len;                       /**< 验证码页面的 HTML 数据的大小 */
-    ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
-    ngx_int_t                       waf;                                        /**< 是否启用本模块 */
-    ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
-    uint64_t                        waf_mode;                                   /**< 检测模式 */
-    ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
-    ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
-    ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
-    ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
-    ngx_int_t                       waf_inspection_capacity;                    /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
-    ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
 #if (NGX_HAVE_INET6)
     ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
