@@ -233,32 +233,32 @@
 */
 #define NGX_HTTP_WAF_MODE_INSPECT_REFERER                    (NGX_HTTP_WAF_MODE_INSPECT_COOKIE << 1)
 
-/**
- * @def NGX_HTTP_WAF_MODE_INSPECT_CC
- * @brief 启用 CC 防御
-*/
-#define NGX_HTTP_WAF_MODE_INSPECT_CC                         (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
+// /**
+//  * @def NGX_HTTP_WAF_MODE_INSPECT_CC
+//  * @brief 启用 CC 防御
+// */
+// #define NGX_HTTP_WAF_MODE_INSPECT_CC                         (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
 
 
 /**
  * @def NGX_HTTP_WAF_MODE_INSPECT_ADV
  * @brief 启用高级规则
 */
-#define NGX_HTTP_WAF_MODE_INSPECT_ADV                        (NGX_HTTP_WAF_MODE_INSPECT_CC << 1)
+#define NGX_HTTP_WAF_MODE_INSPECT_ADV                        (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
 
 
-/**
- * @def NGX_HTTP_WAF_MODE_EXTRA_CACHE
- * @brief 启用缓存，但是不缓存 POST 检查。
-*/
-#define NGX_HTTP_WAF_MODE_EXTRA_CACHE                        (NGX_HTTP_WAF_MODE_INSPECT_ADV << 1)
+// /**
+//  * @def NGX_HTTP_WAF_MODE_EXTRA_CACHE
+//  * @brief 启用缓存，但是不缓存 POST 检查。
+// */
+// #define NGX_HTTP_WAF_MODE_EXTRA_CACHE                        (NGX_HTTP_WAF_MODE_INSPECT_ADV << 1)
 
 
 /**
  * @def NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI
  * @brief 启用 libinjection 进行 SQL 注入检查。
 */
-#define NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI                 (NGX_HTTP_WAF_MODE_EXTRA_CACHE << 1)
+#define NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI                 (NGX_HTTP_WAF_MODE_INSPECT_ADV << 1)
 
 
 /**
@@ -317,8 +317,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_ARGS         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
                                                 | NGX_HTTP_WAF_MODE_CMN_METH             \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI)
 /**
  * @def MODE_STATIC
@@ -328,9 +326,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_URL          \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_GET          \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_HEAD         \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE)
+                                                | NGX_HTTP_WAF_MODE_INSPECT_HEAD)
 
 /**
  * @def MODE_DYNAMIC
@@ -343,8 +339,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_COOKIE       \
                                                 | NGX_HTTP_WAF_MODE_CMN_METH             \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI   \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_ADV)
 
@@ -361,8 +355,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_COOKIE       \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_REFERER      \
                                                 | NGX_HTTP_WAF_MODE_ALL_METH             \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_CC           \
-                                                | NGX_HTTP_WAF_MODE_EXTRA_CACHE          \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_ADV          \
                                                 | NGX_HTTP_WAF_MODE_LIB_INJECTION)
 

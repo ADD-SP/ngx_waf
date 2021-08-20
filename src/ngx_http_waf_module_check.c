@@ -128,7 +128,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
     ngx_int_t ip_type = r->connection->sockaddr->sa_family;
     time_t now = time(NULL);
     
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_CC) == NGX_HTTP_WAF_FALSE) {
+    if (loc_conf->waf_cc_deny == 0 || loc_conf->waf_cc_deny == NGX_CONF_UNSET) {
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Because this detection is disabled in the configuration, no detection is performed.");
         ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -757,6 +757,7 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
         *conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
         ngx_http_waf_loc_conf_t* parent = (*conf)->parent;
         while ((*conf)->waf_cc_deny_limit == NGX_CONF_UNSET && parent != NULL) {
+            (*conf)->waf_cc_deny = parent->waf_cc_deny;
             (*conf)->waf_cc_deny_limit = parent->waf_cc_deny_limit;
             (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
             (*conf)->waf_cc_deny_cycle = parent->waf_cc_deny_cycle;
@@ -789,12 +790,12 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     result.is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     result.detail = NULL;
 
-    if (str == NULL || str->data == NULL || str->len == 0 || array == NULL) {
+    if (str == NULL || str->data == NULL || str->len == 0 || array == NULL || array == NGX_CONF_UNSET_PTR) {
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
+    if (   loc_conf->waf_cache == 1
+        && loc_conf->waf_cache_capacity != NGX_CONF_UNSET
         && cache != NULL) {
         lru_cache_find_result_t tmp = lru_cache_find(cache, str->data, sizeof(u_char) * str->len);
         if (tmp.status == NGX_HTTP_WAF_KEY_EXISTS) {
@@ -848,8 +849,8 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         }
     }
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
-        && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
+    if (   loc_conf->waf_cache == 1
+        && loc_conf->waf_cache_capacity != NGX_CONF_UNSET
         && cache != NULL) {
         // lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
         lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char));
