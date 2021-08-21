@@ -32,6 +32,8 @@
 * SQL 注入防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * XSS 攻击防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * 支持 IPV4 和 IPV6。
+* 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。此功能仅限最新的 Current 版本。
+* 支持识别友好爬虫（如 BaiduSpider）并自动放行（基于 User-Agent 和 IP 的识别）。此功能仅限最新的 Current 版本。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间。
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
 * POST 黑名单。
