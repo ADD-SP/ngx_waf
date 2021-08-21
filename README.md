@@ -30,6 +30,8 @@ Handy, High performance Nginx firewall module.
 * Anti SQL injection (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * IPV4 and IPV6 support.
+* Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha). This feature is only available in the latest `Current` version.
+* Support authentication-friendly crawlers (based on user agent and IP identification) to avoid blocking of these crawlers (e.g. GoogleBot). This feature is only available in the latest `Current` version.
 * Anti Challenge Collapsar, it can automatically block malicious IP.
 * Exceptional allow on specific IP address.
 * Block the specified IP address.
