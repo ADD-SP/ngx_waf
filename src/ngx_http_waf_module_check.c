@@ -177,6 +177,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
                 statis->is_blocked = NGX_HTTP_WAF_FALSE;
                 statis->record_time = now;
                 statis->block_time = 0;
+                statis->bad_captcha_count = 0;
 
                 *(tmp1.data) = statis;
             } else {
@@ -187,7 +188,9 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
         double diff_second_record = difftime(now, statis->record_time);
         double diff_second_block = difftime(now, statis->block_time);
 
+        /* 如果已经被拦截 */
         if (statis->is_blocked == NGX_HTTP_WAF_TRUE) {
+            /* 如果还在拦截时间内 */
             if (diff_second_block < duration) {
                 goto matched;
             } else {
@@ -195,8 +198,12 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
                 statis->is_blocked = NGX_HTTP_WAF_FALSE;
                 statis->record_time = now;
                 statis->block_time = 0;
+                statis->bad_captcha_count = 0;
             }
-        } else if (diff_second_record <= loc_conf->waf_cc_deny_cycle) {
+        }
+        /* 如果还在一个统计周期内 */ 
+        else if (diff_second_record <= loc_conf->waf_cc_deny_cycle) {
+            /* 如果访问频率超出限制 */
             if (statis->count > limit) {
                 goto matched;
             } else {
@@ -207,12 +214,55 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
             statis->is_blocked = NGX_HTTP_WAF_FALSE;
             statis->record_time = now;
             statis->block_time = 0;
+            statis->bad_captcha_count = 0;
         }
 
 
         goto unlock;
 
         matched: 
+        {
+            if (loc_conf->waf_cc_deny == 2) {
+                goto captcha;
+            } else {
+                goto block;
+            }
+        }
+
+        captcha:
+        {
+            if (statis->bad_captcha_count >= 3) {
+                goto block;
+            }
+            ngx_int_t temp = (ngx_int_t)ngx_max(loc_conf->waf_cc_deny_limit * 1.2, loc_conf->waf_cc_deny_limit + 20);
+            if (statis->count > temp) {
+                goto block;
+            }
+            switch (ngx_http_waf_captcha_test(r, out_http_status)) {
+                case NGX_HTTP_WAF_BAD:
+                    goto exception;
+                case NGX_HTTP_WAF_CAPTCHA_PASS:
+                    statis->is_blocked = NGX_HTTP_WAF_FALSE;
+                    statis->count = 0;
+                    statis->record_time = now;
+                    statis->block_time = 0;
+                    statis->bad_captcha_count = 0;
+                    ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+                    break;
+                case NGX_HTTP_WAF_CAPTCHA_BAD:
+                    ++(statis->bad_captcha_count);
+                    ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+                    break;
+                case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
+                    ++(statis->count);
+                    *out_http_status = NGX_DECLINED;
+                    ret_value = NGX_HTTP_WAF_MATCHED;
+                    break;
+            }
+            goto unlock;
+        }
+
+        block: 
         {
             if (statis->is_blocked == NGX_HTTP_WAF_FALSE) {
                 statis->is_blocked = NGX_HTTP_WAF_TRUE;
@@ -710,6 +760,12 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (ngx_http_waf_check_flag(r->method, NGX_HTTP_POST) != NGX_HTTP_WAF_TRUE
+    ||  ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB 
+                                                  | NGX_HTTP_WAF_MODE_INSPECT_POST) != NGX_HTTP_WAF_TRUE) {
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
 
     ngx_str_t body_str;
     body_str.data = ctx->req_body.pos;

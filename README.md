@@ -20,7 +20,6 @@ Handy, High performance Nginx firewall module.
 ## Why ngx_waf
 
 * Full-featured: The basic functions of the web application firewall are available.
-* Easy to install: In most cases you can download and use pre-built modules instead of compiling the code.
 * Easy to use: directives are easy to understand and you can probably guess what they mean without reading the documentation.
 * Flexible rules: Provide advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
 * High performance: In more extreme tests, QPS(Queries Per Second) is reduced by about 4% after starting this module. See the documentation for details of the tests.
@@ -30,7 +29,9 @@ Handy, High performance Nginx firewall module.
 * Anti SQL injection (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * IPV4 and IPV6 support.
-* Anti Challenge Collapsar, it can automatically block malicious IP.
+* Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha).
+* Support authentication-friendly crawlers (based on user agent and IP identification) to avoid blocking of these crawlers (e.g. GoogleBot).
+* CC protection, if the request rate exceeds the limit, the IP will be automatically banned for a period of time, or use CAPTCHA to do human identification and allow it if successful.
 * Exceptional allow on specific IP address.
 * Block the specified IP address.
 * Block the specified request body.

@@ -22,7 +22,6 @@
 ## 为什么选择 ngx_waf
 
 * 功能齐全：「网络应用防火墙」的基本功能都有。
-* 安装方便：大多数情况下你可以直接下载使用预构建的模块，而不是编译代码。
 * 使用方便：配置指令简单易懂，不用看文档都能猜到大概是什么意思。
 * 规则灵活：提供高级规则，将动作（如拦截或放行）和多个条件表达式组合起来。
 * 高性能：经过较为极限的测试，启动本模块后 RPS（每秒请求数） 降低约 4%。测试说明和结果见使用文档。
@@ -32,7 +31,9 @@
 * SQL 注入防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * XSS 攻击防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * 支持 IPV4 和 IPV6。
-* CC 防御，超出限制后自动拉黑对应 IP 一段时间。
+* 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。
+* 支持识别友好爬虫（如 BaiduSpider）并自动放行（基于 User-Agent 和 IP 的识别）。
+* CC 防御，超出限制后自动拉黑对应 IP 一段时间或者使用验证码做人机识别。
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
 * POST 黑名单。
 * URL 黑白名单

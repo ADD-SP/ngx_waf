@@ -120,8 +120,8 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cc_deny = 1;
-    } else {
-        loc_conf->waf_cc_deny = 0;
+    } else if (ngx_strncmp(p_str[1].data, "CAPTCHA", ngx_min(p_str[1].len, sizeof("CAPTCHA") - 1)) == 0) {
+        loc_conf->waf_cc_deny = 2;
     }
 
     if (loc_conf->waf_cc_deny == 0) {
@@ -214,6 +214,8 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
+    loc_conf->waf_cache_capacity = 50;
+
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cache = 1;
     } else {
@@ -257,10 +259,6 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         }
 
         utarray_free(array);
-    }
-
-    if (loc_conf->waf_cache_capacity == NGX_CONF_UNSET) {
-        goto error;
     }
 
     if (ngx_http_waf_init_lru_cache(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
@@ -367,14 +365,6 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         loc_conf->waf_captcha = 1;
     } else {
         loc_conf->waf_captcha = 0;
-    }
-
-    if (loc_conf->waf_captcha == 0) {
-        return NGX_CONF_OK;
-    }
-
-    if (cf->args->nelts < 4) {
-        goto error;
     }
 
     for (size_t i = 2; i < cf->args->nelts; i++) {
@@ -487,7 +477,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 ngx_str_set(&loc_conf->waf_captcha_api, "https://www.recaptcha.net/recaptcha/api/siteverify");
                 break;
             default:
-                goto error;
+                break;
         }
     }
 
@@ -546,7 +536,7 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         ngx_http_waf_parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
         ngx_http_waf_parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
         ngx_http_waf_parse_priority("ADV", ngx_http_waf_vm_exec);
-        ngx_http_waf_parse_priority("RBODY", ngx_http_waf_handler_check_black_post);
+        ngx_http_waf_parse_priority("POST", ngx_http_waf_handler_check_black_post);
         ngx_http_waf_parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
         ngx_http_waf_parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
 
@@ -900,6 +890,30 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     if (parent->is_custom_priority == NGX_HTTP_WAF_TRUE
     &&  child->is_custom_priority == NGX_HTTP_WAF_FALSE) {
         ngx_memcpy(child->check_proc, parent->check_proc, sizeof(parent->check_proc));
+    }
+
+    if (parent->waf_cc_deny == 2 
+    && (    parent->waf_captcha_type == 0
+        ||  parent->waf_captcha_html == NULL 
+        ||  parent->waf_captcha_reCAPTCHA_secret.data == NULL
+        ||  parent->waf_captcha_reCAPTCHA_secret.len == 0)) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+            "ngx_waf: if you use the directive [waf_cc_deny CAPTCHA],"
+            "you must set the parameters [prov], [file] and [secret] of the directive [waf_captcha] in the current context or a higher context.\n"
+            "e.g. [waf_captcha off prov=reCAPTCHAv3 file=/path secret=your_secret]");
+        return NGX_CONF_ERROR;
+    }
+
+    if (child->waf_cc_deny == 2 
+    && (    child->waf_captcha_type == 0
+        ||  child->waf_captcha_html == NULL 
+        ||  child->waf_captcha_reCAPTCHA_secret.data == NULL
+        ||  child->waf_captcha_reCAPTCHA_secret.len == 0)) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+            "ngx_waf: if you use the directive [waf_cc_deny CAPTCHA],"
+            "you must set the parameters [prov], [file] and [secret] of the directive [waf_captcha] in the current context or a higher context.\n"
+            "e.g. [waf_captcha off prov=reCAPTCHAv3 file=/path secret=your_secret]");
+        return NGX_CONF_ERROR;
     }
 
     return NGX_CONF_OK;
@@ -1353,6 +1367,7 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->white_referer = NGX_CONF_UNSET_PTR;
     conf->white_ipv4 = NGX_CONF_UNSET_PTR;
     conf->black_ipv4 = NGX_CONF_UNSET_PTR;
+    conf->advanced_rule = NGX_CONF_UNSET_PTR;
 #if (NGX_HAVE_INET6)
     conf->white_ipv6 = NGX_CONF_UNSET_PTR;
     conf->black_ipv6 = NGX_CONF_UNSET_PTR;
@@ -1567,6 +1582,7 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
         conf->white_referer = NGX_CONF_UNSET_PTR;
         conf->white_ipv4 = NGX_CONF_UNSET_PTR;
         conf->black_ipv4 = NGX_CONF_UNSET_PTR;
+        conf->advanced_rule = NGX_CONF_UNSET_PTR;
 #if (NGX_HAVE_INET6)
         conf->white_ipv6 = NGX_CONF_UNSET_PTR;
         conf->black_ipv6 = NGX_CONF_UNSET_PTR;

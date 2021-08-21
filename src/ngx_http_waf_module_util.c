@@ -544,6 +544,11 @@ ngx_int_t ngx_http_waf_http_post(const char* url, char* in, char** out) {
     buf.last = buf.pos;
     buf.memory = 1;
 
+    if (buf.pos == NULL) {
+        *out = NULL;
+        return NGX_HTTP_WAF_FAIL;
+    }
+
     curl_easy_setopt(curl_handle, CURLOPT_URL, url);
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, ngx_http_waf_curl_write_handler);
@@ -554,7 +559,10 @@ ngx_int_t ngx_http_waf_http_post(const char* url, char* in, char** out) {
     CURLcode res = curl_easy_perform(curl_handle);
     ngx_int_t ret = NGX_HTTP_WAF_FAIL;
     if (res != CURLE_OK) {
-        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        *out = malloc(1024);
+        if (*out != NULL) {
+            sprintf(*out, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        }
         free(buf.pos);
         ret = NGX_HTTP_WAF_FAIL;
     } else {

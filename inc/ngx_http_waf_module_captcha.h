@@ -11,4 +11,7 @@
 ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
+ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_status);
+
+
 #endif

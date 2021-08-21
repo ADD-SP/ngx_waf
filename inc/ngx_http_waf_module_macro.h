@@ -44,6 +44,16 @@
 
 #define NGX_HTTP_WAF_FAKE_BOT                (6)
 
+#define NGX_HTTP_WAF_ALLOW                   (7)
+
+#define NGX_HTTP_WAF_CAPTCHA_CHALLENGE       (8)
+
+#define NGX_HTTP_WAF_CAPTCHA_BAD             (9)
+
+#define NGX_HTTP_WAF_CAPTCHA_PASS            (10)
+
+#define NGX_HTTP_WAF_BAD                     (11)
+
 
 #define NGX_HTTP_WAF_HCAPTCHA                (1)
 
