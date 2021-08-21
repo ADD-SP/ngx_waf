@@ -16,8 +16,6 @@ ngx_int_t ngx_http_waf_vm_exec(ngx_http_request_t* r, ngx_int_t* out_http_status
         return ret;
     }
 
-    // ipv4_t client_ipv4;
-
     ngx_str_t* url = &(r->uri);
     if (url->len == 0 || url->data == NULL) {
         url = &s_empty_str;

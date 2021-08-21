@@ -22,45 +22,27 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r, ngx_int_t* out_
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    ngx_int_t rc = _verify_google_bot(r);
-    if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {
-        *out_http_status = loc_conf->waf_http_status;
-        _gen_ctx(r, "GoogleBot");
-        return NGX_HTTP_WAF_MATCHED;   
-    } else if (rc == NGX_HTTP_WAF_SUCCESS) {
-        *out_http_status = NGX_DECLINED;
-        return NGX_HTTP_WAF_MATCHED;
+    #define ngx_http_waf_func(handler, bot) {                                   \
+        ngx_int_t rc = (handler)(r);                                            \
+        if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {     \
+            *out_http_status = loc_conf->waf_http_status;                       \
+            if (_gen_ctx(r, (bot)) != NGX_HTTP_WAF_SUCCESS) {                   \
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;              \
+            }                                                                   \
+            return NGX_HTTP_WAF_MATCHED;                                        \
+        } else if (rc == NGX_HTTP_WAF_SUCCESS) {                                \
+            *out_http_status = NGX_DECLINED;                                    \
+            return NGX_HTTP_WAF_MATCHED;                                        \
+        }                                                                       \
     }
 
-    rc = _verify_bing_bot(r);
-    if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {
-        *out_http_status = loc_conf->waf_http_status;
-        _gen_ctx(r, "BingBot");
-        return NGX_HTTP_WAF_MATCHED;
-    } else if (rc == NGX_HTTP_WAF_SUCCESS) {
-        *out_http_status = NGX_DECLINED;
-        return NGX_HTTP_WAF_MATCHED;
-    }
+    ngx_http_waf_func(_verify_google_bot, "GoogleBot");
+    ngx_http_waf_func(_verify_bing_bot, "BingBot");
+    ngx_http_waf_func(_verify_baidu_spider, "BaiduSpider");
+    ngx_http_waf_func(_verify_yandex_bot, "YandexBot");
 
-    rc = _verify_baidu_spider(r);
-    if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {
-        *out_http_status = loc_conf->waf_http_status;
-        _gen_ctx(r, "BaiduSpider");
-        return NGX_HTTP_WAF_MATCHED;
-    } else if (rc == NGX_HTTP_WAF_SUCCESS) {
-        *out_http_status = NGX_DECLINED;
-        return NGX_HTTP_WAF_MATCHED;
-    }
 
-    rc = _verify_yandex_bot(r);
-    if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {
-        *out_http_status = loc_conf->waf_http_status;
-        _gen_ctx(r, "YandexBot");
-        return NGX_HTTP_WAF_MATCHED;
-    } else if (rc == NGX_HTTP_WAF_SUCCESS) {
-        *out_http_status = NGX_DECLINED;
-        return NGX_HTTP_WAF_MATCHED;
-    }
+    #undef ngx_http_waf_func
 
     return NGX_HTTP_WAF_NOT_MATCHED;
 }

@@ -7,6 +7,10 @@
     <title>Please complete the captcha</title>
     <script src="https://www.recaptcha.net/recaptcha/api.js"></script>
     <script>
+      function onSubmit(token) {
+          document.getElementById("captcha-form").submit();
+      }
+      
       function get_uid() {
         let arr = document.cookie.split("; ");
         for (let i = 0; i < arr.length; i++) {

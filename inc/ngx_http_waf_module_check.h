@@ -15,6 +15,7 @@
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
+#include <ngx_http_waf_module_captcha.h>
 #include <libinjection.h>
 #include <libinjection_sqli.h>
 #include <libinjection_xss.h>

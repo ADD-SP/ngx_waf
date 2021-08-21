@@ -69,6 +69,7 @@ typedef struct circular_doublly_linked_list_s {
 typedef struct ip_statis_s {
     ngx_int_t       count;              /**< 访问次数 */
     ngx_int_t       is_blocked;         /**< 是否已经被拦截 */
+    ngx_int_t       bad_captcha_count;  /**< 验证码验证失败多少次 */
     time_t          record_time;        /**< 何时开始记录 */
     time_t          block_time;         /**< 何时开始拦截 */
 } ip_statis_t;
@@ -298,7 +299,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
     uint64_t                        waf_mode;                                   /**< 检测模式 */
-    ngx_int_t                       waf_cc_deny;                                /**< 是否启用 CC 防护 */
+    ngx_int_t                       waf_cc_deny;                                /**< 0 为关闭，1 超出限制拉黑，2 超出限制弹出验证码三次，三次均失败则拉黑 */
     ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
     ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */

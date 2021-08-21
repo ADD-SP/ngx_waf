@@ -290,6 +290,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             if (is_matched == NGX_HTTP_WAF_MATCHED) {
                 break;
             }
+            http_status = NGX_DECLINED;
         }
     }
 

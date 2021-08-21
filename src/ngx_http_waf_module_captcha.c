@@ -1,5 +1,7 @@
 #include <ngx_http_waf_module_captcha.h>
 
+static ngx_int_t _gen_nocache_header(ngx_http_request_t* r);
+
 static ngx_int_t _gen_pass_ctx(ngx_http_request_t* r);
 
 static ngx_int_t _gen_show_html_ctx(ngx_http_request_t* r);
@@ -11,6 +13,10 @@ static ngx_int_t _gen_challenge_cookie(ngx_http_request_t* r);
 static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, under_attack_info_t* info);
 
 static ngx_int_t _gen_hmac(ngx_http_request_t* r, under_attack_info_t* info);
+
+static ngx_int_t _verify_cookies(ngx_http_request_t* r);
+
+static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r);
 
 static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r);
 
@@ -37,137 +43,105 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
 
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Begin the processing flow.");
-
-    ngx_table_elt_t **ppcookie = (ngx_table_elt_t **)(r->headers_in.cookies.elts);
-    under_attack_info_t* under_attack_client = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
-    under_attack_info_t* under_attack_expect = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
-    ngx_str_t uri = ngx_null_string;
-    uri.data = ngx_pnalloc(r->pool, r->uri.len + 1);
-    ngx_memcpy(uri.data, r->uri.data, r->uri.len);
-    uri.data[r->uri.len] = '\0';
-    uri.len = r->uri.len;
-
-    if (under_attack_client == NULL || under_attack_expect == NULL) {
+    
+    ngx_int_t rc = _verify_cookies(r);
+    if (rc == NGX_HTTP_WAF_BAD) {
         *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
         return NGX_HTTP_WAF_MATCHED;
-    }
-
-    ngx_int_t cookie_count = 0;
-    ngx_memzero(under_attack_client, sizeof(under_attack_info_t));
-    ngx_memzero(under_attack_expect, sizeof(under_attack_info_t));
-
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Start parsing cookies.");
-
-    for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
-        ngx_table_elt_t *native_cookie = *ppcookie;
-        UT_array* cookies = NULL;
-        if (ngx_http_waf_parse_cookie(&(native_cookie->value), &cookies) != NGX_HTTP_WAF_SUCCESS) {
-            continue;
-        }
-
-        ngx_str_t* key = NULL;
-        ngx_str_t* value = NULL;
-        ngx_str_t* p = NULL;
-
-        do {
-            if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
-                break;
+    } else if (rc == NGX_HTTP_WAF_FAIL) {
+        switch (_verify_captcha_dispatcher(r)) {
+            case NGX_HTTP_WAF_BAD:
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                return NGX_HTTP_WAF_MATCHED;
+            case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
+            case NGX_HTTP_WAF_CAPTCHA_BAD:
+                if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    return NGX_HTTP_WAF_BAD;
+                }
+                *out_http_status = NGX_DECLINED;
+                return NGX_HTTP_WAF_MATCHED;
+            case NGX_HTTP_WAF_CAPTCHA_PASS:
+            {
+                under_attack_info_t* info = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
+                if (info == NULL) {
+                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    return NGX_HTTP_WAF_MATCHED;
+                }
+                if (_gen_info(r, info) != NGX_HTTP_WAF_SUCCESS
+                ||  _gen_verify_cookie(r, info) != NGX_HTTP_WAF_SUCCESS
+                ||  _gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS
+                ||  _gen_nocache_header(r) != NGX_HTTP_WAF_SUCCESS)
+                *out_http_status = 204;
+                return NGX_HTTP_WAF_MATCHED;
             }
-
-            if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
-                break;
-            }
-
-            if (ngx_strcmp(key->data, "__waf_captcha_time") == 0) {
-                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Being parsed __waf_captcha_time.");
-                ngx_memcpy(under_attack_client->time, value->data, ngx_min(sizeof(under_attack_client->time) - 1, value->len));
-                ++cookie_count;
-                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Successfully get __waf_captcha_time.");
-            }
-            else if (ngx_strcmp(key->data, "__waf_captcha_uid") == 0) {
-                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Being parsed __waf_captcha_uid.");
-                ngx_memcpy(under_attack_client->uid, value->data, ngx_min(sizeof(under_attack_client->uid) - 1, value->len));
-                ++cookie_count;
-                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Successfully get __waf_captcha_uid.");
-            }
-            else if (ngx_strcmp(key->data, "__waf_captcha_hmac") == 0) {
-                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Being parsed __waf_captcha_hmac.");
-                ngx_memcpy(under_attack_client->hmac, value->data, ngx_min(sizeof(under_attack_client->hmac) - 1, value->len));
-                ++cookie_count;
-                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-                        "ngx_waf_debug: Successfully get __waf_captcha_hmac.");
-            }
-
-        } while (p != NULL);
-
-        utarray_free(cookies);
-    }
-
-
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Successfully parsed all cookies.");
-
-    if (ngx_strcmp(uri.data, "/captcha") == 0 
-    &&  ngx_http_waf_check_flag(r->method, NGX_HTTP_POST) == NGX_HTTP_WAF_TRUE) {
-        ngx_int_t is_valid = NGX_HTTP_WAF_FAIL;
-        switch (loc_conf->waf_captcha_type) {
-            case NGX_HTTP_WAF_HCAPTCHA:
-                is_valid = _verify_hCaptcha(r);
-                break;
-            case NGX_HTTP_WAF_RECAPTCHA_V2:
-                is_valid = _verify_reCAPTCHAv2(r);
-                break;
-            case NGX_HTTP_WAF_RECAPTCHA_V3:
-                is_valid = _verify_reCAPTCHAv3(r);
-                break;
+            case NGX_HTTP_WAF_FAIL:
+                if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    return NGX_HTTP_WAF_BAD;
+                }
+                *out_http_status = NGX_DECLINED;
+                return NGX_HTTP_WAF_MATCHED;
             default:
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_MATCHED;
         }
-        if (is_valid == NGX_HTTP_WAF_SUCCESS) {
-            _gen_info(r, under_attack_expect);
-            _gen_verify_cookie(r, under_attack_expect);
-            _gen_pass_ctx(r);
-            *out_http_status = NGX_HTTP_MOVED_TEMPORARILY;
-            return NGX_HTTP_WAF_MATCHED;
-        }
-    }
-
-    ngx_memcpy(under_attack_expect, under_attack_client, sizeof(under_attack_info_t));
-
-    /* 计算正确的 HMAC */
-    if (_gen_hmac(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
-        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-        return NGX_HTTP_WAF_MATCHED;
-    }
-
-    /* 验证 HMAC 是否正确 */
-    if (ngx_memcmp(under_attack_client, under_attack_expect, sizeof(under_attack_info_t)) != 0) {
-        *out_http_status = NGX_DECLINED;
-        _gen_challenge_cookie(r);
-        _gen_show_html_ctx(r);
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Wrong __waf_captcha_hmac.");
-        return NGX_HTTP_WAF_MATCHED;
-    }
-
-    time_t client_time = ngx_atoi(under_attack_client->time, ngx_strlen(under_attack_client->time));
-    if (difftime(time(NULL), client_time) > loc_conf->waf_captcha_expire) {
-        *out_http_status = NGX_DECLINED;
-        _gen_challenge_cookie(r);
-        _gen_show_html_ctx(r);
-        // ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        //     "ngx_waf_debug: Wrong __waf_captcha_hmac.");
-        return NGX_HTTP_WAF_MATCHED;
     }
 
     return NGX_HTTP_WAF_NOT_MATCHED;
+}
+
+ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    switch (_verify_captcha_dispatcher(r)) {
+        case NGX_HTTP_WAF_BAD:
+            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            return NGX_HTTP_WAF_BAD;
+        case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
+            if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                return NGX_HTTP_WAF_BAD;
+            }
+            return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
+        case NGX_HTTP_WAF_CAPTCHA_BAD:
+            if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                return NGX_HTTP_WAF_BAD;
+            }
+            return NGX_HTTP_WAF_CAPTCHA_BAD;
+        case NGX_HTTP_WAF_CAPTCHA_PASS:
+            if (_gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS || _gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS
+            ||  _gen_nocache_header(r) != NGX_HTTP_WAF_SUCCESS) {
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                return NGX_HTTP_WAF_BAD;
+            }
+            return NGX_HTTP_WAF_CAPTCHA_PASS;
+        case NGX_HTTP_WAF_FAIL:
+            if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                return NGX_HTTP_WAF_BAD;
+            }
+            return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
+        default:
+            return NGX_HTTP_WAF_BAD;
+    }
+}
+
+
+static ngx_int_t _gen_nocache_header(ngx_http_request_t* r) {
+    ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
+    if (header == NULL) {
+            return NGX_HTTP_WAF_FAIL; 
+    }
+    header->hash = 1;
+    header->lowcase_key = (u_char*)"cache-control";
+    ngx_str_set(&header->key, "Cache-control");
+    ngx_str_set(&header->value, "no-store");
+
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
@@ -316,6 +290,150 @@ static ngx_int_t _gen_hmac(ngx_http_request_t *r, under_attack_info_t* info) {
 }
 
 
+static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ngx_table_elt_t **ppcookie = (ngx_table_elt_t **)(r->headers_in.cookies.elts);
+    under_attack_info_t* under_attack_client = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
+    under_attack_info_t* under_attack_expect = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
+
+    if (under_attack_client == NULL || under_attack_expect == NULL) {
+        return NGX_HTTP_WAF_BAD;
+    }
+
+    ngx_int_t cookie_count = 0;
+    ngx_memzero(under_attack_client, sizeof(under_attack_info_t));
+    ngx_memzero(under_attack_expect, sizeof(under_attack_info_t));
+
+    for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
+        ngx_table_elt_t *native_cookie = *ppcookie;
+        UT_array* cookies = NULL;
+        if (ngx_http_waf_parse_cookie(&(native_cookie->value), &cookies) != NGX_HTTP_WAF_SUCCESS) {
+            continue;
+        }
+
+        ngx_str_t* key = NULL;
+        ngx_str_t* value = NULL;
+        ngx_str_t* p = NULL;
+
+        do {
+            if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
+                break;
+            }
+
+            if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
+                break;
+            }
+
+            if (ngx_strcmp(key->data, "__waf_captcha_time") == 0) {
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Being parsed __waf_captcha_time.");
+                ngx_memcpy(under_attack_client->time, value->data, ngx_min(sizeof(under_attack_client->time) - 1, value->len));
+                ++cookie_count;
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Successfully get __waf_captcha_time.");
+            }
+            else if (ngx_strcmp(key->data, "__waf_captcha_uid") == 0) {
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Being parsed __waf_captcha_uid.");
+                ngx_memcpy(under_attack_client->uid, value->data, ngx_min(sizeof(under_attack_client->uid) - 1, value->len));
+                ++cookie_count;
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Successfully get __waf_captcha_uid.");
+            }
+            else if (ngx_strcmp(key->data, "__waf_captcha_hmac") == 0) {
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Being parsed __waf_captcha_hmac.");
+                ngx_memcpy(under_attack_client->hmac, value->data, ngx_min(sizeof(under_attack_client->hmac) - 1, value->len));
+                ++cookie_count;
+                ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+                        "ngx_waf_debug: Successfully get __waf_captcha_hmac.");
+            }
+
+        } while (p != NULL);
+
+        utarray_free(cookies);
+    }
+
+
+    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Successfully parsed all cookies.");
+
+    ngx_memcpy(under_attack_expect, under_attack_client, sizeof(under_attack_info_t));
+
+    /* 计算正确的 HMAC */
+    if (_gen_hmac(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+        // *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+        return NGX_HTTP_WAF_BAD;
+    }
+
+    /* 验证 HMAC 是否正确 */
+    if (ngx_memcmp(under_attack_client, under_attack_expect, sizeof(under_attack_info_t)) != 0) {
+        // *out_http_status = NGX_DECLINED;
+        // _gen_challenge_cookie(r);
+        // _gen_show_html_ctx(r);
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Bad __waf_captcha_hmac");
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    time_t client_time = ngx_atoi(under_attack_client->time, ngx_strlen(under_attack_client->time));
+    if (difftime(time(NULL), client_time) > loc_conf->waf_captcha_expire) {
+        // *out_http_status = NGX_DECLINED;
+        // _gen_challenge_cookie(r);
+        // _gen_show_html_ctx(r);
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Bad __waf_captcha_time");
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    return NGX_HTTP_WAF_SUCCESS;;
+}
+
+
+static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
+
+    ngx_str_t uri = ngx_null_string;
+    uri.data = ngx_pnalloc(r->pool, r->uri.len + 1);
+    if (uri.data == NULL) {
+        return NGX_HTTP_WAF_BAD;
+    }
+    ngx_memcpy(uri.data, r->uri.data, r->uri.len);
+    uri.data[r->uri.len] = '\0';
+    uri.len = r->uri.len;
+
+
+    if (ngx_strcmp(uri.data, loc_conf->waf_captcha_verify_url.data) == 0 
+    &&  ngx_http_waf_check_flag(r->method, NGX_HTTP_POST) == NGX_HTTP_WAF_TRUE) {
+        ngx_int_t is_valid = NGX_HTTP_WAF_FALSE;
+        switch (loc_conf->waf_captcha_type) {
+            case NGX_HTTP_WAF_HCAPTCHA:
+                is_valid = _verify_hCaptcha(r);
+                break;
+            case NGX_HTTP_WAF_RECAPTCHA_V2:
+                is_valid = _verify_reCAPTCHAv2(r);
+                break;
+            case NGX_HTTP_WAF_RECAPTCHA_V3:
+                is_valid = _verify_reCAPTCHAv3(r);
+                break;
+            default:
+                return NGX_HTTP_WAF_BAD;
+        }
+        if (is_valid == NGX_HTTP_WAF_SUCCESS) {
+            return NGX_HTTP_WAF_CAPTCHA_PASS;
+        } else {
+            return NGX_HTTP_WAF_CAPTCHA_BAD;
+        }
+    }
+
+    return NGX_HTTP_WAF_FAIL;
+}
+
+
 static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -344,7 +462,17 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     }
 
     sprintf(in, "response=%s&secret=%s", (char*)(h_captcha_response->value.data), (char*)(secret->data));
-    ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str);
+
+    if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+        if (json_str != NULL) {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
+            free(json_str);
+        } else {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ngx_http_waf_http_post failed");
+        }
+
+        goto hash_map_free;
+    }
 
     cJSON* json_obj = cJSON_Parse(json_str);
     free(json_str);
@@ -412,7 +540,17 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     }
 
     sprintf(in, "response=%s&secret=%s", (char*)(g_captcha_response->value.data), (char*)(secret->data));
-    ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str);
+
+    if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+        if (json_str != NULL) {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
+            free(json_str);
+        } else {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ngx_http_waf_http_post failed");
+        }
+
+        goto hash_map_free;
+    }
 
     cJSON* json_obj = cJSON_Parse(json_str);
     free(json_str);
@@ -480,7 +618,17 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     }
 
     sprintf(in, "response=%s&secret=%s", (char*)(g_captcha_response->value.data), (char*)(secret->data));
-    ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str);
+
+    if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+        if (json_str != NULL) {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
+            free(json_str);
+        } else {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ngx_http_waf_http_post failed");
+        }
+
+        goto hash_map_free;
+    }
 
     cJSON* json_obj = cJSON_Parse(json_str);
     free(json_str);
