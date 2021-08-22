@@ -56,6 +56,10 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
+    if (r->headers_in.user_agent == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
     if (r->headers_in.user_agent->value.data == NULL || r->headers_in.user_agent->value.len == 0) {
         return NGX_HTTP_WAF_FAIL;
     }
@@ -109,6 +113,10 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     if (ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BING_BOT) != NGX_HTTP_WAF_TRUE) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    if (r->headers_in.user_agent == NULL) {
         return NGX_HTTP_WAF_FAIL;
     }
 
@@ -169,6 +177,10 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
+    if (r->headers_in.user_agent == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
     if (r->headers_in.user_agent->value.data == NULL || r->headers_in.user_agent->value.len == 0) {
         return NGX_HTTP_WAF_FAIL;
     }
@@ -222,6 +234,10 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     if (ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_YANDEX_BOT) != NGX_HTTP_WAF_TRUE) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    if (r->headers_in.user_agent == NULL) {
         return NGX_HTTP_WAF_FAIL;
     }
 
