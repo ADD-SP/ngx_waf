@@ -763,6 +763,9 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
+    loc_conf->waf_http_status = 403;
+    loc_conf->waf_http_status_cc = 503;
+
 
     for (size_t i = 1; i < cf->args->nelts; i++) {
         UT_array* array = NULL;
@@ -914,6 +917,18 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
             "you must set the parameters [prov], [file] and [secret] of the directive [waf_captcha] in the current context or a higher context.\n"
             "e.g. [waf_captcha off prov=reCAPTCHAv3 file=/path secret=your_secret]");
         return NGX_CONF_ERROR;
+    }
+
+
+    ngx_conf_merge_value(child->waf_http_status, parent->waf_http_status, 403);
+    ngx_conf_merge_value(child->waf_http_status_cc, parent->waf_http_status_cc, 503);
+
+    if (parent->waf_http_status == NGX_CONF_UNSET) {
+        parent->waf_http_status = 403;
+    }
+
+    if (parent->waf_http_status_cc == NGX_CONF_UNSET) {
+        parent->waf_http_status_cc = 503;
     }
 
     return NGX_CONF_OK;
@@ -1351,8 +1366,8 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
     conf->waf_cache = NGX_CONF_UNSET;
     conf->waf_cache_capacity = NGX_CONF_UNSET;
-    conf->waf_http_status = 403;
-    conf->waf_http_status_cc = 503;
+    conf->waf_http_status = NGX_CONF_UNSET;
+    conf->waf_http_status_cc = NGX_CONF_UNSET;
     conf->shm_zone_cc_deny = NULL;
     conf->ip_access_statistics = NULL;
     conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
