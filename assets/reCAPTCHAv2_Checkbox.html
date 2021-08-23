@@ -20,8 +20,11 @@
         return '';
       }
       var oldUID = get_uid();
+      var flag = true;
       setInterval(function() {
-        if (oldUID !== get_uid()) {
+        var newUID = get_uid();
+        if (oldUID !== newUID && flag && newUID.length == 64) {
+          flag = false;
           location.reload();
         }
       }, 100);
