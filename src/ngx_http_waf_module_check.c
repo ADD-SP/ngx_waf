@@ -270,7 +270,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
             }
 
             ctx->blocked = NGX_HTTP_WAF_TRUE;
-            strcpy((char*)ctx->rule_type, "CC-DNEY");
+            strcpy((char*)ctx->rule_type, "CC-DENY");
             strcpy((char*)ctx->rule_deatils, "");
             *out_http_status = loc_conf->waf_http_status_cc;
             ret_value = NGX_HTTP_WAF_MATCHED;
