@@ -276,27 +276,31 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
             ret_value = NGX_HTTP_WAF_MATCHED;
             time_t remain = duration - (now - statis->block_time);
 
-            ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
-            if (header == NULL) {
-                goto unlock;
+            if (loc_conf->waf_http_status_cc != NGX_HTTP_CLOSE) {
+                ngx_table_elt_t* header = (ngx_table_elt_t*)ngx_list_push(&(r->headers_out.headers));
+                if (header == NULL) {
+                    goto unlock;
+                }
+
+                /* 如果 hash 字段为 0 则会在遍历 HTTP 头的时候被忽略 */
+                header->hash = 1;
+                header->lowcase_key = (u_char*)"Retry-After";
+                ngx_str_set(&header->key, "Retry-After");
+                header->value.data = ngx_palloc(r->pool, NGX_TIME_T_LEN + 1);
+                if (header->value.data == NULL) {
+                    goto unlock;
+                }
+
+                #if (NGX_TIME_T_SIZE == 4)
+                    header->value.len = sprintf((char*)header->value.data, "%d", (int)remain);
+                #elif (NGX_TIME_T_SIZE == 8)
+                    header->value.len = sprintf((char*)header->value.data, "%lld", (long long)remain);
+                #else
+                    #error The size of time_t is unexpected.
+                #endif
             }
 
-            /* 如果 hash 字段为 0 则会在遍历 HTTP 头的时候被忽略 */
-            header->hash = 1;
-            header->lowcase_key = (u_char*)"Retry-After";
-            ngx_str_set(&header->key, "Retry-After");
-            header->value.data = ngx_palloc(r->pool, NGX_TIME_T_LEN + 1);
-            if (header->value.data == NULL) {
-                goto unlock;
-            }
-
-            #if (NGX_TIME_T_SIZE == 4)
-                header->value.len = sprintf((char*)header->value.data, "%d", (int)remain);
-            #elif (NGX_TIME_T_SIZE == 8)
-                header->value.len = sprintf((char*)header->value.data, "%lld", (long long)remain);
-            #else
-                #error The size of time_t is unexpected.
-            #endif
+            
             goto unlock;
         }
         
