@@ -763,9 +763,6 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
-    loc_conf->waf_http_status = 403;
-    loc_conf->waf_http_status_cc = 503;
-
 
     for (size_t i = 1; i < cf->args->nelts; i++) {
         UT_array* array = NULL;
@@ -848,20 +845,24 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
     ngx_conf_merge_ptr_value(child->waf_under_attack_html, parent->waf_under_attack_html, NULL);
     ngx_conf_merge_size_value(child->waf_under_attack_len, parent->waf_under_attack_len, NGX_CONF_UNSET_SIZE);
+    
+    ngx_conf_merge_value(child->waf_captcha, parent->waf_captcha, NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_captcha_html, parent->waf_captcha_html, NULL);
+    ngx_conf_merge_size_value(child->waf_captcha_html_len, parent->waf_captcha_html_len, NGX_CONF_UNSET_SIZE);
     ngx_conf_merge_value(child->waf_captcha_reCAPTCHAv3_score, parent->waf_captcha_reCAPTCHAv3_score, NGX_CONF_UNSET);
 
     if (child->waf_captcha_hCaptcha_secret.data == NULL || child->waf_captcha_hCaptcha_secret.len == 0) {
         ngx_memcpy(&(child->waf_captcha_hCaptcha_secret), &(parent->waf_captcha_hCaptcha_secret), sizeof(ngx_str_t));
     }
 
-    if (child->waf_captcha_reCAPTCHA_secret.data == NULL || child->waf_captcha_reCAPTCHA_secret.len == 0) {
-        ngx_memcpy(&(child->waf_captcha_reCAPTCHA_secret), &(parent->waf_captcha_reCAPTCHA_secret), sizeof(ngx_str_t));
+    if (child->waf_captcha_api.data == NULL || child->waf_captcha_api.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_api), &(parent->waf_captcha_api), sizeof(ngx_str_t));
     }
 
-    ngx_conf_merge_value(child->waf_captcha, parent->waf_captcha, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, NGX_CONF_UNSET);
-    ngx_conf_merge_ptr_value(child->waf_captcha_html, parent->waf_captcha_html, NULL);
-    ngx_conf_merge_size_value(child->waf_captcha_html_len, parent->waf_captcha_html_len, NGX_CONF_UNSET_SIZE);
+    if (child->waf_captcha_verify_url.data == NULL || child->waf_captcha_verify_url.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_verify_url), &(parent->waf_captcha_verify_url), sizeof(ngx_str_t));
+    }
 
     ngx_conf_merge_value(child->waf_verify_bot, parent->waf_verify_bot, NGX_CONF_UNSET);
     ngx_conf_merge_value(child->waf_verify_bot_type, parent->waf_verify_bot_type, NGX_CONF_UNSET);
