@@ -1143,11 +1143,11 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     }
     *h = ngx_http_waf_handler_access_phase;
 
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_CONTENT_PHASE].handlers);
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
-    *h = ngx_http_waf_handler_content_phase;
+    *h = ngx_http_waf_handler_precontent_phase;
 
     ngx_str_t waf_log_name = ngx_string("waf_log");
     ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
