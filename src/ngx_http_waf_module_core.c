@@ -129,7 +129,7 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     return ngx_http_waf_check_all(r, NGX_HTTP_WAF_TRUE);
 }
 
-ngx_int_t ngx_http_waf_handler_content_phase(ngx_http_request_t* r) {
+ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
