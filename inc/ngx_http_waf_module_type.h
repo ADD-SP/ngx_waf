@@ -324,7 +324,8 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */
     ngx_int_t                       waf_captcha_type;                           /**< 验证码的类型 */
     ngx_str_t                       waf_captcha_hCaptcha_secret;                /**< hCaptcha 的 secret */
-    ngx_str_t                       waf_captcha_reCAPTCHA_secret;               /**< Google reCPATCHA 的 secret */
+    ngx_str_t                       waf_captcha_reCAPTCHAv2_secret;               /**< Google reCPATCHA 的 secret */
+    ngx_str_t                       waf_captcha_reCAPTCHAv3_secret;               /**< Google reCPATCHA 的 secret */
     double                          waf_captcha_reCAPTCHAv3_score;              /**< Google reCAPTCHAv3 的下限分数 */
     ngx_str_t                       waf_captcha_api;                            /**< 验证码提供商的 API */
     ngx_str_t                       waf_captcha_verify_url;                     /**< 本模块接管的用于验证的 URL */

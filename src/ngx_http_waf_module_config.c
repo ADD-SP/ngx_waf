@@ -433,9 +433,9 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             ngx_memcpy(loc_conf->waf_captcha_hCaptcha_secret.data, p->data, p->len);
             loc_conf->waf_captcha_hCaptcha_secret.len = p->len;
 
-            loc_conf->waf_captcha_reCAPTCHA_secret.data = ngx_pcalloc(cf->pool, p->len + 1);
-            ngx_memcpy(loc_conf->waf_captcha_reCAPTCHA_secret.data, p->data, p->len);
-            loc_conf->waf_captcha_reCAPTCHA_secret.len = p->len;
+            ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv2_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
+            ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv3_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
+
         } else if (ngx_strcmp("expire", p->data) == 0) {
             p = (ngx_str_t*)utarray_next(array, p);
             loc_conf->waf_captcha_expire = ngx_http_waf_parse_time(p->data);
@@ -847,13 +847,22 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_size_value(child->waf_under_attack_len, parent->waf_under_attack_len, NGX_CONF_UNSET_SIZE);
     
     ngx_conf_merge_value(child->waf_captcha, parent->waf_captcha, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_captcha_type, parent->waf_captcha_type, 0);
+    ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, 60 * 30);
     ngx_conf_merge_ptr_value(child->waf_captcha_html, parent->waf_captcha_html, NULL);
     ngx_conf_merge_size_value(child->waf_captcha_html_len, parent->waf_captcha_html_len, NGX_CONF_UNSET_SIZE);
     ngx_conf_merge_value(child->waf_captcha_reCAPTCHAv3_score, parent->waf_captcha_reCAPTCHAv3_score, NGX_CONF_UNSET);
 
     if (child->waf_captcha_hCaptcha_secret.data == NULL || child->waf_captcha_hCaptcha_secret.len == 0) {
         ngx_memcpy(&(child->waf_captcha_hCaptcha_secret), &(parent->waf_captcha_hCaptcha_secret), sizeof(ngx_str_t));
+    }
+
+    if (child->waf_captcha_reCAPTCHAv2_secret.data == NULL || child->waf_captcha_reCAPTCHAv2_secret.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_reCAPTCHAv2_secret), &(parent->waf_captcha_reCAPTCHAv2_secret), sizeof(ngx_str_t));
+    }
+
+    if (child->waf_captcha_reCAPTCHAv3_secret.data == NULL || child->waf_captcha_reCAPTCHAv3_secret.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_reCAPTCHAv3_secret), &(parent->waf_captcha_reCAPTCHAv3_secret), sizeof(ngx_str_t));
     }
 
     if (child->waf_captcha_api.data == NULL || child->waf_captcha_api.len == 0) {
@@ -899,8 +908,10 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     if (parent->waf_cc_deny == 2 
     && (    parent->waf_captcha_type == 0
         ||  parent->waf_captcha_html == NULL 
-        ||  parent->waf_captcha_reCAPTCHA_secret.data == NULL
-        ||  parent->waf_captcha_reCAPTCHA_secret.len == 0)) {
+        ||  parent->waf_captcha_reCAPTCHAv2_secret.data == NULL
+        ||  parent->waf_captcha_reCAPTCHAv2_secret.len == 0
+        ||  parent->waf_captcha_reCAPTCHAv3_secret.data == NULL
+        ||  parent->waf_captcha_reCAPTCHAv3_secret.len == 0)) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: if you use the directive [waf_cc_deny CAPTCHA],"
             "you must set the parameters [prov], [file] and [secret] of the directive [waf_captcha] in the current context or a higher context.\n"
@@ -911,8 +922,10 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     if (child->waf_cc_deny == 2 
     && (    child->waf_captcha_type == 0
         ||  child->waf_captcha_html == NULL 
-        ||  child->waf_captcha_reCAPTCHA_secret.data == NULL
-        ||  child->waf_captcha_reCAPTCHA_secret.len == 0)) {
+        ||  child->waf_captcha_reCAPTCHAv2_secret.data == NULL
+        ||  child->waf_captcha_reCAPTCHAv2_secret.len == 0
+        ||  child->waf_captcha_reCAPTCHAv3_secret.data == NULL
+        ||  child->waf_captcha_reCAPTCHAv3_secret.len == 0)) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: if you use the directive [waf_cc_deny CAPTCHA],"
             "you must set the parameters [prov], [file] and [secret] of the directive [waf_captcha] in the current context or a higher context.\n"
@@ -1366,6 +1379,7 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_cc_deny_cycle = NGX_CONF_UNSET;
     conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
     conf->waf_cache = NGX_CONF_UNSET;
+    conf->waf_captcha_type = NGX_CONF_UNSET;
     conf->waf_cache_capacity = NGX_CONF_UNSET;
     conf->waf_http_status = NGX_CONF_UNSET;
     conf->waf_http_status_cc = NGX_CONF_UNSET;
