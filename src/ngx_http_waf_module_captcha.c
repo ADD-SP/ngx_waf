@@ -532,7 +532,7 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     }
 
     char* json_str = NULL;
-    ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHA_secret;
+    ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHAv2_secret;
     char* in = ngx_pnalloc(r->pool, g_captcha_response->value.len + secret->len + 64);
 
     if (in == NULL) {
@@ -610,7 +610,7 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     }
 
     char* json_str = NULL;
-    ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHA_secret;
+    ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHAv2_secret;
     char* in = ngx_pnalloc(r->pool, g_captcha_response->value.len + secret->len + 64);
 
     if (in == NULL) {
