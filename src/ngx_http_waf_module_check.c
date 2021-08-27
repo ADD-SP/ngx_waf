@@ -891,7 +891,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
         // lru_cache_manager_add(cache, str->data, str->len * sizeof(u_char), is_matched, rule_detail);
         lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char));
         if (tmp.status == NGX_HTTP_WAF_SUCCESS) {
-            *(tmp.data) = malloc(sizeof(check_result_t));
+            *(tmp.data) = lru_cache_calloc(cache, sizeof(check_result_t));
             ngx_memcpy(*(tmp.data), &result, sizeof(check_result_t));
         }
     }
