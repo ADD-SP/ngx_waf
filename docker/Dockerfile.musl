@@ -25,6 +25,8 @@ RUN set -xe \
             curl \
             gnupg \
             libxslt-dev \
+            libcurl \
+            curl-dev \
             gd-dev \
             python3 \
             py3-pip \
@@ -45,15 +47,6 @@ RUN set -xe \
     &&  ./configure --prefix=/usr/local/src/libsodium --with-pic \
     &&  make -j$(nproc) && make check -j$(nproc) && make install \
     &&  export LIB_SODIUM=/usr/local/src/libsodium \
-    &&  cd .. \
-    &&  wget https://curl.se/download/curl-7.78.0.tar.gz \
-    &&  mkdir curl \
-    &&  tar -zxf curl-7.78.0.tar.gz -C curl --strip-components=1 \
-    &&  cd curl \
-    &&  ./configure --without-ssl --prefix=/usr/local/src/curl/build \
-    &&  make -j $(nproc) \
-    &&  make install \
-    &&  export LIB_CURL=/usr/local/src/curl/build \
     &&  cd .. \
     # &&  lastversion --download="openssl.tar.gz" --at=github openssl \
     # &&  mkdir openssl && tar -zxf "openssl.tar.gz" -C openssl --strip-components=1 \
