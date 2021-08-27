@@ -154,48 +154,51 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         ngx_str_set(&header->key, "Cache-control");
         ngx_str_set(&header->value, "no-store");
 
-        rc = ngx_http_send_header(r);
-        if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
-            return rc;
-        }
-
         if (r->method == NGX_HTTP_HEAD) {
-            return NGX_OK;
-        }
-
-        ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
-        if (buf == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-        }
-
-        u_char* html = NULL;
-        size_t html_len = 0;
-        if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
-            html = loc_conf->waf_under_attack_html;
-            html_len = loc_conf->waf_under_attack_len;
+            rc = ngx_http_send_header(r);
+            if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+                return rc;
+            }
         } else {
-            html = loc_conf->waf_captcha_html;
-            html_len = loc_conf->waf_captcha_html_len;
+            ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+            if (buf == NULL) {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+            }
+
+            u_char* html = NULL;
+            size_t html_len = 0;
+            if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
+                html = loc_conf->waf_under_attack_html;
+                html_len = loc_conf->waf_under_attack_len;
+            } else {
+                html = loc_conf->waf_captcha_html;
+                html_len = loc_conf->waf_captcha_html_len;
+            }
+
+            buf->pos = ngx_pcalloc(r->pool, html_len);
+            if (buf->pos == NULL) {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+            }
+            ngx_memcpy(buf->pos, html, html_len);
+            buf->last = buf->pos + html_len;
+            buf->memory = 1;
+            buf->last_buf = 1;
+
+            ngx_chain_t* out = ngx_pcalloc(r->pool, sizeof(ngx_chain_t));
+            if (out == NULL) {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR; 
+            }
+
+            out->buf = buf;
+            out->next = NULL;
+
+            rc = ngx_http_send_header(r);
+            if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+                return rc;
+            }
+
+            return ngx_http_output_filter(r, out);
         }
-
-        buf->pos = ngx_pcalloc(r->pool, html_len);
-        if (buf->pos == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-        }
-        ngx_memcpy(buf->pos, html, html_len);
-        buf->last = buf->pos + html_len;
-        buf->memory = 1;
-        buf->last_buf = 1;
-
-        ngx_chain_t* out = ngx_pcalloc(r->pool, sizeof(ngx_chain_t));
-        if (out == NULL) {
-            return NGX_HTTP_INTERNAL_SERVER_ERROR; 
-        }
-
-        out->buf = buf;
-        out->next = NULL;
-
-        return ngx_http_output_filter(r, out);
     }
 
     return NGX_DECLINED;
@@ -234,6 +237,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             ctx->checked = NGX_HTTP_WAF_FALSE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
             ctx->under_attack = NGX_HTTP_WAF_FALSE;
+            ctx->captcha = NGX_HTTP_WAF_FALSE;
             ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
             ctx->rule_type[0] = '\0';
             ctx->rule_deatils[0] = '\0';
