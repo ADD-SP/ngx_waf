@@ -123,6 +123,21 @@ lru_cache_find_result_t lru_cache_find(lru_cache_t* lru, void* key, size_t key_l
 }
 
 
+void* lru_cache_calloc(lru_cache_t* lru, size_t size) {
+    assert(lru != NULL);
+    assert(size != 0);
+    return mem_pool_calloc(&lru->pool, size);
+}
+
+
+void lru_cache_free(lru_cache_t* lru, void* addr) {
+    assert(lru != NULL);
+    assert(addr != NULL);
+    assert(addr != NGX_CONF_UNSET_PTR);
+    mem_pool_free(&lru->pool, addr);
+}
+
+
 void lru_cache_delete(lru_cache_t* lru, void* key, size_t key_len) {
     assert(lru != NULL);
     assert(key != NULL);
@@ -134,7 +149,7 @@ void lru_cache_delete(lru_cache_t* lru, void* key, size_t key_len) {
         CDL_DELETE(lru->chain_head, item);
 
         if (item->data != NULL) {
-            mem_pool_free(&lru->pool, item->data);
+            lru_cache_free(lru, item->data);
         }
 
         mem_pool_free(&lru->pool, item->key_ptr);
