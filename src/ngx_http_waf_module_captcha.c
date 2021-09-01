@@ -44,48 +44,59 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Begin the processing flow.");
     
-    ngx_int_t rc = _verify_cookies(r);
-    if (rc == NGX_HTTP_WAF_BAD) {
-        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-        return NGX_HTTP_WAF_MATCHED;
-    } else if (rc == NGX_HTTP_WAF_FAIL) {
-        switch (_verify_captcha_dispatcher(r)) {
-            case NGX_HTTP_WAF_BAD:
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                return NGX_HTTP_WAF_MATCHED;
-            case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
-            case NGX_HTTP_WAF_CAPTCHA_BAD:
-                if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
-                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                    return NGX_HTTP_WAF_BAD;
-                }
-                *out_http_status = NGX_DECLINED;
-                return NGX_HTTP_WAF_MATCHED;
-            case NGX_HTTP_WAF_CAPTCHA_PASS:
-            {
-                under_attack_info_t* info = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
-                if (info == NULL) {
-                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                    return NGX_HTTP_WAF_MATCHED;
-                }
-                if (_gen_info(r, info) != NGX_HTTP_WAF_SUCCESS
-                ||  _gen_verify_cookie(r, info) != NGX_HTTP_WAF_SUCCESS
-                ||  _gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS
-                ||  _gen_nocache_header(r) != NGX_HTTP_WAF_SUCCESS)
-                *out_http_status = 204;
+    switch (_verify_cookies(r)) {
+        case NGX_HTTP_WAF_BAD:
+            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            return NGX_HTTP_WAF_MATCHED;
+        case NGX_HTTP_WAF_SUCCESS:
+            if (r->uri.len == loc_conf->waf_captcha_verify_url.len
+            && ngx_memcmp(r->uri.data, loc_conf->waf_captcha_verify_url.data, r->uri.len) == 0) {
+                *out_http_status = NGX_HTTP_NO_CONTENT;
                 return NGX_HTTP_WAF_MATCHED;
             }
-            case NGX_HTTP_WAF_FAIL:
-                if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+            break;
+        case NGX_HTTP_WAF_FAIL:
+            switch (_verify_captcha_dispatcher(r)) {
+                case NGX_HTTP_WAF_BAD:
                     *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                    return NGX_HTTP_WAF_BAD;
+                    return NGX_HTTP_WAF_MATCHED;
+                case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
+                case NGX_HTTP_WAF_CAPTCHA_BAD:
+                    if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                        return NGX_HTTP_WAF_BAD;
+                    }
+                    *out_http_status = NGX_DECLINED;
+                    return NGX_HTTP_WAF_MATCHED;
+                case NGX_HTTP_WAF_CAPTCHA_PASS:
+                {
+                    under_attack_info_t* info = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
+                    if (info != NULL
+                    &&  _gen_info(r, info) == NGX_HTTP_WAF_SUCCESS
+                    &&  _gen_verify_cookie(r, info) == NGX_HTTP_WAF_SUCCESS
+                    &&  _gen_pass_ctx(r) == NGX_HTTP_WAF_SUCCESS
+                    &&  _gen_nocache_header(r) == NGX_HTTP_WAF_SUCCESS) {
+                        *out_http_status = NGX_HTTP_NO_CONTENT;
+                    } else {
+                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    }
+                    return NGX_HTTP_WAF_MATCHED;
                 }
-                *out_http_status = NGX_DECLINED;
-                return NGX_HTTP_WAF_MATCHED;
-            default:
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                return NGX_HTTP_WAF_MATCHED;
-        }
+                case NGX_HTTP_WAF_FAIL:
+                    if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                        return NGX_HTTP_WAF_BAD;
+                    }
+                    *out_http_status = NGX_DECLINED;
+                    return NGX_HTTP_WAF_MATCHED;
+                default:
+                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    return NGX_HTTP_WAF_MATCHED;
+            }
+            break;
+        default:
+            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            return NGX_HTTP_WAF_MATCHED;
     }
 
     return NGX_HTTP_WAF_NOT_MATCHED;
@@ -389,7 +400,7 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    return NGX_HTTP_WAF_SUCCESS;;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 

@@ -179,6 +179,9 @@ ngx_int_t ngx_http_waf_make_regexp(ngx_pool_t* pool, ngx_str_t str, ngx_regex_el
 ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx_array_t* array);
 
 
+ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r);
+
+
 size_t ngx_http_waf_curl_write_handler(void *contents, size_t size, size_t nmemb, void *userp);
 
 

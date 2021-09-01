@@ -612,6 +612,18 @@ ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx
     return NGX_HTTP_WAF_SUCCESS;
 }
 
+ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
+    ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
+    if (header == NULL) {
+        return NGX_HTTP_WAF_FAIL; 
+    }
+    header->hash = 1;
+    header->lowcase_key = (u_char*)"cache-control";
+    ngx_str_set(&header->key, "Cache-control");
+    ngx_str_set(&header->value, "no-store");
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
 size_t ngx_http_waf_curl_write_handler(void *contents, size_t size, size_t nmemb, void *userp)
 {
     size_t realsize = size * nmemb;

@@ -145,14 +145,9 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         r->headers_out.content_length_n = loc_conf->waf_under_attack_len;
         r->headers_out.status = NGX_HTTP_SERVICE_UNAVAILABLE;
 
-        ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
-        if (header == NULL) {
+        if (ngx_http_waf_gen_no_cache_header(r) != NGX_HTTP_WAF_SUCCESS) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR; 
         }
-        header->hash = 1;
-        header->lowcase_key = (u_char*)"cache-control";
-        ngx_str_set(&header->key, "Cache-control");
-        ngx_str_set(&header->value, "no-store");
 
         if (r->method == NGX_HTTP_HEAD) {
             rc = ngx_http_send_header(r);
