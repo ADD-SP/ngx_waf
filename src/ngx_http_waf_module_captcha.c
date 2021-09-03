@@ -8,8 +8,6 @@ static ngx_int_t _gen_show_html_ctx(ngx_http_request_t* r);
 
 static ngx_int_t _gen_info(ngx_http_request_t* r, under_attack_info_t* info);
 
-static ngx_int_t _gen_challenge_cookie(ngx_http_request_t* r);
-
 static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, under_attack_info_t* info);
 
 static ngx_int_t _gen_hmac(ngx_http_request_t* r, under_attack_info_t* info);
@@ -62,7 +60,7 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
                     return NGX_HTTP_WAF_MATCHED;
                 case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
                 case NGX_HTTP_WAF_CAPTCHA_BAD:
-                    if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                    if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
                         *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                         return NGX_HTTP_WAF_BAD;
                     }
@@ -83,7 +81,7 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
                     return NGX_HTTP_WAF_MATCHED;
                 }
                 case NGX_HTTP_WAF_FAIL:
-                    if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+                    if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
                         *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                         return NGX_HTTP_WAF_BAD;
                     }
@@ -112,26 +110,25 @@ ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_s
             *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
             return NGX_HTTP_WAF_BAD;
         case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
-            if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+            if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_BAD;
             }
             return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
         case NGX_HTTP_WAF_CAPTCHA_BAD:
-            if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+            if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_BAD;
             }
             return NGX_HTTP_WAF_CAPTCHA_BAD;
         case NGX_HTTP_WAF_CAPTCHA_PASS:
-            if (_gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS || _gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS
-            ||  _gen_nocache_header(r) != NGX_HTTP_WAF_SUCCESS) {
+            if (_gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS || _gen_nocache_header(r) != NGX_HTTP_WAF_SUCCESS) {
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_BAD;
             }
             return NGX_HTTP_WAF_CAPTCHA_PASS;
         case NGX_HTTP_WAF_FAIL:
-            if (_gen_challenge_cookie(r) != NGX_HTTP_WAF_SUCCESS || _gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+            if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_BAD;
             }
@@ -198,32 +195,6 @@ static ngx_int_t _gen_info(ngx_http_request_t* r, under_attack_info_t* info) {
     }
 
     return _gen_hmac(r, info);
-}
-
-
-static ngx_int_t _gen_challenge_cookie(ngx_http_request_t* r) {
-     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-    if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
-        return NGX_HTTP_WAF_SUCCESS;
-    }
-
-    ngx_table_elt_t *header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
-    if (header == NULL) {
-        return NGX_HTTP_WAF_FAIL;
-    }
-    header->hash = 1;
-    header->lowcase_key = (u_char*)"set-cookie";
-    ngx_str_set(&header->key, "Set-Cookie");
-    header->value.data = ngx_pnalloc(r->pool, 17 + 64);
-    u_char uid[17];
-    if (ngx_http_waf_rand_str(uid, 16) != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_HTTP_WAF_FAIL;
-    }
-    
-    header->value.len = sprintf((char*)header->value.data, "__waf_captcha_uid=%s; Path=/", uid);
-
-    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
