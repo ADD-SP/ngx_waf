@@ -48,13 +48,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison libcurl4-openssl-dev
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison libcurl4-openssl-dev libmodsecurity-dev  libmodsecurity3
           sudo pip install lastversion
       - name: Download ${{ matrix.nginx-version }}
         run: |
           chmod 777 -R ${{ github.workspace }}
-          sudo make parser
-          sudo git clone https://github.com/libinjection/libinjection.git lib/libinjection
           git clone https://github.com/DaveGamble/cJSON.git lib/cjson
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
@@ -131,7 +129,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       - name: Build module
-        run: docker build --file docker/Dockerfile.${{ matrix.target }} --build-arg=VERSION=${{ matrix.version }} .
+        run: docker build --file docker/Dockerfile.${{ matrix.target }} --build-arg=NGX_VER=${{ matrix.version }} .
   triger:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}

@@ -292,6 +292,7 @@ static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
+    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
     ctx->blocked = NGX_HTTP_WAF_TRUE;
     strcpy((char*)(ctx->rule_type), "FAKE-BOT");
     strcpy((char*)(ctx->rule_deatils), detail);

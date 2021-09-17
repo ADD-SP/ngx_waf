@@ -13,6 +13,20 @@
 #include <ngx_inet.h>
 #include <ngx_http_waf_module_macro.h>
 #include <sodium.h>
+#include <modsecurity/modsecurity.h>
+#include <modsecurity/transaction.h>
+
+#if defined(MODSECURITY_CHECK_VERSION)
+#if MODSECURITY_VERSION_NUM >= 304010
+#define MSC_USE_RULES_SET 1
+#endif
+#endif
+
+#if defined(MSC_USE_RULES_SET)
+#include <modsecurity/rules_set.h>
+#else
+#include <modsecurity/rules.h>
+#endif
 
 
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
@@ -276,6 +290,8 @@ typedef struct ip_trie_s {
  * @brief 每个请求的上下文
 */
 typedef struct ngx_http_waf_ctx_s {
+    ngx_http_request_t*             r;
+    ngx_int_t                       gernal_logged;                              /**< 是否需要记录除 ModSecurity 以外的记录日志 */
     ngx_int_t                       checked;                                    /**< 是否启动了检测流程 */
     ngx_int_t                       blocked;                                    /**< 是否拦截了本次请求 */
     ngx_int_t                       captcha;                                    /**< 是否需要执行验证码 */
@@ -284,7 +300,11 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_buf_t                       req_body;                                   /**< 请求体 */
     u_char                          rule_type[128];                             /**< 触发的规则类型 */
     u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
-    ngx_int_t                       read_body_done;                             /**< 是否已经读取完请求体 */
+    ngx_int_t                       read_body_done;                             /**< 是否已经请求读取请求体 */
+    ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
+    ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
+    Transaction                    *modsecurity_transaction;
+    ModSecurityIntervention        *modsecurity_intervention;
 } ngx_http_waf_ctx_t;
 
 
@@ -332,6 +352,13 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_captcha_expire;                         /**< 验证码的有效期 */
     u_char                         *waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
     size_t                          waf_captcha_html_len;                       /**< 验证码页面的 HTML 数据的大小 */
+    ngx_int_t                       waf_modsecurity;
+    ngx_str_t                       waf_modsecurity_rules_file;
+    ngx_str_t                       waf_modsecurity_rules_remote_key;
+    ngx_str_t                       waf_modsecurity_rules_remote_url;
+    ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
+    ModSecurity                    *modsecurity_instance;
+    void                           *modsecurity_rules;
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
 #if (NGX_HAVE_INET6)
     ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */

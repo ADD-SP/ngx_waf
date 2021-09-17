@@ -574,6 +574,7 @@ ngx_int_t ngx_http_waf_http_post(const char* url, char* in, char** out) {
     return ret;
 }
 
+
 ngx_int_t ngx_http_waf_make_regexp(ngx_pool_t* pool, ngx_str_t str, ngx_regex_elt_t* elt) {
     ngx_regex_compile_t   regex_compile;
     u_char                errstr[NGX_MAX_CONF_ERRSTR];
@@ -598,6 +599,7 @@ ngx_int_t ngx_http_waf_make_regexp(ngx_pool_t* pool, ngx_str_t str, ngx_regex_el
     return NGX_HTTP_WAF_SUCCESS;
 }
 
+
 ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx_array_t* array) {
     for (int i = 0; strv[i] != NULL; i++) {
         ngx_str_t str;
@@ -612,6 +614,7 @@ ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx
     return NGX_HTTP_WAF_SUCCESS;
 }
 
+
 ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
     ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
     if (header == NULL) {
@@ -623,6 +626,22 @@ ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
     ngx_str_set(&header->value, "no-store");
     return NGX_HTTP_WAF_SUCCESS;
 }
+
+
+char* ngx_http_waf_c_str(ngx_str_t* str, ngx_pool_t* pool) {
+    char* ret = NULL;
+
+    if (str->data == NULL || str->len == 0) {
+        return NULL;
+    }
+
+    ret = ngx_pnalloc(pool, str->len + 1);
+    ngx_memcpy(ret, str->data, str->len);
+    ret[str->len] = '\0';
+
+    return ret;
+}
+
 
 size_t ngx_http_waf_curl_write_handler(void *contents, size_t size, size_t nmemb, void *userp)
 {
