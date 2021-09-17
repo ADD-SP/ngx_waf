@@ -40,6 +40,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
             
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
             if (ip_trie_find(loc_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+                ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
                 ctx->blocked = NGX_HTTP_WAF_FALSE;
                 strcpy((char*)ctx->rule_type, "WHITE-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -84,6 +85,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
             
             ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
             if (ip_trie_find(loc_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+                ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV4");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -97,6 +99,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
             inx_addr_t inx_addr;
             ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
             if (ip_trie_find(loc_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
+                ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
                 ctx->blocked = NGX_HTTP_WAF_TRUE;
                 strcpy((char*)ctx->rule_type, "BLACK-IPV6");
                 strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
@@ -269,6 +272,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
                 statis->block_time = now;
             }
 
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             strcpy((char*)ctx->rule_type, "CC-DENY");
             strcpy((char*)ctx->rule_deatils, "");
@@ -351,15 +355,10 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t*
         ngx_array_t* regex_array = loc_conf->white_url;
         lru_cache_t* cache = loc_conf->white_url_inspection_cache;
 
-        ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r,
-                                                            p_uri, 
-                                                            regex_array, 
-                                                            (u_char*)"WHITE-URL", 
-                                                            cache, 
-                                                            NGX_HTTP_WAF_FALSE, 
-                                                            NGX_HTTP_WAF_FALSE);
+        ret_value = ngx_http_waf_regex_exec_arrray(r, p_uri, regex_array, (u_char*)"WHITE-URL", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
             *out_http_status = NGX_DECLINED;
         }
@@ -396,15 +395,10 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t*
         ngx_array_t* regex_array = loc_conf->black_url;
         lru_cache_t* cache = loc_conf->black_url_inspection_cache;
 
-        ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                            p_uri, 
-                                                            regex_array, 
-                                                            (u_char*)"BLACK-URL", 
-                                                            cache, 
-                                                            NGX_HTTP_WAF_TRUE,
-                                                            NGX_HTTP_WAF_FALSE);
+        ret_value = ngx_http_waf_regex_exec_arrray(r, p_uri, regex_array, (u_char*)"BLACK-URL", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = loc_conf->waf_http_status;
         }
@@ -441,13 +435,7 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t
         ngx_array_t* regex_array = loc_conf->black_args;
         lru_cache_t* cache = loc_conf->black_args_inspection_cache;
 
-        ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                            p_args, 
-                                                            regex_array, 
-                                                            (u_char*)"BLACK-ARGS", 
-                                                            cache, 
-                                                            NGX_HTTP_WAF_TRUE,
-                                                            NGX_HTTP_WAF_FALSE);
+        ret_value = ngx_http_waf_regex_exec_arrray(r, p_args, regex_array, (u_char*)"BLACK-ARGS", cache);
 
         if (ret_value != NGX_HTTP_WAF_MATCHED) {
             UT_array* args = NULL;
@@ -461,24 +449,12 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t
                     ngx_str_t* value = NULL;
                     key = (ngx_str_t*)utarray_next(key_value, NULL);
                     value = (ngx_str_t*)utarray_next(key_value, key);
-                    ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                                        key, 
-                                                                        regex_array, 
-                                                                        (u_char*)"BLACK-ARGS", 
-                                                                        cache, 
-                                                                        NGX_HTTP_WAF_TRUE,
-                                                                        NGX_HTTP_WAF_TRUE);
+                    ret_value = ngx_http_waf_regex_exec_arrray(r, key, regex_array, (u_char*)"BLACK-ARGS", cache);
                     if (ret_value == NGX_HTTP_WAF_MATCHED) {
                         break;
                     }
 
-                    ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                                        value, 
-                                                                        regex_array, 
-                                                                        (u_char*)"BLACK-ARGS", 
-                                                                        cache, 
-                                                                        NGX_HTTP_WAF_TRUE,
-                                                                        NGX_HTTP_WAF_TRUE);
+                    ret_value = ngx_http_waf_regex_exec_arrray(r, value, regex_array, (u_char*)"BLACK-ARGS", cache);
 
                     if (ret_value == NGX_HTTP_WAF_MATCHED) {
                         break;
@@ -490,6 +466,7 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t
         }
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = loc_conf->waf_http_status;
         }
@@ -530,15 +507,10 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx
         ngx_array_t* regex_array = loc_conf->black_ua;
         lru_cache_t* cache = loc_conf->black_ua_inspection_cache;
 
-        ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                            p_ua, 
-                                                            regex_array, 
-                                                            (u_char*)"BLACK-UA", 
-                                                            cache, 
-                                                            NGX_HTTP_WAF_FALSE,
-                                                            NGX_HTTP_WAF_FALSE);
+        ret_value = ngx_http_waf_regex_exec_arrray(r, p_ua, regex_array, (u_char*)"BLACK-UA", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = loc_conf->waf_http_status;
         }
@@ -579,15 +551,10 @@ ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_in
         ngx_array_t* regex_array = loc_conf->white_referer;
         lru_cache_t* cache = loc_conf->white_referer_inspection_cache;
 
-        ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                            p_referer, 
-                                                            regex_array, 
-                                                            (u_char*)"WHITE-REFERER", 
-                                                            cache, 
-                                                            NGX_HTTP_WAF_FALSE,
-                                                            NGX_HTTP_WAF_FALSE);
+        ret_value = ngx_http_waf_regex_exec_arrray(r, p_referer, regex_array, (u_char*)"WHITE-REFERER", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
             *out_http_status = NGX_DECLINED;
         }
@@ -629,15 +596,10 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_in
         ngx_array_t* regex_array = loc_conf->black_referer;
         lru_cache_t* cache = loc_conf->black_referer_inspection_cache;
 
-        ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                            p_referer, 
-                                                            regex_array, 
-                                                            (u_char*)"BLACK-REFERER", 
-                                                            cache, 
-                                                            NGX_HTTP_WAF_FALSE,
-                                                            NGX_HTTP_WAF_FALSE);
+        ret_value = ngx_http_waf_regex_exec_arrray(r, p_referer, regex_array, (u_char*)"BLACK-REFERER", cache);
 
         if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_TRUE;
             *out_http_status = loc_conf->waf_http_status;
         }
@@ -702,37 +664,20 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
                 ngx_array_t* regex_array = loc_conf->black_cookie;
                 lru_cache_t* cache = loc_conf->black_cookie_inspection_cache;
 
-                ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                                    &temp, 
-                                                                    regex_array, 
-                                                                    (u_char*)"BLACK-COOKIE", 
-                                                                    cache, 
-                                                                    NGX_HTTP_WAF_TRUE,
-                                                                    NGX_HTTP_WAF_TRUE);
+                ret_value = ngx_http_waf_regex_exec_arrray(r, &temp, regex_array, (u_char*)"BLACK-COOKIE", cache);
 
                 if (ret_value != NGX_HTTP_WAF_MATCHED) {
-                    ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                                        key, 
-                                                                        regex_array, 
-                                                                        (u_char*)"BLACK-COOKIE", 
-                                                                        cache, 
-                                                                        NGX_HTTP_WAF_TRUE,
-                                                                        NGX_HTTP_WAF_TRUE);
+                    ret_value = ngx_http_waf_regex_exec_arrray(r, key, regex_array, (u_char*)"BLACK-COOKIE", cache);
                 }
 
                 if (ret_value != NGX_HTTP_WAF_MATCHED) {
-                    ret_value = ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                                                        value, 
-                                                                        regex_array, 
-                                                                        (u_char*)"BLACK-COOKIE", 
-                                                                        cache, 
-                                                                        NGX_HTTP_WAF_TRUE,
-                                                                        NGX_HTTP_WAF_TRUE);
+                    ret_value = ngx_http_waf_regex_exec_arrray(r, value, regex_array, (u_char*)"BLACK-COOKIE", cache);
                 }
 
                 ngx_pfree(r->pool, temp.data);
                 
                 if (ret_value == NGX_HTTP_WAF_MATCHED) {
+                    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
                     ctx->blocked = NGX_HTTP_WAF_TRUE;
                     *out_http_status = loc_conf->waf_http_status;
                     break;
@@ -766,8 +711,11 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     if (ngx_http_waf_check_flag(r->method, NGX_HTTP_POST) != NGX_HTTP_WAF_TRUE
-    ||  ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB 
-                                                  | NGX_HTTP_WAF_MODE_INSPECT_POST) != NGX_HTTP_WAF_TRUE) {
+    ||  ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB) != NGX_HTTP_WAF_TRUE) {
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    if (ctx->has_req_body == NGX_HTTP_WAF_FALSE) {
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
@@ -775,13 +723,8 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t
     body_str.data = ctx->req_body.pos;
     body_str.len = ctx->req_body.last - ctx->req_body.pos;
 
-    if (ngx_http_waf_regex_exec_arrray_sqli_xss(r, 
-                                            &body_str, 
-                                            loc_conf->black_post, 
-                                            (u_char*)"BLACK-POST", 
-                                            NULL, 
-                                            NGX_HTTP_WAF_TRUE,
-                                            NGX_HTTP_WAF_TRUE) == NGX_HTTP_WAF_MATCHED) {
+    if (ngx_http_waf_regex_exec_arrray(r, &body_str, loc_conf->black_post, (u_char*)"BLACK-POST", NULL) == NGX_HTTP_WAF_MATCHED) {
+        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
         ctx->blocked = NGX_HTTP_WAF_TRUE;
     }
 
@@ -833,15 +776,11 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
 }
 
 
-ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r, 
-                                                        ngx_str_t* str, 
-                                                        ngx_array_t* array, 
-                                                        const u_char* rule_type, 
-                                                        lru_cache_t* cache, 
-                                                        int check_sql_injection,
-                                                        int check_xss) {
-    char s_no_memory[] = "No Memory";
-
+ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r, 
+                                         ngx_str_t* str, 
+                                         ngx_array_t* array, 
+                                         const u_char* rule_type, 
+                                         lru_cache_t* cache) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
@@ -865,46 +804,13 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     }
 
     if (cache_hit != NGX_HTTP_WAF_SUCCESS) {
-        if (check_sql_injection == NGX_HTTP_WAF_TRUE
-            && ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI) == NGX_HTTP_WAF_TRUE) {
-            sfilter sf;
-            libinjection_sqli_init(&sf, 
-                                (char*)(str->data), 
-                                str->len,  
-                                FLAG_NONE | FLAG_QUOTE_NONE | FLAG_QUOTE_SINGLE | FLAG_QUOTE_DOUBLE | FLAG_SQL_ANSI | FLAG_SQL_MYSQL);
-            if (libinjection_is_sqli(&sf) == 1) {
+        ngx_regex_elt_t* p = (ngx_regex_elt_t*)(array->elts);
+        for (size_t i = 0; i < array->nelts; i++, p++) {
+            ngx_int_t rc = ngx_regex_exec(p->regex, str, NULL, 0);
+            if (rc >= 0) {
                 result.is_matched = NGX_HTTP_WAF_MATCHED;
-                result.detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
-                if (result.detail != NULL) {
-                    sprintf((char*)result.detail, "libinjection_sqli - %s", sf.fingerprint);
-                } else {
-                    result.detail = (u_char*)s_no_memory;
-                }
-            }
-        }
-
-        if (check_xss
-            && ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS) == NGX_HTTP_WAF_TRUE) {
-            if (libinjection_xss((char*)(str->data), str->len) == 1) {
-                result.is_matched = NGX_HTTP_WAF_MATCHED;
-                result.detail = ngx_pnalloc(r->pool, sizeof(u_char) * 64);
-                if (result.detail != NULL) {
-                    sprintf((char*)result.detail, "libinjection_xss");
-                } else {
-                    result.detail = (u_char*)s_no_memory;
-                }
-            }
-        }
-
-        if (result.detail == NULL) {
-            ngx_regex_elt_t* p = (ngx_regex_elt_t*)(array->elts);
-            for (size_t i = 0; i < array->nelts; i++, p++) {
-                ngx_int_t rc = ngx_regex_exec(p->regex, str, NULL, 0);
-                if (rc >= 0) {
-                    result.is_matched = NGX_HTTP_WAF_MATCHED;
-                    result.detail = p->name;
-                    break;
-                }
+                result.detail = p->name;
+                break;
             }
         }
     }
@@ -921,8 +827,8 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     }
 
     if (result.is_matched == NGX_HTTP_WAF_MATCHED) {
-        strcpy((char*)ctx->rule_type, (char*)rule_type);
-        strcpy((char*)ctx->rule_deatils, (char*)result.detail);
+        ngx_strcpy(ctx->rule_type, rule_type);
+        ngx_strcpy(ctx->rule_deatils, result.detail);
     }
 
     return result.is_matched;

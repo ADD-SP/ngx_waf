@@ -19,7 +19,6 @@
 #define NGX_HTTP_WAF_WHITE_IPV6_FILE         ("white-ipv6")
 #define NGX_HTTP_WAF_WHITE_URL_FILE          ("white-url")
 #define NGX_HTTP_WAF_WHITE_REFERER_FILE      ("white-referer")
-#define NGX_HTTP_WAF_ADVANCED_FILE           ("advanced")
 
 
 #define NGX_HTTP_WAF_FALSE                   (0)
@@ -53,6 +52,8 @@
 #define NGX_HTTP_WAF_CAPTCHA_PASS            (10)
 
 #define NGX_HTTP_WAF_BAD                     (11)
+
+#define NGX_HTTP_WAF_NEXT_FILTER             (12)
 
 
 #define NGX_HTTP_WAF_HCAPTCHA                (1)
@@ -243,48 +244,6 @@
 */
 #define NGX_HTTP_WAF_MODE_INSPECT_REFERER                    (NGX_HTTP_WAF_MODE_INSPECT_COOKIE << 1)
 
-// /**
-//  * @def NGX_HTTP_WAF_MODE_INSPECT_CC
-//  * @brief 启用 CC 防御
-// */
-// #define NGX_HTTP_WAF_MODE_INSPECT_CC                         (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
-
-
-/**
- * @def NGX_HTTP_WAF_MODE_INSPECT_ADV
- * @brief 启用高级规则
-*/
-#define NGX_HTTP_WAF_MODE_INSPECT_ADV                        (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
-
-
-// /**
-//  * @def NGX_HTTP_WAF_MODE_EXTRA_CACHE
-//  * @brief 启用缓存，但是不缓存 POST 检查。
-// */
-// #define NGX_HTTP_WAF_MODE_EXTRA_CACHE                        (NGX_HTTP_WAF_MODE_INSPECT_ADV << 1)
-
-
-/**
- * @def NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI
- * @brief 启用 libinjection 进行 SQL 注入检查。
-*/
-#define NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI                 (NGX_HTTP_WAF_MODE_INSPECT_ADV << 1)
-
-
-/**
- * @def NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS
- * @brief 启用 libinjection 进行 XSS 检查。
-*/
-#define NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS                  (NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI << 1)
-
-
-/**
- * @def NGX_HTTP_WAF_MODE_LIB_INJECTION
- * @brief 启用 libinjection 进行 SQL 注入检查和 XSS 检查。
-*/
-#define NGX_HTTP_WAF_MODE_LIB_INJECTION                      (NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI \
-                                                            | NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS)
-
 
 /**
  * @def NGX_HTTP_WAF_MODE_CMN_METH
@@ -326,8 +285,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_RB           \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_ARGS         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
-                                                | NGX_HTTP_WAF_MODE_CMN_METH             \
-                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI)
+                                                | NGX_HTTP_WAF_MODE_CMN_METH)
 /**
  * @def MODE_STATIC
  * @brief 适用于静态站点的工作模式
@@ -348,9 +306,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_ARGS         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_COOKIE       \
-                                                | NGX_HTTP_WAF_MODE_CMN_METH             \
-                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI   \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_ADV)
+                                                | NGX_HTTP_WAF_MODE_CMN_METH)
 
 
 /**
@@ -364,9 +320,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_COOKIE       \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_REFERER      \
-                                                | NGX_HTTP_WAF_MODE_ALL_METH             \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_ADV          \
-                                                | NGX_HTTP_WAF_MODE_LIB_INJECTION)
+                                                | NGX_HTTP_WAF_MODE_ALL_METH)
 
 
 /* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */
@@ -421,6 +375,14 @@
 #define ngx_strdup(s) ((u_char*)strdup((char*)(s)));
 
 #define ngx_strcpy(d, s) (strcpy((char*)d, (const char*)s))
+
+#define ngx_http_waf_dp(r, ...) { \
+    if ((r)->connection->log->log_level >= NGX_LOG_DEBUG) { \
+        fprintf(stderr, "ngx_waf_debug: "); \
+        fprintf(stderr, __VA_ARGS__); \
+        fprintf(stderr, " at %s:%s:%d\n", __func__, __FILE__, __LINE__); \
+    } \
+}
 
 
 #endif // !NGX_HTTP_WAF_MODULE_MACRO_H

@@ -2,8 +2,6 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
-extern FILE* ngx_http_waf_in;
-
 char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
         return NGX_CONF_ERROR;
@@ -87,16 +85,10 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         ngx_http_waf_parse_mode("UA", "!UA", NGX_HTTP_WAF_MODE_INSPECT_UA);
         ngx_http_waf_parse_mode("COOKIE", "!COOKIE", NGX_HTTP_WAF_MODE_INSPECT_COOKIE);
         ngx_http_waf_parse_mode("REFERER", "!REFERER", NGX_HTTP_WAF_MODE_INSPECT_REFERER);
-        // ngx_http_waf_parse_mode("CC", "!CC", NGX_HTTP_WAF_MODE_INSPECT_CC);
-        ngx_http_waf_parse_mode("ADV", "!ADV", NGX_HTTP_WAF_MODE_INSPECT_ADV);
         ngx_http_waf_parse_mode("STD", "!STD", NGX_HTTP_WAF_MODE_STD);
         ngx_http_waf_parse_mode("STATIC", "!STATIC", NGX_HTTP_WAF_MODE_STATIC);
         ngx_http_waf_parse_mode("DYNAMIC", "!DYNAMIC", NGX_HTTP_WAF_MODE_DYNAMIC);
         ngx_http_waf_parse_mode("FULL", "!FULL", NGX_HTTP_WAF_MODE_FULL);
-        // ngx_http_waf_parse_mode("CACHE", "!CACHE", NGX_HTTP_WAF_MODE_EXTRA_CACHE);
-        ngx_http_waf_parse_mode("LIB-INJECTION", "!LIB-INJECTION", NGX_HTTP_WAF_MODE_LIB_INJECTION);
-        ngx_http_waf_parse_mode("LIB-INJECTION-SQLI", "!LIB-INJECTION-SQLI", NGX_HTTP_WAF_MODE_LIB_INJECTION_SQLI);
-        ngx_http_waf_parse_mode("LIB-INJECTION-XSS", "!LIB-INJECTION-XSS", NGX_HTTP_WAF_MODE_LIB_INJECTION_XSS);
 
         #undef ngx_http_waf_parse_mode
 
@@ -509,7 +501,7 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 
     if (utarray_len(array) != 15) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-            "ngx_waf: you must specify the priority of all inspections except for POST inspections");
+            "ngx_waf: you must specify the priority of all inspections");
         return NGX_CONF_ERROR;
     }
 
@@ -535,10 +527,10 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         ngx_http_waf_parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
         ngx_http_waf_parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
         ngx_http_waf_parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
-        ngx_http_waf_parse_priority("ADV", ngx_http_waf_vm_exec);
         ngx_http_waf_parse_priority("POST", ngx_http_waf_handler_check_black_post);
         ngx_http_waf_parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
         ngx_http_waf_parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
+        ngx_http_waf_parse_priority("MODSECURITY", ngx_http_waf_handler_modsecurity);
 
         #undef ngx_http_waf_parse_priority
 
@@ -809,6 +801,138 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 }
 
 
+char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+        ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+    if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
+        loc_conf->waf_modsecurity = 1;
+    } else {
+        loc_conf->waf_modsecurity = 0;
+    }
+
+    if (loc_conf->waf_modsecurity == 0) {
+        return NGX_CONF_OK;
+    }
+
+    loc_conf->modsecurity_instance = msc_init();
+    if (loc_conf->modsecurity_instance == NULL) {
+        return "msc_init() failed";
+    }
+
+    msc_set_log_cb(loc_conf->modsecurity_instance, ngx_http_waf_modsecurity_handler_log);
+
+    loc_conf->modsecurity_rules = msc_create_rules_set();
+    if (loc_conf->modsecurity_rules == NULL) {
+        return "msc_create_rules_set() failed";
+    }
+
+    for (size_t i = 2; i < cf->args->nelts; i++) {
+        UT_array* array = NULL;
+        if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
+            goto error;
+        }
+
+        if (utarray_len(array) != 2) {
+            goto error;
+        }
+
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
+
+        if (ngx_strcmp("file", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            char* file = ngx_http_waf_c_str(p, cf->pool);
+            const char* error;
+            if (file == NULL) {
+                goto no_memory;
+            }
+            if (msc_rules_add_file(loc_conf->modsecurity_rules, file, &error) < 0) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+                    "ngx_waf: %s", error);
+                return NGX_CONF_ERROR;
+            }
+            ngx_pfree(cf->pool, file);
+
+        } else if (ngx_strcmp("remote_key", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            loc_conf->waf_modsecurity_rules_remote_key.data = (u_char*)ngx_http_waf_c_str(p, cf->pool);
+            loc_conf->waf_modsecurity_rules_remote_key.len = p->len;
+            if (loc_conf->waf_modsecurity_rules_remote_key.data == NULL) {
+                goto no_memory;
+            }
+        
+        } else if (ngx_strcmp("remote_url", p->data) == 0) {
+            p = (ngx_str_t*)utarray_next(array, p);
+            loc_conf->waf_modsecurity_rules_remote_url.data = (u_char*)ngx_http_waf_c_str(p, cf->pool);
+            loc_conf->waf_modsecurity_rules_remote_url.len = p->len;
+            if (loc_conf->waf_modsecurity_rules_remote_url.data == NULL) {
+                goto no_memory;
+            }
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
+    }
+
+
+    if (loc_conf->waf_modsecurity_rules_remote_key.data != NULL
+     && loc_conf->waf_modsecurity_rules_remote_key.len != 0
+     && loc_conf->waf_modsecurity_rules_remote_url.data != NULL
+     && loc_conf->waf_modsecurity_rules_remote_url.len != 0) {
+        const char* error;
+        if (msc_rules_add_remote(loc_conf->modsecurity_rules, 
+            (char*)loc_conf->waf_modsecurity_rules_remote_key.data,
+            (char*)loc_conf->waf_modsecurity_rules_remote_url.data, &error) < 0) {
+            return strdup(error);
+        }
+    }
+
+
+    return NGX_CONF_OK;
+
+    no_memory:
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: no memory");
+    return NGX_CONF_ERROR;
+
+    error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
+}
+
+
+char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_complex_value_t complex_value;
+    ngx_http_compile_complex_value_t compile_complex_value;
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+
+    ngx_memzero(&compile_complex_value, sizeof(ngx_http_compile_complex_value_t));
+
+    ngx_str_t* value = cf->args->elts;
+    compile_complex_value.cf = cf;
+    compile_complex_value.value = &value[1];
+    compile_complex_value.complex_value = &complex_value;
+    compile_complex_value.zero = 1;
+
+    if (ngx_http_compile_complex_value(&compile_complex_value) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    loc_conf->waf_modsecurity_transaction_id = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+    if (loc_conf->waf_modsecurity_transaction_id == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    *loc_conf->waf_modsecurity_transaction_id = complex_value;
+
+    return NGX_CONF_OK;
+
+}
+
+
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     return ngx_http_waf_init_conf(cf);
 }
@@ -898,6 +1022,24 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->black_cookie_inspection_cache, parent->black_cookie_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->white_url_inspection_cache, parent->white_url_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->white_referer_inspection_cache, parent->white_referer_inspection_cache, NULL);
+
+
+    ngx_conf_merge_value(child->waf_modsecurity, parent->waf_modsecurity, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->modsecurity_instance, parent->modsecurity_instance, NULL);
+    ngx_conf_merge_ptr_value(child->modsecurity_rules, parent->modsecurity_rules, NULL);
+    ngx_conf_merge_ptr_value(child->waf_modsecurity_transaction_id, parent->waf_modsecurity_transaction_id, NULL);
+    
+    if (child->waf_modsecurity_rules_file.data == NULL || child->waf_modsecurity_rules_file.len == 0) {
+        ngx_memcpy(&(child->waf_modsecurity_rules_file), &(parent->waf_modsecurity_rules_file), sizeof(ngx_str_t));
+    }
+
+    if (child->waf_modsecurity_rules_remote_key.data == NULL || child->waf_modsecurity_rules_remote_key.len == 0) {
+        ngx_memcpy(&(child->waf_modsecurity_rules_remote_key), &(parent->waf_modsecurity_rules_remote_key), sizeof(ngx_str_t));
+    }
+
+    if (child->waf_modsecurity_rules_remote_url.data == NULL || child->waf_modsecurity_rules_remote_url.len == 0) {
+        ngx_memcpy(&(child->waf_modsecurity_rules_remote_url), &(parent->waf_modsecurity_rules_remote_url), sizeof(ngx_str_t));
+    }
 
 
     if (parent->is_custom_priority == NGX_HTTP_WAF_TRUE
@@ -1162,6 +1304,16 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     }
     *h = ngx_http_waf_handler_precontent_phase;
 
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+    *h = ngx_http_waf_handler_log_phase;
+
+    ngx_http_waf_header_filter_init();
+    ngx_http_waf_body_filter_init();
+
+
     ngx_str_t waf_log_name = ngx_string("waf_log");
     ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
     waf_log->get_handler = ngx_http_waf_log_get_handler;
@@ -1216,11 +1368,7 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
     }
 
     if (mode == 3) {
-        ngx_http_waf_in = fp;
-        if (ngx_http_waf_parse(container, cf->pool) != 0) {
-            return NGX_HTTP_WAF_FAIL;
-        }
-        // print_code(container);
+
     } else {
         while (fgets(str, NGX_HTTP_WAF_RULE_MAX_LEN - 16, fp) != NULL) {
             ngx_regex_compile_t   regex_compile;
@@ -1383,7 +1531,13 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->waf_cache_capacity = NGX_CONF_UNSET;
     conf->waf_http_status = NGX_CONF_UNSET;
     conf->waf_http_status_cc = NGX_CONF_UNSET;
-    conf->shm_zone_cc_deny = NULL;
+    conf->waf_modsecurity = NGX_CONF_UNSET;
+    conf->waf_modsecurity_transaction_id = NGX_CONF_UNSET_PTR;
+    conf->modsecurity_instance = NGX_CONF_UNSET_PTR;
+    conf->modsecurity_rules = NGX_CONF_UNSET_PTR;
+    ngx_str_null(&conf->waf_modsecurity_rules_file);
+    ngx_str_null(&conf->waf_modsecurity_rules_remote_key);
+    ngx_str_null(&conf->waf_modsecurity_rules_remote_url);
     conf->ip_access_statistics = NULL;
     conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
 
@@ -1416,8 +1570,8 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->check_proc[10] = ngx_http_waf_handler_check_white_referer;
     conf->check_proc[11] = ngx_http_waf_handler_check_black_referer;
     conf->check_proc[12] = ngx_http_waf_handler_check_black_cookie;
-    conf->check_proc[13] = ngx_http_waf_vm_exec;
-    conf->check_proc[14] = ngx_http_waf_handler_check_black_post;
+    conf->check_proc[13] = ngx_http_waf_handler_check_black_post;
+    conf->check_proc[14] = ngx_http_waf_handler_modsecurity;
 
     return conf;
 }
@@ -1503,7 +1657,6 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* co
 #endif
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, conf->white_url, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, conf->white_referer, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ADVANCED_FILE, conf->advanced_rule, 3);
     
 
     ngx_pfree(cf->pool, full_path);

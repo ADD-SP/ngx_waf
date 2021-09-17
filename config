@@ -12,9 +12,7 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_captcha.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_verify_bot.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_vm.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_lexer.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_parser.tab.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_modsecurity.h \
     $ngx_addon_dir/lib/cjson/cJSON.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
@@ -26,13 +24,8 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_under_attack.c \
     $ngx_addon_dir/src/ngx_http_waf_module_captcha.c \
     $ngx_addon_dir/src/ngx_http_waf_module_verify_bot.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_modsecurity.c \
     $ngx_addon_dir/src/ngx_http_waf_module_util.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_vm.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_lexer.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_parser.tab.c \
-    $ngx_addon_dir/lib/libinjection/src/libinjection_html5.c \
-    $ngx_addon_dir/lib/libinjection/src/libinjection_sqli.c \
-    $ngx_addon_dir/lib/libinjection/src/libinjection_xss.c \
     $ngx_addon_dir/lib/cjson/cJSON.c"
 
 
@@ -40,85 +33,44 @@ ngx_http_waf_module_libs=""
 
 ngx_http_waf_module_inc_path="$ngx_addon_dir/inc $ngx_addon_dir/lib"
 
-which flex
-if [ $? -ne 0 ] ; then
+
+# Check if the modsecurity library is installed.
+if [ -n "$LIB_MODSECURITY" ] ; then
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_MODSECURITY}/lib -l modsecurity "
+    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} -I ${LIB_MODSECURITY}/include  "
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l modsecurity "
+fi
+
+ngx_feature="modsecurity library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs=$(cat << END
+#include <modsecurity/modsecurity.h>
+#include <modsecurity/transaction.h>
+#if defined(MSC_USE_RULES_SET)
+#include <modsecurity/rules_set.h>
+#else
+#include <modsecurity/rules.h>
+#endif
+END
+)
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    PWD=$(pwd)
     cat << END
-
-$0: error: the $ngx_addon_name module requires the flex.
-
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
 Please run:
     On Ubuntu or Debian: 
-        apt-get update && apt-get install --yes flex
-    On CentOS 7:
-        yum -y install flex
-    On Centos 8 or Fedora 33 or Fedora 34:
-        dnf install flex
-    On Alpine:
-        apk update && apk add --upgrade flex
-    On Arch:
-        1. Enable the core repository on /etc/pacman.conf:
-            [core]
-            Include = /etc/pacman.d/mirrorlist
-        2. Install flex xz package:
-            pacman -Syu flex
-    On FreeBSD 12 or FreeBSD 13:
-        pkg install flex
+            apt-get update && apt-get install --yes libmodsecurity3 libmodsecurity-dev
 END
-    exit 1
-
-fi
-
-which bison
-if [ $? -ne 0 ] ; then
-    cat << END
-
-$0: error: the $ngx_addon_name module requires the bison.
-
-Please run:
-    On Ubuntu or Debian: 
-        apt-get update && apt-get install --yes bison
-    On CentOS 7:
-        yum -y install bison
-    On Centos 8 or Fedora 33 or Fedora 34:
-        dnf install bison
-    On Alpine:
-        apk update && apk add --upgrade bison
-    On Arch:
-        1. Enable the core repository on /etc/pacman.conf:
-            [core]
-            Include = /etc/pacman.d/mirrorlist
-        2. Install flex xz package:
-            pacman -Syu bison
-    On FreeBSD 12 or FreeBSD 13:
-        pkg install bison
-
-END
-    exit 1
-
-fi
-
-is_gen='true'
-
-if [ ! -e  "${ngx_addon_dir}/inc/ngx_http_waf_module_lexer.h" ] ; then
-    is_gen='false'
-elif [ ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_lexer.c" ] ; then
-    is_gen='false'
-elif [ ! -e "${ngx_addon_dir}/inc/ngx_http_waf_module_parser.tab.h" ] ; then
-    is_gen='false'
-elif [ ! -e "${ngx_addon_dir}/src/ngx_http_waf_module_parser.tab.c" ] ; then
-    is_gen='false'
-fi
-
-if [ $is_gen != 'true' ] ; then
-    cat << END
-
-$0: error: the $ngx_addon_name module requires the following command to be run to generate the necessary files.
-
-    cd $ngx_addon_dir && make && cd $(pwd)
-
-END
+    PWD=''
     exit 1
 fi
+
 
 if [ -n "$LIB_CURL" ] ; then
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib -l curl "
@@ -257,37 +209,6 @@ END
 fi
 
 
-ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${ngx_addon_dir}/lib/libinjection/src"
-
-
-# Check if libinjection exists.
-ngx_feature="injection library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs=$(cat << END
-
-#include <libinjection.h>
-#include <libinjection_sqli.h>
-#include <libinjection_xss.h>
-
-END
-)
-
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-
-Please run cd $ngx_addon_dir && git clone https://github.com/libinjection/libinjection.git lib/libinjection && cd $PWD
-
-END
-    PWD=''
-    exit 1
-fi
 
 if [ -n "$LIB_SODIUM" ] ;  then
     ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_SODIUM}/include"
@@ -295,6 +216,7 @@ if [ -n "$LIB_SODIUM" ] ;  then
 else
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium "
 fi
+
 
 # Check if libsodium exists.
 ngx_feature="sodium library"
@@ -342,22 +264,17 @@ ngx_feature_test=
 
 
 if test -n "$ngx_module_link"; then
-    ngx_module_type=HTTP
+    ngx_module_type=HTTP_AUX_FILTER
     ngx_module_name=$ngx_addon_name
     ngx_module_deps=$deps
     ngx_module_incs=$ngx_http_waf_module_inc_path
     ngx_module_srcs=$srcs
     ngx_module_libs=$ngx_http_waf_module_libs
-    
-    # Let ngx_http_access_module initialize before this module,
-    # so that this module can take effect after ngx_http_access_module,
-    # because the initialization order and the effective order are reversed.
-    ngx_module_order="${ngx_addon_name} ngx_http_access_module"
 
     . auto/module
 else
-    HTTP_MODULES="$HTTP_MODULES ${ngx_addon_name}"
-    HTTP_DEPS-"$HTTP_DEPS $deps"
+    HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ${ngx_addon_name}"
+    NGX_ADDON_DEPS-"$NGX_ADDON_DEPS $deps"
     HTTP_INCS="$HTTP_INCS -I $ngx_addon_dir/inc $ngx_addon_dir/inc/libinjection/src"
     NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
 fi

@@ -48,6 +48,12 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
 
 
 /**
+ * @brief NGX_HTTP_LOG_PHASE 阶段的处理函数
+*/
+ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r);
+
+
+/**
  * @brief 执行全部的检查项目
  * @param r 本次要处理的请求
  * @param is_check_cc 是否执行 CC 防护逻辑
@@ -56,9 +62,6 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
  * @retval NGX_DONE 将在其它地方进行检查，通常是因为执行了 POST 检测
 */
 ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc);
-
-
-void ngx_http_waf_read_request_body(ngx_http_request_t* r);
 
 
 void ngx_http_waf_handler_cleanup(void *data);

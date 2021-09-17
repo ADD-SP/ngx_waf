@@ -157,6 +157,7 @@ static ngx_int_t _gen_pass_ctx(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     
+    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
     ctx->blocked = NGX_HTTP_WAF_FALSE;
     ctx->captcha = NGX_HTTP_WAF_FALSE;
     strcpy((char*)ctx->rule_type, "CAPTCHA");
@@ -170,6 +171,7 @@ static ngx_int_t _gen_show_html_ctx(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     
+    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
     ctx->blocked = NGX_HTTP_WAF_TRUE;
     ctx->captcha = NGX_HTTP_WAF_TRUE;
     strcpy((char*)ctx->rule_type, "CAPTCHA");

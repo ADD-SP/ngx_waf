@@ -19,9 +19,7 @@
 #include <ngx_http_waf_module_under_attack.h>
 #include <ngx_http_waf_module_captcha.h>
 #include <ngx_http_waf_module_verify_bot.h>
-#include <ngx_http_waf_module_parser.tab.h>
-#include <ngx_http_waf_module_lexer.h>
-#include <ngx_http_waf_module_vm.h>
+#include <ngx_http_waf_module_modsecurity.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
@@ -30,6 +28,8 @@
 ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
+
+ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r);
 
 /**
  * @defgroup config 配置读取和处理模块
@@ -97,6 +97,18 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
  * @brief 读取配置项 waf_http_status，该项用来设置返回的状态码。
 */
 char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
+ * @brief 读取配置项 waf_modsecurity，该项用来设置 Modsecurity 的参数。
+*/
+char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
+ * @brief 读取配置项 waf_modsecurity_transaction_id，该项用来设置 Modsecurity 的事务 ID。
+*/
+char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**
