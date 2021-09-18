@@ -36,10 +36,10 @@ ngx_http_waf_module_inc_path="$ngx_addon_dir/inc $ngx_addon_dir/lib"
 
 # Check if the modsecurity library is installed.
 if [ -n "$LIB_MODSECURITY" ] ; then
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_MODSECURITY}/lib -l modsecurity "
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_MODSECURITY}/lib -Wl,-rpath,/usr/local/modsecurity/lib:${LIB_MODSECURITY}/lib -l modsecurity "
     ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_MODSECURITY}/include"
 else
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l modsecurity "
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -Wl,-rpath,/usr/local/modsecurity/lib -l modsecurity "
 fi
 
 ngx_feature="modsecurity library"
