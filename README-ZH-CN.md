@@ -19,6 +19,15 @@
 
 方便且高性能的 Nginx 防火墙模块。
 
+## 为什么选择 ngx_waf
+
+* 基础防护：如 IP 或 IP 网段的黑白名单、URI 黑白名单和请求体黑名单等。
+* 使用简单：配置文件和规则文件书写简单，可读性强。
+* 高性能：使用高效的 IP 检查算法和缓存机制。
+* 高级防护：兼容 ModSecurity 的规则，你可以使用 OWASP 的核心规则库。
+* 友好爬虫验证：支持验证 Google、Bing、Baidu 和 Yandex 的爬虫并自动放行，避免错误拦截。
+* 验证码：支持三种验证码：hCaptcha、reCAPTCHAv2 和 reCAPTCHAv3。
+
 ## 功能
 
 * 兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity) 的规则。

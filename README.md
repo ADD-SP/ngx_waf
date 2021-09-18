@@ -17,6 +17,15 @@ English | [简体中文](README-ZH-CN.md)
 
 Handy, High performance Nginx firewall module.
 
+## Why ngx_waf
+
+* Basic protection: such as black and white list of IPs or IP range, uri black and white list, and request body black list, etc.
+* Easy to use: configuration files and rule files are easy to write and readable.
+* High performance: Efficient algorithms and caching.
+* Advanced protection: Compatible with ModSecurity's rules, you can use OWASP ModSecurity Core Rule Set.
+* Friendly crawler verification: Supports verifying Google, Bing, Baidu and Yandex crawlers and allowing them automatically to avoid false positives.
+* Captcha: Supports three kinds of captchas: hCaptcha, reCAPTCHAv2 and reCAPTCHAv3.
+
 ## Features
 
 * Rules that are compatible with [ModSecurity](https://github.com/SpiderLabs/ModSecurity).
