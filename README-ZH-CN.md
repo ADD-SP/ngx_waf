@@ -19,17 +19,9 @@
 
 方便且高性能的 Nginx 防火墙模块。
 
-## 为什么选择 ngx_waf
-
-* 功能齐全：「网络应用防火墙」的基本功能都有。
-* 使用方便：配置指令简单易懂，不用看文档都能猜到大概是什么意思。
-* 规则灵活：提供高级规则，将动作（如拦截或放行）和多个条件表达式组合起来。
-* 高性能：经过较为极限的测试，启动本模块后 RPS（每秒请求数） 降低约 4%。测试说明和结果见使用文档。
-
 ## 功能
 
-* SQL 注入防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
-* XSS 攻击防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
+* 兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity) 的规则。
 * 支持 IPV4 和 IPV6。
 * 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。
 * 支持识别友好爬虫（如 BaiduSpider）并自动放行（基于 User-Agent 和 IP 的识别）。
@@ -41,7 +33,6 @@
 * UserAgent 黑名单。
 * Cookie 黑名单。
 * Referer 黑白名单。
-* 高级规则，将动作（如拦截或放行）和多个条件表达式组合起来。
 
 ## 使用文档
 
@@ -53,7 +44,7 @@
 
 * Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)
 * Telegram 群组（英文）: [https://t.me/group_ngx_waf](https://t.me/group_ngx_waf)
-* Telegram 群主（中文）：[https://t.me/group_ngx_waf_cn](https://t.me/group_ngx_waf_cn)
+* Telegram 群组（中文）：[https://t.me/group_ngx_waf_cn](https://t.me/group_ngx_waf_cn)
 
 ## 开源许可证
 
@@ -61,6 +52,7 @@
 
 ## 感谢
 
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity)：开源且跨平台的 WAF 引擎。
 * [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
 * [libcurl](https://curl.se/libcurl/)：支持多种协议文件传输库。
 * [cJSON](https://github.com/DaveGamble/cJSON)：C 语言的轻量级 JSON 解析库。

@@ -17,17 +17,9 @@ English | [简体中文](README-ZH-CN.md)
 
 Handy, High performance Nginx firewall module.
 
-## Why ngx_waf
-
-* Full-featured: The basic functions of the web application firewall are available.
-* Easy to use: directives are easy to understand and you can probably guess what they mean without reading the documentation.
-* Flexible rules: Provide advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
-* High performance: In more extreme tests, QPS(Queries Per Second) is reduced by about 4% after starting this module. See the documentation for details of the tests.
-
 ## Features
 
-* Anti SQL injection (powered by [libinjection](https://github.com/libinjection/libinjection)).
-* Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
+* Rules that are compatible with [ModSecurity](https://github.com/SpiderLabs/ModSecurity).
 * IPV4 and IPV6 support.
 * Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha).
 * Support authentication-friendly crawlers (based on user agent and IP identification) to avoid blocking of these crawlers (e.g. GoogleBot).
@@ -42,7 +34,6 @@ Handy, High performance Nginx firewall module.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.
 * Block the specified Referer.
-* Advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
 
 ## Docs
 
@@ -62,6 +53,7 @@ Handy, High performance Nginx firewall module.
 
 ## Thanks
 
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity): An open source, cross platform web application firewall (WAF) engine.
 * [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
 * [libcurl](https://curl.se/libcurl/): The multiprotocol file transfer library .
 * [cJSON](https://github.com/DaveGamble/cJSON): Ultralightweight JSON parser in ANSI C.
