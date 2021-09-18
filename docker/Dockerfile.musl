@@ -44,11 +44,10 @@ RUN set -xe \
     &&  pip3 install lastversion
 
 RUN set -xe \
-    &&  cd ngx_waf \
-    &&  git clone https://github.com/DaveGamble/cJSON.git lib/cjson
+    &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git ngx_waf/lib/cjson
 
 RUN set -xe \
-    &&  git clone https://github.com/troydhanson/uthash.git uthash
+    &&  git clone -b v2.3.0 https://github.com/troydhanson/uthash.git ngx_waf/lib/uthash
 
 RUN set -xe \
     &&  git clone https://github.com/jedisct1/libsodium.git --branch ${LIB_SODIUM_VER} libsodium \
@@ -84,7 +83,6 @@ RUN set -xe \
     &&  tar -zxf "nginx.tar.gz" -C nginx --strip-components=1
 
 RUN set -xe \
-    &&  export LIB_UTHASH=/usr/local/src/uthash \
     &&  export LIB_SODIUM=/usr/local/libsodium \
     &&  export LIB_MODSECURITY=/usr/local/ModSecurity \
     &&  cd nginx \

@@ -37,7 +37,7 @@ ngx_http_waf_module_inc_path="$ngx_addon_dir/inc $ngx_addon_dir/lib"
 # Check if the modsecurity library is installed.
 if [ -n "$LIB_MODSECURITY" ] ; then
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_MODSECURITY}/lib -l modsecurity "
-    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} -I ${LIB_MODSECURITY}/include  "
+    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_MODSECURITY}/include"
 else
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l modsecurity "
 fi
@@ -74,7 +74,7 @@ fi
 
 if [ -n "$LIB_CURL" ] ; then
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib -l curl "
-    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} -I ${LIB_CURL}/include  "
+    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_CURL}/include"
 else
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l curl "
 fi
@@ -131,7 +131,7 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 Please run:
         cd $ngx_addon_dir \\
-    &&  git clone https://github.com/DaveGamble/cJSON.git lib/cjson
+    &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
     &&  cd $PWD
 END
     PWD=''
@@ -139,18 +139,20 @@ END
 fi
 
 
-
-if [ -n "$LIB_UTHASH" ] ;  then
-    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
-fi
-
+ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${ngx_addon_dir}/lib/uthash/include"
 
 # Check if the uthash library is installed.
 ngx_feature="uthash library"
 ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs="#include <utstack.h>"
+ngx_feature_incs=$(cat << END
+#include <uthash.h>
+#include <utarray.h>
+#include <utlist.h>
+#include <utstack.h>
+END
+)
 ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
@@ -160,9 +162,8 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 
 Please run:
-            cd /usr/local/src \\
-        &&  git clone https://github.com/troydhanson/uthash.git \\
-        &&  export LIB_UTHASH=/usr/local/src/uthash \\
+            cd $ngx_addon_dir \\
+        &&  git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash \\
         &&  cd $PWD
 
 END

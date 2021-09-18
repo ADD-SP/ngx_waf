@@ -48,12 +48,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison libcurl4-openssl-dev libmodsecurity-dev  libmodsecurity3
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev libmodsecurity-dev  libmodsecurity3
           sudo pip install lastversion
       - name: Download ${{ matrix.nginx-version }}
         run: |
           chmod 777 -R ${{ github.workspace }}
-          git clone https://github.com/DaveGamble/cJSON.git lib/cjson
+          git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
+          git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
           else  \
