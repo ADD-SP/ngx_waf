@@ -6,6 +6,8 @@
 #ifndef NGX_HTTP_WAF_MODULE_MACRO_H
 #define NGX_HTTP_WAF_MODULE_MACRO_H
 
+#define NGX_HTTP_WAF_VERSION "v9.0.0"
+
 /* 对应配置文件的文件名 */
 #define NGX_HTTP_WAF_IPV4_FILE               ("ipv4")
 #define NGX_HTTP_WAF_IPV6_FILE               ("ipv6")
@@ -382,13 +384,13 @@
 #ifndef NGX_HTTP_WAF_NO_DEBUG
 #define ngx_http_waf_dp(r, str) { \
     ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
-        "ngx_waf_debug: ["str"] at %s:%s:%d", __func__, __FILE__, __LINE__); \
+        "ngx_waf_debug: ["str"] at %s:%s:%d, ngx_waf %s", __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
 }
 
 
 #define ngx_http_waf_dpf(r, fmt, ...) { \
     ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
-        "ngx_waf_debug: ["fmt"] at %s:%s:%d", __VA_ARGS__, __func__, __FILE__, __LINE__); \
+        "ngx_waf_debug: ["fmt"] at %s:%s:%d, ngx_waf %s", __VA_ARGS__, __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
 }
 #else
 #define ngx_http_waf_dp(...) {}
@@ -396,7 +398,6 @@
 
 #define ngx_http_waf_dpf(...) {}
 #endif
-
 
 
 #endif // !NGX_HTTP_WAF_MODULE_MACRO_H
