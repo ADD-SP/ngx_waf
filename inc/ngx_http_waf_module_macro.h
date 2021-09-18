@@ -370,19 +370,33 @@
 
 #define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, ngx_http_waf_utarray_ngx_str_ctor, ngx_http_waf_utarray_ngx_str_dtor }
 
+
 #define ngx_http_waf_make_utarray_vm_code_icd() { sizeof(vm_code_t), NULL, ngx_http_waf_utarray_vm_code_ctor, ngx_http_waf_utarray_vm_code_dtor }
+
 
 #define ngx_strdup(s) ((u_char*)strdup((char*)(s)));
 
+
 #define ngx_strcpy(d, s) (strcpy((char*)d, (const char*)s))
 
-#define ngx_http_waf_dp(r, ...) { \
-    if ((r)->connection->log->log_level >= NGX_LOG_DEBUG) { \
-        fprintf(stderr, "ngx_waf_debug: "); \
-        fprintf(stderr, __VA_ARGS__); \
-        fprintf(stderr, " at %s:%s:%d\n", __func__, __FILE__, __LINE__); \
-    } \
+#ifndef NGX_HTTP_WAF_NO_DEBUG
+#define ngx_http_waf_dp(r, str) { \
+    ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
+        "ngx_waf_debug: ["str"] at %s:%s:%d", __func__, __FILE__, __LINE__); \
 }
+
+
+#define ngx_http_waf_dpf(r, fmt, ...) { \
+    ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
+        "ngx_waf_debug: ["fmt"] at %s:%s:%d", __VA_ARGS__, __func__, __FILE__, __LINE__); \
+}
+#else
+#define ngx_http_waf_dp(...) {}
+
+
+#define ngx_http_waf_dpf(...) {}
+#endif
+
 
 
 #endif // !NGX_HTTP_WAF_MODULE_MACRO_H
