@@ -40,7 +40,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
         ngx_table_elt_t *native_cookie = *ppcookie;
         UT_array* cookies = NULL;
 
-        ngx_http_waf_dpf(r, "parsing cookie %V", native_cookie->value);
+        ngx_http_waf_dpf(r, "parsing cookie %V", &native_cookie->value);
         if (ngx_http_waf_parse_cookie(&(native_cookie->value), &cookies) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... continuse");
             continue;
@@ -199,7 +199,7 @@ static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_a
     ngx_str_set(&header->key, "Set-Cookie");
     header->value.data = ngx_pnalloc(r->pool, sizeof(under_attack->time) + 64);
     header->value.len = sprintf((char*)header->value.data, "__waf_under_attack_time=%s; Path=/", under_attack->time);
-    ngx_http_waf_dpf(r, "Header %V: %V", header->key, header->value);
+    ngx_http_waf_dpf(r, "Header %V: %V", &header->key, &header->value);
 
     header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
     if (header == NULL) {
@@ -210,7 +210,7 @@ static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_a
     ngx_str_set(&header->key, "Set-Cookie");
     header->value.data = ngx_pnalloc(r->pool, sizeof(under_attack->uid) + 64);
     header->value.len = sprintf((char*)header->value.data, "__waf_under_attack_uid=%s; Path=/", under_attack->uid);
-    ngx_http_waf_dpf(r, "Header %V: %V", header->key, header->value);
+    ngx_http_waf_dpf(r, "Header %V: %V", &header->key, &header->value);
 
     header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
     if (header == NULL) {
@@ -221,7 +221,7 @@ static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_a
     ngx_str_set(&header->key, "Set-Cookie");
     header->value.data = ngx_pnalloc(r->pool, sizeof(under_attack->hmac) + 64);
     header->value.len = sprintf((char*)header->value.data, "__waf_under_attack_hmac=%s; Path=/", under_attack->hmac);
-    ngx_http_waf_dpf(r, "Header %V: %V", header->key, header->value);
+    ngx_http_waf_dpf(r, "Header %V: %V", &header->key, &header->value);
 
     ngx_http_waf_dp(r, "_gen_cookie() ... end");
     return NGX_HTTP_WAF_SUCCESS;
