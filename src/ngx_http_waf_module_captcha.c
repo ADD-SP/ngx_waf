@@ -473,7 +473,7 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
     ngx_memcpy(uri.data, r->uri.data, r->uri.len);
     uri.data[r->uri.len] = '\0';
     uri.len = r->uri.len;
-    ngx_http_waf_dpf(r, "success(%s)", uri);
+    ngx_http_waf_dpf(r, "success(%V)", &uri);
 
 
     if (ngx_strcmp(uri.data, loc_conf->waf_captcha_verify_url.data) == 0 
@@ -549,7 +549,7 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     sprintf(in, "response=%s&secret=%s", (char*)(h_captcha_response->value.data), (char*)(secret->data));
     ngx_http_waf_dpf(r, "success(%s)", in);
 
-    ngx_http_waf_dpf(r, "sending a request to %V", loc_conf->waf_captcha_api.data);
+    ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
     if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);
@@ -666,7 +666,7 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     sprintf(in, "response=%s&secret=%s", (char*)(g_captcha_response->value.data), (char*)(secret->data));
     ngx_http_waf_dpf(r, "success(%s)", in);
 
-    ngx_http_waf_dpf(r, "sending a request to %V", loc_conf->waf_captcha_api.data);
+    ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
     if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);
@@ -783,7 +783,7 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     sprintf(in, "response=%s&secret=%s", (char*)(g_captcha_response->value.data), (char*)(secret->data));
     ngx_http_waf_dpf(r, "success(%s)", in);
 
-    ngx_http_waf_dpf(r, "sending a request to %V", loc_conf->waf_captcha_api.data);
+    ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
     if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);

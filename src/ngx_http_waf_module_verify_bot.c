@@ -75,7 +75,7 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    ngx_http_waf_dpf(r, "verifying user-agent %V", r->headers_in.user_agent);
+    ngx_http_waf_dpf(r, "verifying user-agent %V", &r->headers_in.user_agent->value);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_google_ua_regexp,
                              &r->headers_in.user_agent->value,
                              r->connection->log) != NGX_OK) {
@@ -155,7 +155,7 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    ngx_http_waf_dpf(r, "verifying user-agent %V", r->headers_in.user_agent);
+    ngx_http_waf_dpf(r, "verifying user-agent %V", &r->headers_in.user_agent->value);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_bing_ua_regexp,
                              &r->headers_in.user_agent->value,
                              r->connection->log) != NGX_OK) {
@@ -236,7 +236,7 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    ngx_http_waf_dpf(r, "verifying user-agent %V", r->headers_in.user_agent);
+    ngx_http_waf_dpf(r, "verifying user-agent %V", &r->headers_in.user_agent->value);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_baidu_ua_regexp,
                              &r->headers_in.user_agent->value,
                              r->connection->log) != NGX_OK) {
@@ -316,7 +316,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAIL;
     }
 
-    ngx_http_waf_dpf(r, "verifying user-agent %V", r->headers_in.user_agent);
+    ngx_http_waf_dpf(r, "verifying user-agent %V", &r->headers_in.user_agent->value);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_yandex_ua_regexp,
                              &r->headers_in.user_agent->value,
                              r->connection->log) != NGX_OK) {
