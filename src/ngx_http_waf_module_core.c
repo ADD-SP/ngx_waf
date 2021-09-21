@@ -156,6 +156,11 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
+        return NGX_DECLINED;
+    }
+
     if (ctx->under_attack == NGX_HTTP_WAF_TRUE || ctx->captcha == NGX_HTTP_WAF_TRUE) {
         ngx_int_t rc = ngx_http_discard_request_body(r);
 
@@ -229,6 +234,11 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
+        return NGX_DECLINED;
+    }
+
     if (ctx == NULL) {
         ngx_http_waf_dp(r, "no ctx ... return");
         return NGX_OK;
@@ -239,7 +249,6 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "logging (gernal)");
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%s][%s]", ctx->rule_type, ctx->rule_deatils);
         ngx_http_waf_dp(r, "success ... return");
-        return NGX_OK;
     }
 
     if (ctx->modsecurity_transaction != NULL) {
@@ -256,7 +265,6 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
             return NGX_ERROR;
         }
         ngx_http_waf_dp(r, "success ... return");
-        return NGX_OK;
     }
 
     ngx_http_waf_dp(r, "ngx_http_waf_handler_log_phase() ... end");
@@ -272,6 +280,11 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     ngx_int_t http_status = NGX_DECLINED;
+
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
+        return NGX_DECLINED;
+    }
 
     if (ctx == NULL) {
         ngx_http_waf_dp(r, "allocating memory to storage ctx");
@@ -316,6 +329,10 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ctx->req_body.mmap = 0;
         ctx->modsecurity_transaction = NULL;
         ctx->modsecurity_intervention = NULL;
+#if (NGX_THREADS)
+        ctx->modsecurity_triggered = NGX_HTTP_WAF_FALSE;
+        ctx->start_from_thread = NGX_HTTP_WAF_FALSE;
+#endif
         ngx_http_waf_dp(r, "success");
         
 
@@ -346,10 +363,15 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         return NGX_DECLINED;
     }
 
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
-        ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
-        return NGX_DECLINED;
+#if (NGX_THREADS)
+    if (ctx->start_from_thread == NGX_HTTP_WAF_TRUE) {
+        if (ctx->modsecurity_triggered == NGX_HTTP_WAF_TRUE) {
+            return ctx->modsecurity_status;
+        } else {
+            return NGX_DECLINED;
+        }
     }
+#endif
 
     if (ctx->checked == NGX_HTTP_WAF_TRUE) {
         ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");

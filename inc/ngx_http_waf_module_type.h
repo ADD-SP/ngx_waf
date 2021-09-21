@@ -11,6 +11,8 @@
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
+#include <ngx_thread.h>
+#include <ngx_thread_pool.h>
 #include <ngx_http_waf_module_macro.h>
 #include <sodium.h>
 #include <modsecurity/modsecurity.h>
@@ -291,20 +293,27 @@ typedef struct ip_trie_s {
 */
 typedef struct ngx_http_waf_ctx_s {
     ngx_http_request_t*             r;
+#if (NGX_THREADS)
+    ngx_int_t                       modsecurity_status;                         /**< ModSecurity 规则所返回的 HTTP 状态码 */
+#endif
+    Transaction                    *modsecurity_transaction;                    /**< ModSecurity 的事务 */
+    ModSecurityIntervention        *modsecurity_intervention;
+    u_char                          rule_type[128];                             /**< 触发的规则类型 */
+    u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
+    ngx_buf_t                       req_body;                                   /**< 请求体 */
+    double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
     ngx_int_t                       gernal_logged;                              /**< 是否需要记录除 ModSecurity 以外的记录日志 */
     ngx_int_t                       checked;                                    /**< 是否启动了检测流程 */
     ngx_int_t                       blocked;                                    /**< 是否拦截了本次请求 */
     ngx_int_t                       captcha;                                    /**< 是否需要执行验证码 */
     ngx_int_t                       under_attack;                               /**< 是否触发了 Under Attack Mode */
-    double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
-    ngx_buf_t                       req_body;                                   /**< 请求体 */
-    u_char                          rule_type[128];                             /**< 触发的规则类型 */
-    u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
     ngx_int_t                       read_body_done;                             /**< 是否已经请求读取请求体 */
     ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
     ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
-    Transaction                    *modsecurity_transaction;
-    ModSecurityIntervention        *modsecurity_intervention;
+#if (NGX_THREADS)
+    ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
+    ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
+#endif
 } ngx_http_waf_ctx_t;
 
 
@@ -385,6 +394,9 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
     lru_cache_t                    *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
     lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+#if (NGX_THREADS)
+    ngx_thread_pool_t              *thread_pool;
+#endif
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_loc_conf_t;

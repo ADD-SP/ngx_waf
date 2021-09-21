@@ -5,6 +5,7 @@
 
 #include <ngx_http_waf_module_modsecurity.h>
 
+
 extern ngx_module_t ngx_http_waf_module;
 
 
@@ -12,6 +13,9 @@ static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
 
 static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
+
+
+static ngx_int_t _process_request(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
 
 static ngx_int_t _init_ctx(ngx_http_request_t* r);
@@ -36,6 +40,15 @@ static ngx_int_t _process_response_body(ngx_http_request_t* r, ngx_chain_t *in, 
 
 
 static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_http_status);
+
+#if (NGX_THREADS)
+
+static void _invoke(void* data, ngx_log_t* log); 
+
+
+static void _completion(ngx_event_t* event);
+
+#endif
 
 
 void ngx_http_waf_header_filter_init() {
@@ -68,49 +81,41 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
+
+
+#if (NGX_THREADS)
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
     if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    ngx_http_waf_dp(r, "initializing ctx about ModSecurity");
-    if (_init_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_http_waf_dp(r, "_init_ctx() failed ... return");
-        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-        return NGX_HTTP_WAF_MATCHED;
+    ngx_thread_task_t* task = ngx_thread_task_alloc(r->pool, sizeof(ngx_http_request_t));
+    if (task == NULL) {
+        return NGX_ERROR;
     }
-    ngx_http_waf_dp(r, "success");
+    task->ctx = r;
+    task->handler = _invoke;
+    task->event.handler = _completion;
+    task->event.data = r;
 
-    ngx_http_waf_dp(r, "processing connecting");
-    if (_process_connection(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
-        ngx_http_waf_dp(r, "matched ... return");
-        return NGX_HTTP_WAF_MATCHED;
+    if (ngx_thread_task_post(loc_conf->thread_pool, task) != NGX_OK) {
+        return _process_request(r, out_http_status);
     }
-    ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "processing uri");
-    if (_process_uri(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
-        ngx_http_waf_dp(r, "matched ... return");
-        return NGX_HTTP_WAF_MATCHED;
-    }
-    ngx_http_waf_dp(r, "success");
+    *out_http_status = NGX_DONE;
+    return NGX_HTTP_WAF_MATCHED;
+#else
 
-    ngx_http_waf_dp(r, "processing request header");
-    if (_process_request_header(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
-        ngx_http_waf_dp(r, "matched ... return");
-        return NGX_HTTP_WAF_MATCHED;
-    }
-    ngx_http_waf_dp(r, "success");
+    return _process_request(r, out_http_status);
 
-    ngx_http_waf_dp(r, "processing request body");
-    if (_process_request_body(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
-        ngx_http_waf_dp(r, "matched ... return");
-        return NGX_HTTP_WAF_MATCHED;
-    }
-    ngx_http_waf_dp(r, "success");
+#endif
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_modsecurity() ... end");
-    return NGX_DECLINED;
+
 }
 
 
@@ -199,6 +204,64 @@ ngx_int_t ngx_http_waf_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     }
 
     return ngx_http_next_body_filter(r, in);
+}
+
+
+static ngx_int_t _process_request(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+    ngx_http_waf_dp(r, "_process_request() ... start");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_http_waf_dp(r, "initializing ctx about ModSecurity");
+    if (_init_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_http_waf_dp(r, "_init_ctx() failed ... return");
+        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+        return NGX_HTTP_WAF_MATCHED;
+    }
+    ngx_http_waf_dp(r, "success");
+
+    ngx_http_waf_dp(r, "processing connecting");
+    if (_process_connection(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched ... return");
+        return NGX_HTTP_WAF_MATCHED;
+    }
+    ngx_http_waf_dp(r, "success");
+
+    ngx_http_waf_dp(r, "processing uri");
+    if (_process_uri(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched ... return");
+        return NGX_HTTP_WAF_MATCHED;
+    }
+    ngx_http_waf_dp(r, "success");
+
+    ngx_http_waf_dp(r, "processing request header");
+    if (_process_request_header(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched ... return");
+        return NGX_HTTP_WAF_MATCHED;
+    }
+    ngx_http_waf_dp(r, "success");
+
+    ngx_http_waf_dp(r, "processing request body");
+    if (_process_request_body(r, out_http_status) == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched ... return");
+        return NGX_HTTP_WAF_MATCHED;
+    }
+    ngx_http_waf_dp(r, "success");
+
+    ngx_http_waf_dp(r, "_process_request() ... end");
+    return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
@@ -416,20 +479,17 @@ static ngx_int_t _process_request_body(ngx_http_request_t* r, ngx_int_t* out_htt
     Transaction *transaction = ctx->modsecurity_transaction;
 
     if (ctx->has_req_body == NGX_HTTP_WAF_FALSE) {
-        ngx_http_waf_dp(r, "nothing to do ... return");
-        return NGX_HTTP_WAF_NOT_MATCHED;
+        ngx_str_t body;
+        body.data = ctx->req_body.pos;
+        body.len = ctx->req_body.last - ctx->req_body.last;
+        ngx_http_waf_dpf(r, "appending request body %V", &body);
+        if (msc_append_request_body(transaction, body.data, body.len) != 1) {
+            ngx_http_waf_dp(r, "failed ... return");
+            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            return NGX_HTTP_WAF_MATCHED;
+        }
+        ngx_http_waf_dp(r, "success");
     }
-
-    ngx_str_t body;
-    body.data = ctx->req_body.pos;
-    body.len = ctx->req_body.last - ctx->req_body.last;
-    ngx_http_waf_dpf(r, "appending request body %V", &body);
-    if (msc_append_request_body(transaction, body.data, body.len) != 1) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-        return NGX_HTTP_WAF_MATCHED;
-    }
-    ngx_http_waf_dp(r, "success");
 
     ngx_http_waf_dp(r, "processing request body");
     if (msc_process_request_body(transaction) != 1) {
@@ -589,7 +649,7 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
     intervention.status = 200;
 
     ngx_http_waf_dp(r, "processing intervention");
-    if (msc_intervention(transaction, &intervention) == 0) {
+    if (msc_intervention(transaction, &intervention) <= 0) {
         ngx_http_waf_dp(r, "not matched ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -663,3 +723,48 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
     ngx_http_waf_dp(r, "_process_intervention() ... end");
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
+
+#if (NGX_THREADS)
+static void _invoke(void* data, ngx_log_t* log) {
+    ngx_http_request_t* r = data;
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        ctx->modsecurity_triggered = NGX_HTTP_WAF_FALSE;
+        return;
+    }    
+
+    if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        ctx->modsecurity_triggered = NGX_HTTP_WAF_FALSE;
+        return;
+    }
+
+    if (_process_request(r, &ctx->modsecurity_status) == NGX_HTTP_WAF_MATCHED) {
+        ctx->modsecurity_triggered = NGX_HTTP_WAF_TRUE;
+        return;
+    }
+
+
+    ctx->modsecurity_triggered = NGX_HTTP_WAF_FALSE;
+    return;
+}
+#endif
+
+#if (NGX_THREADS)
+static void _completion(ngx_event_t* event) {
+    ngx_http_request_t* r = event->data;
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+
+    ctx->start_from_thread = NGX_HTTP_WAF_TRUE;
+
+    ngx_http_core_run_phases(r);
+    
+}
+#endif
