@@ -300,6 +300,8 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ctx->r = r;
         ctx->gernal_logged = NGX_HTTP_WAF_FALSE;
         ctx->read_body_done = NGX_HTTP_WAF_FALSE;
+        ctx->has_req_body = NGX_HTTP_WAF_FALSE;
+        ctx->waiting_more_body = NGX_HTTP_WAF_FALSE;
         ctx->checked = NGX_HTTP_WAF_FALSE;
         ctx->blocked = NGX_HTTP_WAF_FALSE;
         ctx->under_attack = NGX_HTTP_WAF_FALSE;
@@ -309,10 +311,9 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ctx->rule_deatils[0] = '\0';
         ctx->req_body.pos = NULL;
         ctx->req_body.last = NULL;
-        ctx->req_body.memory = 0;
+        ctx->req_body.memory = 1;
         ctx->req_body.temporary = 0;
         ctx->req_body.mmap = 0;
-        ctx->has_req_body = NGX_HTTP_WAF_FALSE;
         ctx->modsecurity_transaction = NULL;
         ctx->modsecurity_intervention = NULL;
         ngx_http_waf_dp(r, "success");
@@ -336,6 +337,10 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_waf_dp(r, "success");
     }
 
+    if (ngx_http_get_module_ctx(r, ngx_http_waf_module) == NULL) {
+        ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+    }
+
     if (r->internal != 0) {
         ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");
         return NGX_DECLINED;
@@ -351,15 +356,18 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         return NGX_DECLINED;
     }
 
+    if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
+        return NGX_DONE;
+    }
+
     if (ctx->read_body_done != NGX_HTTP_WAF_TRUE) {
         ngx_http_waf_dp(r, "reading request body");
         r->request_body_in_single_buf = 1;
         r->request_body_in_persistent_file = 1;
-        if (!r->request_body_in_file_only) {
-            r->request_body_in_clean_file = 1;
-        }
+        r->request_body_in_clean_file = 1;
+
         ngx_int_t rc = ngx_http_read_client_request_body(r, _handler_read_request_body);
-        if (rc == NGX_ERROR && rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
             ngx_http_waf_dpf(r, "failed(%i) ... return", rc);
             return rc;
         }
@@ -368,10 +376,6 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             ctx->waiting_more_body = NGX_HTTP_WAF_TRUE;
             return NGX_DONE;
         }
-    }
-
-    if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
-        return NGX_DECLINED;
     }
 
     ngx_http_waf_dp(r, "reading request body to ctx");
@@ -485,7 +489,6 @@ static void _handler_read_request_body(ngx_http_request_t* r) {
     if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
         ctx->waiting_more_body = NGX_HTTP_WAF_FALSE;
         ngx_http_core_run_phases(r);
-        ngx_http_waf_dp(r, "_handler_read_request_body() ... start");
     }
 
     ngx_http_waf_dp(r, "_handler_read_request_body() ... end");

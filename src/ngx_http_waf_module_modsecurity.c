@@ -121,6 +121,11 @@ ngx_int_t ngx_http_waf_header_filter(ngx_http_request_t *r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return ngx_http_next_header_filter(r); 
+    }
+
     if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_header_filter(r);
@@ -160,6 +165,11 @@ ngx_int_t ngx_http_waf_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return ngx_http_next_body_filter(r, in); 
+    }
 
     if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
@@ -203,6 +213,9 @@ static ngx_int_t _init_ctx(ngx_http_request_t* r) {
     void* rules = loc_conf->modsecurity_rules;
     ngx_http_complex_value_t* transaction_id = loc_conf->waf_modsecurity_transaction_id;
 
+    if (ctx->modsecurity_transaction != NULL) {
+        msc_transaction_cleanup(ctx->modsecurity_transaction);
+    }
     ctx->modsecurity_transaction = NULL;
 
     ngx_http_waf_dp(r, "creating transaction");
@@ -357,6 +370,12 @@ static ngx_int_t _process_request_header(ngx_http_request_t* r, ngx_int_t* out_h
     while (headers != NULL) {
         if (i >= headers->nelts) {
             headers = headers->next;
+
+            if (headers == NULL) {
+                break;
+            }
+            header = headers->elts;
+            
             i = 0;
         } else {
             ngx_http_waf_dpf(r, "adding request header: %V with valuse %V", 
