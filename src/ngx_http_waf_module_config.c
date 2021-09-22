@@ -1506,8 +1506,9 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     }
 
 #if (NGX_THREADS)
+    ngx_str_set(&s_thread_pool_name, "ngx_waf");
+    s_thread_pool = ngx_thread_pool_get(cf->cycle, &s_thread_pool_name);
     if (s_thread_pool == NULL) {
-        ngx_str_set(&s_thread_pool_name, "ngx_waf");
         s_thread_pool = ngx_thread_pool_add(cf, &s_thread_pool_name);
         if (s_thread_pool == NULL) {
             return NULL;
