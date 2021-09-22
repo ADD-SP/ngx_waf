@@ -329,7 +329,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ctx->req_body.mmap = 0;
         ctx->modsecurity_transaction = NULL;
         ctx->modsecurity_intervention = NULL;
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
         ctx->modsecurity_triggered = NGX_HTTP_WAF_FALSE;
         ctx->start_from_thread = NGX_HTTP_WAF_FALSE;
 #endif
@@ -363,7 +363,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         return NGX_DECLINED;
     }
 
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     if (ctx->start_from_thread == NGX_HTTP_WAF_TRUE) {
         if (ctx->modsecurity_triggered == NGX_HTTP_WAF_TRUE) {
             return ctx->modsecurity_status;

@@ -41,7 +41,7 @@ static ngx_int_t _process_response_body(ngx_http_request_t* r, ngx_chain_t *in, 
 
 static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_http_status);
 
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
 
 static void _invoke(void* data, ngx_log_t* log); 
 
@@ -83,7 +83,7 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
 
 
 
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
@@ -724,7 +724,7 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
 static void _invoke(void* data, ngx_log_t* log) {
     ngx_http_request_t* r = data;
 
@@ -755,7 +755,7 @@ static void _invoke(void* data, ngx_log_t* log) {
 }
 #endif
 
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
 static void _completion(ngx_event_t* event) {
     ngx_http_request_t* r = event->data;
 
