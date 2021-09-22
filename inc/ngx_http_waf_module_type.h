@@ -293,7 +293,7 @@ typedef struct ip_trie_s {
 */
 typedef struct ngx_http_waf_ctx_s {
     ngx_http_request_t*             r;
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_int_t                       modsecurity_status;                         /**< ModSecurity 规则所返回的 HTTP 状态码 */
 #endif
     Transaction                    *modsecurity_transaction;                    /**< ModSecurity 的事务 */
@@ -310,7 +310,7 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       read_body_done;                             /**< 是否已经请求读取请求体 */
     ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
     ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
     ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
 #endif
@@ -393,7 +393,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
     lru_cache_t                    *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
     lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
-#if (NGX_THREADS)
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_thread_pool_t              *thread_pool;
 #endif
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
