@@ -384,7 +384,6 @@ typedef struct ngx_http_waf_loc_conf_s {
 #endif
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
-    UT_array                       *advanced_rule;                              /**< 高级规则表 */
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
     lru_cache_t                    *ip_access_statistics;                       /**< IP 访问频率统计表 */
     lru_cache_t                    *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */

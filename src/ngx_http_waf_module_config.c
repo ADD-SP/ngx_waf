@@ -2,6 +2,9 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
+static void _cleanup(void* data);
+
+
 char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
         return NGX_CONF_ERROR;
@@ -889,6 +892,13 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         }
     }
 
+    ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        goto no_memory;
+    }
+    cln->handler = _cleanup;
+    cln->data = loc_conf;
+
 
     return NGX_CONF_OK;
 
@@ -963,7 +973,6 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->black_ua, parent->black_ua, NULL);
     ngx_conf_merge_ptr_value(child->black_post, parent->black_post, NULL);
     ngx_conf_merge_ptr_value(child->black_cookie, parent->black_cookie, NULL);
-    ngx_conf_merge_ptr_value(child->advanced_rule, parent->advanced_rule, NULL);
     
 
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
@@ -1568,7 +1577,6 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
     conf->white_referer = NGX_CONF_UNSET_PTR;
     conf->white_ipv4 = NGX_CONF_UNSET_PTR;
     conf->black_ipv4 = NGX_CONF_UNSET_PTR;
-    conf->advanced_rule = NGX_CONF_UNSET_PTR;
 #if (NGX_HAVE_INET6)
     conf->white_ipv6 = NGX_CONF_UNSET_PTR;
     conf->black_ipv6 = NGX_CONF_UNSET_PTR;
@@ -1701,7 +1709,6 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
     conf->white_ipv6 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
     conf->black_ipv6 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
 #endif
-    conf->advanced_rule = ngx_pcalloc(cf->pool, sizeof(UT_array));
 
     if (conf->black_url == NULL
     ||  conf->black_args == NULL
@@ -1717,13 +1724,10 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
     ||  conf->white_ipv6 == NULL
     ||  conf->black_ipv6 == NULL
 #endif
-    ||  conf->advanced_rule == NULL) {
+        ) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
-
-    UT_icd icd = ngx_http_waf_make_utarray_vm_code_icd();
-    utarray_init(conf->advanced_rule, &icd);
 
 
     if (ip_trie_init(conf->white_ipv4, gernal_pool, cf->pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
@@ -1770,7 +1774,6 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
         ngx_pfree(cf->pool, conf->white_ipv6);
         ngx_pfree(cf->pool, conf->black_ipv6);
 #endif
-        ngx_pfree(cf->pool, conf->advanced_rule);
 
         conf->black_url = NGX_CONF_UNSET_PTR;
         conf->black_args = NGX_CONF_UNSET_PTR;
@@ -1782,7 +1785,6 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
         conf->white_referer = NGX_CONF_UNSET_PTR;
         conf->white_ipv4 = NGX_CONF_UNSET_PTR;
         conf->black_ipv4 = NGX_CONF_UNSET_PTR;
-        conf->advanced_rule = NGX_CONF_UNSET_PTR;
 #if (NGX_HAVE_INET6)
         conf->white_ipv6 = NGX_CONF_UNSET_PTR;
         conf->black_ipv6 = NGX_CONF_UNSET_PTR;
@@ -1792,4 +1794,11 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
     }
 
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+static void _cleanup(void* data) {
+    ngx_http_waf_loc_conf_t* loc_conf = data;
+    msc_rules_cleanup(loc_conf->modsecurity_rules);
+    msc_cleanup(loc_conf->modsecurity_instance);
 }
