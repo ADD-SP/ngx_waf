@@ -197,7 +197,11 @@ ngx_feature="C99 features"
 ngx_feature_name=
 ngx_feature_run=yes
 ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs=
+ngx_feature_incs=$(cat << END
+#include <stdio.h>
+#include <string.h>
+END
+)
 ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=$(cat << END
 
@@ -217,6 +221,13 @@ if (i != 0 && !(j = 1)) {}
 
 if (j == 1) { return 1; }
 
+#define my_sprintf(...) sprintf(__VA_ARGS__)
+
+char buf[1024];
+my_sprintf(buf, "%s/%s", "ADD-SP", "ngx_waf");
+if (strcmp(buf, "ADD-SP/ngx_waf") != 0) {
+    return 1;
+}
 END
 )
 . auto/feature
