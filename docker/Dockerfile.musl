@@ -67,13 +67,13 @@ RUN set -xe \
     &&  make install
 
 RUN set -xe \
-    &&  git clone -b v3.0.5 https://github.com/SpiderLabs/ModSecurity.git ModSecurity-src \
-    &&  cd ModSecurity-src \
+    &&  git clone -b v3.0.5 https://github.com/SpiderLabs/ModSecurity.git \
+    &&  cd ModSecurity \
     &&  chmod +x build.sh \
     &&  ./build.sh \
     &&  git submodule init \
     &&  git submodule update \
-    &&  ./configure --prefix=/usr/local/ModSecurity --with-maxmind=/usr/local/libmaxminddb \
+    &&  ./configure --prefix=/usr/local/modsecurity --with-maxmind=/usr/local/libmaxminddb \
     &&  make -j$(nproc) \
     &&  make install
 
@@ -84,7 +84,7 @@ RUN set -xe \
 
 RUN set -xe \
     &&  export LIB_SODIUM=/usr/local/libsodium \
-    &&  export LIB_MODSECURITY=/usr/local/ModSecurity \
+    &&  export LIB_MODSECURITY=/usr/local/modsecurity \
     &&  cd nginx \
     &&  ./configure \
         --with-debug \
