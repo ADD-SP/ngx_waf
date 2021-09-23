@@ -21,14 +21,16 @@
 
 ## 为什么选择 ngx_waf
 
-* 功能齐全：「网络应用防火墙」的基本功能都有。
-* 安装方便：大多数情况下你可以直接下载使用预构建的模块，而不是编译代码。
-* 使用方便：配置指令简单易懂，不用看文档都能猜到大概是什么意思。
-* 规则灵活：提供高级规则，将动作（如拦截或放行）和多个条件表达式组合起来。
-* 高性能：经过较为极限的测试，启动本模块后 RPS（每秒请求数） 降低约 4%。测试说明和结果见使用文档。
+* 基础防护：如 IP 或 IP 网段的黑白名单、URI 黑白名单和请求体黑名单等。
+* 使用简单：配置文件和规则文件书写简单，可读性强。
+* 高性能：使用高效的 IP 检查算法和缓存机制。
+* 高级防护：兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity)，因此你可以使用[开放式网络应用安全项目（OWASP）® 的核心规则库](https://owasp.org/www-project-modsecurity-core-rule-set/)。
+* 友好爬虫验证：支持验证 Google、Bing、Baidu 和 Yandex 的爬虫并自动放行，避免错误拦截。
+* 验证码：支持三种验证码：hCaptcha、reCAPTCHAv2 和 reCAPTCHAv3。
 
 ## 功能
 
+* 兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity)。此功能仅限最新的 Current 版本。
 * SQL 注入防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * XSS 攻击防护（Powered By [libinjection](https://github.com/libinjection/libinjection)）。
 * 支持 IPV4 和 IPV6。
@@ -42,7 +44,6 @@
 * UserAgent 黑名单。
 * Cookie 黑名单。
 * Referer 黑白名单。
-* 高级规则，将动作（如拦截或放行）和多个条件表达式组合起来。
 
 ## 使用文档
 
@@ -62,6 +63,7 @@
 
 ## 感谢
 
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity): 开源且跨平台的 WAF 引擎。
 * [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
 * [libinjection](https://github.com/libinjection/libinjection)：SQL 注入检测库。
 * [libsodium](https://github.com/jedisct1/libsodium)：C 语言密码函数库。

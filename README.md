@@ -19,14 +19,17 @@ Handy, High performance Nginx firewall module.
 
 ## Why ngx_waf
 
-* Full-featured: The basic functions of the web application firewall are available.
-* Easy to install: In most cases you can download and use pre-built modules instead of compiling the code.
-* Easy to use: directives are easy to understand and you can probably guess what they mean without reading the documentation.
-* Flexible rules: Provide advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
-* High performance: In more extreme tests, QPS(Queries Per Second) is reduced by about 4% after starting this module. See the documentation for details of the tests.
+* Basic protection: such as black and white list of IPs or IP range, uri black and white list, and request body black list, etc.
+* Easy to use: configuration files and rule files are easy to write and readable.
+* High performance: Efficient algorithms and caching.
+* Advanced protection: [ModSecurity](https://github.com/SpiderLabs/ModSecurity) compatible, you can use [OWASP(Open Web Application Security Project®) ModSecurity Core Rule Set](https://owasp.org/www-project-modsecurity-core-rule-set/).
+* Friendly crawler verification: Supports verifying Google, Bing, Baidu and Yandex crawlers and allowing them automatically to avoid false positives.
+* Captcha: Supports three kinds of captchas: hCaptcha, reCAPTCHAv2 and reCAPTCHAv3.
 
 ## Features
 
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity) compatible. This feature is only available in the latest `Current` version.
+* Rules that are compatible with [ModSecurity](https://github.com/SpiderLabs/ModSecurity).
 * Anti SQL injection (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * Anti XSS (powered by [libinjection](https://github.com/libinjection/libinjection)).
 * IPV4 and IPV6 support.
@@ -63,6 +66,7 @@ Handy, High performance Nginx firewall module.
 
 ## Thanks
 
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity): An open source, cross platform web application firewall (WAF) engine.
 * [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
 * [libinjection](https://github.com/libinjection/libinjection): SQL / SQLI tokenizer parser analyzer.
 * [libsodium](https://github.com/jedisct1/libsodium): A modern, portable, easy to use crypto library.
