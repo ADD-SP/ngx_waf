@@ -81,9 +81,6 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-
-
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
@@ -94,6 +91,12 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
+    if (ngx_http_waf_check_flag(r->method, loc_conf->waf_mode) != NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_thread_task_t* task = ngx_thread_task_alloc(r->pool, sizeof(ngx_http_request_t));
     if (task == NULL) {
         return NGX_ERROR;
@@ -135,6 +138,11 @@ ngx_int_t ngx_http_waf_header_filter(ngx_http_request_t *r) {
     if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_header_filter(r);
+    }
+
+    if (ngx_http_waf_check_flag(r->method, loc_conf->waf_mode) != NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
     if (ctx == NULL) {
@@ -180,6 +188,11 @@ ngx_int_t ngx_http_waf_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_body_filter(r, in);
+    }
+
+    if (ngx_http_waf_check_flag(r->method, loc_conf->waf_mode) != NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
     if (ctx == NULL) {
