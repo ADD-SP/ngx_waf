@@ -111,6 +111,7 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
     return NGX_HTTP_WAF_MATCHED;
 #else
 
+    ngx_http_waf_dp(r, "ngx_http_waf_handler_modsecurity() ... end");
     return _process_request(r, out_http_status);
 
 #endif
