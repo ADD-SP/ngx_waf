@@ -347,6 +347,7 @@ static ngx_int_t _process_connection(ngx_http_request_t* r, ngx_int_t* out_http_
         *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
         return NGX_HTTP_WAF_MATCHED;
     }
+    server_addr_c_str[server_addr_str.len] = '\0';
     ngx_http_waf_dp(r, "success");
 
     ngx_http_waf_dp(r, "converting client client addr to c-style string");
