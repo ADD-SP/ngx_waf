@@ -2,7 +2,29 @@
 
 extern ngx_module_t ngx_http_waf_module;
 
+
 static void _cleanup(void* data);
+
+
+static ngx_pool_t* _modsecurity_pcre_pool;
+
+
+static void* _old_modsecurity_pcre_malloc;
+
+
+static void* _old_modsecurity_pcre_free;
+
+
+static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool);
+
+
+static void _recover_modsecurity_pcre_callback(ngx_pool_t* old_pool);
+
+
+static void* _modsecurity_pcre_malloc(size_t size);
+
+
+static void _modsecurity_pcre_free(void* ptr);
 
 
 char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
@@ -850,11 +872,15 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             if (file == NULL) {
                 goto no_memory;
             }
+
+            ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
             if (msc_rules_add_file(loc_conf->modsecurity_rules, file, &error) < 0) {
+                _recover_modsecurity_pcre_callback(old_pool);
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
                     "ngx_waf: %s", error);
                 return NGX_CONF_ERROR;
             }
+            _recover_modsecurity_pcre_callback(old_pool);
             ngx_pfree(cf->pool, file);
 
         } else if (ngx_strcmp("remote_key", p->data) == 0) {
@@ -885,11 +911,16 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
      && loc_conf->waf_modsecurity_rules_remote_url.data != NULL
      && loc_conf->waf_modsecurity_rules_remote_url.len != 0) {
         const char* error;
+        ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
         if (msc_rules_add_remote(loc_conf->modsecurity_rules, 
             (char*)loc_conf->waf_modsecurity_rules_remote_key.data,
             (char*)loc_conf->waf_modsecurity_rules_remote_url.data, &error) < 0) {
-            return strdup(error);
+            _recover_modsecurity_pcre_callback(old_pool);
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+                "ngx_waf: %s", error);
+            return NGX_CONF_ERROR;
         }
+        _recover_modsecurity_pcre_callback(old_pool);
     }
 
     ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
@@ -1803,3 +1834,46 @@ static void _cleanup(void* data) {
     msc_rules_cleanup(loc_conf->modsecurity_rules);
     msc_cleanup(loc_conf->modsecurity_instance);
 }
+
+
+static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool) {
+    ngx_pool_t* old_pool = NULL;
+
+    if (pcre_malloc != _modsecurity_pcre_malloc) {
+        _modsecurity_pcre_pool = pool;
+
+        _old_modsecurity_pcre_malloc = pcre_malloc;
+        _old_modsecurity_pcre_free = pcre_free;
+
+        pcre_malloc = _modsecurity_pcre_malloc;
+        pcre_free = _modsecurity_pcre_free;
+
+        return NULL;
+    }
+
+    old_pool = _modsecurity_pcre_pool;
+    _modsecurity_pcre_pool = pool;
+
+    return old_pool;
+}
+
+
+static void _recover_modsecurity_pcre_callback(ngx_pool_t* old_pool) {
+    _modsecurity_pcre_pool = old_pool;
+
+    if (old_pool == NULL) {
+        pcre_malloc = _old_modsecurity_pcre_malloc;
+        pcre_free = _old_modsecurity_pcre_free;
+    }
+}
+
+
+static void* _modsecurity_pcre_malloc(size_t size) {
+    return ngx_palloc(_modsecurity_pcre_pool, size);
+}
+
+
+static void _modsecurity_pcre_free(void* ptr) {
+    ngx_pfree(_modsecurity_pcre_pool, ptr);
+}
+
