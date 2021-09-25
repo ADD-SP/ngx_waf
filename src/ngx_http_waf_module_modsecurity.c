@@ -683,6 +683,10 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
         free(intervention.log);
     }
 
+    if (intervention.disruptive) {
+        ctx->blocked = NGX_HTTP_WAF_TRUE;
+    }
+
     
     if (intervention.url != NULL) {
         ngx_http_waf_dpf(r, "intervention -- redirecting to %s with status code %d", intervention.url, intervention.status);
