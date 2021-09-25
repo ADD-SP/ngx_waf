@@ -24,10 +24,11 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
         ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
         if (ip_trie_find(loc_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
+            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
             strcpy((char*)ctx->rule_type, "WHITE-IPV4");
             strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
-               *out_http_status = NGX_DECLINED;
+            *out_http_status = NGX_DECLINED;
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
             ngx_http_waf_dp(r, "not matched");
