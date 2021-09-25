@@ -1,4 +1,8 @@
 ARG NGX_VER=stable
+
+FROM owasp/modsecurity:3.0.5-alpine AS modsecurity
+
+ARG NGX_VER=stable
 FROM nginx:${NGX_VER}-alpine as base
 ARG CHANGE_SOURCE=false
 ARG NGX_VER=stable
@@ -6,6 +10,7 @@ ARG LIB_SODIUM_VER=1.0.18-RELEASE
 
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
+COPY --from=modsecurity /usr/local/modsecurity/ /usr/local/modsecurity/
 
 SHELL ["/bin/sh", "-o", "pipefail", "-c"]
 RUN set -xe \
@@ -57,25 +62,6 @@ RUN set -xe \
     &&  make check -j$(nproc) \ 
     &&  make install
 
-RUN set -xe \
-    &&  wget https://github.com/maxmind/libmaxminddb/releases/download/1.6.0/libmaxminddb-1.6.0.tar.gz -O libmaxminddb.tar.gz \
-    &&  mkdir libmaxminddb \
-    &&  tar -zxf "libmaxminddb.tar.gz" -C libmaxminddb --strip-components=1 \
-    &&  cd libmaxminddb \
-    &&  ./configure --prefix=/usr/local/libmaxminddb \
-    &&  make -j$(nproc) \
-    &&  make install
-
-RUN set -xe \
-    &&  git clone -b v3.0.5 https://github.com/SpiderLabs/ModSecurity.git \
-    &&  cd ModSecurity \
-    &&  chmod +x build.sh \
-    &&  ./build.sh \
-    &&  git submodule init \
-    &&  git submodule update \
-    &&  ./configure --prefix=/usr/local/modsecurity --with-maxmind=/usr/local/libmaxminddb \
-    &&  make -j$(nproc) \
-    &&  make install
 
 RUN set -xe \
     &&  lastversion --download="nginx.tar.gz" --major ${NGX_VER} https://nginx.org \
