@@ -177,10 +177,10 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         }
 
         if (r->method == NGX_HTTP_HEAD) {
-            // rc = ngx_http_send_header(r);
-            // if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
-            //     return rc;
-            // }
+            rc = ngx_http_send_header(r);
+            if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+                return rc;
+            }
         } else {
             ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
             if (buf == NULL) {
@@ -214,10 +214,10 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
             out->buf = buf;
             out->next = NULL;
 
-            // rc = ngx_http_send_header(r);
-            // if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
-            //     return rc;
-            // }
+            rc = ngx_http_send_header(r);
+            if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+                return rc;
+            }
 
             return ngx_http_output_filter(r, out);
         }
