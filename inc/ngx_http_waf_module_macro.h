@@ -385,14 +385,18 @@
 
 #ifndef NGX_HTTP_WAF_NO_DEBUG
 #define ngx_http_waf_dp(r, str) { \
-    ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
-        "ngx_waf_debug: ["str"] at %s:%s:%d, ngx_waf %s", __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
+    if (r != NULL) {    \
+        ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
+            "ngx_waf_debug: ["str"] at %s:%s:%d, ngx_waf %s", __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
+    } \
 }
 
 
 #define ngx_http_waf_dpf(r, fmt, ...) { \
-    ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
-        "ngx_waf_debug: ["fmt"] at %s:%s:%d, ngx_waf %s", __VA_ARGS__, __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
+    if (r != NULL) {    \
+        ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
+            "ngx_waf_debug: ["fmt"] at %s:%s:%d, ngx_waf %s", __VA_ARGS__, __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
+    }  \
 }
 #else
 #define ngx_http_waf_dp(...) {}

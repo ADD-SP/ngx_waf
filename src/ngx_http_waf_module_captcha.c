@@ -550,7 +550,7 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     ngx_http_waf_dpf(r, "success(%s)", in);
 
     ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
-    if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+    if (ngx_http_waf_http_post(r, (char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
@@ -667,7 +667,7 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     ngx_http_waf_dpf(r, "success(%s)", in);
 
     ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
-    if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+    if (ngx_http_waf_http_post(r, (char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
@@ -784,7 +784,7 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     ngx_http_waf_dpf(r, "success(%s)", in);
 
     ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
-    if (ngx_http_waf_http_post((char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+    if (ngx_http_waf_http_post(r, (char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
