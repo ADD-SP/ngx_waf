@@ -534,7 +534,7 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
 
     char* json_str = NULL;
     ngx_str_t* secret = &loc_conf->waf_captcha_hCaptcha_secret;
-    ngx_http_waf_dpf(r, "ussing serect %V", secret);
+    ngx_http_waf_dpf(r, "using serect %V", secret);
 
     ngx_http_waf_dp(r, "gererating request body for verification");
     char* in = ngx_pnalloc(r->pool, h_captcha_response->value.len + secret->len + 64);
@@ -651,7 +651,7 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
 
     char* json_str = NULL;
     ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHAv2_secret;
-    ngx_http_waf_dpf(r, "ussing serect %V", secret);
+    ngx_http_waf_dpf(r, "using serect %V", secret);
 
     ngx_http_waf_dp(r, "gererating request body for verification");
     char* in = ngx_pnalloc(r->pool, g_captcha_response->value.len + secret->len + 64);
@@ -768,7 +768,7 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
 
     char* json_str = NULL;
     ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHAv2_secret;
-    ngx_http_waf_dpf(r, "ussing serect %V", secret);
+    ngx_http_waf_dpf(r, "using serect %V", secret);
 
     ngx_http_waf_dp(r, "gererating request body for verification");
     char* in = ngx_pnalloc(r->pool, g_captcha_response->value.len + secret->len + 64);
