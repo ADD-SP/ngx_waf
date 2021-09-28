@@ -60,7 +60,6 @@ jobs:
             linux/arm64
             linux/386
             linux/arm/v7
-            linux/arm/v6
   ngx-mainline-module-lts:
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/lts' }}
@@ -103,7 +102,6 @@ jobs:
             linux/arm64
             linux/386
             linux/arm/v7
-            linux/arm/v6
   ngx-stable-module-current:
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/current' }}
@@ -146,7 +144,6 @@ jobs:
             linux/arm64
             linux/386
             linux/arm/v7
-            linux/arm/v6
   ngx-mainline-module-current:
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/current' }}
@@ -189,5 +186,4 @@ jobs:
             linux/arm64
             linux/386
             linux/arm/v7
-            linux/arm/v6
 
