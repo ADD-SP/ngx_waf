@@ -46,7 +46,6 @@ Handy, High performance Nginx firewall module.
 * Block the specified Cookie.
 * Exceptional allow on specific Referer.
 * Block the specified Referer.
-* Advanced rules that combine actions (such as block or allow) with multiple conditional expressions.
 
 ## Docs
 
