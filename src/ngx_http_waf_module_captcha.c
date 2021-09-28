@@ -422,10 +422,6 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
         utarray_free(cookies);
     }
 
-
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Successfully parsed all cookies.");
-
     ngx_memcpy(under_attack_expect, under_attack_client, sizeof(under_attack_info_t));
 
     /* 计算正确的 HMAC */
