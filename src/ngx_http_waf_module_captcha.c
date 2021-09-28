@@ -219,7 +219,7 @@ static ngx_int_t _gen_pass_ctx(ngx_http_request_t* r) {
     strcpy((char*)ctx->rule_type, "CAPTCHA");
     strcpy((char*)ctx->rule_deatils, "PASS");
 
-    ngx_http_waf_dp(r, "_gen_pass_ctx() ... start");
+    ngx_http_waf_dp(r, "_gen_pass_ctx() ... end");
     return NGX_HTTP_WAF_TRUE;
 }
 
