@@ -62,7 +62,6 @@ RUN set -xe \
     &&  make check -j$(nproc) \ 
     &&  make install
 
-
 RUN set -xe \
     &&  lastversion --download="nginx.tar.gz" --major ${NGX_VER} https://nginx.org \
     &&  mkdir nginx \
