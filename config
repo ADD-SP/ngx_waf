@@ -94,7 +94,7 @@ fi
 
 
 if [ -n "$LIB_CURL" ] ; then
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib -l curl "
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib  -Wl,-rpath,${LIB_CURL}/lib -l curl "
     ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_CURL}/include"
 else
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l curl "
@@ -126,10 +126,10 @@ Please run:
         &&  mkdir curl \\
         &&  tar -zxf curl-7.78.0.tar.gz -C curl --strip-components=1 \\
         &&  cd curl \\
-        &&  ./configure --without-ssl --prefix=/usr/local/src/curl/build \\
+        &&  ./configure --prefix=/usr/local/libcurl \\
         &&  make -j \$(nproc) \\
         &&  make install \\
-        &&  export LIB_CURL=/usr/local/src/curl/build \\
+        &&  export LIB_CURL=/usr/local/libcurl \\
         &&  cd $PWD
 END
     PWD=''
