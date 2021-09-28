@@ -170,7 +170,7 @@ ngx_int_t ngx_http_waf_rand_str(u_char* dest, size_t len);
 ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size_t buf_len);
 
 
-ngx_int_t ngx_http_waf_http_post(const char* url, char* in, char** out);
+ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* in, char** out);
 
 
 ngx_int_t ngx_http_waf_make_regexp(ngx_pool_t* pool, ngx_str_t str, ngx_regex_elt_t* elt);
@@ -183,9 +183,6 @@ ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r);
 
 
 char* ngx_http_waf_c_str(ngx_str_t* str, ngx_pool_t* pool);
-
-
-size_t ngx_http_waf_curl_write_handler(void *contents, size_t size, size_t nmemb, void *userp);
 
 
 void ngx_http_waf_utarray_ngx_str_ctor(void *dst, const void *src);
