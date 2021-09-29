@@ -3,6 +3,10 @@
  * @brief 相关结构体的定义
 */
 
+
+#ifndef NGX_HTTP_WAF_MODULE_TYPE_H
+#define NGX_HTTP_WAF_MODULE_TYPE_H
+
 #include <uthash.h>
 #include <utarray.h>
 #include <utlist.h>
@@ -29,10 +33,6 @@
 #else
 #include <modsecurity/rules.h>
 #endif
-
-
-#ifndef NGX_HTTP_WAF_MODULE_TYPE_H
-#define NGX_HTTP_WAF_MODULE_TYPE_H
 
 
 /**

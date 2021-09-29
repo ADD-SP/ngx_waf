@@ -3,6 +3,24 @@
 extern ngx_module_t ngx_http_waf_module;
 
 
+#define _get_conf_key(array, out) {                         \
+    (out) = utarray_next((array), NULL);                    \
+}
+
+
+#define _get_conf_value(array, ptr, out) {                  \
+    (out) = utarray_next((array), ptr);                     \
+}
+
+
+#define _conf_key_handler(current_key, target_key, func) {  \
+    if (ngx_strcmp((current_key), (target_key)) == 0) {     \
+        { func }                                            \
+        continue;                                           \
+    }                                                       \
+}
+
+
 static void _cleanup(void* data);
 
 
@@ -13,6 +31,30 @@ static void* _old_modsecurity_pcre_malloc;
 
 
 static void* _old_modsecurity_pcre_free;
+
+
+static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
+
+
+// static ngx_int_t _free_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
+
+
+static ngx_int_t _load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode);
+
+
+static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
+
+
+static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
+
+
+static ngx_int_t _init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
+
+
+static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf);
+
+
+static ngx_int_t _shm_zone_cc_deny_handler_init(ngx_shm_zone_t *zone, void *data);
 
 
 static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool);
@@ -35,7 +77,7 @@ char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
 
     if (loc_conf->waf == 1) {
-        if (ngx_http_waf_alloc_memory(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
+        if (_init_rule_containers(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
             return NGX_CONF_ERROR;
         }
     }
@@ -51,11 +93,11 @@ char* ngx_http_waf_rule_path_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
         return NGX_CONF_ERROR;
     }
 
-    if (ngx_http_waf_alloc_memory(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
+    if (_init_rule_containers(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
         return NGX_CONF_ERROR;
     }
 
-    if (ngx_http_waf_load_all_rule(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
+    if (_load_all_rule(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
         return NGX_CONF_ERROR;
     }
 
@@ -70,7 +112,7 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
 
     for (i = 1; i < cf->args->nelts && modes != NULL; i++) {
-        #define ngx_http_waf_parse_mode(mode_str, not_mode_str, mode_bit) {                     \
+        #define _parse_mode(mode_str, not_mode_str, mode_bit) {                     \
             if (ngx_strncasecmp(modes[i].data,                                                  \
                 (u_char*)(mode_str),                                                            \
                 ngx_min(modes[i].len, sizeof((mode_str)) - 1)) == 0                             \
@@ -86,36 +128,36 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             }                                                                                   \
         }
 
-        ngx_http_waf_parse_mode("GET", "!GET", NGX_HTTP_WAF_MODE_INSPECT_GET);
-        ngx_http_waf_parse_mode("HEAD", "!HEAD", NGX_HTTP_WAF_MODE_INSPECT_HEAD);
-        ngx_http_waf_parse_mode("POST", "!POST", NGX_HTTP_WAF_MODE_INSPECT_POST);
-        ngx_http_waf_parse_mode("PUT", "!PUT", NGX_HTTP_WAF_MODE_INSPECT_PUT);
-        ngx_http_waf_parse_mode("DELETE", "!DELETE", NGX_HTTP_WAF_MODE_INSPECT_DELETE);
-        ngx_http_waf_parse_mode("MKCOL", "!MKCOL", NGX_HTTP_WAF_MODE_INSPECT_MKCOL);
-        ngx_http_waf_parse_mode("COPY", "!COPY", NGX_HTTP_WAF_MODE_INSPECT_COPY);
-        ngx_http_waf_parse_mode("MOVE", "!MOVE", NGX_HTTP_WAF_MODE_INSPECT_MOVE);
-        ngx_http_waf_parse_mode("OPTIONS", "!OPTIONS", NGX_HTTP_WAF_MODE_INSPECT_OPTIONS);
-        ngx_http_waf_parse_mode("PROPFIND", "!PROPFIND", NGX_HTTP_WAF_MODE_INSPECT_PROPFIND);
-        ngx_http_waf_parse_mode("PROPPATCH", "!PROPPATCH", NGX_HTTP_WAF_MODE_INSPECT_PROPPATCH);
-        ngx_http_waf_parse_mode("LOCK", "!LOCK", NGX_HTTP_WAF_MODE_INSPECT_LOCK);
-        ngx_http_waf_parse_mode("UNLOCK", "!UNLOCK", NGX_HTTP_WAF_MODE_INSPECT_UNLOCK);
-        ngx_http_waf_parse_mode("PATCH", "!PATCH", NGX_HTTP_WAF_MODE_INSPECT_PATCH);
-        ngx_http_waf_parse_mode("TRACE", "!TRACE", NGX_HTTP_WAF_MODE_INSPECT_TRACE);
-        ngx_http_waf_parse_mode("CMN-METH", "!CMN-METH", NGX_HTTP_WAF_MODE_CMN_METH);
-        ngx_http_waf_parse_mode("ALL-METH", "!ALL-METH", NGX_HTTP_WAF_MODE_ALL_METH);
-        ngx_http_waf_parse_mode("IP", "!IP", NGX_HTTP_WAF_MODE_INSPECT_IP);
-        ngx_http_waf_parse_mode("URL", "!URL", NGX_HTTP_WAF_MODE_INSPECT_URL);
-        ngx_http_waf_parse_mode("RBODY", "!RBODY", NGX_HTTP_WAF_MODE_INSPECT_RB);
-        ngx_http_waf_parse_mode("ARGS", "!ARGS", NGX_HTTP_WAF_MODE_INSPECT_ARGS);
-        ngx_http_waf_parse_mode("UA", "!UA", NGX_HTTP_WAF_MODE_INSPECT_UA);
-        ngx_http_waf_parse_mode("COOKIE", "!COOKIE", NGX_HTTP_WAF_MODE_INSPECT_COOKIE);
-        ngx_http_waf_parse_mode("REFERER", "!REFERER", NGX_HTTP_WAF_MODE_INSPECT_REFERER);
-        ngx_http_waf_parse_mode("STD", "!STD", NGX_HTTP_WAF_MODE_STD);
-        ngx_http_waf_parse_mode("STATIC", "!STATIC", NGX_HTTP_WAF_MODE_STATIC);
-        ngx_http_waf_parse_mode("DYNAMIC", "!DYNAMIC", NGX_HTTP_WAF_MODE_DYNAMIC);
-        ngx_http_waf_parse_mode("FULL", "!FULL", NGX_HTTP_WAF_MODE_FULL);
+        _parse_mode("GET", "!GET", NGX_HTTP_WAF_MODE_INSPECT_GET);
+        _parse_mode("HEAD", "!HEAD", NGX_HTTP_WAF_MODE_INSPECT_HEAD);
+        _parse_mode("POST", "!POST", NGX_HTTP_WAF_MODE_INSPECT_POST);
+        _parse_mode("PUT", "!PUT", NGX_HTTP_WAF_MODE_INSPECT_PUT);
+        _parse_mode("DELETE", "!DELETE", NGX_HTTP_WAF_MODE_INSPECT_DELETE);
+        _parse_mode("MKCOL", "!MKCOL", NGX_HTTP_WAF_MODE_INSPECT_MKCOL);
+        _parse_mode("COPY", "!COPY", NGX_HTTP_WAF_MODE_INSPECT_COPY);
+        _parse_mode("MOVE", "!MOVE", NGX_HTTP_WAF_MODE_INSPECT_MOVE);
+        _parse_mode("OPTIONS", "!OPTIONS", NGX_HTTP_WAF_MODE_INSPECT_OPTIONS);
+        _parse_mode("PROPFIND", "!PROPFIND", NGX_HTTP_WAF_MODE_INSPECT_PROPFIND);
+        _parse_mode("PROPPATCH", "!PROPPATCH", NGX_HTTP_WAF_MODE_INSPECT_PROPPATCH);
+        _parse_mode("LOCK", "!LOCK", NGX_HTTP_WAF_MODE_INSPECT_LOCK);
+        _parse_mode("UNLOCK", "!UNLOCK", NGX_HTTP_WAF_MODE_INSPECT_UNLOCK);
+        _parse_mode("PATCH", "!PATCH", NGX_HTTP_WAF_MODE_INSPECT_PATCH);
+        _parse_mode("TRACE", "!TRACE", NGX_HTTP_WAF_MODE_INSPECT_TRACE);
+        _parse_mode("CMN-METH", "!CMN-METH", NGX_HTTP_WAF_MODE_CMN_METH);
+        _parse_mode("ALL-METH", "!ALL-METH", NGX_HTTP_WAF_MODE_ALL_METH);
+        _parse_mode("IP", "!IP", NGX_HTTP_WAF_MODE_INSPECT_IP);
+        _parse_mode("URL", "!URL", NGX_HTTP_WAF_MODE_INSPECT_URL);
+        _parse_mode("RBODY", "!RBODY", NGX_HTTP_WAF_MODE_INSPECT_RB);
+        _parse_mode("ARGS", "!ARGS", NGX_HTTP_WAF_MODE_INSPECT_ARGS);
+        _parse_mode("UA", "!UA", NGX_HTTP_WAF_MODE_INSPECT_UA);
+        _parse_mode("COOKIE", "!COOKIE", NGX_HTTP_WAF_MODE_INSPECT_COOKIE);
+        _parse_mode("REFERER", "!REFERER", NGX_HTTP_WAF_MODE_INSPECT_REFERER);
+        _parse_mode("STD", "!STD", NGX_HTTP_WAF_MODE_STD);
+        _parse_mode("STATIC", "!STATIC", NGX_HTTP_WAF_MODE_STATIC);
+        _parse_mode("DYNAMIC", "!DYNAMIC", NGX_HTTP_WAF_MODE_DYNAMIC);
+        _parse_mode("FULL", "!FULL", NGX_HTTP_WAF_MODE_FULL);
 
-        #undef ngx_http_waf_parse_mode
+        #undef _parse_mode
 
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: invalid value.");
@@ -146,6 +188,7 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
     }
 
     for (size_t i = 2; i < cf->args->nelts; i++) {
+
         UT_array* array = NULL;
         if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
             goto error;
@@ -156,10 +199,12 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         }
 
         ngx_str_t* p = NULL;
-        p = (ngx_str_t*)utarray_next(array, p);
+        // p = (ngx_str_t*)utarray_next(array, p);
+        _get_conf_key(array, p);
 
-        if (ngx_strcmp("rate", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+
+        _conf_key_handler(p->data, "rate", {
+            _get_conf_value(array, p, p);
 
             UT_array* temp = NULL;
             if (ngx_http_waf_str_split(p, '/', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
@@ -187,26 +232,27 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             }
 
             utarray_free(temp);
+        });
 
-        } else if (ngx_strcmp("duration", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "duration", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_cc_deny_duration = ngx_http_waf_parse_time(p->data);
             if (loc_conf->waf_cc_deny_duration == NGX_ERROR) {
                 goto error;
             }
+        });
 
-        } else if (ngx_strcmp("size", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "size", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_cc_deny_shm_zone_size = ngx_http_waf_parse_size(p->data);
             if (loc_conf->waf_cc_deny_shm_zone_size == NGX_ERROR) {
                 goto error;
             }
             loc_conf->waf_cc_deny_shm_zone_size = ngx_max(NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE, 
                                                           loc_conf->waf_cc_deny_shm_zone_size);
-        } else {
-            goto error;
-        }
+        });
 
+        goto error;
         utarray_free(array);
     }
 
@@ -214,7 +260,7 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         goto error;
     }
 
-    if (ngx_http_waf_init_cc_shm(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
+    if (_init_cc_shm(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
         goto error;
     }
 
@@ -254,31 +300,21 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         }
 
         ngx_str_t* p = NULL;
-        p = (ngx_str_t*)utarray_next(array, p);
+        _get_conf_key(array, p);
 
-        if (ngx_strcmp("capacity", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "capacity", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_cache_capacity = ngx_atoi(p->data, p->len);
             if (loc_conf->waf_cache_capacity == NGX_ERROR
                 || loc_conf->waf_cache_capacity <= 0) {
                 goto error;
             }
-
-        } else if (ngx_strcmp("interval", p->data) == 0) {
-            ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_EINVAL, 
-                "Since v6.0.1, the parameter 'interval' is deprecated and it is recommended that you remove this parameter.");
-
-        } else if (ngx_strcmp("percent", p->data) == 0) {
-            ngx_conf_log_error(NGX_LOG_WARN, cf, NGX_EINVAL, 
-                "Since v6.0.1, the parameter 'percent' is deprecated and it is recommended that you remove this parameter.");
-        } else {
-            goto error;
-        }
+        });
 
         utarray_free(array);
     }
 
-    if (ngx_http_waf_init_lru_cache(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
+    if (_init_lru_cache(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
         goto error;
     }
 
@@ -322,10 +358,10 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
         }
 
         ngx_str_t* p = NULL;
-        p = (ngx_str_t*)utarray_next(array, p);
+        _get_conf_key(array, p);
 
-        if (ngx_strcmp("file", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "file", {
+            _get_conf_value(array, p, p);
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -351,11 +387,9 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
             }
 
             fclose(fp);
+        });
 
-
-        } else {
-            goto error;
-        }
+        goto error;
 
         utarray_free(array);
     }
@@ -395,10 +429,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         }
 
         ngx_str_t* p = NULL;
-        p = (ngx_str_t*)utarray_next(array, p);
+        _get_conf_key(array, p);
 
-        if (ngx_strcmp("file", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "file", {
+            _get_conf_value(array, p, p);
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -424,9 +458,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             }
 
             fclose(fp);
+        });
 
-        } else if (ngx_strcmp("prov", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "prov", {
+            _get_conf_value(array, p, p);
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -440,8 +475,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             } else {
                 goto error;
             }
-        } else if (ngx_strcmp("secret", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        });
+
+        _conf_key_handler(p->data, "secret", {
+            _get_conf_value(array, p, p);
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -452,33 +489,39 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv2_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv3_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
+        });
 
-        } else if (ngx_strcmp("expire", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "expire", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_captcha_expire = ngx_http_waf_parse_time(p->data);
             if (loc_conf->waf_captcha_expire == NGX_ERROR) {
                 goto error;
             }
-        } else if (ngx_strcmp("score", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        });
+
+        _conf_key_handler(p->data, "score", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_captcha_reCAPTCHAv3_score = atof((char*)p->data);
             if (loc_conf->waf_captcha_reCAPTCHAv3_score < 0.0 && loc_conf->waf_captcha_reCAPTCHAv3_score > 1.0) {
                 goto error;
             }
-        } else if (ngx_strcmp("api", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        });
+
+        _conf_key_handler(p->data, "api", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_captcha_api.data = ngx_pcalloc(cf->pool, p->len + 1);
             ngx_memcpy(loc_conf->waf_captcha_api.data, p->data, p->len);
             loc_conf->waf_captcha_api.len = p->len;
-        } else if (ngx_strcmp("verfiy", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        });
+
+        _conf_key_handler(p->data, "verfiy", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_captcha_verify_url.data = ngx_pcalloc(cf->pool, p->len + 1);
             ngx_memcpy(loc_conf->waf_captcha_verify_url.data, p->data, p->len);
             loc_conf->waf_captcha_verify_url.len = p->len;
-        } else {
-            goto error;
-        }
+        });
 
+        goto error;
         utarray_free(array);
     }
 
@@ -534,30 +577,30 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
     ngx_str_t* p = NULL;
     size_t proc_index = 0;
     while ((p = (ngx_str_t*)utarray_next(array, p))) {
-        #define ngx_http_waf_parse_priority(str, pt) {          \
+        #define _parse_priority(str, pt) {          \
             if (strcasecmp((str), (char*)(p->data)) == 0) {     \
                 loc_conf->check_proc[proc_index++] = pt;        \
                 continue;                                       \
             }                                                   \
         }
 
-        ngx_http_waf_parse_priority("CC", ngx_http_waf_handler_check_cc);
-        ngx_http_waf_parse_priority("W-IP", ngx_http_waf_handler_check_white_ip);
-        ngx_http_waf_parse_priority("IP", ngx_http_waf_handler_check_black_ip);
-        ngx_http_waf_parse_priority("W-URL", ngx_http_waf_handler_check_white_url);
-        ngx_http_waf_parse_priority("URL", ngx_http_waf_handler_check_black_url);
-        ngx_http_waf_parse_priority("ARGS", ngx_http_waf_handler_check_black_args);
-        ngx_http_waf_parse_priority("UA", ngx_http_waf_handler_check_black_user_agent);
-        ngx_http_waf_parse_priority("W-REFERER", ngx_http_waf_handler_check_white_referer);
-        ngx_http_waf_parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
-        ngx_http_waf_parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
-        ngx_http_waf_parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
-        ngx_http_waf_parse_priority("POST", ngx_http_waf_handler_check_black_post);
-        ngx_http_waf_parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
-        ngx_http_waf_parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
-        ngx_http_waf_parse_priority("MODSECURITY", ngx_http_waf_handler_modsecurity);
+        _parse_priority("CC", ngx_http_waf_handler_check_cc);
+        _parse_priority("W-IP", ngx_http_waf_handler_check_white_ip);
+        _parse_priority("IP", ngx_http_waf_handler_check_black_ip);
+        _parse_priority("W-URL", ngx_http_waf_handler_check_white_url);
+        _parse_priority("URL", ngx_http_waf_handler_check_black_url);
+        _parse_priority("ARGS", ngx_http_waf_handler_check_black_args);
+        _parse_priority("UA", ngx_http_waf_handler_check_black_user_agent);
+        _parse_priority("W-REFERER", ngx_http_waf_handler_check_white_referer);
+        _parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
+        _parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
+        _parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
+        _parse_priority("POST", ngx_http_waf_handler_check_black_post);
+        _parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
+        _parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
+        _parse_priority("MODSECURITY", ngx_http_waf_handler_modsecurity);
 
-        #undef ngx_http_waf_parse_priority
+        #undef _parse_priority
 
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
                           "ngx_waf: ngx_waf: invalid value [%s]", p->data);
@@ -662,7 +705,7 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
         NULL
     };
 
-    static char* s_yandex_bot_yandex_domain_regexp[] = {
+    static char* s_yandex_bot_domain_regexp[] = {
         "yandex\\.com$",
         "yandex\\.net$",
         "yandex\\.ru$",
@@ -687,77 +730,44 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
         return NGX_CONF_OK;
     }
 
+#define _make_regexp_array(regexps, array) {                                \
+    (array) = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));       \
+    if (ngx_http_waf_make_regexp_from_array(cf->pool, (regexps), (array))   \
+            != NGX_HTTP_WAF_SUCCESS) {                                      \
+        return NGX_CONF_ERROR;                                              \
+    }                                                                       \
+}
 
-    loc_conf->waf_verify_bot_google_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_google_bot_ua_regexp, loc_conf->waf_verify_bot_google_ua_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
-
-    loc_conf->waf_verify_bot_google_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_google_bot_domain_regexp, loc_conf->waf_verify_bot_google_domain_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
-
-    
-
-    loc_conf->waf_verify_bot_bing_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_bing_bot_ua_regexp, loc_conf->waf_verify_bot_bing_ua_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
-
-    loc_conf->waf_verify_bot_bing_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_bing_bot_domain_regexp, loc_conf->waf_verify_bot_bing_domain_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
+    _make_regexp_array(s_google_bot_ua_regexp, loc_conf->waf_verify_bot_google_ua_regexp);
+    _make_regexp_array(s_google_bot_domain_regexp, loc_conf->waf_verify_bot_google_domain_regexp);
+    _make_regexp_array(s_bing_bot_ua_regexp, loc_conf->waf_verify_bot_bing_ua_regexp);
+    _make_regexp_array(s_bing_bot_domain_regexp, loc_conf->waf_verify_bot_bing_domain_regexp);
+    _make_regexp_array(s_baidu_spider_ua_regexp, loc_conf->waf_verify_bot_baidu_ua_regexp);
+    _make_regexp_array(s_baidu_spider_domain_regexp, loc_conf->waf_verify_bot_baidu_domain_regexp);
+    _make_regexp_array(s_yandex_bot_ua_regexp, loc_conf->waf_verify_bot_yandex_ua_regexp);
+    _make_regexp_array(s_yandex_bot_domain_regexp, loc_conf->waf_verify_bot_yandex_domain_regexp);
 
 
-    loc_conf->waf_verify_bot_baidu_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_baidu_spider_ua_regexp, loc_conf->waf_verify_bot_baidu_ua_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
 
-    loc_conf->waf_verify_bot_baidu_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_baidu_spider_domain_regexp, loc_conf->waf_verify_bot_baidu_domain_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
-
-
-    loc_conf->waf_verify_bot_yandex_ua_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_yandex_bot_ua_regexp, loc_conf->waf_verify_bot_yandex_ua_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
-
-    loc_conf->waf_verify_bot_yandex_domain_regexp = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
-    if (ngx_http_waf_make_regexp_from_array(cf->pool, s_yandex_bot_yandex_domain_regexp, loc_conf->waf_verify_bot_yandex_domain_regexp) 
-            != NGX_HTTP_WAF_SUCCESS) {
-        return NGX_CONF_ERROR;
-    }
-
+#undef _make_regexp_array
     
 
     for (size_t i = 2; i < cf->args->nelts; i++) {
-        #define ngx_http_waf_parse(str, flag)                                                               \
+        #define _parse_robot(str, flag)                                                               \
         if (ngx_strncasecmp(p_str[i].data, (u_char*)(str), ngx_min(p_str[i].len, sizeof(str) - 1)) == 0     \
         &&  p_str[i].len == sizeof(str) - 1) {                                                              \
             loc_conf->waf_verify_bot_type |= flag;                                                          \
             continue;                                                                                       \
         }                                                                                                   \
 
-        ngx_http_waf_parse("GoogleBot", NGX_HTTP_WAF_GOOGLE_BOT);
-        ngx_http_waf_parse("BingBot", NGX_HTTP_WAF_BING_BOT);
-        ngx_http_waf_parse("BaiduSpider", NGX_HTTP_WAF_BAIDU_SPIDER);
-        ngx_http_waf_parse("YandexBot", NGX_HTTP_WAF_YANDEX_BOT);
+        _parse_robot("GoogleBot", NGX_HTTP_WAF_GOOGLE_BOT);
+        _parse_robot("BingBot", NGX_HTTP_WAF_BING_BOT);
+        _parse_robot("BaiduSpider", NGX_HTTP_WAF_BAIDU_SPIDER);
+        _parse_robot("YandexBot", NGX_HTTP_WAF_YANDEX_BOT);
         
         goto error;
 
-        #undef ngx_http_waf_parse
+        #undef _parse_robot
     }
 
     if (loc_conf->waf_verify_bot_type == 0) {
@@ -792,28 +802,27 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         }
 
         ngx_str_t* p = NULL;
-        p = (ngx_str_t*)utarray_next(array, p);
+        _get_conf_key(array, p);
 
-        if (ngx_strcmp("general", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "general", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_http_status = ngx_atoi(p->data, p->len);
             if (loc_conf->waf_http_status == NGX_ERROR
                 || loc_conf->waf_http_status <= 0) {
                 goto error;
             }
+        });
 
-        } else if (ngx_strcmp("cc_deny", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "cc_deny", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_http_status_cc = ngx_atoi(p->data, p->len);
             if (loc_conf->waf_http_status_cc == NGX_ERROR
                 || loc_conf->waf_http_status_cc <= 0) {
                 goto error;
             }
+        });
 
-        } else {
-            goto error;
-        }
-
+        goto error;
         utarray_free(array);
     }
 
@@ -863,10 +872,10 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         }
 
         ngx_str_t* p = NULL;
-        p = (ngx_str_t*)utarray_next(array, p);
+        _get_conf_key(array, p);
 
-        if (ngx_strcmp("file", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "file", {
+            _get_conf_value(array, p, p);
             char* file = ngx_http_waf_c_str(p, cf->pool);
             const char* error;
             if (file == NULL) {
@@ -882,26 +891,27 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             }
             _recover_modsecurity_pcre_callback(old_pool);
             ngx_pfree(cf->pool, file);
+        });
 
-        } else if (ngx_strcmp("remote_key", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        _conf_key_handler(p->data, "remote_key", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_modsecurity_rules_remote_key.data = (u_char*)ngx_http_waf_c_str(p, cf->pool);
             loc_conf->waf_modsecurity_rules_remote_key.len = p->len;
             if (loc_conf->waf_modsecurity_rules_remote_key.data == NULL) {
                 goto no_memory;
             }
-        
-        } else if (ngx_strcmp("remote_url", p->data) == 0) {
-            p = (ngx_str_t*)utarray_next(array, p);
+        });
+
+        _conf_key_handler(p->data, "remote_url", {
+            _get_conf_value(array, p, p);
             loc_conf->waf_modsecurity_rules_remote_url.data = (u_char*)ngx_http_waf_c_str(p, cf->pool);
             loc_conf->waf_modsecurity_rules_remote_url.len = p->len;
             if (loc_conf->waf_modsecurity_rules_remote_url.data == NULL) {
                 goto no_memory;
             }
-        } else {
-            goto error;
-        }
+        });
 
+        goto error;
         utarray_free(array);
     }
 
@@ -975,7 +985,7 @@ char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t
 
 
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
-    return ngx_http_waf_init_conf(cf);
+    return _init_conf(cf);
 }
 
 
@@ -1131,182 +1141,6 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 }
 
 
-ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_dp(r, "ngx_http_waf_log_get_handler() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-
-    if (ctx->checked == NGX_HTTP_WAF_FALSE) {
-        ngx_http_waf_dp(r, "not checked ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-
-    ngx_http_waf_dp(r, "checked ... return");
-    v->not_found = 0;
-    v->data = (u_char*)"true";
-    v->len = 4;
-
-    ngx_http_waf_dp(r, "ngx_http_waf_log_get_handler() ... end");
-    return NGX_OK;
-}
-
-
-ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_dp(r, "ngx_http_waf_blocking_log_get_handler() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-
-    if (ctx->blocked == NGX_HTTP_WAF_FALSE) {
-        ngx_http_waf_dp(r, "not blocked ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-
-    ngx_http_waf_dp(r, "blocked ... return");
-    v->not_found = 0;
-    v->data = (u_char*)"true";
-    v->len = 4;
-
-    ngx_http_waf_dp(r, "ngx_http_waf_blocking_log_get_handler() ... end");
-    return NGX_OK;
-}
-
-
-ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_dp(r, "ngx_http_waf_blocked_get_handler() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-    
-    if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
-        ngx_http_waf_dp(r, "blocked ... return");
-        v->not_found = 0;
-        v->len = 4;
-        v->data = (u_char*)"true";
-    } else {
-        ngx_http_waf_dp(r, "not blocked ... return");
-        v->not_found = 0;
-        v->len = 5;
-        v->data = (u_char*)"false";
-    }
-
-    ngx_http_waf_dp(r, "ngx_http_waf_blocked_get_handler() ... end");
-    return NGX_OK;
-}
-
-
-ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_dp(r, "ngx_http_waf_rule_type_get_handler() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-
-    v->not_found = 0;
-    v->len = strlen((char*)ctx->rule_type);
-    v->data = ngx_palloc(r->pool, sizeof(u_char) * ngx_max(v->len, 2));
-    strcpy((char*)v->data, (char*)ctx->rule_type);
-    ngx_http_waf_dpf(r, "$waf_rule_type=%s", (char*)v->data);
-
-    ngx_http_waf_dp(r, "ngx_http_waf_rule_type_get_handler() ... end");
-    return NGX_OK;
-}
-
-
-ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_dp(r, "ngx_http_waf_rule_deatils_handler() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
-    
-    v->not_found = 0;
-    v->len = strlen((char*)ctx->rule_deatils);
-    v->data = ngx_palloc(r->pool, sizeof(u_char) * ngx_max(v->len, 2));
-    strcpy((char*)v->data, (char*)ctx->rule_deatils);
-    ngx_http_waf_dpf(r, "$waf_rule_details=%s", (char*)v->data);
-
-    ngx_http_waf_dp(r, "ngx_http_waf_rule_deatils_handler() ... end");
-    return NGX_OK;
-}
-
-
-ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
-    ngx_http_waf_dp(r, "ngx_http_waf_spend_handler() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 0;
-        return NGX_OK;
-    }
-
-
-    u_char text[32] = { 0 };
-    sprintf((char*)text, "%.5lf", ctx->spend);
-    v->len = ngx_strlen(text);
-    v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
-    strcpy((char*)v->data, (char*)text);
-    ngx_http_waf_dpf(r, "$waf_spend=%s", (char*)v->data);
-
-    ngx_http_waf_dp(r, "ngx_http_waf_spend_handler() ... end");
-    return NGX_OK;
-}
-
-
 ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_handler_pt* h;
     ngx_http_core_main_conf_t* cmcf;
@@ -1334,41 +1168,27 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_waf_body_filter_init();
 
 
-    ngx_str_t waf_log_name = ngx_string("waf_log");
-    ngx_http_variable_t* waf_log = ngx_http_add_variable(cf, &waf_log_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_log->get_handler = ngx_http_waf_log_get_handler;
-    waf_log->set_handler = NULL;
+#define _install_var(name, handler) {                                                           \
+    ngx_str_t _name = ngx_string((name));                                                       \
+    ngx_http_variable_t* var = ngx_http_add_variable(cf, &_name, NGX_HTTP_VAR_NOCACHEABLE);     \
+    var->get_handler = (handler);                                                               \
+    var->set_handler = NULL;                                                                    \
+}
 
-    ngx_str_t waf_blocking_log_name = ngx_string("waf_blocking_log");
-    ngx_http_variable_t* waf_blocking_log = ngx_http_add_variable(cf, &waf_blocking_log_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_blocking_log->get_handler = ngx_http_waf_blocking_log_get_handler;
-    waf_blocking_log->set_handler = NULL;
+    _install_var("waf_log", ngx_http_waf_log_get_handler);
+    _install_var("waf_blocking_log", ngx_http_waf_blocking_log_get_handler);
+    _install_var("waf_blocked", ngx_http_waf_blocked_get_handler);
+    _install_var("waf_rule_type", ngx_http_waf_rule_type_get_handler);
+    _install_var("waf_rule_details", ngx_http_waf_rule_deatils_handler);
+    _install_var("waf_spend", ngx_http_waf_spend_handler);
 
-    ngx_str_t waf_blocked_name = ngx_string("waf_blocked");
-    ngx_http_variable_t* waf_blocked = ngx_http_add_variable(cf, &waf_blocked_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_blocked->get_handler = ngx_http_waf_blocked_get_handler;
-    waf_blocked->set_handler = NULL;
-
-    ngx_str_t waf_rule_type_name = ngx_string("waf_rule_type");
-    ngx_http_variable_t* waf_rule_type = ngx_http_add_variable(cf, &waf_rule_type_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_rule_type->get_handler = ngx_http_waf_rule_type_get_handler;
-    waf_rule_type->set_handler = NULL;
-
-    ngx_str_t waf_rule_details_name = ngx_string("waf_rule_details");
-    ngx_http_variable_t* waf_rule_details = ngx_http_add_variable(cf, &waf_rule_details_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_rule_details->get_handler = ngx_http_waf_rule_deatils_handler;
-    waf_rule_details->set_handler = NULL;
-
-    ngx_str_t waf_spend_name = ngx_string("waf_spend");
-    ngx_http_variable_t* waf_spend = ngx_http_add_variable(cf, &waf_spend_name, NGX_HTTP_VAR_NOCACHEABLE);
-    waf_spend->get_handler = ngx_http_waf_spend_handler;
-    waf_spend->set_handler = NULL;
+#undef _install_var
 
     return NGX_OK;
 }
 
 
-ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *data) {
+static ngx_int_t _shm_zone_cc_deny_handler_init(ngx_shm_zone_t *zone, void *data) {
     ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
     ngx_http_waf_loc_conf_t* loc_conf = (ngx_http_waf_loc_conf_t*)(zone->data);
 
@@ -1378,7 +1198,7 @@ ngx_int_t ngx_http_waf_shm_zone_cc_deny_init(ngx_shm_zone_t *zone, void *data) {
 }
 
 
-ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode) {
+static ngx_int_t _load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
     ngx_int_t line_number = 0;
     ngx_str_t line;
@@ -1506,7 +1326,7 @@ ngx_int_t load_into_container(ngx_conf_t* cf, const char* file_name, void* conta
 }
 
 
-ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
+static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     static u_char s_rand_str[129] = { 0 };
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     static ngx_str_t s_thread_pool_name;
@@ -1614,7 +1434,7 @@ ngx_http_waf_loc_conf_t* ngx_http_waf_init_conf(ngx_conf_t* cf) {
 }
 
 
-ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
+static ngx_int_t _init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     ngx_str_t name;
     u_char* raw_name = ngx_pnalloc(cf->pool, sizeof(u_char) * 512);
 
@@ -1633,14 +1453,14 @@ ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
         return NGX_HTTP_WAF_FAIL;
     }
 
-    conf->shm_zone_cc_deny->init = ngx_http_waf_shm_zone_cc_deny_init;
+    conf->shm_zone_cc_deny->init = _shm_zone_cc_deny_handler_init;
     conf->shm_zone_cc_deny->data = conf;
 
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
-ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
+static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     conf->black_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
     conf->black_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
     conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
@@ -1674,9 +1494,22 @@ ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* c
 }
 
 
-ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
+static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     char* full_path = ngx_palloc(cf->pool, sizeof(char) * NGX_HTTP_WAF_RULE_MAX_LEN);
     char* end = ngx_http_waf_to_c_str((u_char*)full_path, conf->waf_rule_path);
+
+#define ngx_http_waf_check_and_load_conf(cf, folder, end, filename, container, mode) {                          \
+    strcat((folder), (filename));                                                                               \
+    if (access((folder), R_OK) != 0) {                                                                          \
+        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
+        return NGX_HTTP_WAF_FAIL;                                                                               \
+    }                                                                                                           \
+    if (_load_into_container((cf), (folder), (container), (mode)) == NGX_HTTP_WAF_FAIL) {                       \
+        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Cannot read configuration.");    \
+        return NGX_HTTP_WAF_FAIL;                                                                               \
+    }                                                                                                           \
+    *(end) = '\0';                                                                                              \
+}
 
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV4_FILE, conf->black_ipv4, 1);
 #if (NGX_HAVE_INET6)
@@ -1695,6 +1528,7 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* co
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, conf->white_url, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, conf->white_referer, 0);
     
+#undef ngx_http_waf_check_and_load_conf
 
     ngx_pfree(cf->pool, full_path);
 
@@ -1702,7 +1536,7 @@ ngx_int_t ngx_http_waf_load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* co
 }
 
 
-ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
+static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     if (conf->is_alloc == NGX_HTTP_WAF_SUCCESS) {
         return NGX_HTTP_WAF_SUCCESS;
     }
@@ -1770,43 +1604,43 @@ ngx_int_t ngx_http_waf_alloc_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* con
 }
 
 
-ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
-    if (conf->is_alloc == NGX_HTTP_WAF_TRUE) {
-        ngx_pfree(cf->pool, conf->black_url);
-        ngx_pfree(cf->pool, conf->black_args);
-        ngx_pfree(cf->pool, conf->black_ua);
-        ngx_pfree(cf->pool, conf->black_referer);
-        ngx_pfree(cf->pool, conf->black_cookie);
-        ngx_pfree(cf->pool, conf->black_post);
-        ngx_pfree(cf->pool, conf->white_url);
-        ngx_pfree(cf->pool, conf->white_referer);
-        ngx_pfree(cf->pool, conf->white_ipv4);
-        ngx_pfree(cf->pool, conf->black_ipv4);
-#if (NGX_HAVE_INET6)
-        ngx_pfree(cf->pool, conf->white_ipv6);
-        ngx_pfree(cf->pool, conf->black_ipv6);
-#endif
+// static ngx_int_t _free_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
+//     if (conf->is_alloc == NGX_HTTP_WAF_TRUE) {
+//         ngx_pfree(cf->pool, conf->black_url);
+//         ngx_pfree(cf->pool, conf->black_args);
+//         ngx_pfree(cf->pool, conf->black_ua);
+//         ngx_pfree(cf->pool, conf->black_referer);
+//         ngx_pfree(cf->pool, conf->black_cookie);
+//         ngx_pfree(cf->pool, conf->black_post);
+//         ngx_pfree(cf->pool, conf->white_url);
+//         ngx_pfree(cf->pool, conf->white_referer);
+//         ngx_pfree(cf->pool, conf->white_ipv4);
+//         ngx_pfree(cf->pool, conf->black_ipv4);
+// #if (NGX_HAVE_INET6)
+//         ngx_pfree(cf->pool, conf->white_ipv6);
+//         ngx_pfree(cf->pool, conf->black_ipv6);
+// #endif
 
-        conf->black_url = NGX_CONF_UNSET_PTR;
-        conf->black_args = NGX_CONF_UNSET_PTR;
-        conf->black_ua = NGX_CONF_UNSET_PTR;
-        conf->black_referer = NGX_CONF_UNSET_PTR;
-        conf->black_cookie = NGX_CONF_UNSET_PTR;
-        conf->black_post = NGX_CONF_UNSET_PTR;
-        conf->white_url = NGX_CONF_UNSET_PTR;
-        conf->white_referer = NGX_CONF_UNSET_PTR;
-        conf->white_ipv4 = NGX_CONF_UNSET_PTR;
-        conf->black_ipv4 = NGX_CONF_UNSET_PTR;
-#if (NGX_HAVE_INET6)
-        conf->white_ipv6 = NGX_CONF_UNSET_PTR;
-        conf->black_ipv6 = NGX_CONF_UNSET_PTR;
-#endif
+//         conf->black_url = NGX_CONF_UNSET_PTR;
+//         conf->black_args = NGX_CONF_UNSET_PTR;
+//         conf->black_ua = NGX_CONF_UNSET_PTR;
+//         conf->black_referer = NGX_CONF_UNSET_PTR;
+//         conf->black_cookie = NGX_CONF_UNSET_PTR;
+//         conf->black_post = NGX_CONF_UNSET_PTR;
+//         conf->white_url = NGX_CONF_UNSET_PTR;
+//         conf->white_referer = NGX_CONF_UNSET_PTR;
+//         conf->white_ipv4 = NGX_CONF_UNSET_PTR;
+//         conf->black_ipv4 = NGX_CONF_UNSET_PTR;
+// #if (NGX_HAVE_INET6)
+//         conf->white_ipv6 = NGX_CONF_UNSET_PTR;
+//         conf->black_ipv6 = NGX_CONF_UNSET_PTR;
+// #endif
 
-        conf->is_alloc = NGX_HTTP_WAF_FALSE;
-    }
+//         conf->is_alloc = NGX_HTTP_WAF_FALSE;
+//     }
 
-    return NGX_HTTP_WAF_SUCCESS;
-}
+//     return NGX_HTTP_WAF_SUCCESS;
+// }
 
 
 static void _cleanup(void* data) {
@@ -1857,3 +1691,8 @@ static void _modsecurity_pcre_free(void* ptr) {
     ngx_pfree(_modsecurity_pcre_pool, ptr);
 }
 
+
+
+#undef _get_conf_key
+#undef _get_conf_value
+#undef _conf_key_handler
