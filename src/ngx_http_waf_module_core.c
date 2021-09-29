@@ -168,7 +168,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
 
-    if (r->internal != 0 
+    if ((r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) 
         || loc_conf->waf == 0 
         || loc_conf->waf == NGX_CONF_UNSET 
         || ctx->read_body_done == NGX_HTTP_WAF_TRUE) {
