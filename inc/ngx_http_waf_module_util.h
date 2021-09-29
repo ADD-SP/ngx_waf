@@ -170,6 +170,12 @@ ngx_int_t ngx_http_waf_rand_str(u_char* dest, size_t len);
 ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size_t buf_len);
 
 
+/**
+ * @brief 获取模块上下文和 server 块配置。
+*/
+void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx);
+
+
 ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* in, char** out);
 
 

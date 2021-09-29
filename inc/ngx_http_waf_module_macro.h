@@ -326,31 +326,6 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_REFERER      \
                                                 | NGX_HTTP_WAF_MODE_ALL_METH)
 
-
-/* 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入容器中 */
-/** 
- * @def ngx_http_waf_check_and_load_conf(cf, folder, end, filename, container, mode)
- * @brief 检查对应文件是否存在，如果存在则根据 mode 的值将数据处理后存入数组中。
- * @param[in] folder 配置文件所在文件夹的绝对路径。
- * @param[in] end folder 字符数组的 '\0' 的地址。
- * @param[in] filename 配置文件名。
- * @param[out] container 存储配置读取结果的容器。
- * @param[in] mode 配置读取模式。
- * @warning 当文件不存在的时候会直接执行 @code return  NGX_CONF_ERROR; @endcode 语句。
-*/
-#define ngx_http_waf_check_and_load_conf(cf, folder, end, filename, container, mode) {                          \
-    strcat((folder), (filename));                                                                               \
-    if (access((folder), R_OK) != 0) {                                                                          \
-        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
-        return NGX_HTTP_WAF_FAIL;                                                                               \
-    }                                                                                                           \
-    if (load_into_container((cf), (folder), (container), (mode)) == NGX_HTTP_WAF_FAIL) {                        \
-        ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "Cannot read configuration.");    \
-        return NGX_HTTP_WAF_FAIL;                                                                               \
-    }                                                                                                           \
-    *(end) = '\0';                                                                                              \
-}
-
 /**
  * @def ngx_http_waf_check_flag(origin, flag)
  * @brief 检查 flag 是否存在于 origin 中，即位操作。

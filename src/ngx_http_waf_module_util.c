@@ -1,10 +1,17 @@
 #include <ngx_http_waf_module_util.h>
 
 
+extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
+
+
+extern void ngx_http_waf_handler_cleanup(void *data);
+
+
 static size_t _curl_handler_write(void *contents, size_t size, size_t nmemb, void *userp);
 
 
 static int _curl_handler_debug(CURL* handle, curl_infotype type, char* data, size_t size, void* userp);
+
 
 
 ngx_int_t ngx_http_waf_parse_ipv4(ngx_str_t text, ipv4_t* ipv4) {
@@ -541,6 +548,41 @@ ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size
     free(out);
     
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx) {
+    ngx_http_waf_dp(r, "ngx_http_waf_get_ctx_and_conf() ... start");
+
+    if (ctx != NULL) {
+        *ctx = NULL;
+        *ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+        if (*ctx == NULL) {
+            ngx_http_cleanup_t* cln = NULL;
+            for (cln = r->cleanup; cln != NULL; cln = cln->next) {
+                if (cln->handler == ngx_http_waf_handler_cleanup) {
+                    *ctx = cln->data;
+                }
+            }
+        }
+    }
+    
+    if (conf != NULL) {
+        *conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+        ngx_http_waf_loc_conf_t* parent = (*conf)->parent;
+        while ((*conf)->waf_cc_deny_limit == NGX_CONF_UNSET && parent != NULL) {
+            (*conf)->waf_cc_deny = parent->waf_cc_deny;
+            (*conf)->waf_cc_deny_limit = parent->waf_cc_deny_limit;
+            (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
+            (*conf)->waf_cc_deny_cycle = parent->waf_cc_deny_cycle;
+            (*conf)->waf_cc_deny_shm_zone_size = parent->waf_cc_deny_shm_zone_size;
+            (*conf)->shm_zone_cc_deny = parent->shm_zone_cc_deny;
+            (*conf)->ip_access_statistics = parent->ip_access_statistics;
+            parent = parent->parent;
+        }
+    }
+
+    ngx_http_waf_dp(r, "ngx_http_waf_get_ctx_and_conf() ... end");
 }
 
 

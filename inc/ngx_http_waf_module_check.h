@@ -3,6 +3,11 @@
  * @brief 检查诸如 IP，URL 等是否命中规则。
 */
 
+
+#ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
+#define NGX_HTTP_WAF_MODLULE_CHECK_H
+
+
 #include <uthash.h>
 #include <math.h>
 #include <ngx_config.h>
@@ -16,10 +21,6 @@
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
 #include <ngx_http_waf_module_captcha.h>
-
-
-#ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
-#define NGX_HTTP_WAF_MODLULE_CHECK_H
 
 
 /**
@@ -139,12 +140,6 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
  * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
 */
 ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t* out_http_status);
-
-
-/**
- * @brief 获取模块上下文和 server 块配置。
-*/
-void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx);
 
 
 /**

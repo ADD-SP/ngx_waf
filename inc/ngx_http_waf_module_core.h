@@ -3,6 +3,10 @@
  * @brief 配置块的初始化和请求检测函数。
 */
 
+#ifndef NGX_HTTP_WAF_MODULE_CORE_H
+#define NGX_HTTP_WAF_MODULE_CORE_H
+
+
 #include <stdio.h>
 #include <uthash.h>
 #include <time.h>
@@ -17,9 +21,6 @@
 #include <ngx_http_waf_module_check.h>
 #include <ngx_http_waf_module_config.h>
 #include <ngx_http_waf_module_util.h>
-
-#ifndef NGX_HTTP_WAF_MODULE_CORE_H
-#define NGX_HTTP_WAF_MODULE_CORE_H
 
 /**
  * @defgroup core 核心模块
