@@ -358,8 +358,8 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
 
-    if (r->internal != 0) {
-        ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");
+    if (r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "do nothing due to multiple internal redirects ... return");
         return NGX_DECLINED;
     }
 
