@@ -1,0 +1,33 @@
+name: issue
+
+on: 
+  schedule:
+    - cron: '0 0 * * *'
+
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  close-staile-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v4.0.0
+        with:
+          repo-token: ${{ secrets.ACCESS_TOKEN }}
+          days-before-issue-stale: 7
+          days-before-issue-close: 8
+          stale-issue-message: 'This issue has been inactive for 7 days, and if there is no activity for 15 days this issue will be closed.'
+          close-issue-message: 'This issue is closed due to inactivity for more than 15 days. You can reopen it.'
+          stale-issue-label: stale
+          stale-pr-label: stale
+          close-issue-label: timeout
+          close-pr-label: timeout
+          debug-only: false
+
+
+
