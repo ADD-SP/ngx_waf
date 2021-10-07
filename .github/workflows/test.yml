@@ -49,71 +49,51 @@ jobs:
         run: |
           sudo apt-get --yes update
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev libmodsecurity-dev  libmodsecurity3
-          sudo pip install lastversion
       - name: Download ${{ matrix.nginx-version }}
         run: |
-          chmod 777 -R ${{ github.workspace }}
-          git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
-          git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
             version='stable' ;\
           else  \
             version='mainline' ;\
           fi
+          sudo chmod 777 -R /usr/local/src
+          cd /usr/local/src
+          sudo pip install lastversion
           lastversion download nginx:${version}
-          mkdir nginx-src
-          tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
+          mkdir nginx
+          tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+      - name: Download cjson
+        run: |
+          git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
+      - name: Download uthash
+        run: |
+          git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
       - name: Configure ${{ matrix.install-type }}
         run: |
-          cd nginx-src
+          cd /usr/local/src/nginx
           if [ ${{ matrix.install-type }} = 'static module' ] ; then \
             opt='--add-module' ;\
           else \
             opt='--add-dynamic-module' ;\
           fi
-          ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
+          ./configure ${opt}=${{ github.workspace }} --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
       - name: Install ${{ matrix.nginx-version }}
         run: |
-          cd nginx-src
-          make
+          cd /usr/local/src/nginx
+          make -j$(nproc)
           sudo make install
           sudo useradd nginx -s /sbin/nologin -M
           sudo chmod 777 -R /usr/local/nginx
           sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
-      - name: Initialize nginx.conf
+      - name: Install Test::Nginx
         run: |
-          sudo chmod 777 -R test
-          sudo ./test/init-conf.sh /usr/local/nginx
-      - name: Test urls
+          sudo cpan Test::Nginx
+      - name: Test
         run: |
-          sudo nginx
-          sudo ./test/test-url.sh
-          sudo nginx -s stop
-      - name: Test args
-        run: |
-          sudo nginx
-          sudo ./test/test-args.sh
-          sudo nginx -s stop
-      - name: Test cookies
-        run: |
-          sudo nginx
-          sudo ./test/test-cookie.sh
-          sudo nginx -s stop
-      - name: Test user-agents
-        run: |
-          sudo nginx
-          sudo ./test/test-ua.sh
-          sudo nginx -s stop
-      - name: Test cc attack
-        run: |
-          sudo nginx
-          sudo ./test/test-cc.sh
-          sudo nginx -s stop
-      - name: Test segmentation fault
-        run: |
-          if [ -e /usr/local/nginx/logs/core ] ; then \
-            exit 1 ; \
-          fi
+          cp -r ./assets /usr/local/nginx/conf/waf
+          cd test/test-nginx
+          exec sudo bash start.sh t/*.t
+          
   docker:
     runs-on: ubuntu-latest
     if: ${{ github.event_name	!= 'schedule' }}
