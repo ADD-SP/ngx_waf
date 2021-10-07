@@ -1014,6 +1014,7 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->black_ua, parent->black_ua, NULL);
     ngx_conf_merge_ptr_value(child->black_post, parent->black_post, NULL);
     ngx_conf_merge_ptr_value(child->black_cookie, parent->black_cookie, NULL);
+    ngx_conf_merge_ptr_value(child->black_referer, parent->black_referer, NULL);
     
 
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);

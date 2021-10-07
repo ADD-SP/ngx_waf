@@ -317,14 +317,7 @@
  * @def MODE_FULL
  * @brief 启用所有的模式
 */
-#define NGX_HTTP_WAF_MODE_FULL                   (NGX_HTTP_WAF_MODE_INSPECT_IP           \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_URL          \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_RB           \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_ARGS         \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_UA           \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_COOKIE       \
-                                                | NGX_HTTP_WAF_MODE_INSPECT_REFERER      \
-                                                | NGX_HTTP_WAF_MODE_ALL_METH)
+#define NGX_HTTP_WAF_MODE_FULL                   (UINT64_MAX)
 
 /**
  * @def ngx_http_waf_check_flag(origin, flag)
