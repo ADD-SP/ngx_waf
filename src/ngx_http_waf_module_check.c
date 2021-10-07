@@ -366,8 +366,6 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t*
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: Inspection has begun.");
 
     ngx_str_t* p_uri = &r->uri;
     ngx_array_t* regex_array = loc_conf->white_url;
@@ -495,9 +493,6 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-        "ngx_waf_debug: Inspection is over.");
-
     ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_user_agent() ... end");
     return ret_value;
 }
@@ -554,14 +549,12 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_in
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
     if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: Because this Inspection is disabled in the configuration, no Inspection is performed.");
+        ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     } 
     
     if (r->headers_in.referer == NULL) {
-        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
-            "ngx_waf_debug: The Inspection is skipped because the Referer is empty.");
+        ngx_http_waf_dp(r, "empty referer ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
