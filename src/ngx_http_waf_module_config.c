@@ -317,6 +317,8 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             }
         });
 
+        goto error;
+
         utarray_free(array);
     }
 
