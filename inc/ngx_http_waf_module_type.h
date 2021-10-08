@@ -298,6 +298,7 @@ typedef struct ngx_http_waf_ctx_s {
 #endif
     Transaction                    *modsecurity_transaction;                    /**< ModSecurity 的事务 */
     ModSecurityIntervention        *modsecurity_intervention;
+    ngx_int_t                       pre_content;                                /**< 是否已经执行过 pre_content handler */
     u_char                          rule_type[128];                             /**< 触发的规则类型 */
     u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
     ngx_buf_t                       req_body;                                   /**< 请求体 */
