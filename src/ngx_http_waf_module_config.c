@@ -1415,6 +1415,15 @@ static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     conf->black_ipv6 = NGX_CONF_UNSET_PTR;
 #endif
 
+    conf->black_url_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_args_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_cookie_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_referer_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_ua_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_url_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_referer_inspection_cache = NGX_CONF_UNSET_PTR;
+
+
     conf->check_proc[0] = ngx_http_waf_handler_check_white_ip;
     conf->check_proc[1] = ngx_http_waf_handler_check_black_ip;
     conf->check_proc[2] = ngx_http_waf_handler_verify_bot;
