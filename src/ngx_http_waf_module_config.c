@@ -234,8 +234,8 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             if (loc_conf->waf_cc_deny_cycle == NGX_ERROR || loc_conf->waf_cc_deny_cycle <= 0) {
                 goto error;
             }
-
             utarray_free(temp);
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "duration", {
@@ -244,6 +244,7 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             if (loc_conf->waf_cc_deny_duration == NGX_ERROR) {
                 goto error;
             }
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "size", {
@@ -254,10 +255,10 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             }
             loc_conf->waf_cc_deny_shm_zone_size = ngx_max(NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE, 
                                                           loc_conf->waf_cc_deny_shm_zone_size);
+            utarray_free(array);
         });
 
         goto error;
-        utarray_free(array);
     }
 
     if (loc_conf->waf_cc_deny_limit == NGX_CONF_UNSET) {
@@ -315,11 +316,10 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 || loc_conf->waf_cache_capacity <= 0) {
                 goto error;
             }
+            utarray_free(array);
         });
 
         goto error;
-
-        utarray_free(array);
     }
 
     if (_init_lru_cache(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
@@ -397,11 +397,10 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
             }
 
             fclose(fp);
+            utarray_free(array);
         });
 
         goto error;
-
-        utarray_free(array);
     }
 
     return NGX_CONF_OK;
@@ -470,6 +469,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             }
 
             fclose(fp);
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "prov", {
@@ -487,6 +487,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             } else {
                 goto error;
             }
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "secret", {
@@ -501,6 +502,8 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv2_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv3_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
+
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "expire", {
@@ -509,6 +512,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             if (loc_conf->waf_captcha_expire == NGX_ERROR) {
                 goto error;
             }
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "score", {
@@ -517,6 +521,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             if (loc_conf->waf_captcha_reCAPTCHAv3_score < 0.0 && loc_conf->waf_captcha_reCAPTCHAv3_score > 1.0) {
                 goto error;
             }
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "api", {
@@ -524,6 +529,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             loc_conf->waf_captcha_api.data = ngx_pcalloc(cf->pool, p->len + 1);
             ngx_memcpy(loc_conf->waf_captcha_api.data, p->data, p->len);
             loc_conf->waf_captcha_api.len = p->len;
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "verfiy", {
@@ -531,10 +537,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             loc_conf->waf_captcha_verify_url.data = ngx_pcalloc(cf->pool, p->len + 1);
             ngx_memcpy(loc_conf->waf_captcha_verify_url.data, p->data, p->len);
             loc_conf->waf_captcha_verify_url.len = p->len;
+            utarray_free(array);
         });
 
         goto error;
-        utarray_free(array);
     }
 
     if (loc_conf->waf_captcha_api.data == NULL || loc_conf->waf_captcha_api.len == 0) {
@@ -825,6 +831,7 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
                 || loc_conf->waf_http_status <= 0) {
                 goto error;
             }
+            utarray_free(array);
         });
 
         _conf_key_handler(p->data, "cc_deny", {
@@ -834,10 +841,10 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
                 || loc_conf->waf_http_status_cc <= 0) {
                 goto error;
             }
+            utarray_free(array);
         });
 
         goto error;
-        utarray_free(array);
     }
 
     return NGX_CONF_OK;
@@ -890,7 +897,7 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         ngx_str_t* p = NULL;
         _get_conf_key(array, p);
 
-        _conf_key_handler(p->data, "file", {
+        if (ngx_strcmp(p->data, "file") == 0) {    
             _get_conf_value(array, p, p);
             char* file = ngx_http_waf_c_str(p, cf->pool);
             const char* error;
@@ -899,15 +906,37 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             }
 
             ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
-            if (msc_rules_add_file(loc_conf->modsecurity_rules, file, &error) < 0) {
+            int rc = msc_rules_add_file(loc_conf->modsecurity_rules, file, &error);
+            if (rc < 0) {
                 _recover_modsecurity_pcre_callback(old_pool);
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
                     "ngx_waf: %s", error);
                 return NGX_CONF_ERROR;
             }
             _recover_modsecurity_pcre_callback(old_pool);
-            ngx_pfree(cf->pool, file);
-        });
+            ngx_pfree(cf->pool, file);                                         
+            continue;                                          
+        }  
+
+        // _conf_key_handler(p->data, "file", {
+        //     _get_conf_value(array, p, p);
+        //     char* file = ngx_http_waf_c_str(p, cf->pool);
+        //     const char* error;
+        //     if (file == NULL) {
+        //         goto no_memory;
+        //     }
+
+        //     ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
+        //     int rc = msc_rules_add_file(loc_conf->modsecurity_rules, file, &error);
+        //     if (rc < 0) {
+        //         _recover_modsecurity_pcre_callback(old_pool);
+        //         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+        //             "ngx_waf: %s", error);
+        //         return NGX_CONF_ERROR;
+        //     }
+        //     _recover_modsecurity_pcre_callback(old_pool);
+        //     ngx_pfree(cf->pool, file);
+        // });
 
         _conf_key_handler(p->data, "remote_key", {
             _get_conf_value(array, p, p);
