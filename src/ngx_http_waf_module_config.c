@@ -181,6 +181,10 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         loc_conf->waf_cc_deny = 1;
     } else if (ngx_strncmp(p_str[1].data, "CAPTCHA", ngx_min(p_str[1].len, sizeof("CAPTCHA") - 1)) == 0) {
         loc_conf->waf_cc_deny = 2;
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, sizeof("off") - 1)) == 0) {
+        loc_conf->waf_cc_deny = 0;
+    } else {
+        goto error;
     }
 
     if (loc_conf->waf_cc_deny == 0) {
@@ -281,8 +285,10 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cache = 1;
-    } else {
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_cache = 0;
+    } else {
+        goto error;
     }
 
     if (loc_conf->waf_cache == 0) {
@@ -335,8 +341,10 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_under_attack = 1;
-    } else {
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0){
         loc_conf->waf_under_attack = 0;
+    } else {
+        goto error;
     }
 
     if (loc_conf->waf_under_attack == 0) {
@@ -414,8 +422,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_captcha = 1;
-    } else {
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_captcha = 0;
+    } else {
+        goto error;
     }
 
     for (size_t i = 2; i < cf->args->nelts; i++) {
@@ -722,8 +732,10 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
         loc_conf->waf_verify_bot = 1;
     } else if (ngx_strncmp(p_str[1].data, "strict", ngx_min(p_str[1].len, 6)) == 0) {
         loc_conf->waf_verify_bot = 2;
-    } else {
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_verify_bot = 0;
+    } else {
+        goto error;
     }
 
     if (loc_conf->waf_verify_bot == 0) {
@@ -841,8 +853,10 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_modsecurity = 1;
-    } else {
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_modsecurity = 0;
+    } else {
+        goto error;
     }
 
     if (loc_conf->waf_modsecurity == 0) {
