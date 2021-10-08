@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: Cookie
+=== TEST: General
 
 --- config
 waf on;
@@ -32,11 +32,25 @@ waf_rule_path /usr/local/nginx/conf/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache on capacity=50;
 
---- request
-GET /
+location /t {
+    waf_mode FULL !COOKIE;
+}
 
---- more_headers
-Cookie: s=../
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /t"
+]
 
---- error_code
-403
+--- more_headers eval
+[
+    "Cookie: s=../",
+    "Cookie: s=../"
+]
+
+
+--- error_code eval
+[
+    403,
+    404
+]

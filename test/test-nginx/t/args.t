@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: Query string
+=== TEST: General
 
 --- config
 waf on;

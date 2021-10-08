@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: User-agent
+=== TEST: General
 
 --- config
 waf on;

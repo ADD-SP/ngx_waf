@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: POST
+=== TEST: General
 
 --- config
 waf on;

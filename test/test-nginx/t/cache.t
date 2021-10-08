@@ -17,14 +17,24 @@ waf_cache on capacity=1;
 --- pipelined_requests eval
 [
     "GET /test0",
+    "GET /test0",
+    "GET /test1",
     "GET /test1",
     "GET /test2",
+    "GET /test2",
     "GET /test3",
+    "GET /test3",
+    "GET /test4",
     "GET /test4",
 ]
 
 --- error_code eval
 [
+    404,
+    404,
+    404,
+    404,
+    404,
     404,
     404,
     404,

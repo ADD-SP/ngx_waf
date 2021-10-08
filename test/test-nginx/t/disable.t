@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: disable
+=== TEST: General
 
 --- config
 waf off;
