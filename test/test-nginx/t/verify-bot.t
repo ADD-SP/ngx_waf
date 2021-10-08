@@ -5,6 +5,24 @@ run_tests();
 
 __DATA__
 
+=== TEST: General
+
+--- config
+waf on;
+waf_mode GET UA;
+waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_cc_deny off rate=100r/m;
+waf_cache off capacity=50;
+waf_verify_bot strict;
+
+--- request
+GET /
+
+--- more_headers
+
+--- error_code chomp
+200
+
 === TEST: Fake Googlebot
 
 --- config

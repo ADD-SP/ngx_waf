@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: URI
+=== TEST: General
 
 --- config
 waf on;
@@ -45,4 +45,25 @@ waf_cache on capacity=50;
 [
     403,
     403
+]
+
+=== TEST: White URI
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_cc_deny off rate=100r/m;
+waf_cache on capacity=50;
+
+--- pipelined_requests eval
+[
+    "GET /white/www.bak",
+    "GET /white/static/index.php"
+]
+
+--- error_code eval
+[
+    404,
+    404
 ]

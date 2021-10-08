@@ -5,7 +5,7 @@ run_tests();
 
 __DATA__
 
-=== TEST: Referer
+=== TEST: General
 
 --- config
 waf on;
@@ -23,6 +23,7 @@ Referer: /test
 --- error_code chomp
 200
 
+
 === TEST: Black referer
 
 --- config
@@ -32,11 +33,48 @@ waf_rule_path /usr/local/nginx/conf/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
---- request
-GET /
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /"
+]
 
---- more_headers
-Referer: /www.bak
+--- more_headers eval
+[
+    "Referer: /www.bak",
+    "Referer: /www.bak"
+]
 
---- error_code
-403
+--- error_code eval
+[
+    403,
+    403
+]
+
+
+=== TEST: White referer
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_cc_deny off rate=100r/m;
+waf_cache off capacity=50;
+
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /"
+]
+
+--- more_headers eval
+[
+    "Referer: /white/www.bak",
+    "Referer: /white/www.bak"
+]
+
+--- error_code eval
+[
+    200,
+    200
+]
