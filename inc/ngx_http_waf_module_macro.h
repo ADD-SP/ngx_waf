@@ -340,6 +340,12 @@
 #define ngx_http_waf_check_bit(origin, bit_index) (ngx_http_waf_check_flag((origin), 1 << (bit_index)))
 
 
+#define ngx_http_waf_is_unset_or_disable_value(x) ((((x) == NGX_CONF_UNSET) || ((x) == 0)) ? (NGX_HTTP_WAF_TRUE) : (NGX_HTTP_WAF_FALSE))
+
+
+#define ngx_http_waf_is_valid_ptr_value(x) ((((x) == NGX_CONF_UNSET_PTR) || ((x) == NULL)) ? (NGX_HTTP_WAF_FALSE) : (NGX_HTTP_WAF_TRUE))
+
+
 #define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, ngx_http_waf_utarray_ngx_str_ctor, ngx_http_waf_utarray_ngx_str_dtor }
 
 

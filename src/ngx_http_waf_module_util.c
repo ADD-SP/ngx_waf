@@ -570,14 +570,14 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
     if (conf != NULL) {
         *conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
         ngx_http_waf_loc_conf_t* parent = (*conf)->parent;
-        while ((*conf)->waf_cc_deny_limit == NGX_CONF_UNSET && parent != NULL) {
-            (*conf)->waf_cc_deny = parent->waf_cc_deny;
-            (*conf)->waf_cc_deny_limit = parent->waf_cc_deny_limit;
-            (*conf)->waf_cc_deny_duration = parent->waf_cc_deny_duration;
-            (*conf)->waf_cc_deny_cycle = parent->waf_cc_deny_cycle;
-            (*conf)->waf_cc_deny_shm_zone_size = parent->waf_cc_deny_shm_zone_size;
-            (*conf)->shm_zone_cc_deny = parent->shm_zone_cc_deny;
-            (*conf)->ip_access_statistics = parent->ip_access_statistics;
+        ngx_http_waf_loc_conf_t* _conf = *conf;
+
+        while (
+            (ngx_http_waf_is_valid_ptr_value(_conf->shm_zone_cc_deny) == NGX_HTTP_WAF_FALSE
+        ||  ngx_http_waf_is_valid_ptr_value(_conf->ip_access_statistics) == NGX_HTTP_WAF_FALSE)
+        &&  parent != NULL) {
+            _conf->shm_zone_cc_deny = parent->shm_zone_cc_deny;
+            _conf->ip_access_statistics = parent->ip_access_statistics;
             parent = parent->parent;
         }
     }
