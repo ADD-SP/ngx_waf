@@ -58,8 +58,8 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
             if (r->uri.len == loc_conf->waf_captcha_verify_url.len
             && ngx_memcmp(r->uri.data, loc_conf->waf_captcha_verify_url.data, r->uri.len) == 0) {
                 ngx_http_waf_dp(r, "equal");
-                ngx_http_waf_dp(r, "generating response string(CAPTCHA pass!)");
-                if (_gen_show_str_ctx(r, "CAPTCHA pass!") != NGX_HTTP_WAF_SUCCESS) {
+                ngx_http_waf_dp(r, "generating response string(good)");
+                if (_gen_show_str_ctx(r, "good") != NGX_HTTP_WAF_SUCCESS) {
                     ngx_http_waf_dp(r, "failed ... return");
                     *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                     return NGX_HTTP_WAF_BAD;
@@ -90,8 +90,8 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
                     *out_http_status = NGX_DECLINED;
                     return NGX_HTTP_WAF_MATCHED;
                 case NGX_HTTP_WAF_CAPTCHA_BAD:
-                    ngx_http_waf_dp(r, "generating response string(CAPTCHA bad!)");
-                    if (_gen_show_str_ctx(r, "CAPTCHA bad!") != NGX_HTTP_WAF_SUCCESS) {
+                    ngx_http_waf_dp(r, "generating response string(bad)");
+                    if (_gen_show_str_ctx(r, "bad") != NGX_HTTP_WAF_SUCCESS) {
                         ngx_http_waf_dp(r, "failed ... return");
                         *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                         return NGX_HTTP_WAF_BAD;
@@ -108,7 +108,7 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
                     &&  _gen_info(r, info) == NGX_HTTP_WAF_SUCCESS
                     &&  _gen_verify_cookie(r, info) == NGX_HTTP_WAF_SUCCESS
                     &&  _gen_pass_ctx(r) == NGX_HTTP_WAF_SUCCESS
-                    &&  _gen_show_str_ctx(r, "CAPTCHA pass!") == NGX_HTTP_WAF_SUCCESS) {
+                    &&  _gen_show_str_ctx(r, "good") == NGX_HTTP_WAF_SUCCESS) {
                         ngx_http_waf_dp(r, "success ... return");
                         *out_http_status = NGX_DECLINED;
                     } else {
@@ -168,8 +168,8 @@ ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_s
             return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
         case NGX_HTTP_WAF_CAPTCHA_BAD:
             ngx_http_waf_dp(r, "bad captcha");
-            ngx_http_waf_dp(r, "generating response string(CAPTCHA bad!)");
-            if (_gen_show_str_ctx(r, "CAPTCHA bad!") != NGX_HTTP_WAF_SUCCESS) {
+            ngx_http_waf_dp(r, "generating response string(bad)");
+            if (_gen_show_str_ctx(r, "bad") != NGX_HTTP_WAF_SUCCESS) {
                 ngx_http_waf_dp(r, "failed ... return");
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_BAD;
@@ -180,8 +180,8 @@ ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_s
         case NGX_HTTP_WAF_CAPTCHA_PASS:
             ngx_http_waf_dp(r, "captcha pass");
             ngx_http_waf_dp(r, "generating releated info");
-            if (_gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS 
-            || _gen_show_str_ctx(r, "CAPTCHA pass!") != NGX_HTTP_WAF_SUCCESS) {
+            if (_gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS
+            ||  _gen_show_str_ctx(r, "good") != NGX_HTTP_WAF_SUCCESS) {
                 ngx_http_waf_dp(r, "failed ... return");
                 *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
                 return NGX_HTTP_WAF_BAD;
@@ -557,7 +557,7 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    ngx_str_t response_key = ngx_string("h_captcha_response");
+    ngx_str_t response_key = ngx_string("h-captcha-response");
     ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
                                                  response_key,
                                                  loc_conf->waf_captcha_hCaptcha_secret,
@@ -577,7 +577,7 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    ngx_str_t response_key = ngx_string("g-recaptcha_response");
+    ngx_str_t response_key = ngx_string("g-recaptcha-response");
     ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
                                                  response_key,
                                                  loc_conf->waf_captcha_reCAPTCHAv2_secret,
