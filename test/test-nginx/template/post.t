@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET POST RBODY;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 location /t {
 }
@@ -27,7 +27,7 @@ s=test
 --- config
 waf on;
 waf_mode GET POST RBODY;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 location /t {
 }

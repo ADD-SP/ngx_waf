@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL !CC;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cache capacity=1;
 
 --- pipelined_requests eval

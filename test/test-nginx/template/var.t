@@ -10,10 +10,10 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 location /error {
-    return 200 [$waf_log][$waf_blocking_log][$waf_blocked][$waf_rule_type];
+    return 200 [\$waf_log][\$waf_blocking_log][\$waf_blocked][\$waf_rule_type];
 }
 
 error_page 403 /error;
@@ -42,14 +42,14 @@ error_page 403 /error;
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 location /t {
 
 }
 
 location /error {
-    return 200 [$waf_log][$waf_blocking_log][$waf_blocked][$waf_rule_type][$waf_spend][$waf_rule_details];
+    return 200 [\$waf_log][\$waf_blocking_log][\$waf_blocked][\$waf_rule_type][\$waf_spend][\$waf_rule_details];
 }
 
 error_page 403 /error;

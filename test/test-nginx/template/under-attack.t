@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL !CC;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_under_attack on uri=/;
 
 --- pipelined_requests eval

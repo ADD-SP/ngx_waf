@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET ARGS;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 GET /?s=test0
@@ -23,7 +23,7 @@ GET /?s=test0
 --- config
 waf on;
 waf_mode GET ARGS;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- pipelined_requests eval
 [
