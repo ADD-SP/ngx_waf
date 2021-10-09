@@ -709,7 +709,7 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
         ngx_str_set(&location->key, "Location");
         location->lowcase_key = (u_char*)"location";
         location->value.data = (u_char*)intervention.url;
-        location->value.len = strlen(intervention.url);
+        location->value.len = ngx_strlen(intervention.url);
         location->hash = 0;
 
         *out_http_status = intervention.status;

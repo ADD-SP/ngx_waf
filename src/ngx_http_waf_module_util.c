@@ -793,7 +793,7 @@ ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx
     for (int i = 0; strv[i] != NULL; i++) {
         ngx_str_t str;
         str.data = (u_char*)strv[i];
-        str.len = strlen(strv[i]);
+        str.len = ngx_strlen(strv[i]);
         ngx_regex_elt_t* elt = ngx_array_push(array);
         if (ngx_http_waf_make_regexp(pool, str, elt) != NGX_HTTP_WAF_SUCCESS) {
             return NGX_HTTP_WAF_FAIL;
