@@ -1,45 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <html>
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Please complete the captcha</title>
-    <script src="https://www.recaptcha.net/recaptcha/api.js" async defer></script>
-    <script>
-      function get_uid() {
-        let arr = document.cookie.split("; ");
-        for (let i = 0; i < arr.length; i++) {
-          let temp = arr[i].split("=");
-          if (temp[0] == "__waf_captcha_uid") {
-              return temp[1];
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Please complete the captcha</title>
+  <script src="https://www.recaptcha.net/recaptcha/api.js"></script>
+  <style type="text/css">
+    div {
+      text-align: center;
+    }
+  </style>
+  <script>
+    function onSubmit(token) {
+      let reqBody = "g-recaptcha-response=" + token;
+      let httpRequest = new XMLHttpRequest();
+      httpRequest.open("POST", "/captcha");
+      httpRequest.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+      httpRequest.send(reqBody);
+      httpRequest.onreadystatechange = () => {
+        if (httpRequest.readyState == 4 && httpRequest.status == 200) {
+          let text = httpRequest.responseText;
+          switch (text) {
+            case "good":
+              window.location.reload();
+              break;
+            case "bad":
+              alert("Bad CAPTCHA, please refresh the page and try again.\n"
+                  + "您未能通过人机验证，请刷新页面后重试。");
+              break;
+            default:
+              alert("Unexpected error occurred, please refresh the page and try again.\n"
+                  + "发生了意料之外的错误，请刷新页面后重试。");
           }
         }
-        return '';
       }
-      var oldUID = get_uid();
-      var flag = true;
-      setInterval(function() {
-        var newUID = get_uid();
-        if (oldUID !== newUID && flag && newUID.length == 64) {
-          flag = false;
-          location.reload();
-        }
-      }, 100);
-    </script>
-  </head>
-  <body>
-    <h1>Please complete the captcha.</h1>
-    <h1>请完成验证码</h1>
-    <form id="captcha-form" action="/captcha" method="POST" style="text-align: center;" target="dummy">
-        <div class="g-recaptcha" 
-             data-sitekey="Your Sitekey" 
-             style="display: flex;align-items: center;justify-content: center;"></div>
-        <br />
-        <input type="submit" value="NEXT （下一步）" style="font-size:25px">
-    </form>
-    <iframe name="dummy" style="display:none;">
-    </iframe>
-  </body>
+    }
+  </script>
+</head>
+
+<body>
+  <h1>Please complete the captcha.</h1>
+  <h1>请完成验证码</h1>
+  <div class="g-recaptcha" data-sitekey="********your_site_key********" data-callback="onSubmit"></div>
+</body>
+
 </html>
