@@ -200,12 +200,6 @@ void ngx_http_waf_utarray_ngx_str_ctor(void *dst, const void *src);
 void ngx_http_waf_utarray_ngx_str_dtor(void* elt);
 
 
-void ngx_http_waf_utarray_vm_code_ctor(void *dst, const void *src);
-
-
-void ngx_http_waf_utarray_vm_code_dtor(void* elt);
-
-
 /**
  * @}
 */
