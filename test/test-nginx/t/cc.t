@@ -44,14 +44,28 @@ waf_cc_deny CAPTCHA rate=1r/h duration=1h;
 waf_cache off capacity=50;
 waf_captcha off prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret=xx;
 
+location /t {
+    waf_cc_deny off;
+}
+
 --- pipelined_requests eval
 [
     "GET /",
-    "GET /"
+    "GET /",
+    "GET /",
+    "POST /captcha\nh-captcha-response=xxxx",
+    "GET /t",
+    "GET /t"
 ]
 
 --- error_code eval
 [
     200,
-    503
+    503,
+    503,
+    200,
+    404,
+    404
 ]
+
+--- ONLY
