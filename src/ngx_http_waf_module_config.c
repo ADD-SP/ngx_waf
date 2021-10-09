@@ -449,6 +449,7 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         child->black_post = parent->black_post;
         child->black_ipv4 = parent->black_ipv4;
         child->black_cookie = parent->black_cookie;
+        child->black_referer = parent->black_referer;
         child->advanced_rule = parent->advanced_rule;
     }
     
