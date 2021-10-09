@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET UA !CC;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 GET /
@@ -26,7 +26,7 @@ User-Agent: test-user-agent
 --- config
 waf on;
 waf_mode GET UA !CC;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 GET /
@@ -34,5 +34,5 @@ GET /
 --- more_headers
 User-Agent: / SF/
 
---- error_code
+--- error_code chomp
 403

@@ -16,7 +16,7 @@ waf bad;
 === TEST: Bad directive waf_rule_path
 
 --- config
-waf_rule_path /usr/local/nginx/conf/waf/rules;
+waf_rule_path ${base_dir}/waf/rules;
 
 --- must_die
 

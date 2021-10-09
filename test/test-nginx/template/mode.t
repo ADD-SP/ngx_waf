@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL !GET !CC !CACHE;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 GET /www.bak
@@ -24,7 +24,7 @@ GET /www.bak
 --- config
 waf on;
 waf_mode FULL !POST !CC !CACHE;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 POST /www.bak
@@ -38,7 +38,7 @@ POST /www.bak
 --- config
 waf on;
 waf_mode FULL !HEAD !CC !CACHE;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 HEAD /www.bak

@@ -2,9 +2,29 @@
 
 set -xe
 
+if [ -z "$MODULE_TEST_PATH" ] ; then
+    echo "Environment variable MODULE_TEST_PATH is not set."
+    exit 1
+fi
+
+base_dir="$MODULE_TEST_PATH"
 origin_dir=$(pwd)
 
-cd /usr/local/nginx/conf/waf
+rm -rf "$base_dir"
+mkdir -p "$base_dir"
+cp -r ../../assets "$base_dir/waf"
+
+templates=$(ls template)
+
+for file in $templates
+do
+eval "cat <<EOF
+$(cat "template/$file")
+EOF
+"  > "t/$file"
+done
+
+cd "$base_dir/waf"
 git clone https://github.com/SpiderLabs/ModSecurity.git
 git clone https://github.com/coreruleset/coreruleset.git
 

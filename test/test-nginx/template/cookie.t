@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET COOKIE !CC;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 GET /
@@ -26,7 +26,7 @@ Cookie: s=test
 --- config
 waf on;
 waf_mode GET COOKIE !CC;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 
 location /t {
     waf_mode FULL !COOKIE;
