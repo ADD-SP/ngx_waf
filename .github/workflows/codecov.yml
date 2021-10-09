@@ -1,0 +1,78 @@
+name: codecov
+
+on: [push]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  codecov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+          architecture: 'x64'
+      - name: Install dependencies
+        run: |
+          sudo apt-get --yes update
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev libmodsecurity-dev libmodsecurity3 gcovr
+      - name: Download nginx
+        run: |
+          sudo chmod 777 -R /usr/local/src
+          cd /usr/local/src
+          sudo pip install lastversion
+          lastversion download nginx:stable
+          mkdir nginx
+          tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+      - name: Download DaveGamble/cJSON.git
+        run: |
+          git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
+      - name: Download troydhanson/uthash
+        run: |
+          git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
+      - name: Configure nginx
+        run: |
+          cd /usr/local/src/nginx
+          ./configure --add-module=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-fprofile-arcs -ftest-coverage -O0 -g3' --with-ld-opt='-lgcov'
+      - name: Install nginx
+        run: |
+          cd /usr/local/src/nginx
+          make -j$(nproc)
+          sudo make install
+          sudo useradd nginx -s /sbin/nologin -M
+          sudo chmod 777 -R /usr/local/nginx
+          sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
+      - name: Install Test::Nginx
+        run: |
+          sudo cpan Test::Nginx
+      - name: Test
+        run: |
+          cp -r ./assets /usr/local/nginx/conf/waf
+          cd test/test-nginx
+          sh ./init.sh
+          exec sudo bash start.sh t/*.t
+      - name: Generate coverage report
+        run: |
+          sudo chmod -R 777 /usr/local/src
+          cd /usr/local/src/nginx
+          gcovr -v -r ${{ github.workspace }}/src/ --xml --xml-pretty -o ./coverage.xml /usr/local/src/nginx/objs/addon/src/
+          mkdir -p /usr/local/src/empty
+          sudo chmod -R 777 /usr/local/src
+          cp ./coverage.xml /usr/local/src/empty/coverage.xml
+          cat /usr/local/src/empty/coverage.xml
+          cp ${{ github.workspace }}/src/* /usr/local/src/empty/
+          sudo chmod -R 777 ${{ github.workspace }}
+          sudo chmod -R 777 /usr/local/src
+      - name: Run codacy-coverage-reporter
+        uses: codacy/codacy-coverage-reporter-action@v1
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: /usr/local/src/empty/coverage.xml
+
+
+          
