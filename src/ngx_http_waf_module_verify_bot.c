@@ -112,7 +112,7 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
 
     ngx_str_t host;
     host.data = (u_char*)h->h_name;
-    host.len = strlen(h->h_name);
+    host.len = ngx_strlen(h->h_name);
     ngx_http_waf_dpf(r, "verifying host %V", &host);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_google_domain_regexp, &host, r->connection->log) == NGX_OK) {
         ngx_http_waf_dp(r, "success ... return");
@@ -121,7 +121,7 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
 
     for (int i = 0; h->h_aliases[i] != NULL; i++) {
         host.data = (u_char*)h->h_aliases[i];
-        host.len = strlen(h->h_aliases[i]);
+        host.len = ngx_strlen(h->h_aliases[i]);
         ngx_http_waf_dpf(r, "verifying host %V", &host);
         if (ngx_regex_exec_array(loc_conf->waf_verify_bot_google_domain_regexp, &host, r->connection->log) == NGX_OK) {
             ngx_http_waf_dp(r, "success ... return");
@@ -192,7 +192,7 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
 
     ngx_str_t host;
     host.data = (u_char*)h->h_name;
-    host.len = strlen(h->h_name);
+    host.len = ngx_strlen(h->h_name);
     ngx_http_waf_dpf(r, "verifying host %V", &host);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_bing_domain_regexp, &host, r->connection->log) == NGX_OK) {
         ngx_http_waf_dp(r, "success ... return");
@@ -201,7 +201,7 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
 
     for (int i = 0; h->h_aliases[i] != NULL; i++) {
         host.data = (u_char*)h->h_aliases[i];
-        host.len = strlen(h->h_aliases[i]);
+        host.len = ngx_strlen(h->h_aliases[i]);
         ngx_http_waf_dpf(r, "verifying host %V", &host);
         if (ngx_regex_exec_array(loc_conf->waf_verify_bot_bing_domain_regexp, &host, r->connection->log) == NGX_OK) {
             ngx_http_waf_dp(r, "success ... return");
@@ -273,7 +273,7 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
 
     ngx_str_t host;
     host.data = (u_char*)h->h_name;
-    host.len = strlen(h->h_name);
+    host.len = ngx_strlen(h->h_name);
     ngx_http_waf_dpf(r, "verifying host %V", &host);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_baidu_domain_regexp, &host, r->connection->log) == NGX_OK) {
         ngx_http_waf_dp(r, "success ... return");
@@ -282,7 +282,7 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
 
     for (int i = 0; h->h_aliases[i] != NULL; i++) {
         host.data = (u_char*)h->h_aliases[i];
-        host.len = strlen(h->h_aliases[i]);
+        host.len = ngx_strlen(h->h_aliases[i]);
         ngx_http_waf_dpf(r, "verifying host %V", &host);
         if (ngx_regex_exec_array(loc_conf->waf_verify_bot_baidu_domain_regexp, &host, r->connection->log) == NGX_OK) {
             ngx_http_waf_dp(r, "success ... return");
@@ -353,7 +353,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
 
     ngx_str_t host;
     host.data = (u_char*)h->h_name;
-    host.len = strlen(h->h_name);
+    host.len = ngx_strlen(h->h_name);
     ngx_http_waf_dpf(r, "verifying host %V", &host);
     if (ngx_regex_exec_array(loc_conf->waf_verify_bot_yandex_domain_regexp, &host, r->connection->log) == NGX_OK) {
         ngx_http_waf_dp(r, "success ... return");
@@ -362,7 +362,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
 
     for (int i = 0; h->h_aliases[i] != NULL; i++) {
         host.data = (u_char*)h->h_aliases[i];
-        host.len = strlen(h->h_aliases[i]);
+        host.len = ngx_strlen(h->h_aliases[i]);
         ngx_http_waf_dpf(r, "verifying host %V", &host);
         if (ngx_regex_exec_array(loc_conf->waf_verify_bot_yandex_domain_regexp, &host, r->connection->log) == NGX_OK) {
             ngx_http_waf_dp(r, "success ... return");

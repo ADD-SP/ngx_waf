@@ -1278,7 +1278,7 @@ static ngx_int_t _load_into_container(ngx_conf_t* cf, const char* file_name, voi
             #ifdef __STDC_LIB_EXT1__
                 line.len = strnlen_s((char*)str. sizeof(char) * NGX_HTTP_WAF_RULE_MAX_LEN);
             #else
-            line.len = strlen((char*)str);
+            line.len = ngx_strlen(str);
             #endif
 
             memset(&ipv4, 0, sizeof(ipv4_t));
@@ -1503,7 +1503,7 @@ static ngx_int_t _init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     ngx_http_waf_rand_str(raw_name, 16);
     strcat((char*)raw_name, NGX_HTTP_WAF_SHARE_MEMORY_CC_DNEY_NAME);
     name.data = raw_name;
-    name.len = strlen((char*)raw_name);
+    name.len = ngx_strlen(raw_name);
 
     conf->shm_zone_cc_deny = ngx_shared_memory_add(cf, &name, 
                                                         conf->waf_cc_deny_shm_zone_size, 
