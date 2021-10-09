@@ -1,19 +1,20 @@
 #include <ngx_http_waf_module_var.h>
 
+#define _init(r, v)                                     \
+    ngx_http_waf_ctx_t* ctx = NULL;                     \
+    ngx_http_waf_get_ctx_and_conf((r), NULL, &ctx);     \
+    (v)->valid = 1;                                     \
+    (v)->no_cacheable = 1;                              \
+    if (ctx == NULL) {                                  \
+        ngx_http_waf_dp(r, "no ctx ... return");        \
+        v->not_found = 1;                               \
+        return NGX_OK;                                  \
+    }                                   
+
 ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_log_get_handler() ... start");
 
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
+    _init(r, v);
 
     if (ctx->checked == NGX_HTTP_WAF_FALSE) {
         ngx_http_waf_dp(r, "not checked ... return");
@@ -34,17 +35,7 @@ ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_
 ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_blocking_log_get_handler() ... start");
 
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
+    _init(r, v);
 
     if (ctx->blocked == NGX_HTTP_WAF_FALSE) {
         ngx_http_waf_dp(r, "not blocked ... return");
@@ -65,17 +56,7 @@ ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_
 ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_blocked_get_handler() ... start");
 
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
+    _init(r, v);
     
     if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
         ngx_http_waf_dp(r, "blocked ... return");
@@ -97,17 +78,7 @@ ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_varia
 ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_rule_type_get_handler() ... start");
 
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
+    _init(r, v);
 
     v->not_found = 0;
     v->len = ngx_strlen(ctx->rule_type);
@@ -123,18 +94,7 @@ ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_var
 ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_rule_deatils_handler() ... start");
 
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 1;
-        return NGX_OK;
-    }
+    _init(r, v);
     
     v->not_found = 0;
     v->len = ngx_strlen(ctx->rule_deatils);
@@ -150,19 +110,7 @@ ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_vari
 ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_spend_handler() ... start");
 
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    v->valid = 1;
-    v->no_cacheable = 1;
-    
-
-    if (ctx == NULL) {
-        ngx_http_waf_dp(r, "no ctx ... return");
-        v->not_found = 0;
-        return NGX_OK;
-    }
-
+    _init(r, v);
 
     u_char text[32] = { 0 };
     sprintf((char*)text, "%.5lf", ctx->spend);
@@ -174,3 +122,6 @@ ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_va
     ngx_http_waf_dp(r, "ngx_http_waf_spend_handler() ... end");
     return NGX_OK;
 }
+
+
+#undef _init

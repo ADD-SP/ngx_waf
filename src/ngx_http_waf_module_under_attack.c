@@ -24,7 +24,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (loc_conf->waf_under_attack == 0 || loc_conf->waf_under_attack == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_under_attack)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }

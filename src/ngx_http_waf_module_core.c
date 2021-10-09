@@ -158,7 +158,7 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf)) {
         ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
         return NGX_DECLINED;
     }
@@ -326,7 +326,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     ngx_int_t http_status = NGX_DECLINED;
 
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf)) {
         ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
         return NGX_DECLINED;
     }
