@@ -40,7 +40,9 @@
 
 #define NGX_HTTP_WAF_KEY_EXISTS              (4)
 
-#define NGX_HTTP_WAF_KEY_NOT_EXISTS            (5)
+#define NGX_HTTP_WAF_KEY_NOT_EXISTS          (5)
+
+#define NGX_HTTP_WAF_BAD                     (6)
 
 
 /**

@@ -102,6 +102,12 @@ ngx_module_t ngx_http_waf_module = {
 };
 
 
+static ngx_int_t _read_request_body(ngx_http_request_t* r);
+
+
+static void _handler_read_request_body(ngx_http_request_t* r);
+
+
 ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle) {
     randombytes_stir();
     return NGX_OK;
@@ -142,6 +148,8 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             cln->next = NULL;
 
             ctx->read_body_done = NGX_HTTP_WAF_FALSE;
+            ctx->has_req_body = NGX_HTTP_WAF_FALSE;
+            ctx->waiting_more_body = NGX_HTTP_WAF_FALSE;
             ctx->checked = NGX_HTTP_WAF_FALSE;
             ctx->blocked = NGX_HTTP_WAF_FALSE;
             ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
@@ -168,34 +176,42 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
 
-    if ((r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) 
-        || loc_conf->waf == 0 
-        || loc_conf->waf == NGX_CONF_UNSET 
-        || ctx->read_body_done == NGX_HTTP_WAF_TRUE) {
+    if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
+        return NGX_DONE;
+    }
+
+    if (ctx->read_body_done != NGX_HTTP_WAF_TRUE) {
+        r->request_body_in_single_buf = 1;
+        r->request_body_in_persistent_file = 1;
+        r->request_body_in_clean_file = 1;
+
+        ngx_int_t rc = ngx_http_read_client_request_body(r, _handler_read_request_body);
+        if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+            return rc;
+        }
+        if (rc == NGX_AGAIN) {
+            ctx->waiting_more_body = NGX_HTTP_WAF_TRUE;
+            return NGX_DONE;
+        }
+    }
+    
+    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
         http_status = NGX_DECLINED;
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Skip scheduling.");
-    }
-    else {
+    } else if (r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) {
+        http_status = NGX_DECLINED;
+        ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
+            "ngx_waf_debug: Skip scheduling.");
+    } else if (_read_request_body(r) == NGX_HTTP_WAF_BAD) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    } else {
         ctx->checked = NGX_HTTP_WAF_TRUE;
         ngx_http_waf_check_pt* funcs = loc_conf->check_proc;
         for (size_t i = 0; funcs[i] != NULL; i++) {
             is_matched = funcs[i](r, &http_status);
             if (is_matched == NGX_HTTP_WAF_MATCHED) {
                 break;
-            }
-        }
-        /* 如果请求方法为 POST 且 本模块还未读取过请求体 且 配置中未关闭请求体检查 */
-        if ((r->method & NGX_HTTP_POST) != 0
-            && ctx->read_body_done == NGX_HTTP_WAF_FALSE
-            && is_matched != NGX_HTTP_WAF_MATCHED
-            && ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB) == NGX_HTTP_WAF_TRUE) {
-            r->request_body_in_persistent_file = 0;
-            r->request_body_in_clean_file = 0;
-            ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
-            http_status = ngx_http_read_client_request_body(r, ngx_http_waf_handler_check_black_post);
-            if (http_status != NGX_ERROR && http_status < NGX_HTTP_SPECIAL_RESPONSE) {
-                http_status = NGX_DONE;
             }
         }
     }
@@ -211,6 +227,72 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: The scheduler shutdown normally.");
     return http_status;
+}
+
+
+static ngx_int_t _read_request_body(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+
+    if (r->request_body == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    if (r->request_body->bufs == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    if (r->request_body->temp_file) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    if (ctx->has_req_body == NGX_HTTP_WAF_TRUE) {
+        return NGX_HTTP_WAF_SUCCESS;
+    }
+
+    ngx_chain_t* bufs = r->request_body->bufs;
+    size_t len = 0;
+
+    while (bufs != NULL) {
+        len += (bufs->buf->last - bufs->buf->pos) * (sizeof(u_char) / sizeof(uint8_t));
+        bufs = bufs->next;
+    }
+
+    u_char* body = ngx_pnalloc(r->pool, len + sizeof(u_char));
+    if (body == NULL) {
+        return NGX_HTTP_WAF_BAD;
+    }
+
+    ctx->has_req_body = NGX_HTTP_WAF_TRUE;
+    ctx->req_body.pos = body;
+    ctx->req_body.last = (u_char*)((uint8_t*)body + len);
+
+    bufs = r->request_body->bufs;
+    size_t offset = 0;
+    while (bufs != NULL) {
+        size_t size = bufs->buf->last - bufs->buf->pos;
+        ngx_memcpy((uint8_t*)body + offset, bufs->buf->pos, size);
+        offset += size;
+        bufs = bufs->next;
+    }
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+static void _handler_read_request_body(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ctx->read_body_done = NGX_HTTP_WAF_TRUE;
+    ngx_http_finalize_request(r, NGX_DONE);
+
+    if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
+        ctx->waiting_more_body = NGX_HTTP_WAF_FALSE;
+        ngx_http_core_run_phases(r);
+    }
 }
 
 

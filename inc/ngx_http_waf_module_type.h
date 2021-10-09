@@ -272,7 +272,10 @@ typedef struct ngx_http_waf_ctx_s {
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
     u_char                          rule_type[128];                             /**< 触发的规则类型 */
     u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
-    ngx_int_t                       read_body_done;                             /**< 是否已经读取完请求体 */
+    ngx_int_t                       read_body_done;
+    ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
+    ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
+    ngx_buf_t                       req_body;                                   /**< 请求体 */
 } ngx_http_waf_ctx_t;
 
 
