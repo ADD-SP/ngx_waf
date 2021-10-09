@@ -57,8 +57,15 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
                 &r->uri, &loc_conf->waf_captcha_verify_url);
             if (r->uri.len == loc_conf->waf_captcha_verify_url.len
             && ngx_memcmp(r->uri.data, loc_conf->waf_captcha_verify_url.data, r->uri.len) == 0) {
-                ngx_http_waf_dp(r, "equal ... return");
-                *out_http_status = NGX_HTTP_NO_CONTENT;
+                ngx_http_waf_dp(r, "equal");
+                ngx_http_waf_dp(r, "generating response string(CAPTCHA pass!)");
+                if (_gen_show_str_ctx(r, "CAPTCHA pass!") != NGX_HTTP_WAF_SUCCESS) {
+                    ngx_http_waf_dp(r, "failed ... return");
+                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    return NGX_HTTP_WAF_BAD;
+                }
+                ngx_http_waf_dp(r, "success ... return");
+                *out_http_status = NGX_DECLINED;
                 return NGX_HTTP_WAF_MATCHED;
             }
             ngx_http_waf_dp(r, "not equal");
