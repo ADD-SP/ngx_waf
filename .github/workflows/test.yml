@@ -71,7 +71,7 @@ jobs:
           else \
             opt='--add-dynamic-module' ;\
           fi
-          ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
+          ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong -Wno-sign-compare' --with-http_realip_module
       - name: Install ${{ matrix.nginx-version }}
         run: |
           cd nginx-src
@@ -80,40 +80,16 @@ jobs:
           sudo useradd nginx -s /sbin/nologin -M
           sudo chmod 777 -R /usr/local/nginx
           sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
-      - name: Initialize nginx.conf
+      - name: Install Test::Nginx
         run: |
-          sudo chmod 777 -R test
-          sudo ./test/init-conf.sh /usr/local/nginx
-      - name: Test urls
+          sudo cpan Test::Nginx
+      - name: Test
         run: |
-          sudo nginx
-          sudo ./test/test-url.sh
-          sudo nginx -s stop
-      - name: Test args
-        run: |
-          sudo nginx
-          sudo ./test/test-args.sh
-          sudo nginx -s stop
-      - name: Test cookies
-        run: |
-          sudo nginx
-          sudo ./test/test-cookie.sh
-          sudo nginx -s stop
-      - name: Test user-agents
-        run: |
-          sudo nginx
-          sudo ./test/test-ua.sh
-          sudo nginx -s stop
-      - name: Test cc attack
-        run: |
-          sudo nginx
-          sudo ./test/test-cc.sh
-          sudo nginx -s stop
-      - name: Test segmentation fault
-        run: |
-          if [ -e /usr/local/nginx/logs/core ] ; then \
-            exit 1 ; \
-          fi
+          cp -r ./assets /usr/local/nginx/conf/waf
+          cd test/test-nginx
+          sh ./init.sh
+          exec sudo bash start.sh t/*.t
+      
   docker:
     runs-on: ubuntu-latest
     if: ${{ github.event_name	!= 'schedule' }}
