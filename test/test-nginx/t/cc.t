@@ -67,5 +67,3 @@ location /t {
     404,
     404
 ]
-
---- ONLY
