@@ -3,6 +3,7 @@ node_modules
 docs/.vuepress/dist
 yarn.lock
 package-lock.json
+test/test-nginx/t/servroot
 inc/libinjection
 inc/libsodium
 inc/ngx_http_waf_module_lexer.h
