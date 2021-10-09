@@ -15,14 +15,29 @@ waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_captcha on prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret=xx;
 
---- request
-GET /
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /",
+    "POST /captcha\nh-captcha-response=xxxx"
+]
 
---- response_body_like chomp
-captcha
 
---- error_code chomp
-503
+--- more_headers eval
+[
+    "",
+    "Cookie: __waf_captcha_time=123456; __waf_captcha_uid=123456; __waf_captcha_hmac=123456",
+    ""
+]
+
+--- error_code eval
+[
+    503,
+    503,
+    200
+]
+
+
 
 === TEST: reCAPTCHAv2 checkbox
 
@@ -34,14 +49,27 @@ waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Checkbox.html secret=xx;
 
---- request
-GET /
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /",
+    "POST /captcha\ng-captcha-response=xxxx"
+]
 
---- response_body_like chomp
-captcha
 
---- error_code chomp
-503
+--- more_headers eval
+[
+    "",
+    "Cookie: __waf_captcha_time=123456; __waf_captcha_uid=123456; __waf_captcha_hmac=123456",
+    ""
+]
+
+--- error_code eval
+[
+    503,
+    503,
+    200
+]
 
 === TEST: reCAPTCHAv2 invisible
 
@@ -53,14 +81,27 @@ waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Invisible.html secret=xx;
 
---- request
-GET /
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /",
+    "POST /captcha\ng-captcha-response=xxxx"
+]
 
---- response_body_like chomp
-captcha
 
---- error_code chomp
-503
+--- more_headers eval
+[
+    "",
+    "Cookie: __waf_captcha_time=123456; __waf_captcha_uid=123456; __waf_captcha_hmac=123456",
+    ""
+]
+
+--- error_code eval
+[
+    503,
+    503,
+    200
+]
 
 === TEST: reCAPTCHAv3
 
@@ -72,11 +113,24 @@ waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_captcha on prov=reCAPTCHAv3 file=/usr/local/nginx/conf/waf/reCAPTCHAv3.html secret=xx score=0.5;
 
---- request
-GET /
+--- pipelined_requests eval
+[
+    "GET /",
+    "GET /",
+    "POST /captcha\ng-captcha-response=xxxx"
+]
 
---- response_body_like chomp
-captcha
 
---- error_code chomp
-503
+--- more_headers eval
+[
+    "",
+    "Cookie: __waf_captcha_time=123456; __waf_captcha_uid=123456; __waf_captcha_hmac=123456",
+    ""
+]
+
+--- error_code eval
+[
+    503,
+    503,
+    200
+]
