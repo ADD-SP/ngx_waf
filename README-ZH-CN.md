@@ -10,6 +10,7 @@
 [![docs](https://github.com/ADD-SP/ngx_waf-docs/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/zh-cn/)
 [![docker](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml/badge.svg)](https://hub.docker.com/r/addsp/ngx_waf-prebuild)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&utm_medium=referral&utm_content=ADD-SP/ngx_waf&utm_campaign=Badge_Coverage)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
 [![Discussion EN](https://img.shields.io/badge/Discussion%20EN-Telegram%20Group-blue)](https://t.me/group_ngx_waf)
@@ -63,17 +64,45 @@
 
 <del>我从来没碰过钱，我对钱没有兴趣。</del>
 
+## 测试套件
+
+本项目使用一个 Perl 开发的数据驱动型的测试套件进行测试。
+感谢项目 [Test::Nginx](http://search.cpan.org/perldoc?Test::Nginx) 及其开发者们。
+
+你可以运行下列命令来运行测试。
+
+```shell
+# 这行命令的执行时间比较长，但是以后再测试的时候就不需要运行了。
+cpan Test::Nginx
+
+# 你需要指定一个临时目录。
+# 如果目录不存在会自动创建。
+# 如果目录已经会被存在则会先**删除**再创建。
+export MODULE_TEST_PATH=/path/to/temp/dir
+
+# 如果你安装了动态模块则需要指定动态模块的绝对路径，反之则无需执行这行命令。
+export MODULE_PATH=/path/to/ngx_http_waf_module.so
+
+cd ./test/test-nginx
+sh ./init
+sh ./start.sh ./t/*.t
+```
+
+
 ## 开源许可证
 
 [BSD 3-Clause License](LICENSE)
 
 ## 感谢
 
-* [ModSecurity](https://github.com/SpiderLabs/ModSecurity): 开源且跨平台的 WAF 引擎。
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity)：开源且跨平台的 WAF 引擎。
 * [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
+* [libcurl](https://curl.se/libcurl/)：支持多种协议文件传输库。
+* [cJSON](https://github.com/DaveGamble/cJSON)：C 语言的轻量级 JSON 解析库。
 * [libinjection](https://github.com/libinjection/libinjection)：SQL 注入检测库。
 * [libsodium](https://github.com/jedisct1/libsodium)：C 语言密码函数库。
+* [test-nginx](https://github.com/openresty/test-nginx): 数据驱动的 nginx 测试套件，可用于 nginx C 模块的开发和 OpenResty Lua 库的开发。 
 * [lastversion](https://github.com/dvershinin/lastversion)：一个轻巧的命令行工具，帮助你下载或安装一个项目的特定版本。
-* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)：一个基于 lua-nginx-module (openresty) 的 web 应用防火墙。 
+* [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)：一个基于 lua-nginx-module (openresty) 的 web 应用防火墙。
 * [nginx-book](https://github.com/taobao/nginx-book)：Nginx开发从入门到精通 
 * [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide)：Nginx 开发指南。
