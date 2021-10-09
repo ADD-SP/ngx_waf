@@ -271,6 +271,8 @@ static void _gen_ctx(ngx_http_request_t *r) {
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+
+    ngx_http_waf_register_content_handler(r);
     
     ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
     ctx->blocked = NGX_HTTP_WAF_TRUE;

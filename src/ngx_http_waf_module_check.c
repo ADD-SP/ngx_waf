@@ -267,12 +267,14 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
                 statis->record_time = now;
                 statis->block_time = 0;
                 statis->bad_captcha_count = 0;
-                ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+                *out_http_status = NGX_DECLINED;
+                ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
             case NGX_HTTP_WAF_CAPTCHA_BAD:
                 ngx_http_waf_dp(r, "bad captcha");
                 ++(statis->bad_captcha_count);
-                ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+                *out_http_status = NGX_DECLINED;
+                ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
             case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
                 ngx_http_waf_dp(r, "challenging captcha");
@@ -698,22 +700,18 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t
     body_str.len = ctx->req_body.last - ctx->req_body.pos;
 
     ngx_http_waf_dpf(r, "matching request body %V", &body_str);
-    if (ngx_http_waf_regex_exec_arrray(r, &body_str, loc_conf->black_post, (u_char*)"BLACK-POST", NULL) == NGX_HTTP_WAF_MATCHED) {
+    ngx_int_t rc = ngx_http_waf_regex_exec_arrray(r, &body_str, loc_conf->black_post, (u_char*)"BLACK-POST", NULL);
+    if (rc == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
         ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
         ctx->blocked = NGX_HTTP_WAF_TRUE;
-    } else {
-        ngx_http_waf_dp(r, "not matched");
-    }
-
-    if (ctx->blocked != NGX_HTTP_WAF_TRUE) {
-        return NGX_HTTP_WAF_NOT_MATCHED;
-    } else {
         *out_http_status = loc_conf->waf_http_status;
         return NGX_HTTP_WAF_MATCHED;
+    } else {
+        ngx_http_waf_dp(r, "not matched");
+        ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_post() ... end");
+        return NGX_HTTP_WAF_NOT_MATCHED;
     }
-
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_post() ... end");
 }
 
 
