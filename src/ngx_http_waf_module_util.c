@@ -592,15 +592,26 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
 ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* in, char** out) {
     ngx_http_waf_dp(r, "ngx_http_waf_http_post() ... start");
 
+#define _error_without_msg() {                      \
+    ngx_http_waf_dp(r, "failed ... return");        \
+    *out = NULL;                                    \
+    return NGX_HTTP_WAF_FAIL;                       \
+}
+
+
+#define _set_opt(handler, option, value) {                                  \
+    ngx_http_waf_dpf(r, "Setting curl option %s", #option);  \
+    CURLcode res = curl_easy_setopt((handler), (option), (value));          \
+    if (res != CURLE_OK) {                                                  \
+        _error_without_msg();                                               \
+    }                                                                       \
+    ngx_http_waf_dp(r, "success");                                          \
+}
+
     ngx_http_waf_dp(r, "initializing curl handle");
     CURL* curl_handle = curl_easy_init();
     if (curl_handle == NULL) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_init() failed");
-        }
-        return NGX_HTTP_WAF_FAIL;
+        _error_without_msg();
     }
     ngx_http_waf_dp(r, "success");
 
@@ -614,136 +625,29 @@ ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* i
     buf.buf.last = buf.buf.pos;
     buf.buf.memory = 1;
     if (buf.buf.pos == NULL) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = NULL;
-        return NGX_HTTP_WAF_FAIL;
+        _error_without_msg();
     }
     ngx_http_waf_dp(r, "success");
 
-    CURLcode res = CURLE_OK;
-    ngx_http_waf_dpf(r, "Setting curl option CURLOPT_URL to %s", url);
-    res = curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-    if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-        }
-        free(buf.buf.pos);
-        return NGX_HTTP_WAF_FAIL;
-    }
-    ngx_http_waf_dp(r, "success");
+    _set_opt(curl_handle, CURLOPT_URL, url);
+    _set_opt(curl_handle, CURLOPT_TIMEOUT, 5L);
+    _set_opt(curl_handle, CURLOPT_WRITEFUNCTION, _curl_handler_write);
+    _set_opt(curl_handle, CURLOPT_POSTFIELDS, in);
+    _set_opt(curl_handle, CURLOPT_WRITEDATA, (void *)&buf);
+    _set_opt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 
-    ngx_http_waf_dpf(r, "Setting curl option CURLOPT_TIMEOUT to %s", "5L");
-    res = curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
-    if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-        }
-        free(buf.buf.pos);
-        return NGX_HTTP_WAF_FAIL;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    ngx_http_waf_dp(r, "Setting curl option CURLOPT_WRITEFUNCTION");
-    res = curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, _curl_handler_write);
-    if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-        }
-        free(buf.buf.pos);
-        return NGX_HTTP_WAF_FAIL;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    ngx_http_waf_dp(r, "Setting curl option CURLOPT_POSTFIELDS");
-    res = curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, in);
-    if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-        }
-        free(buf.buf.pos);
-        return NGX_HTTP_WAF_FAIL;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    ngx_http_waf_dp(r, "Setting curl option CURLOPT_WRITEDATA");
-    res = curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&buf);
-    if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-        }
-        free(buf.buf.pos);
-        return NGX_HTTP_WAF_FAIL;
-    }
-    ngx_http_waf_dp(r, "success");
-    
-    ngx_http_waf_dpf(r, "Setting curl option CURLOPT_USERAGENT to %s", "libcurl-agent/1.0");
-    res = curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-    if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
-        *out = malloc(1024);
-        if (*out != NULL) {
-            sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-        }
-        free(buf.buf.pos);
-        return NGX_HTTP_WAF_FAIL;
-    }
-    ngx_http_waf_dp(r, "success");
 
     if (r->connection->log->log_level >= NGX_LOG_DEBUG) {
-        ngx_http_waf_dp(r, "Setting curl option CURLOPT_DEBUGFUNCTION");
-        res = curl_easy_setopt(curl_handle, CURLOPT_DEBUGFUNCTION, _curl_handler_debug);
-        if (res != CURLE_OK) {
-            ngx_http_waf_dp(r, "failed ... return");
-            *out = malloc(1024);
-            if (*out != NULL) {
-                sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-            }
-            free(buf.buf.pos);
-            return NGX_HTTP_WAF_FAIL;
-        }
-        ngx_http_waf_dp(r, "success");
+        _set_opt(curl_handle, CURLOPT_DEBUGFUNCTION, _curl_handler_debug);
+        _set_opt(curl_handle, CURLOPT_DEBUGDATA, (void*)r);
 
-        ngx_http_waf_dp(r, "Setting curl option CURLOPT_DEBUGDATA");
-        res = curl_easy_setopt(curl_handle, CURLOPT_DEBUGDATA, (void*)r);
-        if (res != CURLE_OK) {
-            ngx_http_waf_dp(r, "failed ... return");
-            *out = malloc(1024);
-            if (*out != NULL) {
-                sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-            }
-            free(buf.buf.pos);
-            return NGX_HTTP_WAF_FAIL;
-        }
-        ngx_http_waf_dp(r, "success");
-
-        ngx_http_waf_dp(r, "Setting curl option CURLOPT_VERBOSE");
         /* 启用此选项才能有调试信息 */
-        res = curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
-        if (res != CURLE_OK) {
-            ngx_http_waf_dp(r, "failed ... return");
-            *out = malloc(1024);
-            if (*out != NULL) {
-                sprintf(*out, "curl_easy_setopt() failed: %s\n", curl_easy_strerror(res));
-            }
-            free(buf.buf.pos);
-            return NGX_HTTP_WAF_FAIL;
-        }
-        ngx_http_waf_dp(r, "success");
+        _set_opt(curl_handle, CURLOPT_VERBOSE, 1L);
     }
 
     ngx_http_waf_dpf(r, "request body is %s", in);
     ngx_http_waf_dp(r, "performing request");
-    res = curl_easy_perform(curl_handle);
+    CURLcode res = curl_easy_perform(curl_handle);
     if (res != CURLE_OK) {
         ngx_http_waf_dp(r, "failed ... return");
         *out = malloc(1024);
@@ -761,6 +665,9 @@ ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* i
 
     ngx_http_waf_dp(r, "ngx_http_waf_http_post() ... end");
     return NGX_HTTP_WAF_SUCCESS;
+
+#undef _error_without_msg
+#undef _set_opt
 }
 
 

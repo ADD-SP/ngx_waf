@@ -323,27 +323,30 @@
  * @def ngx_http_waf_check_flag(origin, flag)
  * @brief 检查 flag 是否存在于 origin 中，即位操作。
  * @return 存在则返回 NGX_HTTP_WAF_TRUE，反之返回 NGX_HTTP_WAF_FALSE。
- * @retval NGX_HTTP_WAF_TRUE 存在。
- * @retval NGX_HTTP_WAF_FALSE 不存在。
+ * @retval 非零 存在。
+ * @retval 零 不存在。
 */
-#define ngx_http_waf_check_flag(origin, flag) (((origin) & (flag)) == (flag) ? NGX_HTTP_WAF_TRUE : NGX_HTTP_WAF_FALSE)
+#define ngx_http_waf_check_flag(origin, flag) (((origin) & (flag)) == (flag))
 
 
 /**
  * @def ngx_http_waf_check_bit(origin, bit_index)
  * @brief 检查 origin 的某一位是否为 1。
- * @return 如果为一则返回 NGX_HTTP_WAF_TRUE，反之返回 NGX_HTTP_WAF_FALSE。
- * @retval NGX_HTTP_WAF_TRUE 被测试的位为一。
- * @retval NGX_HTTP_WAF_FALSE 被测试的位为零。
+ * @return 如果为一则返回非零
+ * @retval 非零 被测试的位为一。
+ * @retval 零 被测试的位为零。
  * @note bit_index 从 0 开始计数，其中 0 代表最低位。
 */
 #define ngx_http_waf_check_bit(origin, bit_index) (ngx_http_waf_check_flag((origin), 1 << (bit_index)))
 
 
-#define ngx_http_waf_is_unset_or_disable_value(x) ((((x) == NGX_CONF_UNSET) || ((x) == 0)) ? (NGX_HTTP_WAF_TRUE) : (NGX_HTTP_WAF_FALSE))
+#define ngx_http_waf_is_unset_or_disable_value(x) (((x) == NGX_CONF_UNSET) || ((x) == 0))
 
 
-#define ngx_http_waf_is_valid_ptr_value(x) ((((x) == NGX_CONF_UNSET_PTR) || ((x) == NULL)) ? (NGX_HTTP_WAF_FALSE) : (NGX_HTTP_WAF_TRUE))
+#define ngx_http_waf_is_empty_str_value(ngx_str_ptr) ((ngx_str_ptr) == NULL || (ngx_str_ptr)->data == NULL || (ngx_str_ptr)->len == 0)
+
+
+#define ngx_http_waf_is_valid_ptr_value(x) (((x) != NGX_CONF_UNSET_PTR) && ((x) != NULL))
 
 
 #define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, ngx_http_waf_utarray_ngx_str_ctor, ngx_http_waf_utarray_ngx_str_dtor }

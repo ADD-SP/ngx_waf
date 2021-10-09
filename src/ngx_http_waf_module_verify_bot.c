@@ -16,7 +16,7 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r, ngx_int_t* out_
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (loc_conf->waf_verify_bot == 0 || loc_conf->waf_verify_bot == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_verify_bot)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -60,7 +60,7 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_GOOGLE_BOT) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_GOOGLE_BOT)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_FAIL;
     }
@@ -140,7 +140,7 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BING_BOT) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BING_BOT)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_FAIL;
     }
@@ -221,7 +221,7 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BAIDU_SPIDER) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BAIDU_SPIDER)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_FAIL;
     }
@@ -301,7 +301,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_YANDEX_BOT) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_YANDEX_BOT)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_FAIL;
     }

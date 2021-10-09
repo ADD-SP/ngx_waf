@@ -24,6 +24,13 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r);
 
 static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r);
 
+static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r, 
+    ngx_str_t response_key, 
+    ngx_str_t secret,
+    ngx_str_t url,
+    ngx_int_t is_reCAPTCHA_v3,
+    ngx_int_t score);
+
 
 ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_dp(r, "ngx_http_waf_handler_captcha() ... start");
@@ -32,7 +39,7 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (loc_conf->waf_captcha == 0 || loc_conf->waf_captcha == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -506,7 +513,7 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
 
 
     if (ngx_strcmp(uri.data, loc_conf->waf_captcha_verify_url.data) == 0 
-    &&  ngx_http_waf_check_flag(r->method, NGX_HTTP_POST) == NGX_HTTP_WAF_TRUE) {
+    &&  ngx_http_waf_check_flag(r->method, NGX_HTTP_POST)) {
         ngx_int_t is_valid = NGX_HTTP_WAF_FALSE;
         switch (loc_conf->waf_captcha_type) {
             case NGX_HTTP_WAF_HCAPTCHA:
@@ -545,110 +552,13 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    ngx_str_t body = { ctx->req_body.last - ctx->req_body.pos, ctx->req_body.pos };
-    key_value_t* kvs = NULL;
-    ngx_http_waf_dpf(r, "parsing form %V", &body);
-    ngx_int_t ret = ngx_http_waf_parse_form_string(&body, &kvs);
-    if (ret != NGX_HTTP_WAF_SUCCESS) {
-        ngx_http_waf_dp(r, "failed ... releasing resources");
-        goto hash_map_free;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    ngx_http_waf_dp(r, "getting h_captcha_response");
-    key_value_t* h_captcha_response = NULL;
-    HASH_FIND(hh, kvs, "h-captcha-response", sizeof("h-captcha-response") - 1, h_captcha_response);
-    if (h_captcha_response == NULL) {
-        ngx_http_waf_dp(r, "failed ... releasing resources");
-        ret = NGX_HTTP_WAF_FAIL;
-        goto hash_map_free;
-    }
-    ngx_http_waf_dpf(r, "success(%V)", &h_captcha_response->value);
-
-    char* json_str = NULL;
-    ngx_str_t* secret = &loc_conf->waf_captcha_hCaptcha_secret;
-    ngx_http_waf_dpf(r, "using serect %V", secret);
-
-    ngx_http_waf_dp(r, "gererating request body for verification");
-    char* in = ngx_pnalloc(r->pool, h_captcha_response->value.len + secret->len + 64);
-    if (in == NULL) {
-        ngx_http_waf_dp(r, "no memory ... releasing resources");
-        goto hash_map_free;
-    }
-    sprintf(in, "response=%s&secret=%s", (char*)(h_captcha_response->value.data), (char*)(secret->data));
-    ngx_http_waf_dpf(r, "success(%s)", in);
-
-    ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
-    if (ngx_http_waf_http_post(r, (char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
-        if (json_str != NULL) {
-            ngx_http_waf_dpf(r, "failed(%s)", json_str);
-            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
-            free(json_str);
-        } else {
-            ngx_http_waf_dp(r, "failed");
-            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ngx_http_waf_http_post failed");
-        }
-        ngx_http_waf_dp(r, "releasing resources");
-        goto hash_map_free;
-    }
-    ngx_http_waf_dpf(r, "success(%s)", json_str);
-
-    ngx_http_waf_dpf(r, "parsing json_string(%s)", json_str);
-    cJSON* json_obj = cJSON_Parse(json_str);
-    free(json_str);
-    if (json_obj == NULL) {
-        ngx_http_waf_dp(r, "failed ... releasing resources");
-        ret = NGX_HTTP_WAF_FAIL;
-        goto hash_map_free;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    cJSON* json = json_obj->child;
-    while(json != NULL) {
-        switch (json->type) {
-            case cJSON_NULL:
-                ngx_http_waf_dpf(r, "%s: null", json->string);
-                break;
-            case cJSON_True:
-                ngx_http_waf_dpf(r, "%s: true", json->string);
-                break;
-            case cJSON_False:
-                ngx_http_waf_dpf(r, "%s: false", json->string);
-                break;
-            case cJSON_Number:
-                ngx_http_waf_dpf(r, "%s: %f", json->string, json->valuedouble);
-                break;
-            case cJSON_String:
-                ngx_http_waf_dpf(r, "%s: %s", json->string, json->valuestring);
-                break;
-            default:
-                break;
-        }
-        if (strcmp(json->string, "success") == 0) {
-            if (json->type == cJSON_True) {
-                ret = NGX_HTTP_WAF_SUCCESS;
-            } else {
-                ret = NGX_HTTP_WAF_FAIL;
-            }
-            break;
-        }
-        json = json->next;
-    }
-
-    // json_free:
-    ngx_http_waf_dp(r, "releasing resources");
-    cJSON_Delete(json_obj);
-
-    hash_map_free:
-    {
-        key_value_t *temp0 = NULL, *temp1 = NULL;
-        HASH_ITER(hh, kvs, temp0, temp1) {
-            HASH_DEL(kvs, temp0);
-            free(temp0->key.data);
-            free(temp0->value.data);
-            free(temp0);
-        }
-    }
+    ngx_str_t response_key = ngx_string("h_captcha_response");
+    ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
+                                                 response_key,
+                                                 loc_conf->waf_captcha_hCaptcha_secret,
+                                                 loc_conf->waf_captcha_api,
+                                                 NGX_HTTP_WAF_FALSE,
+                                                 INT_MIN);
     
     ngx_http_waf_dp(r, "_verify_hCaptcha() ... end");
     return ret;
@@ -662,111 +572,13 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    ngx_str_t body = { ctx->req_body.last - ctx->req_body.pos, ctx->req_body.pos };
-    key_value_t* kvs = NULL;
-    ngx_http_waf_dpf(r, "parsing form %V", &body);
-    ngx_int_t ret = ngx_http_waf_parse_form_string(&body, &kvs);
-    if (ret != NGX_HTTP_WAF_SUCCESS) {
-        ngx_http_waf_dp(r, "failed ... releasing resources");
-        goto hash_map_free;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    ngx_http_waf_dp(r, "getting g_captcha_response");
-    key_value_t* g_captcha_response = NULL;
-    HASH_FIND(hh, kvs, "g-recaptcha-response", sizeof("g-recaptcha-response") - 1, g_captcha_response);
-    if (g_captcha_response == NULL) {
-        ngx_http_waf_dp(r, "failed ... releasing resources");
-        ret = NGX_HTTP_WAF_FAIL;
-        goto hash_map_free;
-    }
-    ngx_http_waf_dpf(r, "success(%V)", &g_captcha_response->value);
-
-    char* json_str = NULL;
-    ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHAv2_secret;
-    ngx_http_waf_dpf(r, "using serect %V", secret);
-
-    ngx_http_waf_dp(r, "gererating request body for verification");
-    char* in = ngx_pnalloc(r->pool, g_captcha_response->value.len + secret->len + 64);
-    if (in == NULL) {
-        ngx_http_waf_dp(r, "no memory ... releasing resources");
-        goto hash_map_free;
-    }
-    sprintf(in, "response=%s&secret=%s", (char*)(g_captcha_response->value.data), (char*)(secret->data));
-    ngx_http_waf_dpf(r, "success(%s)", in);
-
-    ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
-    if (ngx_http_waf_http_post(r, (char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
-        if (json_str != NULL) {
-            ngx_http_waf_dpf(r, "failed(%s)", json_str);
-            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
-            free(json_str);
-        } else {
-            ngx_http_waf_dp(r, "failed");
-            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: ngx_http_waf_http_post failed");
-        }
-
-        ngx_http_waf_dp(r, "releasing resources");
-        goto hash_map_free;
-    }
-    ngx_http_waf_dpf(r, "success(%s)", json_str);
-
-    ngx_http_waf_dpf(r, "parsing json_string(%s)", json_str);
-    cJSON* json_obj = cJSON_Parse(json_str);
-    free(json_str);
-    if (json_obj == NULL) {
-        ngx_http_waf_dp(r, "failed ... releasing resources");
-        ret = NGX_HTTP_WAF_FAIL;
-        goto hash_map_free;
-    }
-    ngx_http_waf_dp(r, "success");
-
-    cJSON* json = json_obj->child;
-    while(json != NULL) {
-        switch (json->type) {
-            case cJSON_NULL:
-                ngx_http_waf_dpf(r, "%s: null", json->string);
-                break;
-            case cJSON_True:
-                ngx_http_waf_dpf(r, "%s: true", json->string);
-                break;
-            case cJSON_False:
-                ngx_http_waf_dpf(r, "%s: false", json->string);
-                break;
-            case cJSON_Number:
-                ngx_http_waf_dpf(r, "%s: %f", json->string, json->valuedouble);
-                break;
-            case cJSON_String:
-                ngx_http_waf_dpf(r, "%s: %s", json->string, json->valuestring);
-                break;
-            default:
-                break;
-        }
-        if (strcmp(json->string, "success") == 0) {
-            if (json->type == cJSON_True) {
-                ret = NGX_HTTP_WAF_SUCCESS;
-            } else {
-                ret = NGX_HTTP_WAF_FAIL;
-            }
-            break;
-        }
-        json = json->next;
-    }
-
-    // json_free:
-    ngx_http_waf_dp(r, "releasing resources");
-    cJSON_Delete(json_obj);
-
-    hash_map_free:
-    {
-        key_value_t *temp0 = NULL, *temp1 = NULL;
-        HASH_ITER(hh, kvs, temp0, temp1) {
-            HASH_DEL(kvs, temp0);
-            free(temp0->key.data);
-            free(temp0->value.data);
-            free(temp0);
-        }
-    }
+    ngx_str_t response_key = ngx_string("g-recaptcha_response");
+    ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
+                                                 response_key,
+                                                 loc_conf->waf_captcha_reCAPTCHAv2_secret,
+                                                 loc_conf->waf_captcha_api,
+                                                 NGX_HTTP_WAF_FALSE,
+                                                 INT_MIN);
     
     ngx_http_waf_dp(r, "_verify_reCAPTCHAv2() ... end");
     return ret;
@@ -775,6 +587,31 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
 
 static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "_verify_reCAPTCHAv3() ... start");
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ngx_str_t response_key = ngx_string("g-recaptcha-response");
+    ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
+                                                 response_key,
+                                                 loc_conf->waf_captcha_reCAPTCHAv3_secret,
+                                                 loc_conf->waf_captcha_api,
+                                                 NGX_HTTP_WAF_TRUE,
+                                                 loc_conf->waf_captcha_reCAPTCHAv3_score);
+    
+    ngx_http_waf_dp(r, "_verify_reCAPTCHAv3() ... end");
+    return ret;
+}
+
+
+static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r, 
+    ngx_str_t response_key, 
+    ngx_str_t secret,
+    ngx_str_t url,
+    ngx_int_t is_reCAPTCHA_v3,
+    ngx_int_t score) {
+    ngx_http_waf_dp(r, "_verfiy_reCAPTCHA_compatible() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -789,31 +626,30 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "getting g_captcha_response");
-    key_value_t* g_captcha_response = NULL;
-    HASH_FIND(hh, kvs, "g-recaptcha-response", sizeof("g-recaptcha-response") - 1, g_captcha_response);
-    if (g_captcha_response == NULL) {
+    ngx_http_waf_dpf(r, "getting %V", &response_key);
+    key_value_t* captcha_response = NULL;
+    HASH_FIND(hh, kvs, response_key.data, response_key.len, captcha_response);
+    if (captcha_response == NULL) {
         ngx_http_waf_dp(r, "failed ... releasing resources");
         ret = NGX_HTTP_WAF_FAIL;
         goto hash_map_free;
     }
-    ngx_http_waf_dpf(r, "success(%V)", &g_captcha_response->value);
+    ngx_http_waf_dpf(r, "success(%V)", &captcha_response->value);
 
     char* json_str = NULL;
-    ngx_str_t* secret = &loc_conf->waf_captcha_reCAPTCHAv2_secret;
-    ngx_http_waf_dpf(r, "using serect %V", secret);
+    ngx_http_waf_dpf(r, "using serect %V", &secret);
 
     ngx_http_waf_dp(r, "gererating request body for verification");
-    char* in = ngx_pnalloc(r->pool, g_captcha_response->value.len + secret->len + 64);
+    char* in = ngx_pnalloc(r->pool, captcha_response->value.len + secret.len + 64);
     if (in == NULL) {
         ngx_http_waf_dp(r, "no memory ... releasing resources");
         goto hash_map_free;
     }
-    sprintf(in, "response=%s&secret=%s", (char*)(g_captcha_response->value.data), (char*)(secret->data));
+    sprintf(in, "response=%s&secret=%s", (char*)(captcha_response->value.data), (char*)(secret.data));
     ngx_http_waf_dpf(r, "success(%s)", in);
 
-    ngx_http_waf_dpf(r, "sending a request to %V", &loc_conf->waf_captcha_api);
-    if (ngx_http_waf_http_post(r, (char*)loc_conf->waf_captcha_api.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
+    ngx_http_waf_dpf(r, "sending a request to %V", &url);
+    if (ngx_http_waf_http_post(r, (char*)url.data, in, &json_str) != NGX_HTTP_WAF_SUCCESS) {
         if (json_str != NULL) {
             ngx_http_waf_dpf(r, "failed(%s)", json_str);
             ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: %s", json_str);
@@ -862,15 +698,17 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
         }
         if (strcmp(json->string, "success") == 0 && json->type == cJSON_True) {
             ++flag;
-        } else if (strcmp(json->string, "score") == 0 
-                && json->type == cJSON_Number
-                && json->valuedouble >= loc_conf->waf_captcha_reCAPTCHAv3_score) {
+        } else if (is_reCAPTCHA_v3 == NGX_HTTP_WAF_TRUE
+               &&  strcmp(json->string, "score") == 0 
+               &&  json->type == cJSON_Number
+               &&  json->valuedouble >= score) {
             ++flag;
         }
         json = json->next;
     }
 
-    if (flag == 2) {
+    if (flag == 2
+    || (flag == 1 && is_reCAPTCHA_v3 == NGX_HTTP_WAF_FALSE)) {
         ret = NGX_HTTP_WAF_SUCCESS;
     } else {
         ret = NGX_HTTP_WAF_FAIL;
@@ -890,6 +728,6 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
         }
     }
     
-    ngx_http_waf_dp(r, "_verify_reCAPTCHAv3() ... end");
+    ngx_http_waf_dp(r, "_verfiy_reCAPTCHA_compatible() ... end");
     return ret;
 }

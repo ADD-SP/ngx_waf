@@ -81,17 +81,17 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_modsecurity)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, r->method) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -130,17 +130,17 @@ ngx_int_t ngx_http_waf_header_filter(ngx_http_request_t *r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_header_filter(r); 
     }
 
-    if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_modsecurity)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_header_filter(r);
     }
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, r->method) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_header_filter(r);
     }
@@ -180,17 +180,17 @@ ngx_int_t ngx_http_waf_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_body_filter(r, in); 
     }
 
-    if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_modsecurity)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_body_filter(r, in);
     }
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, r->method) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return ngx_http_next_body_filter(r, in);
     }
@@ -227,16 +227,6 @@ static ngx_int_t _process_request(ngx_http_request_t* r, ngx_int_t* out_http_sta
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
-
-    if (loc_conf->waf == 0 || loc_conf->waf == NGX_CONF_UNSET) {
-        ngx_http_waf_dp(r, "nothing to do ... return");
-        return NGX_HTTP_WAF_NOT_MATCHED;
-    }
-
-    if (loc_conf->waf_modsecurity == 0 || loc_conf->waf_modsecurity == NGX_CONF_UNSET) {
-        ngx_http_waf_dp(r, "nothing to do ... return");
-        return NGX_HTTP_WAF_NOT_MATCHED;
-    }
 
     ngx_http_waf_dp(r, "initializing ctx about ModSecurity");
     if (_init_ctx(r) != NGX_HTTP_WAF_SUCCESS) {

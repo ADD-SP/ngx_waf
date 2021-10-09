@@ -2,6 +2,7 @@
 
 extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
+
 ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* out_http_status) {
     ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_ip() ... start");
 
@@ -11,7 +12,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -68,7 +69,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
     
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_IP)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -127,12 +128,17 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
     ngx_int_t ip_type = r->connection->sockaddr->sa_family;
     time_t now = time(NULL);
     
-    if (loc_conf->waf_cc_deny == 0 || loc_conf->waf_cc_deny == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_cc_deny)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     } 
     
-    if (loc_conf->waf_cc_deny_limit == NGX_CONF_UNSET || loc_conf->waf_cc_deny_duration == NGX_CONF_UNSET) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_cc_deny_duration)
+    || ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_cc_deny_limit)
+    || ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_cc_deny_cycle)
+    || ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_cc_deny_shm_zone_size)
+    || !ngx_http_waf_is_valid_ptr_value(loc_conf->shm_zone_cc_deny)
+    || !ngx_http_waf_is_valid_ptr_value(loc_conf->ip_access_statistics)) {
         ngx_http_waf_dp(r, "no configuratiion ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -364,7 +370,7 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t*
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -399,7 +405,7 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t*
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_URL | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -434,7 +440,7 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_ARGS | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_ARGS | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -469,7 +475,7 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_UA | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_UA | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -509,7 +515,7 @@ ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_in
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     } 
@@ -550,7 +556,7 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_in
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_REFERER | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     } 
@@ -590,7 +596,7 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_COOKIE | r->method) == NGX_HTTP_WAF_FALSE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_COOKIE | r->method)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -685,7 +691,7 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB) != NGX_HTTP_WAF_TRUE) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
@@ -730,7 +736,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
     result.is_matched = NGX_HTTP_WAF_NOT_MATCHED;
     result.detail = NULL;
 
-    if (str == NULL || str->data == NULL || str->len == 0 || array == NULL || array == NGX_CONF_UNSET_PTR) {
+    if (ngx_http_waf_is_empty_str_value(str) || !ngx_http_waf_is_valid_ptr_value(array)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
