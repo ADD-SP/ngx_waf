@@ -12,10 +12,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path /usr/local/nginx/conf/waf/rules/;
 
-location /t {
-
-}
-
 location /error {
     return 200 [$waf_log][$waf_blocking_log][$waf_blocked][$waf_rule_type];
 }
@@ -53,19 +49,21 @@ location /t {
 }
 
 location /error {
-    return 200 [$waf_spend][$waf_rule_type];
+    return 200 [$waf_log][$waf_blocking_log][$waf_blocked][$waf_rule_type][$waf_spend][$waf_rule_details];
 }
 
 error_page 403 /error;
 
 --- pipelined_requests eval
 [
+    "GET /",
     "GET /www.bak",
     "GET /?test=onload="
 ]
 
 --- error_code eval
 [
+    200,
     403,
     403
 ]
