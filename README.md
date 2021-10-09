@@ -69,9 +69,15 @@ Thanks to the [Test::Nginx](http://search.cpan.org/perldoc?Test::Nginx) module i
 To run it on your side:
 
 ```shell
+## It will take a lot of time, but it only needs to be run once.
 cpan Test::Nginx
-cd ./test/test-nginx
-sh start.sh ./t/*.t
+
+# You need to specify the absolute path to the dynamic module if you have it installed, 
+# otherwise you do not need to run this line.
+export MODULE_PATH=/path/to/ngx_http_waf_module.so
+
+cd . /test/test-nginx
+sh . /start.sh . /t/*.t
 ```
 
 Some parts of the test suite requires standard modules proxy, rewrite and SSI to be enabled as well when building Nginx.
