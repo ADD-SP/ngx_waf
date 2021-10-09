@@ -8,6 +8,7 @@
 [![docs](https://github.com/ADD-SP/ngx_waf-docs/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/)
 [![docker](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml/badge.svg)](https://hub.docker.com/r/addsp/ngx_waf-prebuild)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&utm_medium=referral&utm_content=ADD-SP/ngx_waf&utm_campaign=Badge_Coverage)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
 [![Discussion EN](https://img.shields.io/badge/Discussion%20EN-Telegram%20Group-blue)](https://t.me/group_ngx_waf)
@@ -63,6 +64,33 @@ Handy, High performance Nginx firewall module.
 
 Hope you can help promote this project. The more stars got, the better this project is. :)
 
+## Test Suite
+
+This module comes with a Perl-driven test suite. The test cases are declarative too. 
+Thanks to the [Test::Nginx](http://search.cpan.org/perldoc?Test::Nginx) module in the Perl world.
+
+To run it on your side:
+
+```shell
+## It will take a lot of time, but it only needs to be run once.
+cpan Test::Nginx
+
+# You need to specify a temporary directory.
+# If the directory does not exist it will be created automatically.
+# If the directory already exists it will be **removed** first and then created.
+export MODULE_TEST_PATH=/path/to/temp/dir
+
+# You need to specify the absolute path to the dynamic module if you have it installed, 
+# otherwise you do not need to run this line.
+export MODULE_PATH=/path/to/ngx_http_waf_module.so
+
+cd . /test/test-nginx
+sh ./init
+sh . /start.sh . /t/*.t
+```
+
+Some parts of the test suite requires standard modules proxy, rewrite and SSI to be enabled as well when building Nginx.
+
 ## License
 
 [BSD 3-Clause License](LICENSE)
@@ -71,8 +99,11 @@ Hope you can help promote this project. The more stars got, the better this proj
 
 * [ModSecurity](https://github.com/SpiderLabs/ModSecurity): An open source, cross platform web application firewall (WAF) engine.
 * [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
+* [libcurl](https://curl.se/libcurl/): The multiprotocol file transfer library .
+* [cJSON](https://github.com/DaveGamble/cJSON): Ultralightweight JSON parser in ANSI C.
 * [libinjection](https://github.com/libinjection/libinjection): SQL / SQLI tokenizer parser analyzer.
 * [libsodium](https://github.com/jedisct1/libsodium): A modern, portable, easy to use crypto library.
+* [test-nginx](https://github.com/openresty/test-nginx): Data-driven test scaffold for Nginx C module and OpenResty Lua library development.
 * [lastversion](https://github.com/dvershinin/lastversion): A command line tool that helps you download or install a specific version of a project.
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): A web application firewall based on the lua-nginx-module (openresty).
 * [nginx-book](https://github.com/taobao/nginx-book): The Chinese language development guide for nginx.
