@@ -53,7 +53,7 @@ waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Check
 [
     "GET /",
     "GET /",
-    "POST /captcha\ng-captcha-response=xxxx"
+    "POST /captcha\ng-recaptcha-response=xxxx"
 ]
 
 
@@ -85,7 +85,7 @@ waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Invis
 [
     "GET /",
     "GET /",
-    "POST /captcha\ng-captcha-response=xxxx"
+    "POST /captcha\ng-recaptcha-response=xxxx"
 ]
 
 
@@ -117,7 +117,7 @@ waf_captcha on prov=reCAPTCHAv3 file=/usr/local/nginx/conf/waf/reCAPTCHAv3.html 
 [
     "GET /",
     "GET /",
-    "POST /captcha\ng-captcha-response=xxxx"
+    "POST /captcha\ng-recaptcha-response=xxxx"
 ]
 
 

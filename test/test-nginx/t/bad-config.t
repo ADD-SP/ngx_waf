@@ -116,6 +116,14 @@ waf_cc_deny rate=100r/m;
 --- must_die
 
 
+=== TEST: Bad directive waf_cc_deny (12)
+
+--- config
+waf_cc_deny CAPTCHA rate=100r/m;
+
+--- must_die
+
+
 === TEST: Bad directive waf_cache (1)
 
 --- config
