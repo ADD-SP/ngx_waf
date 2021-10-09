@@ -356,67 +356,67 @@ ngx_int_t ngx_http_waf_parse_form_string(ngx_str_t* raw, key_value_t** hash_head
 }
 
 
-ngx_int_t ngx_http_waf_parse_header(ngx_list_t* native_header, key_value_t** hash_head) {
-    if (native_header == NULL || hash_head == NULL) {
-        return NGX_HTTP_WAF_FALSE;
-    }
+// ngx_int_t ngx_http_waf_parse_header(ngx_list_t* native_header, key_value_t** hash_head) {
+//     if (native_header == NULL || hash_head == NULL) {
+//         return NGX_HTTP_WAF_FALSE;
+//     }
 
-    ngx_list_part_t* part = &(native_header->part);
-    ngx_table_elt_t* value = part->elts;
+//     ngx_list_part_t* part = &(native_header->part);
+//     ngx_table_elt_t* value = part->elts;
 
-    for (size_t i = 0; ; i++) {
-        if (i >= part->nelts) {
-            if (part->next == NULL) {
-                break;
-            }
+//     for (size_t i = 0; ; i++) {
+//         if (i >= part->nelts) {
+//             if (part->next == NULL) {
+//                 break;
+//             }
 
-            part = part->next;
-            value = part->elts;
-            i = 0;
-        }
+//             part = part->next;
+//             value = part->elts;
+//             i = 0;
+//         }
 
-        key_value_t* temp = malloc(sizeof(key_value_t));
-        ngx_memzero(temp, sizeof(key_value_t));
-        temp->key.data = ngx_strdup(value[i].key.data);
-        temp->key.len = value[i].key.len;
-        ngx_strlow(temp->key.data, temp->key.data, temp->key.len);
-        temp->value.data = ngx_strdup(value[i].value.data);
-        temp->value.len = value[i].value.len;
-        HASH_ADD_KEYPTR(hh, *hash_head, temp->key.data, temp->key.len * sizeof(u_char), temp);
+//         key_value_t* temp = malloc(sizeof(key_value_t));
+//         ngx_memzero(temp, sizeof(key_value_t));
+//         temp->key.data = ngx_strdup(value[i].key.data);
+//         temp->key.len = value[i].key.len;
+//         ngx_strlow(temp->key.data, temp->key.data, temp->key.len);
+//         temp->value.data = ngx_strdup(value[i].value.data);
+//         temp->value.len = value[i].value.len;
+//         HASH_ADD_KEYPTR(hh, *hash_head, temp->key.data, temp->key.len * sizeof(u_char), temp);
 
-    }
+//     }
 
-    return NGX_HTTP_WAF_TRUE;
-}
+//     return NGX_HTTP_WAF_TRUE;
+// }
 
 
-ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
-    size_t prefix = ip & ipv4->suffix;
+// ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4) {
+//     size_t prefix = ip & ipv4->suffix;
 
-    if (prefix == ipv4->prefix) {
-        return NGX_HTTP_WAF_MATCHED;
-    }
+//     if (prefix == ipv4->prefix) {
+//         return NGX_HTTP_WAF_MATCHED;
+//     }
 
-    return NGX_HTTP_WAF_NOT_MATCHED;
-}
+//     return NGX_HTTP_WAF_NOT_MATCHED;
+// }
 
 
 #if (NGX_HAVE_INET6)
-ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
-    uint8_t temp_ip[16];
+// ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6) {
+//     uint8_t temp_ip[16];
 
-    memcpy(temp_ip, ip, 16);
+//     memcpy(temp_ip, ip, 16);
 
-    for (int i = 0; i < 16; i++) {
-        temp_ip[i] &= ipv6->suffix[i];
-    }
+//     for (int i = 0; i < 16; i++) {
+//         temp_ip[i] &= ipv6->suffix[i];
+//     }
 
-    if (memcmp(temp_ip, ipv6->prefix, sizeof(uint8_t) * 16) != 0) {
-        return NGX_HTTP_WAF_NOT_MATCHED;
-    }
+//     if (memcmp(temp_ip, ipv6->prefix, sizeof(uint8_t) * 16) != 0) {
+//         return NGX_HTTP_WAF_NOT_MATCHED;
+//     }
 
-    return NGX_HTTP_WAF_MATCHED;
-}
+//     return NGX_HTTP_WAF_MATCHED;
+// }
 #endif
 
 

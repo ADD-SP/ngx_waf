@@ -90,7 +90,7 @@ ngx_int_t ngx_http_waf_parse_form_string(ngx_str_t* raw, key_value_t** hash_head
  * @return 成功则返回 SUCCESS，反之则不是。
  * @warning 使用完毕后请自行释放数组所占用内存。
 */
-ngx_int_t ngx_http_waf_parse_header(ngx_list_t* native_header, key_value_t** hash_head);
+// ngx_int_t ngx_http_waf_parse_header(ngx_list_t* native_header, key_value_t** hash_head);
 
 
 /**
@@ -112,7 +112,7 @@ ngx_int_t ngx_http_waf_str_split(ngx_str_t* str, u_char sep, size_t max_len, UT_
  * @return 网段匹配则返回 MATCHED，反之则为 NOT_MATCHED。
  * @note 所有参数均为网络字节序
 */
-ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
+// ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
 
 
 /**
@@ -123,7 +123,7 @@ ngx_int_t ngx_http_waf_ipv4_netcmp(uint32_t ip, const ipv4_t* ipv4);
  * @note 所有参数均为网络字节序
 */
 #if (NGX_HAVE_INET6)
-ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
+// ngx_int_t ngx_http_waf_ipv6_netcmp(uint8_t ip[16], const ipv6_t* ipv6);
 #endif
 
 
