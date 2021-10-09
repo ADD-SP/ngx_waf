@@ -168,7 +168,7 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         return NGX_DECLINED;
     }
 
-    if (ctx->under_attack != NGX_HTTP_WAF_TRUE && ctx->captcha != NGX_HTTP_WAF_TRUE) {
+    if (ctx->under_attack != NGX_HTTP_WAF_TRUE && ctx->captcha != NGX_HTTP_WAF_TRUE && ctx->response_str == NULL) {
         ngx_http_waf_dp(r, "nothing todo  ... return");
         return NGX_DECLINED;
     }
@@ -183,9 +183,29 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_str_set(&r->headers_out.content_type, "text/html");
-    r->headers_out.content_length_n = loc_conf->waf_under_attack_len;
-    r->headers_out.status = NGX_HTTP_SERVICE_UNAVAILABLE;
+    u_char* html = NULL;
+    size_t html_len = 0;
+    ngx_http_waf_dp(r, "getting html");
+    if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
+        html = loc_conf->waf_under_attack_html;
+        html_len = loc_conf->waf_under_attack_len;
+    } else if (ctx->captcha == NGX_HTTP_WAF_TRUE) {
+        html = loc_conf->waf_captcha_html;
+        html_len = loc_conf->waf_captcha_html_len;
+    } else {
+        html = (u_char*)ctx->response_str;
+        html_len = ngx_strlen(html);
+    }
+    ngx_http_waf_dpf(r, "success(%s)", html);
+
+    r->headers_out.content_length_n = 0;
+    if (ctx->under_attack == NGX_HTTP_WAF_TRUE || ctx->captcha == NGX_HTTP_WAF_TRUE) {
+        ngx_str_set(&r->headers_out.content_type, "text/html");
+        r->headers_out.status = NGX_HTTP_SERVICE_UNAVAILABLE;
+    } else {
+        ngx_str_set(&r->headers_out.content_type, "text/plain");
+        r->headers_out.status = 200;
+    }
 
     if (ngx_http_waf_gen_no_cache_header(r) != NGX_HTTP_WAF_SUCCESS) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR; 
@@ -208,18 +228,6 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         }
         ngx_http_waf_dp(r, "success");
 
-        u_char* html = NULL;
-        size_t html_len = 0;
-        ngx_http_waf_dp(r, "getting html");
-        if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
-            html = loc_conf->waf_under_attack_html;
-            html_len = loc_conf->waf_under_attack_len;
-        } else {
-            html = loc_conf->waf_captcha_html;
-            html_len = loc_conf->waf_captcha_html_len;
-        }
-        ngx_http_waf_dpf(r, "success(%s)", html);
-
         ngx_http_waf_dp(r, "allocating buffer");
         buf->pos = ngx_pcalloc(r->pool, html_len);
         if (buf->pos == NULL) {
@@ -232,7 +240,7 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         ngx_memcpy(buf->pos, html, html_len);
         buf->last = buf->pos + html_len;
         buf->memory = 1;
-        buf->last_buf = 1;
+        buf->last_buf = (r == r->main) ? 1 : 0;
         ngx_http_waf_dp(r, "success");
 
         ngx_http_waf_dp(r, "allocating out buffer");
@@ -246,6 +254,7 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "success");
 
         ngx_http_waf_dp(r, "sending headers");
+        r->headers_out.content_length_n = html_len;
         rc = ngx_http_send_header(r);
         if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
             ngx_http_waf_dp(r, "failed ... return");
@@ -254,7 +263,8 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "success");
 
         ngx_http_waf_dp(r, "next filter ... end");
-        return ngx_http_output_filter(r, out);
+        rc = ngx_http_output_filter(r, out);
+        return rc;
     }
 
     ngx_http_waf_dp(r, "ngx_http_waf_handler_precontent_phase() ... end");
@@ -346,6 +356,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
 
         ngx_http_waf_dp(r, "initializing ctx");
         ctx->r = r;
+        ctx->response_str = NULL;
         ctx->gernal_logged = NGX_HTTP_WAF_FALSE;
         ctx->read_body_done = NGX_HTTP_WAF_FALSE;
         ctx->has_req_body = NGX_HTTP_WAF_FALSE;
@@ -394,26 +405,6 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
 
-    if (r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) {
-        ngx_http_waf_dp(r, "do nothing due to multiple internal redirects ... return");
-        return NGX_DECLINED;
-    }
-
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    if (ctx->start_from_thread == NGX_HTTP_WAF_TRUE) {
-        if (ctx->modsecurity_triggered == NGX_HTTP_WAF_TRUE) {
-            return ctx->modsecurity_status;
-        } else {
-            return NGX_DECLINED;
-        }
-    }
-#endif
-
-    if (ctx->checked == NGX_HTTP_WAF_TRUE) {
-        ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");
-        return NGX_DECLINED;
-    }
-
     if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
         return NGX_DONE;
     }
@@ -434,6 +425,26 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
             ctx->waiting_more_body = NGX_HTTP_WAF_TRUE;
             return NGX_DONE;
         }
+    }
+
+    if (r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "do nothing due to multiple internal redirects ... return");
+        return NGX_DECLINED;
+    }
+
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
+    if (ctx->start_from_thread == NGX_HTTP_WAF_TRUE) {
+        if (ctx->modsecurity_triggered == NGX_HTTP_WAF_TRUE) {
+            return ctx->modsecurity_status;
+        } else {
+            return NGX_DECLINED;
+        }
+    }
+#endif
+
+    if (ctx->checked == NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");
+        return NGX_DECLINED;
     }
 
     ngx_http_waf_dp(r, "reading request body to ctx");
@@ -541,8 +552,8 @@ static void _handler_read_request_body(ngx_http_request_t* r) {
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ctx->read_body_done = NGX_HTTP_WAF_TRUE;
-
-    r->main->count--;
+    ngx_http_finalize_request(r, NGX_DONE);
+    // r->main->count--;
 
     if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
         ctx->waiting_more_body = NGX_HTTP_WAF_FALSE;

@@ -4,6 +4,9 @@
 extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
 
+extern ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
+
+
 extern void ngx_http_waf_handler_cleanup(void *data);
 
 
@@ -811,6 +814,11 @@ ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
     ngx_str_set(&header->key, "Cache-control");
     ngx_str_set(&header->value, "no-store");
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+void ngx_http_waf_register_content_handler(ngx_http_request_t* r) {
+    r->content_handler = ngx_http_waf_handler_precontent_phase;
 }
 
 

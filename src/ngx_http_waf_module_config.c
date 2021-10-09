@@ -1205,11 +1205,11 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     }
     *h = ngx_http_waf_handler_access_phase;
 
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
-    if (h == NULL) {
-        return NGX_ERROR;
-    }
-    *h = ngx_http_waf_handler_precontent_phase;
+    // h = ngx_array_push(&cmcf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
+    // if (h == NULL) {
+    //     return NGX_ERROR;
+    // }
+    // *h = ngx_http_waf_handler_precontent_phase;
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
     if (h == NULL) {

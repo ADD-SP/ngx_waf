@@ -188,6 +188,9 @@ ngx_int_t ngx_http_waf_make_regexp_from_array(ngx_pool_t* pool, char** strv, ngx
 ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r);
 
 
+void ngx_http_waf_register_content_handler(ngx_http_request_t* r);
+
+
 char* ngx_http_waf_c_str(ngx_str_t* str, ngx_pool_t* pool);
 
 
