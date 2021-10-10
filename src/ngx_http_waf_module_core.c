@@ -357,6 +357,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_waf_dp(r, "initializing ctx");
         ctx->r = r;
         ctx->response_str = NULL;
+        ctx->register_content_handler = NGX_HTTP_WAF_FALSE;
         ctx->gernal_logged = NGX_HTTP_WAF_FALSE;
         ctx->read_body_done = NGX_HTTP_WAF_FALSE;
         ctx->has_req_body = NGX_HTTP_WAF_FALSE;
@@ -404,6 +405,14 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     if (ngx_http_get_module_ctx(r, ngx_http_waf_module) == NULL) {
         ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
+
+    
+    if (ctx->register_content_handler == NGX_HTTP_WAF_TRUE) {
+        ngx_http_waf_dp(r, "registering content handler");
+        ngx_http_waf_register_content_handler(r);
+        ngx_http_waf_dp(r, "success");
+    }
+
 
     if (ctx->waiting_more_body == NGX_HTTP_WAF_TRUE) {
         return NGX_DONE;

@@ -311,6 +311,7 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       read_body_done;                             /**< 是否已经请求读取请求体 */
     ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
     ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
+    ngx_int_t                       register_content_handler;
     char                           *response_str;
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
