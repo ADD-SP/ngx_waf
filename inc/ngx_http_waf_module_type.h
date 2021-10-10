@@ -311,8 +311,8 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       read_body_done;                             /**< 是否已经请求读取请求体 */
     ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
     ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
-    ngx_int_t                       register_content_handler;
-    char                           *response_str;
+    ngx_int_t                       register_content_handler;                   /**< 是否已经注册或应该注册内容处理程序 */
+    char                           *response_str;                               /**< 如果不为 NULL 则返回所指的字符串和 200 状态码 */
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
     ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
@@ -356,21 +356,21 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */
     ngx_int_t                       waf_captcha_type;                           /**< 验证码的类型 */
     ngx_str_t                       waf_captcha_hCaptcha_secret;                /**< hCaptcha 的 secret */
-    ngx_str_t                       waf_captcha_reCAPTCHAv2_secret;               /**< Google reCPATCHA 的 secret */
-    ngx_str_t                       waf_captcha_reCAPTCHAv3_secret;               /**< Google reCPATCHA 的 secret */
+    ngx_str_t                       waf_captcha_reCAPTCHAv2_secret;             /**< Google reCPATCHA 的 secret */
+    ngx_str_t                       waf_captcha_reCAPTCHAv3_secret;             /**< Google reCPATCHA 的 secret */
     double                          waf_captcha_reCAPTCHAv3_score;              /**< Google reCAPTCHAv3 的下限分数 */
     ngx_str_t                       waf_captcha_api;                            /**< 验证码提供商的 API */
     ngx_str_t                       waf_captcha_verify_url;                     /**< 本模块接管的用于验证的 URL */
     ngx_int_t                       waf_captcha_expire;                         /**< 验证码的有效期 */
     u_char                         *waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
     size_t                          waf_captcha_html_len;                       /**< 验证码页面的 HTML 数据的大小 */
-    ngx_int_t                       waf_modsecurity;
-    ngx_str_t                       waf_modsecurity_rules_file;
+    ngx_int_t                       waf_modsecurity;                            /**< 是否启用 ModSecurity */
+    ngx_str_t                       waf_modsecurity_rules_file;                 /**< ModSecurity 规则文件的绝对路径 */
     ngx_str_t                       waf_modsecurity_rules_remote_key;
     ngx_str_t                       waf_modsecurity_rules_remote_url;
     ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
-    ModSecurity                    *modsecurity_instance;
-    void                           *modsecurity_rules;
+    ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */
+    void                           *modsecurity_rules;                          /**< ModSecurity 规则容器 */
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
 #if (NGX_HAVE_INET6)
     ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
