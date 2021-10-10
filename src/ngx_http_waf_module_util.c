@@ -725,7 +725,13 @@ ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
 
 
 void ngx_http_waf_register_content_handler(ngx_http_request_t* r) {
+    ngx_http_waf_dp(r, "ngx_http_waf_register_content_handler() ... start");
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+    
+    ctx->register_content_handler = NGX_HTTP_WAF_TRUE;
     r->content_handler = ngx_http_waf_handler_precontent_phase;
+    ngx_http_waf_dp(r, "ngx_http_waf_register_content_handler() ... end");
 }
 
 
