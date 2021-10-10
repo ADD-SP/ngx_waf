@@ -81,9 +81,9 @@ export MODULE_TEST_PATH=/path/to/temp/dir
 # otherwise you do not need to run this line.
 export MODULE_PATH=/path/to/ngx_http_waf_module.so
 
-cd . /test/test-nginx
-sh ./init
-sh . /start.sh . /t/*.t
+cd ./test/test-nginx
+sh ./init.sh
+sh ./start.sh ./t/*.t
 ```
 
 Some parts of the test suite requires standard modules proxy, rewrite and SSI to be enabled as well when building Nginx.
