@@ -84,7 +84,7 @@ export MODULE_TEST_PATH=/path/to/temp/dir
 export MODULE_PATH=/path/to/ngx_http_waf_module.so
 
 cd ./test/test-nginx
-sh ./init
+sh ./init.sh
 sh ./start.sh ./t/*.t
 ```
 
