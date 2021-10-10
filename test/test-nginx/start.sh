@@ -12,7 +12,7 @@ fi
 
 # export TEST_NGINX_LOG_LEVEL=emerg
 # export TEST_NGINX_SLEEP=1
-export TEST_NGINX_NO_CLEAN=1
+# export TEST_NGINX_NO_CLEAN=1
 # export TEST_NGINX_MASTER_PROCESS=on
 
 exec prove "$@"
