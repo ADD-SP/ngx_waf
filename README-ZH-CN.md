@@ -9,8 +9,8 @@
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
 [![docs](https://github.com/ADD-SP/ngx_waf-docs/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/zh-cn/)
 [![docker](https://github.com/ADD-SP/ngx_waf/actions/workflows/docker.yml/badge.svg)](https://hub.docker.com/r/addsp/ngx_waf-prebuild)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=master)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
-[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/aebcf93b4b7a4b4b800ceb962479ee3a)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&utm_medium=referral&utm_content=ADD-SP/ngx_waf&utm_campaign=Badge_Coverage)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/aebcf93b4b7a4b4b800ceb962479ee3a?branch=current)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ADD-SP/ngx_waf&amp;utm_campaign=Badge_Grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/aebcf93b4b7a4b4b800ceb962479ee3a?branch=current)](https://www.codacy.com/gh/ADD-SP/ngx_waf/dashboard?utm_source=github.com&utm_medium=referral&utm_content=ADD-SP/ngx_waf&utm_campaign=Badge_Coverage)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
 [![Discussion EN](https://img.shields.io/badge/Discussion%20EN-Telegram%20Group-blue)](https://t.me/group_ngx_waf)
@@ -67,19 +67,24 @@
 本项目使用一个 Perl 开发的数据驱动型的测试套件进行测试。
 感谢项目 [Test::Nginx](http://search.cpan.org/perldoc?Test::Nginx) 及其开发者们。
 
-你可以运行下列命令来运行测试。
+你可以通过下列命令来运行测试。
 
 ```shell
 # 这行命令的执行时间比较长，但是以后再测试的时候就不需要运行了。
 cpan Test::Nginx
 
+# 你需要指定一个临时目录。
+# 如果目录不存在会自动创建。
+# 如果目录已经会被存在则会先**删除**再创建。
+export MODULE_TEST_PATH=/path/to/temp/dir
+
 # 如果你安装了动态模块则需要指定动态模块的绝对路径，反之则无需执行这行命令。
 export MODULE_PATH=/path/to/ngx_http_waf_module.so
 
 cd ./test/test-nginx
+sh ./init
 sh ./start.sh ./t/*.t
 ```
-
 ## 开源许可证
 
 [BSD 3-Clause License](LICENSE)

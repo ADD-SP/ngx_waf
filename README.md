@@ -72,11 +72,17 @@ To run it on your side:
 ## It will take a lot of time, but it only needs to be run once.
 cpan Test::Nginx
 
+# You need to specify a temporary directory.
+# If the directory does not exist it will be created automatically.
+# If the directory already exists it will be **removed** first and then created.
+export MODULE_TEST_PATH=/path/to/temp/dir
+
 # You need to specify the absolute path to the dynamic module if you have it installed, 
 # otherwise you do not need to run this line.
 export MODULE_PATH=/path/to/ngx_http_waf_module.so
 
 cd . /test/test-nginx
+sh ./init
 sh . /start.sh . /t/*.t
 ```
 
