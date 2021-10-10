@@ -2,3 +2,4 @@
 lib/cjson
 lib/uthash
 test/test-nginx/t/servroot
+test/test-nginx/t/*.t

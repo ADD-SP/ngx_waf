@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL !GET;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;waf_cc_deny off rate=100r/m;
+waf_rule_path ${base_dir}/waf/rules/;waf_cc_deny off rate=100r/m;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
@@ -26,7 +26,7 @@ GET /www.bak
 --- config
 waf on;
 waf_mode FULL !POST;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;waf_cc_deny off rate=100r/m;
+waf_rule_path ${base_dir}/waf/rules/;waf_cc_deny off rate=100r/m;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
@@ -42,7 +42,7 @@ POST /www.bak
 --- config
 waf on;
 waf_mode FULL !HEAD;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 

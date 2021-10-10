@@ -16,7 +16,7 @@ waf bad;
 === TEST: Bad directive waf_rule_path
 
 --- config
-waf_rule_path /usr/local/nginx/conf/waf/rules;
+waf_rule_path ${base_dir}/waf/rules;
 
 --- must_die
 
@@ -151,7 +151,7 @@ waf_cache on bad=bad;
 === TEST: Bad directive waf_modsecurity (1)
 
 --- config
-waf_modsecurity bad file=/usr/local/nginx/conf/waf/modsec/modsecurity.conf;
+waf_modsecurity bad file=${base_dir}/waf/modsec/modsecurity.conf;
 
 --- must_die
 
@@ -159,7 +159,7 @@ waf_modsecurity bad file=/usr/local/nginx/conf/waf/modsec/modsecurity.conf;
 === TEST: Bad directive waf_modsecurity (2)
 
 --- config
-waf_modsecurity on file=/usr/local/nginx/conf/waf/modsec/bad.conf;
+waf_modsecurity on file=${base_dir}/waf/modsec/bad.conf;
 
 --- must_die
 

@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET URL IP;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
@@ -34,7 +34,7 @@ real_ip_header X-Real-IP;
 --- config
 waf on;
 waf_mode GET URL IP;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
@@ -74,7 +74,7 @@ real_ip_header X-Real-IP;
 --- config
 waf on;
 waf_mode GET URL IP;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 

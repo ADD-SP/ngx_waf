@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny on rate=1r/h;
 waf_cache off capacity=50;
 
@@ -52,10 +52,10 @@ location /t {
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny CAPTCHA rate=1r/h duration=1h;
 waf_cache off capacity=50;
-waf_captcha off prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret=xx;
+waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
 location /t {
     waf_cc_deny off;
@@ -93,10 +93,10 @@ location /t {
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny CAPTCHA rate=1r/h duration=1h;
 waf_cache off capacity=50;
-waf_captcha off prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret=xx;
+waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
 --- pipelined_requests eval
 [
@@ -143,10 +143,10 @@ waf_captcha off prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secre
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny CAPTCHA rate=1r/h duration=1h;
 waf_cache off capacity=50;
-waf_captcha off prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret=xx;
+waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
 --- pipelined_requests eval
 [

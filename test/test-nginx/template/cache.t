@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache on capacity=1;
 
