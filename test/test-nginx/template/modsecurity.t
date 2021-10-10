@@ -10,10 +10,10 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_modsecurity on file=/usr/local/nginx/conf/waf/modsec/modsecurity.conf;
+waf_modsecurity on file=${base_dir}/waf/modsec/modsecurity.conf;
 
 location /t {
 
@@ -45,10 +45,10 @@ location /t {
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_modsecurity on file=/usr/local/nginx/conf/waf/modsec/modsecurity.conf;
+waf_modsecurity on file=${base_dir}/waf/modsec/modsecurity.conf;
 waf_modsecurity_transaction_id modsecurity_transaction_id;
 
 location /t {

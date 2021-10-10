@@ -9,34 +9,36 @@ __DATA__
 
 --- config
 waf on;
-waf_mode GET UA;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_mode GET RBODY;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
---- request
-GET /
+location /t {
+}
 
---- more_headers
-User-Agent: test-user-agent
+--- request
+POST /
+s=test
 
 --- error_code chomp
-200
+405
 
-=== TEST: Black user-agent
+=== TEST: Black POST
 
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache on capacity=50;
 
+location /t {
+}
+
 --- request
-GET /
+POST /
+onload=
 
---- more_headers
-User-Agent: / SF/
-
---- error_code
+--- error_code chomp
 403

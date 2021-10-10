@@ -10,10 +10,10 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_captcha on prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret=xx;
+waf_captcha on prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
 --- pipelined_requests eval
 [
@@ -44,10 +44,10 @@ waf_captcha on prov=hCaptcha file=/usr/local/nginx/conf/waf/hCaptcha.html secret
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Checkbox.html secret=xx;
+waf_captcha on prov=reCAPTCHAv2 file=${base_dir}/waf/reCAPTCHAv2_Checkbox.html secret=xx;
 
 --- pipelined_requests eval
 [
@@ -76,10 +76,10 @@ waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Check
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Invisible.html secret=xx;
+waf_captcha on prov=reCAPTCHAv2 file=${base_dir}/waf/reCAPTCHAv2_Invisible.html secret=xx;
 
 --- pipelined_requests eval
 [
@@ -108,10 +108,10 @@ waf_captcha on prov=reCAPTCHAv2 file=/usr/local/nginx/conf/waf/reCAPTCHAv2_Invis
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_captcha on prov=reCAPTCHAv3 file=/usr/local/nginx/conf/waf/reCAPTCHAv3.html secret=xx score=0.5;
+waf_captcha on prov=reCAPTCHAv3 file=${base_dir}/waf/reCAPTCHAv3.html secret=xx score=0.5;
 
 --- pipelined_requests eval
 [

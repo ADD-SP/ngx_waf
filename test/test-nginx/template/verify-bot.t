@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET UA;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_verify_bot strict;
@@ -28,7 +28,7 @@ GET /
 --- config
 waf on;
 waf_mode GET UA;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_verify_bot strict;
@@ -47,7 +47,7 @@ User-Agent: Googlebot
 --- config
 waf on;
 waf_mode GET UA;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_verify_bot strict;
@@ -66,7 +66,7 @@ User-Agent: bingbot
 --- config
 waf on;
 waf_mode GET UA;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_verify_bot strict;
@@ -85,7 +85,7 @@ User-Agent: Baiduspider
 --- config
 waf on;
 waf_mode GET UA;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 waf_verify_bot strict;

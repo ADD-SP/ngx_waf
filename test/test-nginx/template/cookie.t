@@ -10,7 +10,7 @@ __DATA__
 --- config
 waf on;
 waf_mode GET COOKIE;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
 
@@ -28,7 +28,7 @@ Cookie: s=test
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache on capacity=50;
 

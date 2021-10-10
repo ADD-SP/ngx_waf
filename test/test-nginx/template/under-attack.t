@@ -10,9 +10,9 @@ __DATA__
 --- config
 waf on;
 waf_mode FULL;
-waf_rule_path /usr/local/nginx/conf/waf/rules/;
+waf_rule_path ${base_dir}/waf/rules/;
 waf_cache off capacity=50;
-waf_under_attack on file=/usr/local/nginx/conf/waf/under-attack.html;
+waf_under_attack on file=${base_dir}/waf/under-attack.html;
 
 --- request
 GET /

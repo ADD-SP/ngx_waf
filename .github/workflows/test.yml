@@ -90,10 +90,11 @@ jobs:
           sudo cpan Test::Nginx
       - name: Test
         run: |
-          cp -r ./assets /usr/local/nginx/conf/waf
+          sudo chmod 777 -R /tmp
           cd test/test-nginx
+          export MODULE_TEST_PATH=/tmp/module_test
           sh ./init.sh
-          exec sudo bash start.sh t/*.t
+          exec sudo sh start.sh t/*.t
           
   docker:
     runs-on: ubuntu-latest
