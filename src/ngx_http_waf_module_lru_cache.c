@@ -16,19 +16,10 @@ static void* _lru_cache_hash_calloc(lru_cache_t* lru, size_t n);
 static void _lru_cache_hash_free(lru_cache_t* lru, void* addr);
 
 
-void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_type_e pool_type, void* native_pool) {
-    assert(lru != NULL);
-
+void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_t* pool) {
     lru_cache_t* _lru;
-    
-    if (pool_type != std) {
-        assert(native_pool != NULL);
-    }
 
-    mem_pool_t pool;
-    assert(mem_pool_init(&pool, pool_type, native_pool) == NGX_HTTP_WAF_SUCCESS);
-
-    _lru = mem_pool_calloc(&pool, sizeof(lru_cache_t));
+    _lru = mem_pool_calloc(pool, sizeof(lru_cache_t));
     assert(_lru != NULL);
 
     ngx_memzero(_lru, sizeof(lru_cache_t));
@@ -38,6 +29,7 @@ void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_type_e pool_typ
     _lru->capacity = capacity;
     _lru->hash_head = NULL;
     _lru->chain_head = NULL;
+    _lru->pool = pool;
 
     *lru = _lru;
 }
@@ -64,10 +56,10 @@ lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len
     }
 
 
-    item = mem_pool_calloc(&lru->pool, sizeof(lru_cache_item_t));
+    item = mem_pool_calloc(lru->pool, sizeof(lru_cache_item_t));
     while (item == NULL && HASH_COUNT(lru->hash_head) != 0) {
         lru_cache_eliminate(lru, 1);
-        item = mem_pool_calloc(&lru->pool, sizeof(lru_cache_item_t));
+        item = mem_pool_calloc(lru->pool, sizeof(lru_cache_item_t));
     }
 
     if (item == NULL) {
@@ -76,14 +68,14 @@ lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len
         return ret;
     }
 
-    item->key_ptr = mem_pool_calloc(&lru->pool, key_len);
+    item->key_ptr = mem_pool_calloc(lru->pool, key_len);
     while (item->key_ptr == NULL && HASH_COUNT(lru->hash_head) != 0) {
         lru_cache_eliminate(lru, 1);
-        item->key_ptr = mem_pool_calloc(&lru->pool, key_len);
+        item->key_ptr = mem_pool_calloc(lru->pool, key_len);
     }
 
     if (item->key_ptr == NULL) {
-        mem_pool_free(&lru->pool, item);
+        mem_pool_free(lru->pool, item);
         ret.status = NGX_HTTP_WAF_MALLOC_ERROR;
         ret.data = NULL;
         return ret;
@@ -126,7 +118,7 @@ lru_cache_find_result_t lru_cache_find(lru_cache_t* lru, void* key, size_t key_l
 void* lru_cache_calloc(lru_cache_t* lru, size_t size) {
     assert(lru != NULL);
     assert(size != 0);
-    return mem_pool_calloc(&lru->pool, size);
+    return mem_pool_calloc(lru->pool, size);
 }
 
 
@@ -134,7 +126,7 @@ void lru_cache_free(lru_cache_t* lru, void* addr) {
     assert(lru != NULL);
     assert(addr != NULL);
     assert(addr != NGX_CONF_UNSET_PTR);
-    mem_pool_free(&lru->pool, addr);
+    mem_pool_free(lru->pool, addr);
 }
 
 
@@ -152,8 +144,8 @@ void lru_cache_delete(lru_cache_t* lru, void* key, size_t key_len) {
             lru_cache_free(lru, item->data);
         }
 
-        mem_pool_free(&lru->pool, item->key_ptr);
-        mem_pool_free(&lru->pool, item);
+        mem_pool_free(lru->pool, item->key_ptr);
+        mem_pool_free(lru->pool, item);
     }
 }
 
@@ -204,10 +196,10 @@ static void _lru_cache_hash_delete(lru_cache_t* lru, lru_cache_item_t* item) {
 
 
 static void* _lru_cache_hash_calloc(lru_cache_t* lru, size_t n) {
-    void* ret = mem_pool_calloc(&lru->pool, n);
+    void* ret = mem_pool_calloc(lru->pool, n);
     while (ret == NULL && HASH_COUNT(lru->hash_head) != 0) {
         lru_cache_eliminate(lru, 1);
-        ret = mem_pool_calloc(&lru->pool, n);
+        ret = mem_pool_calloc(lru->pool, n);
     }
     assert(ret != NULL);
     return ret;
@@ -215,5 +207,5 @@ static void* _lru_cache_hash_calloc(lru_cache_t* lru, size_t n) {
 
 
 static void _lru_cache_hash_free(lru_cache_t* lru, void* addr) {
-    mem_pool_free(&lru->pool, addr);
+    mem_pool_free(lru->pool, addr);
 }

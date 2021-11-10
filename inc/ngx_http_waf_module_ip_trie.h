@@ -23,7 +23,7 @@
  * @param[in] ip_type 存储的 IP 地址类型。
  * @return 返回 NGX_HTTP_WAF_SUCCESS 表示初始化成功，反之为 NGX_HTTP_WAF_FAIL。
 */
-ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_type_e pool_type, void* native_pool, int ip_type);
+ngx_int_t ip_trie_init(ip_trie_t* trie, mem_pool_t* pool, int ip_type);
 
 
 /**

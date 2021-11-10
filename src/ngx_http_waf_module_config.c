@@ -1232,7 +1232,10 @@ static ngx_int_t _shm_zone_cc_deny_handler_init(ngx_shm_zone_t *zone, void *data
     ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
     ngx_http_waf_loc_conf_t* loc_conf = (ngx_http_waf_loc_conf_t*)(zone->data);
 
-    lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, slab_pool, shpool);
+    mem_pool_t* pool = ngx_slab_calloc(shpool, sizeof(mem_pool_t));
+    mem_pool_init(pool, MEM_POOL_FLAG_NGX_SHARD, shpool);
+
+    lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, pool);
 
     return NGX_OK;
 }
@@ -1518,26 +1521,29 @@ static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) 
     conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
     conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
 
+    mem_pool_t* pool = ngx_pcalloc(cf->pool, sizeof(mem_pool_t));
+    mem_pool_init(pool, MEM_POOL_FLAG_NGX, cf->pool);
+
     lru_cache_init(&conf->black_url_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
 
     lru_cache_init(&conf->black_args_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
 
     lru_cache_init(&conf->black_ua_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
 
     lru_cache_init(&conf->black_referer_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
 
     lru_cache_init(&conf->black_cookie_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
 
     lru_cache_init(&conf->white_url_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
     
     lru_cache_init(&conf->white_referer_inspection_cache, 
-                    conf->waf_cache_capacity, gernal_pool, cf->pool);
+                    conf->waf_cache_capacity, pool);
 
     return NGX_HTTP_WAF_SUCCESS;
 }
@@ -1624,24 +1630,32 @@ static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* 
         return NGX_HTTP_WAF_FAIL;
     }
 
+    mem_pool_t* pool = ngx_pcalloc(cf->pool, sizeof(mem_pool_t));
 
-    if (ip_trie_init(conf->white_ipv4, gernal_pool, cf->pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
+    if (pool == NULL) {
+        return NGX_HTTP_WAF_FAIL;
+    }
+
+    mem_pool_init(pool, MEM_POOL_FLAG_NGX, cf->pool);
+
+
+    if (ip_trie_init(conf->white_ipv4, pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (ip_trie_init(conf->black_ipv4, gernal_pool, cf->pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
+    if (ip_trie_init(conf->black_ipv4, pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
 
 #if (NGX_HAVE_INET6)
-    if (ip_trie_init(conf->white_ipv6, gernal_pool, cf->pool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
+    if (ip_trie_init(conf->white_ipv6, pool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    if (ip_trie_init(conf->black_ipv6, gernal_pool, cf->pool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
+    if (ip_trie_init(conf->black_ipv6, pool, AF_INET6) != NGX_HTTP_WAF_SUCCESS) {
         ngx_log_error(NGX_LOG_ERR, cf->log, 0, "ngx_waf: initialization failed");
         return NGX_HTTP_WAF_FAIL;
     }

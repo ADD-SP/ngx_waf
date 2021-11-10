@@ -1,38 +1,37 @@
 #include <ngx_http_waf_module_mem_pool.h>
 
-ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_pool) {
-    if (pool == NULL || (type != std && native_pool == NULL)) {
-        return NGX_HTTP_WAF_FAIL;
-    }
-
-    pool->type = type;
-    
-    switch (type) {
-        case std: break;
-        case gernal_pool: pool->native_pool.gernal_pool = (ngx_pool_t*)native_pool; break;
-        case slab_pool: pool->native_pool.slab_pool = (ngx_slab_pool_t*)native_pool; break;
-    }
-
+ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_flag_e flag, void* native_pool) {
+    pool->flag = flag;
+    pool->native_pool = native_pool;
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size) {
-    void* addr;
-    switch (pool->type) {
-        case std: addr = malloc(byte_size); ngx_memzero(addr, byte_size);break;
-        case gernal_pool: addr = ngx_pcalloc(pool->native_pool.gernal_pool, byte_size); break;
-        case slab_pool: addr = ngx_slab_calloc_locked(pool->native_pool.slab_pool, byte_size); break;
-        default: addr = NULL; break;
+    if (ngx_http_waf_check_flag(pool->flag, MEM_POOL_FLAG_STDC)) {
+        return calloc(sizeof(uint8_t), byte_size);
+
+    } else if (ngx_http_waf_check_flag(pool->flag, MEM_POOL_FLAG_NGX_SHARD)) {
+        return ngx_slab_calloc_locked(pool->native_pool, byte_size);
+
+    } else if (ngx_http_waf_check_flag(pool->flag, MEM_POOL_FLAG_NGX)) {
+        return ngx_pcalloc(pool->native_pool, byte_size);
+
+    } else {
+        abort();
     }
-    return addr;
 }
 
-ngx_int_t mem_pool_free(mem_pool_t* pool, void* buffer) {
-    switch (pool->type) {
-        case std: free(buffer); break;
-        case gernal_pool: ngx_pfree(pool->native_pool.gernal_pool, buffer); break;
-        case slab_pool: ngx_slab_free_locked(pool->native_pool.slab_pool, buffer); break;
-        default: return NGX_HTTP_WAF_FAIL;
+void mem_pool_free(mem_pool_t* pool, void* buffer) {
+    if (ngx_http_waf_check_flag(pool->flag, MEM_POOL_FLAG_STDC)) {
+        free(buffer);
+
+    } else if (ngx_http_waf_check_flag(pool->flag, MEM_POOL_FLAG_NGX_SHARD)) {
+        ngx_slab_free_locked(pool->native_pool, buffer);
+
+    } else if (ngx_http_waf_check_flag(pool->flag, MEM_POOL_FLAG_NGX)) {
+        ngx_pfree(pool->native_pool, buffer);
+
+    } else {
+        abort();
     }
-    return NGX_HTTP_WAF_SUCCESS;
 }

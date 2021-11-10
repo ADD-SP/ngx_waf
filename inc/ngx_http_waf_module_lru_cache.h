@@ -11,7 +11,7 @@
 #include <ngx_http_waf_module_mem_pool.h>
 
 
-void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_type_e pool_type, void* native_pool);
+void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_t* pool);
 
 
 lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len);

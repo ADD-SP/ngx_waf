@@ -180,7 +180,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
         ngx_http_waf_dp(r, "adding cache");
         lru_cache_add_result_t tmp1 = lru_cache_add(loc_conf->ip_access_statistics, &inx_addr, sizeof(inx_addr_t));
         if (tmp1.status == NGX_HTTP_WAF_SUCCESS) {
-            statis = mem_pool_calloc(&loc_conf->ip_access_statistics->pool, sizeof(ip_statis_t));
+            statis = mem_pool_calloc(loc_conf->ip_access_statistics->pool, sizeof(ip_statis_t));
             if (statis == NULL) {
                 ngx_http_waf_dp(r, "no memroy ... exception");
                 goto exception;

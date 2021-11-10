@@ -102,17 +102,6 @@ typedef struct check_result_s {
 
 
 /**
- * @enum memory_pool_type_e
- * @brief 内存池类型
-*/
-typedef enum {
-    std,            /**< malloc */
-    gernal_pool,    /**< ngx_pool_t */
-    slab_pool       /**< ngx_slab_pool_t */
-} mem_pool_type_e;
-
-
-/**
  * @struct key_value_t
  * @brief 哈希表（字符串 -> 字符串）
 */
@@ -124,16 +113,25 @@ typedef struct key_value_s {
 
 
 /**
+ * @enum memory_pool_type_e
+ * @brief 内存池类型
+*/
+typedef enum {
+    MEM_POOL_FLAG_NONE      = 0,
+    MEM_POOL_FLAG_STDC      = 1,
+    MEM_POOL_FLAG_NGX       = 2,
+    MEM_POOL_FLAG_NGX_SHARD = 4
+} mem_pool_flag_e;
+
+
+/**
  * @struct mem_pool_t
  * @brief 包含常规内存池或 slab 内存池
 */
-typedef struct memo_pool_s {
-    mem_pool_type_e                     type;                   /**< 标识内存池的类型 */
+typedef struct mem_pool_s {
+    mem_pool_flag_e                     flag;                   /**< 标识内存池的类型 */
     size_t                              used_mem;               /**< 正在使用的内存大小（字节） */
-    union {
-        ngx_pool_t         *gernal_pool;                        /**< 常规内存池 */
-        ngx_slab_pool_t    *slab_pool;                          /**< slab 内存池 */
-    } native_pool;                                              /**< 内存池 */
+    void*                               native_pool;
 } mem_pool_t;
 
 
@@ -172,7 +170,7 @@ typedef struct lru_cache_item_s {
 */
 typedef struct lru_cache_s {
     time_t                            last_eliminate;     /**< 最后一次批量淘汰缓存的时间 */
-    mem_pool_t                        pool;               /**< 内存池 */
+    mem_pool_t                       *pool;               /**< 内存池 */
     size_t                            capacity;           /**< 最多嫩容纳多少个缓存项 */
     lru_cache_item_t                 *hash_head;          /**< uthash 的表头 */
     lru_cache_item_t                 *chain_head;         /**< utlist 的表头 */
@@ -229,7 +227,7 @@ typedef struct ip_trie_s {
     ip_trie_node_t     *root;           /**< 前缀树树根。 */
     int                 match_all;      /**< 当遇到前缀长度为零（0.0.0.0/0）的地址时为真，代表所有查询均返回真。 */
     size_t              size;           /**< 已经存储的 IP 数量。 */
-    mem_pool_t          pool;           /**< 使用的内存池 */
+    mem_pool_t         *pool;           /**< 使用的内存池 */
 } ip_trie_t;
 
 
