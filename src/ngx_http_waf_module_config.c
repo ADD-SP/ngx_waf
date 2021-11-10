@@ -1201,18 +1201,16 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if (h == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+            "ngx_waf: failed to install handler at NGX_HTTP_ACCESS_PHASE");
         return NGX_ERROR;
     }
     *h = ngx_http_waf_handler_access_phase;
 
-    // h = ngx_array_push(&cmcf->phases[NGX_HTTP_PRECONTENT_PHASE].handlers);
-    // if (h == NULL) {
-    //     return NGX_ERROR;
-    // }
-    // *h = ngx_http_waf_handler_precontent_phase;
-
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
     if (h == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+            "ngx_waf: failed to install handler at NGX_HTTP_LOG_PHASE");
         return NGX_ERROR;
     }
     *h = ngx_http_waf_handler_log_phase;
@@ -1220,22 +1218,11 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_waf_header_filter_init();
     ngx_http_waf_body_filter_init();
 
-
-#define _install_var(name, handler) {                                                           \
-    ngx_str_t _name = ngx_string((name));                                                       \
-    ngx_http_variable_t* var = ngx_http_add_variable(cf, &_name, NGX_HTTP_VAR_NOCACHEABLE);     \
-    var->get_handler = (handler);                                                               \
-    var->set_handler = NULL;                                                                    \
-}
-
-    _install_var("waf_log", ngx_http_waf_log_get_handler);
-    _install_var("waf_blocking_log", ngx_http_waf_blocking_log_get_handler);
-    _install_var("waf_blocked", ngx_http_waf_blocked_get_handler);
-    _install_var("waf_rule_type", ngx_http_waf_rule_type_get_handler);
-    _install_var("waf_rule_details", ngx_http_waf_rule_deatils_handler);
-    _install_var("waf_spend", ngx_http_waf_spend_handler);
-
-#undef _install_var
+    if (ngx_http_waf_install_add_var(cf) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+            "ngx_waf: failed to add embedded variables");
+        return NGX_ERROR;
+    }
 
     return NGX_OK;
 }

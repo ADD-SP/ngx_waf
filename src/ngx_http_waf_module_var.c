@@ -11,7 +11,67 @@
         return NGX_OK;                                  \
     }                                   
 
-ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+
+/**
+ * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
+*/
+ngx_int_t _waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_blocking_log 变量时的回调函数，这个变量当拦截时不为空，反之为空字符串。
+*/
+ngx_int_t _waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_blocked 变量时的回调函数，这个变量当请求被拦截的时候是 "true"，反之是 "false"。
+*/
+ngx_int_t _waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_rule_type 变量时的回调函数，这个变量会显示触发了的规则类型。
+*/
+ngx_int_t _waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_rule_deatils 变量时的回调函数，这个变量会显示触发了的规则的细节。
+*/
+ngx_int_t _waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * @brief 当读取 waf_spend 变量时的回调函数，这个变量表示本次检查花费的时间（毫秒）。
+*/
+ngx_int_t _waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+ngx_int_t ngx_http_waf_install_add_var(ngx_conf_t* cf) {
+#define _install_var(name, handler) {                                                           \
+    ngx_str_t _name = ngx_string((name));                                                       \
+    ngx_http_variable_t* var = ngx_http_add_variable(cf, &_name, NGX_HTTP_VAR_NOCACHEABLE);     \
+    if (var == NULL) {                                                                          \
+        return NGX_HTTP_WAF_FAIL;                                                               \
+    }                                                                                           \
+    var->get_handler = (handler);                                                               \
+    var->set_handler = NULL;                                                                    \
+}
+
+    _install_var("waf_log", _waf_log_get_handler);
+    _install_var("waf_blocking_log", _waf_blocking_log_get_handler);
+    _install_var("waf_blocked", _waf_blocked_get_handler);
+    _install_var("waf_rule_type", _waf_rule_type_get_handler);
+    _install_var("waf_rule_details", _waf_rule_deatils_handler);
+    _install_var("waf_spend", _waf_spend_handler);
+
+#undef _install_var
+
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+ngx_int_t _waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_log_get_handler() ... start");
 
     _init(r, v);
@@ -32,7 +92,7 @@ ngx_int_t ngx_http_waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_
 }
 
 
-ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+ngx_int_t _waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_blocking_log_get_handler() ... start");
 
     _init(r, v);
@@ -53,7 +113,7 @@ ngx_int_t ngx_http_waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_
 }
 
 
-ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+ngx_int_t _waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_blocked_get_handler() ... start");
 
     _init(r, v);
@@ -75,7 +135,7 @@ ngx_int_t ngx_http_waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_varia
 }
 
 
-ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+ngx_int_t _waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_rule_type_get_handler() ... start");
 
     _init(r, v);
@@ -91,7 +151,7 @@ ngx_int_t ngx_http_waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_var
 }
 
 
-ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+ngx_int_t _waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_rule_deatils_handler() ... start");
 
     _init(r, v);
@@ -107,7 +167,7 @@ ngx_int_t ngx_http_waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_vari
 }
 
 
-ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+ngx_int_t _waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_dp(r, "ngx_http_waf_spend_handler() ... start");
 
     _init(r, v);
