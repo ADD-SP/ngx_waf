@@ -3,22 +3,13 @@
 extern ngx_module_t ngx_http_waf_module;
 
 
-#define _get_conf_key(array, out) {                         \
-    (out) = utarray_next((array), NULL);                    \
-}
+#define _streq(s1, s2) ( ngx_strcmp(s1, s2) == 0 )
 
+#define _strneq(s1, s2, n) { ngx_strncmp(s1, s2, n) == 0 }
 
-#define _get_conf_value(array, ptr, out) {                  \
-    (out) = utarray_next((array), ptr);                     \
-}
+#define _strcaseeq(s1, s2) ( ngx_strcasecmp(s1, s2) == 0 )
 
-
-#define _conf_key_handler(current_key, target_key, func) {  \
-    if (ngx_strcmp((current_key), (target_key)) == 0) {     \
-        { func }                                            \
-        continue;                                           \
-    }                                                       \
-}
+#define _strncaseeq(s1, s2) ( ngx_strncasecmp(s1, s2, n) == 0 )
 
 
 static void _cleanup(void* data);
@@ -203,12 +194,10 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         }
 
         ngx_str_t* p = NULL;
-        // p = (ngx_str_t*)utarray_next(array, p);
-        _get_conf_key(array, p);
+        p = (ngx_str_t*)utarray_next(array, NULL);
 
-
-        _conf_key_handler(p->data, "rate", {
-            _get_conf_value(array, p, p);
+        if (_streq(p->data, "rate")) {
+            p = (ngx_str_t*)utarray_next(array, p);
 
             UT_array* temp = NULL;
             if (ngx_http_waf_str_split(p, '/', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
@@ -235,30 +224,30 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 goto error;
             }
             utarray_free(temp);
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "duration", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "duration")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_cc_deny_duration = ngx_http_waf_parse_time(p->data);
             if (loc_conf->waf_cc_deny_duration == NGX_ERROR) {
                 goto error;
             }
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "size", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "size")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_cc_deny_shm_zone_size = ngx_http_waf_parse_size(p->data);
             if (loc_conf->waf_cc_deny_shm_zone_size == NGX_ERROR) {
                 goto error;
             }
             loc_conf->waf_cc_deny_shm_zone_size = ngx_max(NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE, 
                                                           loc_conf->waf_cc_deny_shm_zone_size);
-            utarray_free(array);
-        });
+            
+        } else {
+            goto error;
+        }
 
-        goto error;
+        utarray_free(array);
     }
 
     if (loc_conf->waf_cc_deny_limit == NGX_CONF_UNSET) {
@@ -307,19 +296,23 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         }
 
         ngx_str_t* p = NULL;
-        _get_conf_key(array, p);
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        _conf_key_handler(p->data, "capacity", {
-            _get_conf_value(array, p, p);
+        if (_streq(p->data, "capacity")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_cache_capacity = ngx_atoi(p->data, p->len);
+
             if (loc_conf->waf_cache_capacity == NGX_ERROR
                 || loc_conf->waf_cache_capacity <= 0) {
                 goto error;
             }
-            utarray_free(array);
-        });
+            
+        } else {
+            goto error;
+        }
 
-        goto error;
+        utarray_free(array);
     }
 
     if (_init_lru_cache(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
@@ -343,8 +336,10 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_under_attack = 1;
+
     } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0){
         loc_conf->waf_under_attack = 0;
+
     } else {
         goto error;
     }
@@ -359,6 +354,7 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
     for (size_t i = 2; i < cf->args->nelts; i++) {
         UT_array* array = NULL;
+
         if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
             goto error;
         }
@@ -368,10 +364,11 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
         }
 
         ngx_str_t* p = NULL;
-        _get_conf_key(array, p);
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        _conf_key_handler(p->data, "file", {
-            _get_conf_value(array, p, p);
+        if (_streq(p->data, "file")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -397,10 +394,12 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
             }
 
             fclose(fp);
-            utarray_free(array);
-        });
 
-        goto error;
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
     }
 
     return NGX_CONF_OK;
@@ -440,10 +439,11 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         }
 
         ngx_str_t* p = NULL;
-        _get_conf_key(array, p);
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        _conf_key_handler(p->data, "file", {
-            _get_conf_value(array, p, p);
+        if (_streq(p->data, "file")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -469,29 +469,30 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             }
 
             fclose(fp);
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "prov", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "prov")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
             
             if (ngx_strcmp(p->data, "hCaptcha") == 0) {
                 loc_conf->waf_captcha_type = NGX_HTTP_WAF_HCAPTCHA;
+
             } else if (ngx_strcmp(p->data, "reCAPTCHAv2") == 0) {
                 loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V2;
+
             } else if (ngx_strcmp(p->data, "reCAPTCHAv3") == 0) {
                 loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V3;
+
             } else {
                 goto error;
             }
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "secret", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "secret")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             if (p == NULL || p->data == NULL || p->len == 0) {
                 goto error;
             }
@@ -503,48 +504,47 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv2_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv3_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
 
-            utarray_free(array);
-        });
+        } else if (_streq(p->data, "expire")) {
+            p = (ngx_str_t*)utarray_next(array, p);
 
-        _conf_key_handler(p->data, "expire", {
-            _get_conf_value(array, p, p);
             loc_conf->waf_captcha_expire = ngx_http_waf_parse_time(p->data);
+
             if (loc_conf->waf_captcha_expire == NGX_ERROR) {
                 goto error;
             }
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "score", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "score")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_captcha_reCAPTCHAv3_score = atof((char*)p->data);
+
             if (loc_conf->waf_captcha_reCAPTCHAv3_score < 0.0 && loc_conf->waf_captcha_reCAPTCHAv3_score > 1.0) {
                 goto error;
             }
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "api", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "api")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_captcha_api.data = ngx_pcalloc(cf->pool, p->len + 1);
             ngx_memcpy(loc_conf->waf_captcha_api.data, p->data, p->len);
             loc_conf->waf_captcha_api.len = p->len;
-            utarray_free(array);
-        });
 
-        _conf_key_handler(p->data, "verfiy", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "verfiy")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_captcha_verify_url.data = ngx_pcalloc(cf->pool, p->len + 1);
             ngx_memcpy(loc_conf->waf_captcha_verify_url.data, p->data, p->len);
             loc_conf->waf_captcha_verify_url.len = p->len;
-            utarray_free(array);
-        });
 
-        goto error;
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
     }
 
     if (loc_conf->waf_captcha_api.data == NULL || loc_conf->waf_captcha_api.len == 0) {
-            switch (loc_conf->waf_captcha_type) {
+        switch (loc_conf->waf_captcha_type) {
             case NGX_HTTP_WAF_HCAPTCHA:
                 ngx_str_set(&loc_conf->waf_captcha_api, "https://hcaptcha.com/siteverify");
                 break;
@@ -822,29 +822,30 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         }
 
         ngx_str_t* p = NULL;
-        _get_conf_key(array, p);
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        _conf_key_handler(p->data, "general", {
-            _get_conf_value(array, p, p);
+        if (_streq(p->data, "general")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_http_status = ngx_atoi(p->data, p->len);
             if (loc_conf->waf_http_status == NGX_ERROR
                 || loc_conf->waf_http_status <= 0) {
                 goto error;
             }
-            utarray_free(array);
-        });
+            
+        } else if (_streq(p->data, "cc_deny")) {
+            p = (ngx_str_t*)utarray_next(array, p);
 
-        _conf_key_handler(p->data, "cc_deny", {
-            _get_conf_value(array, p, p);
             loc_conf->waf_http_status_cc = ngx_atoi(p->data, p->len);
             if (loc_conf->waf_http_status_cc == NGX_ERROR
                 || loc_conf->waf_http_status_cc <= 0) {
                 goto error;
             }
-            utarray_free(array);
-        });
 
-        goto error;
+        } else {
+            goto error;
+        }
+        utarray_free(array);
     }
 
     return NGX_CONF_OK;
@@ -895,10 +896,11 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         }
 
         ngx_str_t* p = NULL;
-        _get_conf_key(array, p);
+        p = (ngx_str_t*)utarray_next(array, p);
 
-        if (ngx_strcmp(p->data, "file") == 0) {    
-            _get_conf_value(array, p, p);
+        if (_streq(p->data, "file")) {    
+            p = (ngx_str_t*)utarray_next(array, p);
+
             char* file = ngx_http_waf_c_str(p, cf->pool);
             const char* error;
             if (file == NULL) {
@@ -915,48 +917,28 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             }
             _recover_modsecurity_pcre_callback(old_pool);
             ngx_pfree(cf->pool, file);                                         
-            continue;                                          
-        }  
+                                       
+        } else if (_streq(p->data, "remote_key")) {
+            p = (ngx_str_t*)utarray_next(array, p);
 
-        // _conf_key_handler(p->data, "file", {
-        //     _get_conf_value(array, p, p);
-        //     char* file = ngx_http_waf_c_str(p, cf->pool);
-        //     const char* error;
-        //     if (file == NULL) {
-        //         goto no_memory;
-        //     }
-
-        //     ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
-        //     int rc = msc_rules_add_file(loc_conf->modsecurity_rules, file, &error);
-        //     if (rc < 0) {
-        //         _recover_modsecurity_pcre_callback(old_pool);
-        //         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
-        //             "ngx_waf: %s", error);
-        //         return NGX_CONF_ERROR;
-        //     }
-        //     _recover_modsecurity_pcre_callback(old_pool);
-        //     ngx_pfree(cf->pool, file);
-        // });
-
-        _conf_key_handler(p->data, "remote_key", {
-            _get_conf_value(array, p, p);
             loc_conf->waf_modsecurity_rules_remote_key.data = (u_char*)ngx_http_waf_c_str(p, cf->pool);
             loc_conf->waf_modsecurity_rules_remote_key.len = p->len;
             if (loc_conf->waf_modsecurity_rules_remote_key.data == NULL) {
                 goto no_memory;
             }
-        });
 
-        _conf_key_handler(p->data, "remote_url", {
-            _get_conf_value(array, p, p);
+        } else if (_streq(p->data, "remote_url")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
             loc_conf->waf_modsecurity_rules_remote_url.data = (u_char*)ngx_http_waf_c_str(p, cf->pool);
             loc_conf->waf_modsecurity_rules_remote_url.len = p->len;
             if (loc_conf->waf_modsecurity_rules_remote_url.data == NULL) {
                 goto no_memory;
             }
-        });
 
-        goto error;
+        } else {
+            goto error;
+        }
         utarray_free(array);
     }
 
@@ -1756,6 +1738,10 @@ static void _modsecurity_pcre_free(void* ptr) {
 
 
 
-#undef _get_conf_key
-#undef _get_conf_value
-#undef _conf_key_handler
+#undef _streq
+
+#undef _strneq
+
+#undef _strcaseeq
+
+#undef _strncaseeq
