@@ -1,5 +1,11 @@
 #include <ngx_http_waf_module_captcha.h>
 
+typedef struct {
+    u_char time[NGX_TIME_T_LEN + 1];
+    u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
+    u_char hmac[crypto_hash_sha256_BYTES * 2 + 1];
+} _info_t;
+
 static ngx_int_t _gen_nocache_header(ngx_http_request_t* r);
 
 static ngx_int_t _gen_pass_ctx(ngx_http_request_t* r);
@@ -8,11 +14,11 @@ static ngx_int_t _gen_show_html_ctx(ngx_http_request_t* r);
 
 static ngx_int_t _gen_show_str_ctx(ngx_http_request_t* r, char* str);
 
-static ngx_int_t _gen_info(ngx_http_request_t* r, under_attack_info_t* info);
+static ngx_int_t _gen_info(ngx_http_request_t* r, _info_t* info);
 
-static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, under_attack_info_t* info);
+static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, _info_t* info);
 
-static ngx_int_t _gen_hmac(ngx_http_request_t* r, under_attack_info_t* info);
+static ngx_int_t _gen_hmac(ngx_http_request_t* r, _info_t* info);
 
 static ngx_int_t _verify_cookies(ngx_http_request_t* r);
 
@@ -103,7 +109,7 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
                 {
                     ngx_http_waf_dp(r, "pass");
                     ngx_http_waf_dp(r, "generating releated info");
-                    under_attack_info_t* info = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
+                    _info_t* info = ngx_pcalloc(r->pool, sizeof(_info_t));
                     if (info != NULL
                     &&  _gen_info(r, info) == NGX_HTTP_WAF_SUCCESS
                     &&  _gen_verify_cookie(r, info) == NGX_HTTP_WAF_SUCCESS
@@ -286,7 +292,7 @@ static ngx_int_t _gen_show_str_ctx(ngx_http_request_t* r, char* str) {
 }
 
 
-static ngx_int_t _gen_info(ngx_http_request_t* r, under_attack_info_t* info) {
+static ngx_int_t _gen_info(ngx_http_request_t* r, _info_t* info) {
     ngx_http_waf_dp(r, "_gen_info() ... start");
 
     time_t now = time(NULL);
@@ -311,7 +317,7 @@ static ngx_int_t _gen_info(ngx_http_request_t* r, under_attack_info_t* info) {
 }
 
 
-static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, under_attack_info_t* info) {
+static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, _info_t* info) {
     ngx_http_waf_dp(r, "_gen_verify_cookie() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -361,7 +367,7 @@ static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, under_attack_info_t* 
 }
 
 
-static ngx_int_t _gen_hmac(ngx_http_request_t *r, under_attack_info_t* info) {
+static ngx_int_t _gen_hmac(ngx_http_request_t *r, _info_t* info) {
     ngx_http_waf_dp(r, "_gen_hmac() ... start");
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -415,8 +421,8 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_table_elt_t **ppcookie = (ngx_table_elt_t **)(r->headers_in.cookies.elts);
-    under_attack_info_t* under_attack_client = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
-    under_attack_info_t* under_attack_expect = ngx_pcalloc(r->pool, sizeof(under_attack_info_t));
+    _info_t* under_attack_client = ngx_pcalloc(r->pool, sizeof(_info_t));
+    _info_t* under_attack_expect = ngx_pcalloc(r->pool, sizeof(_info_t));
 
     if (under_attack_client == NULL || under_attack_expect == NULL) {
         ngx_http_waf_dp(r, "no memcoy ... return");
@@ -424,8 +430,8 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     }
 
     ngx_int_t cookie_count = 0;
-    ngx_memzero(under_attack_client, sizeof(under_attack_info_t));
-    ngx_memzero(under_attack_expect, sizeof(under_attack_info_t));
+    ngx_memzero(under_attack_client, sizeof(_info_t));
+    ngx_memzero(under_attack_expect, sizeof(_info_t));
 
     for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
         ngx_table_elt_t *native_cookie = *ppcookie;
@@ -467,7 +473,7 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
         utarray_free(cookies);
     }
 
-    ngx_memcpy(under_attack_expect, under_attack_client, sizeof(under_attack_info_t));
+    ngx_memcpy(under_attack_expect, under_attack_client, sizeof(_info_t));
 
     /* 计算正确的 HMAC */
     ngx_http_waf_dp(r, "generating hmac");
@@ -479,7 +485,7 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
 
     /* 验证 HMAC 是否正确 */
     ngx_http_waf_dp(r, "verifying hmac");
-    if (ngx_memcmp(under_attack_client, under_attack_expect, sizeof(under_attack_info_t)) != 0) {
+    if (ngx_memcmp(under_attack_client, under_attack_expect, sizeof(_info_t)) != 0) {
         ngx_http_waf_dp(r, "failed ... return");
         return NGX_HTTP_WAF_FAIL;
     }

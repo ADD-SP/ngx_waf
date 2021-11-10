@@ -1,17 +1,23 @@
 #include <ngx_http_waf_module_under_attack.h>
 
-static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, under_attack_info_t* under_attack);
+typedef struct {
+    u_char time[NGX_TIME_T_LEN + 1];
+    u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
+    u_char hmac[crypto_hash_sha256_BYTES * 2 + 1];
+} _info_t;
+
+static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, _info_t* under_attack);
 
 /**
  * @brief 生成用于验证五秒盾的三个 Cookie
 */
-static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_attack);
+static ngx_int_t _gen_cookie(ngx_http_request_t *r, _info_t* under_attack);
 
 
 /**
  * @brief 生成 Cookie 完整性校验码
 */
-static ngx_int_t _gen_verification(ngx_http_request_t *r, under_attack_info_t* under_attack);
+static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack);
 
 
 static void _gen_ctx(ngx_http_request_t *r);
@@ -31,9 +37,9 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
 
 
     ngx_table_elt_t **ppcookie = (ngx_table_elt_t **)(r->headers_in.cookies.elts);
-    under_attack_info_t under_attack_client, under_attack_expect;
-    ngx_memzero(&under_attack_client, sizeof(under_attack_info_t));
-    ngx_memzero(&under_attack_expect, sizeof(under_attack_info_t));
+    _info_t under_attack_client, under_attack_expect;
+    ngx_memzero(&under_attack_client, sizeof(_info_t));
+    ngx_memzero(&under_attack_expect, sizeof(_info_t));
 
 
     for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
@@ -76,7 +82,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
         utarray_free(cookies);
     }
 
-    ngx_memcpy(&under_attack_expect, &under_attack_client, sizeof(under_attack_info_t));
+    ngx_memcpy(&under_attack_expect, &under_attack_client, sizeof(_info_t));
 
     ngx_http_waf_dp(r, "generating expected message")
     if (_gen_verification(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
@@ -94,7 +100,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
 
     /* 验证 token 是否正确 */
     ngx_http_waf_dp(r, "verifying info");
-    if (ngx_memcmp(&under_attack_client, &under_attack_expect, sizeof(under_attack_info_t)) != 0) {
+    if (ngx_memcmp(&under_attack_client, &under_attack_expect, sizeof(_info_t)) != 0) {
         ngx_http_waf_dp(r, "failed");
 
         _gen_ctx(r);
@@ -159,7 +165,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
 }
 
 
-static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, under_attack_info_t* under_attack) {
+static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, _info_t* under_attack) {
     ngx_http_waf_dp(r, "_gen_under_attack_info() ... start");
 
     time_t now = time(NULL);
@@ -184,7 +190,7 @@ static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, under_attack_info
 }
 
 
-static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_attack) {
+static ngx_int_t _gen_cookie(ngx_http_request_t *r, _info_t* under_attack) {
     ngx_http_waf_dp(r, "_gen_cookie() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -228,7 +234,7 @@ static ngx_int_t _gen_cookie(ngx_http_request_t *r, under_attack_info_t* under_a
 }
 
 
-static ngx_int_t _gen_verification(ngx_http_request_t *r, under_attack_info_t* under_attack) {
+static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack) {
     ngx_http_waf_dp(r, "_gen_verification() ... start");
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;

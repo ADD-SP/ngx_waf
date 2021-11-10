@@ -101,13 +101,6 @@ typedef struct check_result_s {
 } check_result_t;
 
 
-typedef struct under_attack_info_s {
-    u_char time[NGX_TIME_T_LEN + 1];
-    u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
-    u_char hmac[crypto_hash_sha256_BYTES * 2 + 1];
-} under_attack_info_t;
-
-
 /**
  * @enum memory_pool_type_e
  * @brief 内存池类型
