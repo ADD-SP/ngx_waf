@@ -15,7 +15,7 @@ mkdir -p "$base_dir"
 cp -r ../../assets "$base_dir/waf"
 
 templates=$(ls template)
-rm -rf "t/*"
+rm -rf t/*
 for file in $templates
 do
 eval "cat <<EOF

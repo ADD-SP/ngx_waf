@@ -316,8 +316,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_array_t                    *waf_verify_bot_baidu_domain_regexp;         /**< BaiduSpider 的合法的主机名 */
     ngx_array_t                    *waf_verify_bot_yandex_domain_regexp;        /**< Yandexbot 的合法的主机名 */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
-    size_t                          waf_under_attack_len;                       /**< 五秒盾的 HTML 数据的大小 */
-    u_char                         *waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
+    ngx_str_t                       waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
     ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */
     ngx_int_t                       waf_captcha_type;                           /**< 验证码的类型 */
     ngx_str_t                       waf_captcha_hCaptcha_secret;                /**< hCaptcha 的 secret */
@@ -327,8 +326,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_captcha_api;                            /**< 验证码提供商的 API */
     ngx_str_t                       waf_captcha_verify_url;                     /**< 本模块接管的用于验证的 URL */
     ngx_int_t                       waf_captcha_expire;                         /**< 验证码的有效期 */
-    u_char                         *waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
-    size_t                          waf_captcha_html_len;                       /**< 验证码页面的 HTML 数据的大小 */
+    ngx_str_t                       waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
     ngx_int_t                       waf_modsecurity;                            /**< 是否启用 ModSecurity */
     ngx_str_t                       waf_modsecurity_rules_file;                 /**< ModSecurity 规则文件的绝对路径 */
     ngx_str_t                       waf_modsecurity_rules_remote_key;

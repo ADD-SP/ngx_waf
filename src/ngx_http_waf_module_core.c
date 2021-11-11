@@ -56,7 +56,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
    },
    {
         ngx_string("waf_under_attack"),
-        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE2,
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE12,
         ngx_http_waf_under_attack_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
         0,
@@ -64,7 +64,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
    },
    {
         ngx_string("waf_captcha"),
-        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1234 | NGX_CONF_TAKE5 | NGX_CONF_TAKE6,
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1234 | NGX_CONF_TAKE5 | NGX_CONF_TAKE6 | NGX_CONF_TAKE7,
         ngx_http_waf_captcha_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
         0,
@@ -195,11 +195,11 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
     size_t html_len = 0;
     ngx_http_waf_dp(r, "getting html");
     if (ctx->under_attack == NGX_HTTP_WAF_TRUE) {
-        html = loc_conf->waf_under_attack_html;
-        html_len = loc_conf->waf_under_attack_len;
+        html = loc_conf->waf_under_attack_html.data;
+        html_len = loc_conf->waf_under_attack_html.len;
     } else if (ctx->captcha == NGX_HTTP_WAF_TRUE) {
-        html = loc_conf->waf_captcha_html;
-        html_len = loc_conf->waf_captcha_html_len;
+        html = loc_conf->waf_captcha_html.data;
+        html_len = loc_conf->waf_captcha_html.len;
     } else {
         html = (u_char*)ctx->response_str;
         html_len = ngx_strlen(html);

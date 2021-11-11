@@ -17,7 +17,7 @@ waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_cache off capacity=50;
-waf_captcha on prov=reCAPTCHAv3 file=${base_dir}/waf/reCAPTCHAv3.html secret=xx;
+waf_captcha on prov=reCAPTCHAv3 secret=xx;
 
 location /captcha {
     try_files \$uri \$uri/ /t;

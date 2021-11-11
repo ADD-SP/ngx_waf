@@ -7,9 +7,9 @@ extern ngx_module_t ngx_http_waf_module;
 
 #define _strneq(s1, s2, n) { ngx_strncmp(s1, s2, n) == 0 }
 
-#define _strcaseeq(s1, s2) ( ngx_strcasecmp(s1, s2) == 0 )
+#define _strcaseeq(s1, s2) ( ngx_strcasecmp((u_char*)(s1), (u_char*)(s2)) == 0 )
 
-#define _strncaseeq(s1, s2) ( ngx_strncasecmp(s1, s2, n) == 0 )
+#define _strncaseeq(s1, s2) ( ngx_strncasecmp((u_char*)(s1), (u_char*)(s2), n) == 0 )
 
 
 static void _cleanup(void* data);
@@ -470,10 +470,6 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
         return NGX_CONF_OK;
     }
 
-    if (cf->args->nelts != 3) {
-        goto error;
-    }
-
     for (size_t i = 2; i < cf->args->nelts; i++) {
         UT_array* array = NULL;
 
@@ -505,11 +501,11 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
             fseek(fp, 0, SEEK_END);
             size_t file_size = ftell(fp);
-            loc_conf->waf_under_attack_len = file_size;
-            loc_conf->waf_under_attack_html = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
+            loc_conf->waf_under_attack_html.len = file_size;
+            loc_conf->waf_under_attack_html.data = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
 
             fseek(fp, 0, SEEK_SET);
-            if (fread(loc_conf->waf_under_attack_html, sizeof(u_char), file_size, fp) != file_size) {
+            if (fread(loc_conf->waf_under_attack_html.data, sizeof(u_char), file_size, fp) != file_size) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EPERM, 
                     "ngx_waf: Failed to read file %s completely..", p->data);
                 return NGX_CONF_ERROR;
@@ -524,6 +520,10 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
         utarray_free(array);
     }
 
+    if (loc_conf->waf_under_attack_html.data == NULL) {
+        ngx_str_set(&loc_conf->waf_under_attack_html, ngx_http_waf_data_html_under_attack);
+    }
+
     return NGX_CONF_OK;
 
 error:
@@ -536,6 +536,9 @@ error:
 char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
+
+    ngx_str_t default_html_template = ngx_null_string;
+    ngx_str_t sitekey = ngx_null_string;
 
     loc_conf->waf_captcha = NGX_CONF_UNSET;
     loc_conf->waf_captcha_expire = 60 * 30;
@@ -582,11 +585,11 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
             fseek(fp, 0, SEEK_END);
             size_t file_size = ftell(fp);
-            loc_conf->waf_captcha_html_len = file_size;
-            loc_conf->waf_captcha_html = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
+            loc_conf->waf_captcha_html.len = file_size;
+            loc_conf->waf_captcha_html.data = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
 
             fseek(fp, 0, SEEK_SET);
-            if (fread(loc_conf->waf_captcha_html, sizeof(u_char), file_size, fp) != file_size) {
+            if (fread(loc_conf->waf_captcha_html.data, sizeof(u_char), file_size, fp) != file_size) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EPERM, 
                     "ngx_waf: Failed to read file %s completely..", p->data);
                 return NGX_CONF_ERROR;
@@ -601,14 +604,21 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 goto error;
             }
             
-            if (ngx_strcmp(p->data, "hCaptcha") == 0) {
+            if (_strcaseeq(p->data, "hCaptcha")) {
                 loc_conf->waf_captcha_type = NGX_HTTP_WAF_HCAPTCHA;
+                ngx_str_set(&default_html_template, ngx_http_waf_data_html_template_hCaptcha);
 
-            } else if (ngx_strcmp(p->data, "reCAPTCHAv2") == 0) {
-                loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V2;
+            } else if (_strcaseeq(p->data, "reCAPTCHAv2:checkbox")) {
+                loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V2_CHECKBOX;
+                ngx_str_set(&default_html_template, ngx_http_waf_data_html_template_reCAPTCHAv2_checkbox);
 
-            } else if (ngx_strcmp(p->data, "reCAPTCHAv3") == 0) {
+            } else if (_strcaseeq(p->data, "reCAPTCHAv2:invisible")) {
+                loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V2_INVISIBLE;
+                ngx_str_set(&default_html_template, ngx_http_waf_data_html_template_reCAPTCHAv2_invisible);
+
+            } else if (_strcaseeq(p->data, "reCAPTCHAv3")) {
                 loc_conf->waf_captcha_type = NGX_HTTP_WAF_RECAPTCHA_V3;
+                ngx_str_set(&default_html_template, ngx_http_waf_data_html_template_reCAPTCHAv3);
 
             } else {
                 goto error;
@@ -627,6 +637,17 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv2_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
             ngx_memcpy(&loc_conf->waf_captcha_reCAPTCHAv3_secret, &loc_conf->waf_captcha_hCaptcha_secret, sizeof(ngx_str_t));
+
+        }  else if (_streq(p->data, "sitekey")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            if (p == NULL || p->data == NULL || p->len == 0) {
+                goto error;
+            }
+
+            sitekey.data = ngx_pstrdup(cf->pool, p);
+            sitekey.len = p->len;
+            
 
         } else if (_streq(p->data, "expire")) {
             p = (ngx_str_t*)utarray_next(array, p);
@@ -667,12 +688,22 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         utarray_free(array);
     }
 
+    if (loc_conf->waf_captcha_html.data == NULL) {
+        u_char* buf = ngx_pcalloc(cf->pool, default_html_template.len + sitekey.len + 1);
+        size_t len = ngx_sprintf(buf, (const char*)default_html_template.data, &sitekey) - buf;
+        loc_conf->waf_captcha_html.data = buf;
+        loc_conf->waf_captcha_html.len = len;
+    }
+
     if (loc_conf->waf_captcha_api.data == NULL || loc_conf->waf_captcha_api.len == 0) {
         switch (loc_conf->waf_captcha_type) {
             case NGX_HTTP_WAF_HCAPTCHA:
                 ngx_str_set(&loc_conf->waf_captcha_api, "https://hcaptcha.com/siteverify");
                 break;
-            case NGX_HTTP_WAF_RECAPTCHA_V2:
+            case NGX_HTTP_WAF_RECAPTCHA_V2_CHECKBOX:
+                ngx_str_set(&loc_conf->waf_captcha_api, "https://www.recaptcha.net/recaptcha/api/siteverify");
+                break;
+            case NGX_HTTP_WAF_RECAPTCHA_V2_INVISIBLE:
                 ngx_str_set(&loc_conf->waf_captcha_api, "https://www.recaptcha.net/recaptcha/api/siteverify");
                 break;
             case NGX_HTTP_WAF_RECAPTCHA_V3:
@@ -1182,15 +1213,19 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     
 
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
-    ngx_conf_merge_ptr_value(child->waf_under_attack_html, parent->waf_under_attack_html, NULL);
-    ngx_conf_merge_size_value(child->waf_under_attack_len, parent->waf_under_attack_len, NGX_CONF_UNSET_SIZE);
+
+    if (child->waf_under_attack_html.data == NULL || child->waf_under_attack_html.len == 0) {
+        ngx_memcpy(&(child->waf_under_attack_html), &(parent->waf_under_attack_html), sizeof(ngx_str_t));
+    }
     
     ngx_conf_merge_value(child->waf_captcha, parent->waf_captcha, NGX_CONF_UNSET);
     ngx_conf_merge_value(child->waf_captcha_type, parent->waf_captcha_type, 0);
     ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, 60 * 30);
-    ngx_conf_merge_ptr_value(child->waf_captcha_html, parent->waf_captcha_html, NULL);
-    ngx_conf_merge_size_value(child->waf_captcha_html_len, parent->waf_captcha_html_len, NGX_CONF_UNSET_SIZE);
     ngx_conf_merge_value(child->waf_captcha_reCAPTCHAv3_score, parent->waf_captcha_reCAPTCHAv3_score, NGX_CONF_UNSET);
+
+    if (child->waf_captcha_html.data == NULL || child->waf_captcha_html.len == 0) {
+        ngx_memcpy(&(child->waf_captcha_html), &(parent->waf_captcha_html), sizeof(ngx_str_t));
+    }
 
     if (child->waf_captcha_hCaptcha_secret.data == NULL || child->waf_captcha_hCaptcha_secret.len == 0) {
         ngx_memcpy(&(child->waf_captcha_hCaptcha_secret), &(parent->waf_captcha_hCaptcha_secret), sizeof(ngx_str_t));
@@ -1264,7 +1299,7 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 
     if (parent->waf_cc_deny == 2 
     && (    parent->waf_captcha_type == 0
-        ||  parent->waf_captcha_html == NULL 
+        ||  parent->waf_captcha_html.data == NULL 
         ||  parent->waf_captcha_reCAPTCHAv2_secret.data == NULL
         ||  parent->waf_captcha_reCAPTCHAv2_secret.len == 0
         ||  parent->waf_captcha_reCAPTCHAv3_secret.data == NULL
@@ -1278,7 +1313,7 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 
     if (child->waf_cc_deny == 2 
     && (    child->waf_captcha_type == 0
-        ||  child->waf_captcha_html == NULL 
+        ||  child->waf_captcha_html.data == NULL 
         ||  child->waf_captcha_reCAPTCHAv2_secret.data == NULL
         ||  child->waf_captcha_reCAPTCHAv2_secret.len == 0
         ||  child->waf_captcha_reCAPTCHAv3_secret.data == NULL
@@ -1526,11 +1561,9 @@ static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     conf->waf_verify_bot_baidu_domain_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_yandex_domain_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_under_attack = NGX_CONF_UNSET;
-    conf->waf_under_attack_html = NGX_CONF_UNSET_PTR;
-    conf->waf_under_attack_len = NGX_CONF_UNSET_SIZE;
+    ngx_str_null(&conf->waf_under_attack_html);
     conf->waf_captcha = NGX_CONF_UNSET;
-    conf->waf_captcha_html = NGX_CONF_UNSET_PTR;
-    conf->waf_captcha_html_len = NGX_CONF_UNSET_SIZE;
+    ngx_str_null(&conf->waf_captcha_html);
     conf->waf_captcha_expire = NGX_CONF_UNSET;
     conf->waf_captcha_reCAPTCHAv3_score = NGX_CONF_UNSET;
     conf->waf_cc_deny = NGX_CONF_UNSET;

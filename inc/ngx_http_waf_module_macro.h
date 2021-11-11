@@ -64,9 +64,11 @@
 
 #define NGX_HTTP_WAF_HCAPTCHA                (1)
 
-#define NGX_HTTP_WAF_RECAPTCHA_V2            (2)
+#define NGX_HTTP_WAF_RECAPTCHA_V2_CHECKBOX   (2)
 
-#define NGX_HTTP_WAF_RECAPTCHA_V3            (3)
+#define NGX_HTTP_WAF_RECAPTCHA_V2_INVISIBLE  (3)
+
+#define NGX_HTTP_WAF_RECAPTCHA_V3            (4)
 
 
 #define NGX_HTTP_WAF_GOOGLE_BOT              (1)

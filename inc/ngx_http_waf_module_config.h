@@ -26,6 +26,7 @@
 #include <ngx_http_waf_module_verify_bot.h>
 #include <ngx_http_waf_module_shm.h>
 #include <ngx_http_waf_module_modsecurity.h>
+#include <ngx_http_waf_module_data.h>
 
 
 extern ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);

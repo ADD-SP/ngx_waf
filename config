@@ -2,6 +2,7 @@ ngx_addon_name=ngx_http_waf_module
 
 deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_config.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_data.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_var.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_core.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_macro.h \
@@ -19,6 +20,7 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_var.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_data.c \
     $ngx_addon_dir/src/ngx_http_waf_module_check.c \
     $ngx_addon_dir/src/ngx_http_waf_module_config.c \
     $ngx_addon_dir/src/ngx_http_waf_module_ip_trie.c \

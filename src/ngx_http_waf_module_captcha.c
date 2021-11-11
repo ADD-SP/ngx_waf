@@ -531,7 +531,8 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
                 ngx_http_waf_dp(r, "verifying hCaptcha");
                 is_valid = _verify_hCaptcha(r);
                 break;
-            case NGX_HTTP_WAF_RECAPTCHA_V2:
+            case NGX_HTTP_WAF_RECAPTCHA_V2_CHECKBOX:
+            case NGX_HTTP_WAF_RECAPTCHA_V2_INVISIBLE:
                 ngx_http_waf_dp(r, "verifying reCAPTCHAv2");
                 is_valid = _verify_reCAPTCHAv2(r);
                 break;
