@@ -59,6 +59,8 @@
 
 #define NGX_HTTP_WAF_NEXT_FILTER             (12)
 
+#define NGX_HTTP_WAF_ALREADY_EXISTS          (13)
+
 
 #define NGX_HTTP_WAF_HCAPTCHA                (1)
 
@@ -97,10 +99,10 @@
 #define NGX_HTTP_WAF_SHARE_MEMORY_CC_DNEY_NAME                   ("__ADD-SP_NGX_WAF_CC_DENY_SHM__")
 
 /**
- * @def NGX_HTTP_WAF_SHATE_MEMORY_CC_DENY_MIN_SIZE
- * @brief 用于 CC 防护的共享内存的最小大小（字节）
+ * @def NGX_HTTP_WAF_ZONE_SIZE_MIN
+ * @brief zone 的最小大小（字节）
 */
-#define NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE               (1024 * 1024 * 20)
+#define NGX_HTTP_WAF_ZONE_SIZE_MIN                              (1024 * 1024 * 5)
 
 
 /**

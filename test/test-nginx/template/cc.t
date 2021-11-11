@@ -7,11 +7,15 @@ __DATA__
 
 === TEST: CC wihout CAPTCHA
 
+--- http_config
+
+waf_zone name=ngx_waf_test size=10m;
+
 --- config
 waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
-waf_cc_deny on rate=1r/h;
+waf_cc_deny on rate=1r/h zone=ngx_waf_test:test;
 waf_cache off capacity=50;
 
 location /t {
@@ -49,11 +53,15 @@ location /t {
 
 === TEST: CC with CAPTCHA (1)
 
+--- http_config
+
+waf_zone name=ngx_waf_test size=10m;
+
 --- config
 waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
-waf_cc_deny CAPTCHA rate=1r/h duration=1h;
+waf_cc_deny CAPTCHA rate=1r/h duration=1h zone=ngx_waf_test:test;
 waf_cache off capacity=50;
 waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
@@ -90,11 +98,15 @@ location /t {
 
 === TEST: CC with CAPTCHA (2)
 
+--- http_config
+
+waf_zone name=ngx_waf_test size=10m;
+
 --- config
 waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
-waf_cc_deny CAPTCHA rate=1r/h duration=1h;
+waf_cc_deny CAPTCHA rate=1r/h duration=1h zone=ngx_waf_test:test;
 waf_cache off capacity=50;
 waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
@@ -140,11 +152,15 @@ waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 
 === TEST: CC with CAPTCHA (3)
 
+--- http_config
+
+waf_zone name=ngx_waf_test size=10m;
+
 --- config
 waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
-waf_cc_deny CAPTCHA rate=1r/h duration=1h;
+waf_cc_deny CAPTCHA rate=1r/h duration=1h zone=ngx_waf_test:test;
 waf_cache off capacity=50;
 waf_captcha off prov=hCaptcha file=${base_dir}/waf/hCaptcha.html secret=xx;
 

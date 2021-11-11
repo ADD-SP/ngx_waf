@@ -9,6 +9,7 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_shm.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_captcha.h \
@@ -23,6 +24,7 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_ip_trie.c \
     $ngx_addon_dir/src/ngx_http_waf_module_lru_cache.c \
     $ngx_addon_dir/src/ngx_http_waf_module_mem_pool.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_shm.c \
     $ngx_addon_dir/src/ngx_http_waf_module_under_attack.c \
     $ngx_addon_dir/src/ngx_http_waf_module_captcha.c \
     $ngx_addon_dir/src/ngx_http_waf_module_verify_bot.c \

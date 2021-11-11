@@ -135,6 +135,28 @@ typedef struct mem_pool_s {
 } mem_pool_t;
 
 
+typedef ngx_int_t (*shm_init_pt)(mem_pool_t* pool, void* data, void* old_data);
+
+
+typedef struct shm_init_s {
+    shm_init_pt handler;
+    void* data;
+    ngx_str_t tag;
+    struct shm_init_s* next;
+} shm_init_t;
+
+
+typedef struct shm_s {
+    ngx_shm_zone_t* zone;
+    ngx_conf_t* cf;
+    ngx_str_t name;
+    size_t size;
+    shm_init_t* init_chain;
+    mem_pool_t* pool;
+} shm_t;
+
+
+
 /**
  * @struct lru_cache_result_t
  * @brief LRU 操作结果
@@ -279,7 +301,6 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */
     ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
-    ngx_int_t                       waf_cc_deny_shm_zone_size;                  /**< CC 防御所使用的共享内存的大小（字节） */
     ngx_int_t                       waf_cache;                                  /**< 是否启用缓存 */
     ngx_int_t                       waf_cache_capacity;                         /**< 用于缓存检查结果的共享内存的大小（字节） */
     ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */

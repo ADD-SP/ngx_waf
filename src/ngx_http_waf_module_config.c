@@ -39,13 +39,10 @@ static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
-static ngx_int_t _init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
-
-
 static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf);
 
 
-static ngx_int_t _shm_zone_cc_deny_handler_init(ngx_shm_zone_t *zone, void *data);
+static ngx_int_t _shm_zone_cc_deny_handler_init(mem_pool_t* pool, void* data, void* old_data);
 
 
 static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool);
@@ -58,6 +55,85 @@ static void* _modsecurity_pcre_malloc(size_t size);
 
 
 static void _modsecurity_pcre_free(void* ptr);
+
+
+char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_str_t* p_str = cf->args->elts;
+
+    ngx_str_t zone_name;
+    size_t zone_size = 0;
+    ngx_str_null(&zone_name);
+
+    for (size_t i = 1; i < cf->args->nelts; i++) {
+
+        UT_array* array = NULL;
+        if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
+            goto error;
+        }
+
+        if (utarray_len(array) != 2) {
+            goto error;
+        }
+
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, NULL);
+
+        if (_streq(p->data, "name")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            zone_name.data = ngx_pstrdup(cf->pool, p);
+            zone_name.len = p->len;
+
+        } else if (_streq(p->data, "size")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            ssize_t temp = ngx_parse_size(p);
+
+            if (temp == NGX_ERROR
+                || temp <= 0) {
+                goto error;
+            }
+
+            zone_size = ngx_max(temp, NGX_HTTP_WAF_ZONE_SIZE_MIN);
+            
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
+    }
+
+    if (ngx_http_waf_shm_get(&zone_name) != NULL) {
+        goto duplicate_zone_name;
+    }
+
+    shm_t* shm = ngx_pcalloc(cf->pool, sizeof(shm_t));
+    
+    if (shm == NULL) {
+        goto unexpected_error;
+    }
+
+    if (ngx_http_waf_shm_init(shm, cf, &zone_name, zone_size) != NGX_HTTP_WAF_SUCCESS) {
+        goto unexpected_error;
+    }
+
+    return NGX_CONF_OK;
+
+    unexpected_error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: unexpected error");
+    return NGX_CONF_ERROR;
+
+    duplicate_zone_name:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: duplicate zone names");
+    return NGX_CONF_ERROR;
+
+    error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
+}
 
 
 char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
@@ -165,8 +241,6 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     /* 默认封禁 60 分钟 */
     loc_conf->waf_cc_deny_duration = 1 * 60 * 60;
-    /* 设置默认的共享内存大小 */
-    loc_conf->waf_cc_deny_shm_zone_size = NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE;
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cc_deny = 1;
@@ -233,15 +307,46 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 goto error;
             }
 
-        } else if (_streq(p->data, "size")) {
+        } else if (_streq(p->data, "zone")) {
             p = (ngx_str_t*)utarray_next(array, p);
 
-            loc_conf->waf_cc_deny_shm_zone_size = ngx_http_waf_parse_size(p->data);
-            if (loc_conf->waf_cc_deny_shm_zone_size == NGX_ERROR) {
+            UT_array* temp = NULL;
+            if (ngx_http_waf_str_split(p, ':', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
                 goto error;
             }
-            loc_conf->waf_cc_deny_shm_zone_size = ngx_max(NGX_HTTP_WAF_SHARE_MEMORY_CC_DENY_MIN_SIZE, 
-                                                          loc_conf->waf_cc_deny_shm_zone_size);
+
+            if (utarray_len(temp) != 2) {
+                goto error;
+            }
+
+            ngx_str_t* zone_name = NULL;
+            ngx_str_t* zone_tag = NULL;
+            zone_name = (ngx_str_t*)utarray_next(temp, NULL);
+            zone_tag = (ngx_str_t*)utarray_next(temp, zone_name);
+
+            shm_t* shm = ngx_http_waf_shm_get(zone_name);
+
+            if (shm == NULL) {
+                goto no_zone;
+            }
+
+            if (ngx_http_waf_shm_tag_is_used(zone_name, zone_tag) != NGX_HTTP_WAF_FALSE) {
+                goto reused_tag;
+            }
+
+            loc_conf->shm_zone_cc_deny = shm->zone;
+
+            shm_init_t* init = ngx_http_waf_shm_init_handler_add(shm);
+            
+            if (init == NULL) {
+                goto unexpected_error;
+            }
+
+            init->data = loc_conf;
+            init->tag = *zone_tag;
+            init->handler = _shm_zone_cc_deny_handler_init;
+
+            utarray_free(temp);
             
         } else {
             goto error;
@@ -254,11 +359,22 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         goto error;
     }
 
-    if (_init_cc_shm(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
-        goto error;
-    }
-
     return NGX_CONF_OK;
+
+    unexpected_error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: unexpected error");
+    return NGX_CONF_ERROR;
+
+    reused_tag:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: each tag of a zone can only be used once");
+    return NGX_CONF_ERROR;
+
+    no_zone:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: zone name does not exists");
+    return NGX_CONF_ERROR;
 
     error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
@@ -1048,7 +1164,6 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_value(child->waf_cc_deny_limit, parent->waf_cc_deny_limit, NGX_CONF_UNSET);
     ngx_conf_merge_value(child->waf_cc_deny_cycle, parent->waf_cc_deny_cycle, NGX_CONF_UNSET);
     ngx_conf_merge_value(child->waf_cc_deny_duration, parent->waf_cc_deny_duration, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_cc_deny_shm_zone_size, parent->waf_cc_deny_shm_zone_size, NGX_CONF_UNSET);
     
 
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
@@ -1210,16 +1325,17 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 }
 
 
-static ngx_int_t _shm_zone_cc_deny_handler_init(ngx_shm_zone_t *zone, void *data) {
-    ngx_slab_pool_t  *shpool = (ngx_slab_pool_t *) zone->shm.addr;
-    ngx_http_waf_loc_conf_t* loc_conf = (ngx_http_waf_loc_conf_t*)(zone->data);
+static ngx_int_t _shm_zone_cc_deny_handler_init(mem_pool_t* pool, void* data, void* old_data) {
+    ngx_http_waf_loc_conf_t* loc_conf = data;
+    ngx_http_waf_loc_conf_t* old_loc_conf = old_data;
 
-    mem_pool_t* pool = ngx_slab_calloc(shpool, sizeof(mem_pool_t));
-    mem_pool_init(pool, MEM_POOL_FLAG_NGX_SHARD, shpool);
+    if (old_loc_conf != NULL) {
+        loc_conf->ip_access_statistics = old_loc_conf->ip_access_statistics;
+    } else {
+        lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, pool);
+    }
 
-    lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, pool);
-
-    return NGX_OK;
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
@@ -1405,7 +1521,6 @@ static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;
     conf->waf_cc_deny_duration = NGX_CONF_UNSET;
     conf->waf_cc_deny_cycle = NGX_CONF_UNSET;
-    conf->waf_cc_deny_shm_zone_size =  NGX_CONF_UNSET;
     conf->waf_cache = NGX_CONF_UNSET;
     conf->waf_captcha_type = NGX_CONF_UNSET;
     conf->waf_cache_capacity = NGX_CONF_UNSET;
@@ -1465,32 +1580,6 @@ static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     conf->check_proc[14] = ngx_http_waf_handler_modsecurity;
 
     return conf;
-}
-
-
-static ngx_int_t _init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
-    ngx_str_t name;
-    u_char* raw_name = ngx_pnalloc(cf->pool, sizeof(u_char) * 512);
-
-    ngx_http_waf_rand_str(raw_name, 16);
-    strcat((char*)raw_name, NGX_HTTP_WAF_SHARE_MEMORY_CC_DNEY_NAME);
-    name.data = raw_name;
-    name.len = ngx_strlen(raw_name);
-
-    conf->shm_zone_cc_deny = ngx_shared_memory_add(cf, &name, 
-                                                        conf->waf_cc_deny_shm_zone_size, 
-                                                        &ngx_http_waf_module);
-
-    if (conf->shm_zone_cc_deny == NULL) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
-                "ngx_waf: failed to add shared memory");
-        return NGX_HTTP_WAF_FAIL;
-    }
-
-    conf->shm_zone_cc_deny->init = _shm_zone_cc_deny_handler_init;
-    conf->shm_zone_cc_deny->data = conf;
-
-    return NGX_HTTP_WAF_SUCCESS;
 }
 
 

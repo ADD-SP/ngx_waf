@@ -6,6 +6,14 @@
 #include <ngx_http_waf_module_under_attack.h>
 
 static ngx_command_t ngx_http_waf_commands[] = {
+    {
+        ngx_string("waf_zone"),
+        NGX_HTTP_MAIN_CONF | NGX_CONF_TAKE2,
+        ngx_http_waf_zone_conf,
+        NGX_HTTP_MAIN_CONF_OFFSET,
+        0,
+        NULL
+   },
    {
         ngx_string("waf"),
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,

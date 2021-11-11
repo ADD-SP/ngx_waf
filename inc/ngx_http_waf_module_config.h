@@ -24,6 +24,7 @@
 #include <ngx_http_waf_module_under_attack.h>
 #include <ngx_http_waf_module_captcha.h>
 #include <ngx_http_waf_module_verify_bot.h>
+#include <ngx_http_waf_module_shm.h>
 #include <ngx_http_waf_module_modsecurity.h>
 
 
@@ -42,6 +43,12 @@ extern ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r);
  * @addtogroup config 配置读取和处理模块
  * @{
 */
+
+
+/**
+ * @brief 读取配置项 waf_zone，该项用于声明 zone。
+*/
+char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**
