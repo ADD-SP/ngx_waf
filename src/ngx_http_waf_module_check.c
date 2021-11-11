@@ -25,10 +25,9 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
         ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
         if (ip_trie_find(loc_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
-            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-            ctx->blocked = NGX_HTTP_WAF_FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-IPV4");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
+            ctx->gernal_logged = 1;
+            ctx->blocked = 0;
+            ngx_http_waf_set_rule_info(r, "WHITE-IPV4", ip_trie_node->data);
             *out_http_status = NGX_DECLINED;
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -43,10 +42,9 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* 
         ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
         if (ip_trie_find(loc_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
-            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-            ctx->blocked = NGX_HTTP_WAF_FALSE;
-            strcpy((char*)ctx->rule_type, "WHITE-IPV6");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
+            ctx->gernal_logged = 1;
+            ctx->blocked = 0;
+            ngx_http_waf_set_rule_info(r, "WHITE-IPV6", ip_trie_node->data);
             *out_http_status = NGX_DECLINED;
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -82,10 +80,9 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
         ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
         if (ip_trie_find(loc_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
-            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-            ctx->blocked = NGX_HTTP_WAF_TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-IPV4");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
+            ctx->gernal_logged = 1;
+            ctx->blocked = 1;
+            ngx_http_waf_set_rule_info(r, "BLACK-IPV4", ip_trie_node->data);
             *out_http_status = NGX_HTTP_FORBIDDEN;
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -100,10 +97,9 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* 
         ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
         if (ip_trie_find(loc_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
-            ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-            ctx->blocked = NGX_HTTP_WAF_TRUE;
-            strcpy((char*)ctx->rule_type, "BLACK-IPV6");
-            strcpy((char*)ctx->rule_deatils, (char*)ip_trie_node->data);
+            ctx->gernal_logged = 1;
+            ctx->blocked = 1;
+            ngx_http_waf_set_rule_info(r, "BLACK-IPV6", ip_trie_node->data);
             *out_http_status = loc_conf->waf_http_status;
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -299,10 +295,9 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_ht
             statis->block_time = now;
         }
 
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
-        strcpy((char*)ctx->rule_type, "CC-DENY");
-        strcpy((char*)ctx->rule_deatils, "");
+        ctx->gernal_logged = 1;
+        ctx->blocked = 1;
+        ngx_http_waf_set_rule_info(r, "CC-DENY", "");
         *out_http_status = loc_conf->waf_http_status_cc;
         ret_value = NGX_HTTP_WAF_MATCHED;
         time_t remain = duration - (now - statis->block_time);
@@ -383,8 +378,8 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t*
 
     if (ret_value == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_FALSE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 0;
         *out_http_status = NGX_DECLINED;
     } else {
         ngx_http_waf_dp(r, "not matched");
@@ -418,8 +413,8 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t*
 
     if (ret_value == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 1;
         *out_http_status = loc_conf->waf_http_status;
     } else {
         ngx_http_waf_dp(r, "not matched");
@@ -453,8 +448,8 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t
 
     if (ret_value == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 1;
         *out_http_status = loc_conf->waf_http_status;
     } else {
         ngx_http_waf_dp(r, "not matched");
@@ -493,8 +488,8 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx
 
     if (ret_value == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 1;
         *out_http_status = loc_conf->waf_http_status;
     } else {
         ngx_http_waf_dp(r, "not matched");
@@ -534,8 +529,8 @@ ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_in
 
     if (ret_value == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_FALSE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 0;
         *out_http_status = NGX_DECLINED;
     } else {
         ngx_http_waf_dp(r, "not matched");
@@ -574,8 +569,8 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_in
 
     if (ret_value == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 1;
         *out_http_status = loc_conf->waf_http_status;
     } else {
         ngx_http_waf_dp(r, "not matched");
@@ -660,8 +655,8 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
             
             if (ret_value == NGX_HTTP_WAF_MATCHED) {
                 ngx_http_waf_dp(r, "matched");
-                ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-                ctx->blocked = NGX_HTTP_WAF_TRUE;
+                ctx->gernal_logged = 1;
+                ctx->blocked = 1;
                 *out_http_status = loc_conf->waf_http_status;
                 break;
             } else {
@@ -672,7 +667,7 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int
 
         utarray_free(cookies);
 
-        if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
+        if (ctx->blocked) {
             ngx_http_waf_dp(r, "blocked ... break");
             break;
         }
@@ -708,8 +703,8 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t
     ngx_int_t rc = ngx_http_waf_regex_exec_arrray(r, &body_str, loc_conf->black_post, (u_char*)"BLACK-POST", NULL);
     if (rc == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-        ctx->blocked = NGX_HTTP_WAF_TRUE;
+        ctx->gernal_logged = 1;
+        ctx->blocked = 1;
         *out_http_status = loc_conf->waf_http_status;
         return NGX_HTTP_WAF_MATCHED;
     } else {
@@ -749,6 +744,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
             ngx_http_waf_dp(r, "found");
             cache_hit = NGX_HTTP_WAF_SUCCESS;
             ngx_memcpy(&result, *(tmp.data), sizeof(check_result_t));
+            
         } else {
             ngx_http_waf_dp(r, "not found");
         }
@@ -778,10 +774,12 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
             *(tmp.data) = lru_cache_calloc(cache, sizeof(check_result_t));
             if (*(tmp.data) == NULL) {
                 ngx_http_waf_dp(r, "no memory");
+
             } else {
                 ngx_memcpy(*(tmp.data), &result, sizeof(check_result_t));
                 ngx_http_waf_dp(r, "success");
             }
+
         } else {
             ngx_http_waf_dp(r, "failed");
         }
@@ -789,8 +787,8 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
 
     if (result.is_matched == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ngx_strcpy(ctx->rule_type, rule_type);
-        ngx_strcpy(ctx->rule_deatils, result.detail);
+        ngx_http_waf_set_rule_info(r, (char*)rule_type, (char*)result.detail);
+
     } else {
         ngx_http_waf_dp(r, "not matched");
     }

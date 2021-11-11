@@ -665,8 +665,7 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
     if (intervention.log != NULL) {
         ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
         log = intervention.log;
-        ngx_strcpy(ctx->rule_type, "ModSecurity");
-        ngx_strcpy(ctx->rule_deatils, log);
+        ngx_http_waf_set_rule_info(r, "ModSecurity", log);
     }
     ngx_http_waf_dpf(r, "intervention log is %s", log);
     if (intervention.log != NULL) {

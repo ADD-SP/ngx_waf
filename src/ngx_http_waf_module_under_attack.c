@@ -280,11 +280,10 @@ static void _gen_ctx(ngx_http_request_t *r) {
 
     ngx_http_waf_register_content_handler(r);
     
-    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-    ctx->blocked = NGX_HTTP_WAF_TRUE;
-    ctx->under_attack = NGX_HTTP_WAF_TRUE;
-    strcpy((char*)ctx->rule_type, "UNDER-ATTACK");
-    ctx->rule_deatils[0] = '\0';
+    ctx->gernal_logged = 1;
+    ctx->blocked = 1;
+    ctx->under_attack = 1;
+    ngx_http_waf_set_rule_info(r, "UNDER-ATTACK", "");
 
     ngx_http_waf_dp(r, "_gen_ctx() ... end");
 }

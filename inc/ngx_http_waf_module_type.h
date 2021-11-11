@@ -225,6 +225,23 @@ typedef struct ip_trie_s {
 } ip_trie_t;
 
 
+typedef enum {
+    ACTION_FLAG_NONE,
+    ACTION_FLAG_RETURN,
+    ACTION_FLAG_CAPTCHA,
+    ACTION_FLAG_STR,
+} action_flag_e;
+
+
+typedef struct action_s {
+    action_flag_e flag;
+    union {
+        ngx_int_t http_status;
+        ngx_str_t res_str;
+    } extra;
+} action_t;
+
+
 /**
  * @struct ngx_http_waf_ctx_t
  * @brief 每个请求的上下文
@@ -235,26 +252,25 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       modsecurity_status;                         /**< ModSecurity 规则所返回的 HTTP 状态码 */
 #endif
     Transaction                    *modsecurity_transaction;                    /**< ModSecurity 的事务 */
-    ModSecurityIntervention        *modsecurity_intervention;
-    ngx_int_t                       pre_content;                                /**< 是否已经执行过 pre_content handler */
-    u_char                          rule_type[128];                             /**< 触发的规则类型 */
-    u_char                          rule_deatils[NGX_HTTP_WAF_RULE_MAX_LEN];    /**< 触发的规则内容 */
+    ngx_str_t                       rule_type;                                  /**< 触发的规则类型 */                         
+    ngx_str_t                       rule_deatils;                               /**< 触发的规则内容 */
     ngx_buf_t                       req_body;                                   /**< 请求体 */
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
-    ngx_int_t                       gernal_logged;                              /**< 是否需要记录除 ModSecurity 以外的记录日志 */
-    ngx_int_t                       checked;                                    /**< 是否启动了检测流程 */
-    ngx_int_t                       blocked;                                    /**< 是否拦截了本次请求 */
-    ngx_int_t                       captcha;                                    /**< 是否需要执行验证码 */
-    ngx_int_t                       under_attack;                               /**< 是否触发了 Under Attack Mode */
-    ngx_int_t                       read_body_done;                             /**< 是否已经请求读取请求体 */
-    ngx_int_t                       waiting_more_body;                          /**< 是否等待读取更多请求体 */
-    ngx_int_t                       has_req_body;                               /**< 字段 req_body 是否以己经存储了请求体 */
-    ngx_int_t                       register_content_handler;                   /**< 是否已经注册或应该注册内容处理程序 */
     char                           *response_str;                               /**< 如果不为 NULL 则返回所指的字符串和 200 状态码 */
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
     ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
 #endif
+    ngx_int_t                       pre_content_run:1;                          /**< 是否已经执行过 pre_content handler */
+    ngx_int_t                       gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
+    ngx_int_t                       checked:1;                                  /**< 是否启动了检测流程 */
+    ngx_int_t                       blocked:1;                                  /**< 是否拦截了本次请求 */
+    ngx_int_t                       captcha:1;                                  /**< 是否需要执行验证码 */
+    ngx_int_t                       under_attack:1;                             /**< 是否触发了 Under Attack Mode */
+    ngx_int_t                       read_body_done:1;                           /**< 是否已经请求读取请求体 */
+    ngx_int_t                       waiting_more_body:1;                        /**< 是否等待读取更多请求体 */
+    ngx_int_t                       has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
+    ngx_int_t                       register_content_handler:1;                 /**< 是否已经注册或应该注册内容处理程序 */
 } ngx_http_waf_ctx_t;
 
 

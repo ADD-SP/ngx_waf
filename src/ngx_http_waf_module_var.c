@@ -76,7 +76,7 @@ ngx_int_t _waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t*
 
     _init(r, v);
 
-    if (ctx->checked == NGX_HTTP_WAF_FALSE) {
+    if (!ctx->checked) {
         ngx_http_waf_dp(r, "not checked ... return");
         v->not_found = 1;
         return NGX_OK;
@@ -97,7 +97,7 @@ ngx_int_t _waf_blocking_log_get_handler(ngx_http_request_t* r, ngx_http_variable
 
     _init(r, v);
 
-    if (ctx->blocked == NGX_HTTP_WAF_FALSE) {
+    if (!ctx->blocked) {
         ngx_http_waf_dp(r, "not blocked ... return");
         v->not_found = 1;
         return NGX_OK;
@@ -118,7 +118,7 @@ ngx_int_t _waf_blocked_get_handler(ngx_http_request_t* r, ngx_http_variable_valu
 
     _init(r, v);
     
-    if (ctx->blocked == NGX_HTTP_WAF_TRUE) {
+    if (ctx->blocked) {
         ngx_http_waf_dp(r, "blocked ... return");
         v->not_found = 0;
         v->len = 4;
@@ -141,10 +141,9 @@ ngx_int_t _waf_rule_type_get_handler(ngx_http_request_t* r, ngx_http_variable_va
     _init(r, v);
 
     v->not_found = 0;
-    v->len = ngx_strlen(ctx->rule_type);
-    v->data = ngx_palloc(r->pool, sizeof(u_char) * ngx_max(v->len, 2));
-    strcpy((char*)v->data, (char*)ctx->rule_type);
-    ngx_http_waf_dpf(r, "$waf_rule_type=%s", (char*)v->data);
+    v->data = ctx->rule_type.data;
+    v->len = ctx->rule_type.len;
+    ngx_http_waf_dpf(r, "$waf_rule_type=%V", &ctx->rule_type);
 
     ngx_http_waf_dp(r, "ngx_http_waf_rule_type_get_handler() ... end");
     return NGX_OK;
@@ -157,10 +156,9 @@ ngx_int_t _waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_val
     _init(r, v);
     
     v->not_found = 0;
-    v->len = ngx_strlen(ctx->rule_deatils);
-    v->data = ngx_palloc(r->pool, sizeof(u_char) * ngx_max(v->len, 2));
-    strcpy((char*)v->data, (char*)ctx->rule_deatils);
-    ngx_http_waf_dpf(r, "$waf_rule_details=%s", (char*)v->data);
+    v->data = ctx->rule_deatils.data;
+    v->len = ctx->rule_deatils.len;
+    ngx_http_waf_dpf(r, "$waf_rule_details=%V", &ctx->rule_deatils);
 
     ngx_http_waf_dp(r, "ngx_http_waf_rule_deatils_handler() ... end");
     return NGX_OK;
