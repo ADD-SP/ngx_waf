@@ -67,6 +67,7 @@ char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     for (size_t i = 1; i < cf->args->nelts; i++) {
 
         UT_array* array = NULL;
+
         if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
             goto error;
         }
@@ -119,17 +120,17 @@ char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
     return NGX_CONF_OK;
 
-    unexpected_error:
+unexpected_error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: unexpected error");
     return NGX_CONF_ERROR;
 
-    duplicate_zone_name:
+duplicate_zone_name:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: duplicate zone names");
     return NGX_CONF_ERROR;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -244,10 +245,13 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cc_deny = 1;
+
     } else if (ngx_strncmp(p_str[1].data, "CAPTCHA", ngx_min(p_str[1].len, sizeof("CAPTCHA") - 1)) == 0) {
         loc_conf->waf_cc_deny = 2;
+
     } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, sizeof("off") - 1)) == 0) {
         loc_conf->waf_cc_deny = 0;
+
     } else {
         goto error;
     }
@@ -361,22 +365,22 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     return NGX_CONF_OK;
 
-    unexpected_error:
+unexpected_error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: unexpected error");
     return NGX_CONF_ERROR;
 
-    reused_tag:
+reused_tag:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: each tag of a zone can only be used once");
     return NGX_CONF_ERROR;
 
-    no_zone:
+no_zone:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: zone name does not exists");
     return NGX_CONF_ERROR;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -391,8 +395,10 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cache = 1;
+
     } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_cache = 0;
+
     } else {
         goto error;
     }
@@ -437,7 +443,7 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
     return NGX_CONF_OK;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -520,7 +526,7 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
     return NGX_CONF_OK;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -538,8 +544,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_captcha = 1;
+
     } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_captcha = 0;
+
     } else {
         goto error;
     }
@@ -679,7 +687,7 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
     return NGX_CONF_OK;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -854,10 +862,13 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_verify_bot = 1;
+
     } else if (ngx_strncmp(p_str[1].data, "strict", ngx_min(p_str[1].len, 6)) == 0) {
         loc_conf->waf_verify_bot = 2;
+
     } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_verify_bot = 0;
+
     } else {
         goto error;
     }
@@ -915,7 +926,7 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
 
     return NGX_CONF_OK;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -961,12 +972,13 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         } else {
             goto error;
         }
+
         utarray_free(array);
     }
 
     return NGX_CONF_OK;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -979,8 +991,10 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_modsecurity = 1;
+
     } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
         loc_conf->waf_modsecurity = 0;
+
     } else {
         goto error;
     }
@@ -1055,6 +1069,7 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         } else {
             goto error;
         }
+
         utarray_free(array);
     }
 
@@ -1086,12 +1101,12 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 
     return NGX_CONF_OK;
 
-    no_memory:
+no_memory:
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: no memory");
     return NGX_CONF_ERROR;
 
-    error:
+error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
@@ -1331,6 +1346,7 @@ static ngx_int_t _shm_zone_cc_deny_handler_init(mem_pool_t* pool, void* data, vo
 
     if (old_loc_conf != NULL) {
         loc_conf->ip_access_statistics = old_loc_conf->ip_access_statistics;
+
     } else {
         lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, pool);
     }
