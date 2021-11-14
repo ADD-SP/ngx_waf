@@ -20,12 +20,15 @@ ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content
 
 
 ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     lru_cache_t* cache = loc_conf->action_cache_captcha;
 
     if (!ngx_http_waf_is_valid_ptr_value(cache)) {
+        ngx_http_waf_dp(r, "cache is null ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
@@ -39,26 +42,34 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
     ngx_shmtx_lock(&shpool->mutex);
     ngx_http_waf_dp(r, "success");
 
+    ngx_http_waf_dp(r, "searching cache");
     lru_cache_find_result_t result = lru_cache_find(cache, &inx_addr, sizeof(inx_addr));
 
     if (result.status == NGX_HTTP_WAF_KEY_EXISTS) {
+        ngx_http_waf_dp(r, "cache exists");
+
+        ngx_http_waf_dp(r, "testing captcha")
         switch (ngx_http_waf_captcha_test(r)) {
             case NGX_HTTP_WAF_FAULT:
+                ngx_http_waf_dp(r, "fault");
                 ngx_http_waf_append_action_return(r, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_NONE);
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
 
             case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
+                ngx_http_waf_dp(r, "challenge");
                 ngx_http_waf_append_action_captcha(r, ACTION_FLAG_NONE);
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
 
             case NGX_HTTP_WAF_CAPTCHA_BAD:
+                ngx_http_waf_dp(r, "bad");
                 ngx_http_waf_append_action_str(r, "bad", sizeof("bad") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
 
             case NGX_HTTP_WAF_CAPTCHA_PASS:
+                ngx_http_waf_dp(r, "pass");
                 lru_cache_delete(cache, &inx_addr, sizeof(inx_addr));
                 ngx_http_waf_append_action_str(r, "good", sizeof("good") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
                 ret_value = NGX_HTTP_WAF_MATCHED;
@@ -70,79 +81,114 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
     ngx_shmtx_unlock(&shpool->mutex);
     ngx_http_waf_dp(r, "success");
 
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_perform_action_at_access_end(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
     ngx_http_waf_ctx_t* ctx = NULL;
     // ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
+    ngx_int_t ret_value = NGX_DECLINED;
     action_t *elt = NULL, *tmp = NULL;
+
+    ngx_http_waf_dp(r, "looking action chain");
+
     DL_FOREACH_SAFE(ctx->action_chain, elt, tmp) {
         if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_DECLINE)) {
+            ngx_http_waf_dp(r, "action is decline");
             DL_DELETE(ctx->action_chain, elt);
-            return _perform_action_decline(r, elt);
+            ret_value = _perform_action_decline(r, elt);
+            break;
             
         } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_dp(r, "action is return");
             DL_DELETE(ctx->action_chain, elt);
-            return _perform_action_return(r, elt);
+            ret_value = _perform_action_return(r, elt);
+            break;
 
         } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_REG_CONTENT)) {
+            ngx_http_waf_dp(r, "action is reg content");
             DL_DELETE(ctx->action_chain, elt);
             _perform_action_reg_content(r, elt);
-
-        } else {
-            return NGX_DECLINED;
-        }
-    }
-
-    return NGX_DECLINED;
-}
-
-
-ngx_int_t ngx_http_waf_perform_action_at_content(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = NULL;
-    // ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    action_t *elt = NULL, *tmp = NULL;
-    DL_FOREACH_SAFE(ctx->action_chain, elt, tmp) {
-        if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_STR)) {
-            DL_DELETE(ctx->action_chain, elt);
-            return _perform_action_str(r, elt);
-            
-        } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_HTML)) {
-            DL_DELETE(ctx->action_chain, elt);
-            return _perform_action_html(r, elt);
 
         } else {
             abort();
         }
     }
 
-    return NGX_DECLINED;
+    ngx_http_waf_dp_func_end(r);
+    return ret_value;
+}
+
+
+ngx_int_t ngx_http_waf_perform_action_at_content(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    // ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+
+    ngx_int_t ret_value = NGX_DECLINED;
+    action_t *elt = NULL, *tmp = NULL;
+
+    ngx_http_waf_dp(r, "looking action chain");
+
+    DL_FOREACH_SAFE(ctx->action_chain, elt, tmp) {
+        if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_STR)) {
+            ngx_http_waf_dp(r, "action is str");
+            DL_DELETE(ctx->action_chain, elt);
+            ret_value = _perform_action_str(r, elt);
+            break;
+            
+        } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_HTML)) {
+            ngx_http_waf_dp(r, "action is html");
+            DL_DELETE(ctx->action_chain, elt);
+            ret_value = _perform_action_html(r, elt);
+            break;
+
+        } else {
+            abort();
+        }
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return ret_value;
 }
 
 
 ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action) {
-    return action->extra.http_status;
+    ngx_http_waf_dp_func_start(r);
+    ngx_int_t ret = action->extra.http_status;
+    ngx_http_waf_dpf(r, "return %i", ret);
+    ngx_http_waf_dp_func_end(r);
+    return ret;
 }
 
 
 ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action) {
+    ngx_http_waf_dp_func_start(r);
+    ngx_http_waf_dp(r, "return NGX_DECLINED");
+    ngx_http_waf_dp_func_end(r);
     return NGX_DECLINED;
     
 }
 
 
 void _perform_action_reg_content(ngx_http_request_t* r, action_t* action) {
+    ngx_http_waf_dp_func_start(r);
     ngx_http_waf_register_content_handler(r);
+    ngx_http_waf_dp_func_end(r);
 }
 
 
 ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
+    ngx_http_waf_dp_func_start(r);
+
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
@@ -158,6 +204,7 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             lru_cache_t* cache = loc_conf->action_cache_captcha;
 
             if (!ngx_http_waf_is_valid_ptr_value(cache)) {
+                ngx_http_waf_dp(r, "cache is null ... return");
                 ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
                 return NGX_HTTP_WAF_NOT_MATCHED;
             }
@@ -184,6 +231,7 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             lru_cache_t* cache = loc_conf->ip_access_statistics;
 
             if (!ngx_http_waf_is_valid_ptr_value(cache)) {
+                ngx_http_waf_dp(r, "cache is null ... return");
                 ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
                 return NGX_HTTP_WAF_NOT_MATCHED;
             }
@@ -220,18 +268,22 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
         return ret_value;
     }
 
+    ngx_http_waf_dp_func_end(r);
     return _gen_response(r, action->extra.extra_html.html, content_type, action->extra.extra_html.http_status);
 }
 
 
 ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action) {
+    ngx_http_waf_dp_func_start(r);
     ngx_str_t content_type = ngx_string("text/plain");
-
+    ngx_http_waf_dp_func_end(r);
     return _gen_response(r, action->extra.extra_str.str, content_type, action->extra.extra_str.http_status);
 }
 
 
 ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content_type, ngx_uint_t http_status) {
+    ngx_http_waf_dp_func_start(r);
+
     ngx_http_waf_dp(r, "discard_request_body");
     ngx_int_t rc = ngx_http_discard_request_body(r);
     if (rc != NGX_OK) {
@@ -313,7 +365,7 @@ ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content
     out->next = NULL;
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp_func_end(r);
     rc = ngx_http_output_filter(r, out);
+    ngx_http_waf_dp_func_end(r);
     return rc;
 }

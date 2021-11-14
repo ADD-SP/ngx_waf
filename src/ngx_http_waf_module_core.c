@@ -168,6 +168,7 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
 
     ngx_http_waf_perform_action_at_content(r);
     
+    ngx_http_waf_dp_func_end(r);
     return NGX_OK;
 }
 
@@ -375,6 +376,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
 
     ngx_int_t http_status = ngx_http_waf_perform_action_at_access_end(r);
+    ngx_http_waf_dpf(r, "return %i", http_status);
 
     ngx_http_waf_dp_func_end(r);
     return http_status;

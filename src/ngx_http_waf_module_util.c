@@ -612,8 +612,12 @@ void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr) {
 
 
 void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details) {
+    ngx_http_waf_dp_func_start(r);
+
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+
+    ngx_http_waf_dpf(r, "type: %s, details: %s", type, details);
 
     size_t type_len = ngx_strlen(type);
     size_t details_len = ngx_strlen(details);
@@ -625,6 +629,8 @@ void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details
     ctx->rule_deatils.data = ngx_pcalloc(r->pool, details_len);
     ctx->rule_deatils.len = details_len;
     ngx_memcpy(ctx->rule_deatils.data, details, details_len);
+
+    ngx_http_waf_dp_func_end(r);
 }
 
 
