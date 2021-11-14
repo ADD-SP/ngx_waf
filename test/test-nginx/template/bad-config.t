@@ -234,3 +234,27 @@ waf_http_status bad;
 waf_priority "W-IP IP VERIFY-BOT CC CAPTCHA UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE POST"
 
 --- must_die
+
+=== TEST: Non-existent zone
+
+--- http_config
+
+--- config
+waf_cc_deny on rate=100r/m zone=test:cc;
+
+--- must_die
+
+=== TEST: Duplicate tag
+
+--- http_config
+
+waf_zone name=test size=10m;
+
+--- config
+waf_cc_deny on rate=100r/m zone=test:cc;
+
+location /t {
+    waf_cc_deny on rate=100r/m zone=test:cc;
+}
+
+--- must_die

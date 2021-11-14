@@ -328,13 +328,19 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             zone_name = (ngx_str_t*)utarray_next(temp, NULL);
             zone_tag = (ngx_str_t*)utarray_next(temp, zone_name);
 
+            ngx_str_t tag;
+            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("cc_deny"));
+            tag.len = zone_tag->len + sizeof("cc_deny") - 1;
+            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "cc_deny");
+            zone_tag = &tag;
+
             shm_t* shm = ngx_http_waf_shm_get(zone_name);
 
             if (shm == NULL) {
                 goto no_zone;
             }
 
-            if (ngx_http_waf_shm_tag_is_used(zone_name, zone_tag) != NGX_HTTP_WAF_FALSE) {
+            if (ngx_http_waf_shm_tag_is_used(zone_name, zone_tag) == NGX_HTTP_WAF_TRUE) {
                 goto reused_tag;
             }
 
@@ -346,10 +352,7 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 goto unexpected_error;
             }
 
-            ngx_str_t tag;
-            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("cc_deny"));
-            tag.len = zone_tag->len + sizeof("cc_deny") - 1;
-            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "cc_deny");
+            
 
             init->data = loc_conf;
             init->tag = tag;
@@ -1097,13 +1100,19 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             zone_name = (ngx_str_t*)utarray_next(temp, NULL);
             zone_tag = (ngx_str_t*)utarray_next(temp, zone_name);
 
+            ngx_str_t tag;
+            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("action_captcha"));
+            tag.len = zone_tag->len + sizeof("action_captcha") - 1;
+            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "action_captcha");
+            zone_tag = &tag;
+
             shm_t* shm = ngx_http_waf_shm_get(zone_name);
 
             if (shm == NULL) {
                 goto no_zone;
             }
 
-            if (ngx_http_waf_shm_tag_is_used(zone_name, zone_tag) != NGX_HTTP_WAF_FALSE) {
+            if (ngx_http_waf_shm_tag_is_used(zone_name, zone_tag) == NGX_HTTP_WAF_TRUE) {
                 goto reused_tag;
             }
 
@@ -1114,11 +1123,6 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             if (init == NULL) {
                 goto unexpected_error;
             }
-
-            ngx_str_t tag;
-            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("action_captcha"));
-            tag.len = zone_tag->len + sizeof("action_captcha") - 1;
-            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "action_captcha");
 
             init->data = loc_conf;
             init->tag = tag;

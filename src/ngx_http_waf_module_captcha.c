@@ -352,6 +352,12 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     }
     ngx_http_waf_dpf(r, "success(%s)", under_attack_expect->hmac);
 
+    ngx_http_waf_dpf(r, "client.time=%s, client.uid=%s, client.hmac=%s", 
+        under_attack_client->time, under_attack_client->uid, under_attack_client->hmac);
+
+    ngx_http_waf_dpf(r, "expect.time=%s, expect.uid=%s, expect.hmac=%s", 
+        under_attack_expect->time, under_attack_expect->uid, under_attack_expect->hmac);
+
     /* 验证 HMAC 是否正确 */
     ngx_http_waf_dp(r, "verifying hmac");
     if (ngx_memcmp(under_attack_client, under_attack_expect, sizeof(_info_t)) != 0) {
