@@ -172,11 +172,11 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
                 ngx_http_waf_dp(r, "no memroy ... exception");
                 goto exception;
             }
-            statis->count = 1;
+            statis->count = 0;
             statis->is_blocked = NGX_HTTP_WAF_FALSE;
             statis->record_time = now;
             statis->block_time = 0;
-            statis->bad_captcha_count = 0;
+            ctx->rate = 0;
             *(tmp1.data) = statis;
             ngx_http_waf_dp(r, "success");
         } else {
@@ -186,6 +186,12 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
 
     double diff_second_record = difftime(now, statis->record_time);
     double diff_second_block = difftime(now, statis->block_time);
+
+    if (statis->count != NGX_MAX_INT_T_VALUE) {
+        statis->count++;
+    }
+
+    ctx->rate = statis->count;
 
     /* 如果已经被拦截 */
     if (statis->is_blocked == NGX_HTTP_WAF_TRUE) {
@@ -199,7 +205,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
             statis->is_blocked = NGX_HTTP_WAF_FALSE;
             statis->record_time = now;
             statis->block_time = 0;
-            statis->bad_captcha_count = 0;
+            ctx->rate = 1;
         }
     }
     /* 如果还在一个统计周期内 */ 
@@ -208,9 +214,6 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
         if (statis->count > limit) {
             ngx_http_waf_dp(r, "start blocking");
             goto matched;
-        } else {
-            ngx_http_waf_dp(r, "update counter");
-            ++(statis->count);
         }
     } else {
         ngx_http_waf_dp(r, "expired cache");
@@ -218,7 +221,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
         statis->is_blocked = NGX_HTTP_WAF_FALSE;
         statis->record_time = now;
         statis->block_time = 0;
-        statis->bad_captcha_count = 0;
+        ctx->rate = 1;
     }
 
 
@@ -229,51 +232,6 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "flow: matched");
         goto block;
     }
-
-    // captcha:
-    // {
-    //     ngx_http_waf_dp(r, "flow: captcha");
-    //     if (statis->bad_captcha_count >= 3) {
-    //         ngx_http_waf_dp(r, "too many failed captcha");
-    //         goto block;
-    //     }
-    //     ngx_int_t temp = (ngx_int_t)ngx_max(loc_conf->waf_cc_deny_limit * 1.2, loc_conf->waf_cc_deny_limit + 20);
-    //     /* 如果多次没有去执行验证码 */
-    //     if (statis->count > temp) {
-    //         ngx_http_waf_dp(r, "too many times without completing the captcha");
-    //         goto block;
-    //     }
-
-    //     ngx_http_waf_dp(r, "verifying captcha");
-    //     switch (ngx_http_waf_captcha_test(r)) {
-    //         case NGX_HTTP_WAF_FAULT:
-    //             ngx_http_waf_dp(r, "fault ... exception");
-    //             goto exception;
-    //         case NGX_HTTP_WAF_CAPTCHA_PASS:
-    //             ngx_http_waf_dp(r, "captcha pass");
-    //             statis->is_blocked = NGX_HTTP_WAF_FALSE;
-    //             statis->count = 0;
-    //             statis->record_time = now;
-    //             statis->block_time = 0;
-    //             statis->bad_captcha_count = 0;
-    //             ngx_http_waf_append_action_str(r, "good", sizeof("good") - 1, NGX_HTTP_OK, ACTION_FLAG_FROM_CC_DENY);
-    //             ret_value = NGX_HTTP_WAF_MATCHED;
-    //             break;
-    //         case NGX_HTTP_WAF_CAPTCHA_BAD:
-    //             ngx_http_waf_dp(r, "bad captcha");
-    //             ++(statis->bad_captcha_count);
-    //             ngx_http_waf_append_action_str(r, "bad", sizeof("bad") - 1, NGX_HTTP_OK, ACTION_FLAG_FROM_CC_DENY);
-    //             ret_value = NGX_HTTP_WAF_MATCHED;
-    //             break;
-    //         case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
-    //             ngx_http_waf_dp(r, "challenging captcha");
-    //             ++(statis->count);
-    //             ngx_http_waf_append_action_captcha(r, ACTION_FLAG_FROM_CC_DENY);
-    //             ret_value = NGX_HTTP_WAF_MATCHED;
-    //             break;
-    //     }
-    //     goto unlock;
-    // }
 
     block: 
     {

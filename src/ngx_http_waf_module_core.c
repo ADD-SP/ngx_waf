@@ -257,6 +257,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_waf_dp(r, "initializing ctx");
         ctx->r = r;
         ctx->action_chain = NULL;
+        ctx->rate = 0;
         ctx->response_str = NULL;
         ctx->register_content_handler = 0;
         ctx->gernal_logged = 0;

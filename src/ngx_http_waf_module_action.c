@@ -254,7 +254,6 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             ip_statis->is_blocked = NGX_HTTP_WAF_FALSE;
             ip_statis->record_time = time(NULL);
             ip_statis->block_time = 0;
-            ip_statis->bad_captcha_count = 0;
 
 
             ngx_http_waf_dp(r, "unlocking shared memory");

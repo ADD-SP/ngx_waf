@@ -48,6 +48,12 @@ ngx_int_t _waf_rule_deatils_handler(ngx_http_request_t* r, ngx_http_variable_val
 ngx_int_t _waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
 
+/**
+ * @brief 当读取 waf_rate 变量时的回调函数，这个变量表示当前统计周期内当前客户端 IP 的访问次数。
+*/
+ngx_int_t _waf_rate_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
 ngx_int_t ngx_http_waf_install_add_var(ngx_conf_t* cf) {
 #define _install_var(name, handler) {                                                           \
     ngx_str_t _name = ngx_string((name));                                                       \
@@ -65,6 +71,7 @@ ngx_int_t ngx_http_waf_install_add_var(ngx_conf_t* cf) {
     _install_var("waf_rule_type", _waf_rule_type_get_handler);
     _install_var("waf_rule_details", _waf_rule_deatils_handler);
     _install_var("waf_spend", _waf_spend_handler);
+    _install_var("waf_rate", _waf_rate_handler);
 
 #undef _install_var
 
@@ -176,6 +183,22 @@ ngx_int_t _waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v
     v->data = ngx_palloc(r->pool, sizeof(u_char) * v->len);
     strcpy((char*)v->data, (char*)text);
     ngx_http_waf_dpf(r, "$waf_spend=%s", (char*)v->data);
+
+    ngx_http_waf_dp_func_end(r);
+    return NGX_OK;
+}
+
+
+ngx_int_t _waf_rate_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_dp_func_start(r);
+
+    _init(r, v);
+
+    u_char* buf = ngx_palloc(r->pool, NGX_INT64_LEN + sizeof(u_char));
+    ngx_memzero(buf, sizeof(u_char) * 64);
+    v->len = ngx_sprintf(buf, "%i", ctx->rate) - buf;
+    v->data = buf;
+    ngx_http_waf_dpf(r, "$waf_rate=%s", (char*)v->data);
 
     ngx_http_waf_dp_func_end(r);
     return NGX_OK;

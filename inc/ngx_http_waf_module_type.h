@@ -84,7 +84,6 @@ typedef struct circular_doublly_linked_list_s {
 typedef struct ip_statis_s {
     ngx_int_t       count;              /**< 访问次数 */
     ngx_int_t       is_blocked;         /**< 是否已经被拦截 */
-    ngx_int_t       bad_captcha_count;  /**< 验证码验证失败多少次 */
     time_t          record_time;        /**< 何时开始记录 */
     time_t          block_time;         /**< 何时开始拦截 */
 } ip_statis_t;
@@ -276,6 +275,7 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_str_t                       rule_type;                                  /**< 触发的规则类型 */                         
     ngx_str_t                       rule_deatils;                               /**< 触发的规则内容 */
     ngx_buf_t                       req_body;                                   /**< 请求体 */
+    ngx_int_t                       rate;                                       /**< 对应变量 $waf_rate */
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
     char                           *response_str;                               /**< 如果不为 NULL 则返回所指的字符串和 200 状态码 */
     action_t                       *action_chain;
