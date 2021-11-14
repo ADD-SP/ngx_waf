@@ -21,12 +21,11 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r) {
     }
 
     ip_trie_node_t* ip_trie_node = NULL;
+    inx_addr_t inx_addr;
+    ngx_http_waf_make_inx_addr(r, &inx_addr);
 
     if (r->connection->sockaddr->sa_family == AF_INET) {
         ngx_http_waf_dp(r, "matching ipv4");
-        struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
         if (ip_trie_find(loc_conf->white_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
@@ -41,9 +40,6 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r) {
 #if (NGX_HAVE_INET6)
     else if (r->connection->sockaddr->sa_family == AF_INET6) {
         ngx_http_waf_dp(r, "matching ipv6");
-        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
         if (ip_trie_find(loc_conf->white_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
@@ -80,11 +76,11 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r) {
     }
 
     ip_trie_node_t *ip_trie_node = NULL;
+    inx_addr_t inx_addr;
+    ngx_http_waf_make_inx_addr(r, &inx_addr);
+
     if (r->connection->sockaddr->sa_family == AF_INET) {
         ngx_http_waf_dp(r, "matching ipv4");
-        struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
-        inx_addr_t inx_addr; 
-        ngx_memcpy(&(inx_addr.ipv4), &(sin->sin_addr), sizeof(struct in_addr));
         if (ip_trie_find(loc_conf->black_ipv4, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
@@ -99,9 +95,6 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r) {
 #if (NGX_HAVE_INET6)
     else if (r->connection->sockaddr->sa_family == AF_INET6) {
         ngx_http_waf_dp(r, "matching ipv6");
-        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)r->connection->sockaddr;
-        inx_addr_t inx_addr;
-        ngx_memcpy(&(inx_addr.ipv6), &(sin6->sin6_addr), sizeof(struct in6_addr));
         if (ip_trie_find(loc_conf->black_ipv6, &inx_addr, &ip_trie_node) == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
