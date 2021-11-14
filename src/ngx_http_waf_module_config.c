@@ -346,9 +346,13 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 goto unexpected_error;
             }
 
+            ngx_str_t tag;
+            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("cc_deny"));
+            tag.len = zone_tag->len + sizeof("cc_deny") - 1;
+            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "cc_deny");
+
             init->data = loc_conf;
-            init->tag.data = ngx_pstrdup(cf->pool, zone_tag);
-            init->tag.len = zone_tag->len;
+            init->tag = tag;
             init->handler = _shm_handler_cc_deny_init;
 
             utarray_free(temp);
@@ -1111,9 +1115,13 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 goto unexpected_error;
             }
 
+            ngx_str_t tag;
+            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("action_captcha"));
+            tag.len = zone_tag->len + sizeof("action_captcha") - 1;
+            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "action_captcha");
+
             init->data = loc_conf;
-            init->tag.data = ngx_pstrdup(cf->pool, zone_tag);
-            init->tag.len = zone_tag->len;
+            init->tag = tag;
             init->handler = _shm_handler_action_cache_captcha_init;
 
             utarray_free(temp);
