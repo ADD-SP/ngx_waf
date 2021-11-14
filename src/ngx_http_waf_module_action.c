@@ -313,7 +313,7 @@ ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content
     out->next = NULL;
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "next filter ... end");
+    ngx_http_waf_dp_func_end(r);
     rc = ngx_http_output_filter(r, out);
     return rc;
 }

@@ -75,7 +75,7 @@ void ngx_http_waf_modsecurity_handler_log(void* log, const void* data) {
 
 
 ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_modsecurity() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -134,7 +134,7 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r) {
         }
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_modsecurity() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 
 #endif
@@ -142,7 +142,7 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r) {
 
 
 ngx_int_t ngx_http_waf_header_filter(ngx_http_request_t *r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_header_filter() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -186,13 +186,13 @@ ngx_int_t ngx_http_waf_header_filter(ngx_http_request_t *r) {
             break;
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_header_filter() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ngx_http_next_header_filter(r);
 }
 
 
 ngx_int_t ngx_http_waf_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
-    ngx_http_waf_dp(r, "ngx_http_waf_body_filter() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -240,7 +240,7 @@ ngx_int_t ngx_http_waf_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
 
 
 static ngx_int_t _process_request(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_request() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -282,13 +282,13 @@ static ngx_int_t _process_request(ngx_http_request_t* r, ngx_int_t* out_http_sta
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_process_request() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
 static ngx_int_t _init_ctx(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_init_ctx() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -327,13 +327,13 @@ static ngx_int_t _init_ctx(ngx_http_request_t* r) {
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_init_ctx() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t _process_connection(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_connection() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -374,13 +374,13 @@ static ngx_int_t _process_connection(ngx_http_request_t* r, ngx_int_t* out_http_
         return NGX_HTTP_WAF_MATCHED;
     }
 
-    ngx_http_waf_dp(r, "_process_connection() ... end");
+    ngx_http_waf_dp_func_end(r);
     return _process_intervention(r, out_http_status);
 }
 
 
 static ngx_int_t _process_uri(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_uri() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -437,13 +437,13 @@ static ngx_int_t _process_uri(ngx_http_request_t* r, ngx_int_t* out_http_status)
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_process_uri() ... end");
+    ngx_http_waf_dp_func_end(r);
     return _process_intervention(r, out_http_status);
 }
 
 
 static ngx_int_t _process_request_header(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_request_header() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -487,13 +487,13 @@ static ngx_int_t _process_request_header(ngx_http_request_t* r, ngx_int_t* out_h
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_process_request_header() ... end");
+    ngx_http_waf_dp_func_end(r);
     return _process_intervention(r, out_http_status);
 }
 
 
 static ngx_int_t _process_request_body(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_request_body() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -522,13 +522,13 @@ static ngx_int_t _process_request_body(ngx_http_request_t* r, ngx_int_t* out_htt
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_process_request_body() ... end");
+    ngx_http_waf_dp_func_end(r);
     return _process_intervention(r, out_http_status);
 }
 
 
 static ngx_int_t _process_response_header(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_response_header() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -595,13 +595,13 @@ static ngx_int_t _process_response_header(ngx_http_request_t* r, ngx_int_t* out_
         ngx_http_waf_dpf(r, "matched(%i)", *out_http_status);
     }
 
-    ngx_http_waf_dp(r, "_process_response_header() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 }
 
 
 static ngx_int_t _process_response_body(ngx_http_request_t* r, ngx_chain_t *in, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_response_body() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -653,13 +653,13 @@ static ngx_int_t _process_response_body(ngx_http_request_t* r, ngx_chain_t *in, 
         chain = chain->next;
     }
 
-    ngx_http_waf_dp(r, "_process_response_body() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
 static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_http_status) {
-    ngx_http_waf_dp(r, "_process_intervention() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -746,7 +746,7 @@ static ngx_int_t _process_intervention(ngx_http_request_t* r, ngx_int_t* out_htt
         return NGX_HTTP_WAF_MATCHED;
     }
 
-    ngx_http_waf_dp(r, "_process_intervention() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 

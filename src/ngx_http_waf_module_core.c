@@ -160,7 +160,7 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
 }
 
 ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_precontent_phase() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -173,7 +173,7 @@ ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
 
 
 ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_log_phase() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -212,13 +212,13 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "success ... return");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_log_phase() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_OK;
 }
 
 
 ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
-    ngx_http_waf_dp(r, "ngx_http_waf_check_all() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -376,13 +376,13 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
 
     ngx_int_t http_status = ngx_http_waf_perform_action_at_access_end(r);
 
-    ngx_http_waf_dp(r, "ngx_http_waf_check_all() ... end");
+    ngx_http_waf_dp_func_end(r);
     return http_status;
 }
 
 
 static ngx_int_t _read_request_body(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_read_request_body() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -444,13 +444,13 @@ static ngx_int_t _read_request_body(ngx_http_request_t* r) {
 
     ngx_http_waf_dpf(r, "request body is %*s", len, body);
 
-    ngx_http_waf_dp(r, "_read_request_body() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static void _handler_read_request_body(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_handler_read_request_body() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -464,7 +464,7 @@ static void _handler_read_request_body(ngx_http_request_t* r) {
         ngx_http_core_run_phases(r);
     }
 
-    ngx_http_waf_dp(r, "_handler_read_request_body() ... end");
+    ngx_http_waf_dp_func_end(r);
 }
 
 

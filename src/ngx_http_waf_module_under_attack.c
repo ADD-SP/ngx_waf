@@ -21,7 +21,7 @@ static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack)
 
 
 ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_under_attack() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -154,13 +154,13 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_MATCHED;
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_under_attack() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
 static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, _info_t* under_attack) {
-    ngx_http_waf_dp(r, "_gen_under_attack_info() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     time_t now = time(NULL);
 
@@ -179,13 +179,13 @@ static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, _info_t* under_at
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_gen_under_attack_info() ... end");
+    ngx_http_waf_dp_func_end(r);
     return _gen_verification(r, under_attack);
 }
 
 
 static ngx_int_t _gen_cookie(ngx_http_request_t *r, _info_t* under_attack) {
-    ngx_http_waf_dp(r, "_gen_cookie() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
@@ -223,13 +223,13 @@ static ngx_int_t _gen_cookie(ngx_http_request_t *r, _info_t* under_attack) {
     header->value.len = sprintf((char*)header->value.data, "__waf_under_attack_hmac=%s; Path=/", under_attack->hmac);
     ngx_http_waf_dpf(r, "Header %V: %V", &header->key, &header->value);
 
-    ngx_http_waf_dp(r, "_gen_cookie() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack) {
-    ngx_http_waf_dp(r, "_gen_verification() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -261,6 +261,6 @@ static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack)
 
     ngx_memzero(under_attack->hmac, sizeof(under_attack->hmac));
 
-    ngx_http_waf_dp(r, "_gen_verification() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ngx_http_waf_sha256(under_attack->hmac, sizeof(under_attack->hmac), &buf, sizeof(buf));
 }

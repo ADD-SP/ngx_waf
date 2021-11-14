@@ -11,7 +11,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r);
 // static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail);
 
 ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_verify_bot() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -51,13 +51,13 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
 
     #undef ngx_http_waf_func
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_verify_bot() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
 static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_google_bot() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -132,12 +132,12 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
     }
 
     ngx_http_waf_dp(r, "fake bot");
-    ngx_http_waf_dp(r, "_verify_google_bot() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAKE_BOT;
 }
 
 static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_bing_bot() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -212,13 +212,13 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
     }
 
     ngx_http_waf_dp(r, "fake bot");
-    ngx_http_waf_dp(r, "_verify_bing_bot() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAKE_BOT;
 }
 
 
 static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_baidu_spider() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -293,12 +293,12 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
     }
 
     ngx_http_waf_dp(r, "fake bot");
-    ngx_http_waf_dp(r, "_verify_baidu_spider() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAKE_BOT;
 }
 
 static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_yandex_bot() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -373,7 +373,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
     }
 
     ngx_http_waf_dp(r, "fake bot");
-    ngx_http_waf_dp(r, "_verify_yandex_bot() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAKE_BOT;
 }
 

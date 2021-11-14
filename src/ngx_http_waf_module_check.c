@@ -4,7 +4,7 @@ extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
 
 ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_ip() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -57,13 +57,13 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r) {
     }
 #endif
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_ip() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_ip() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -115,13 +115,13 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r) {
     }
 #endif
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_ip() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_cc() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -345,13 +345,13 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "success");
 
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_cc() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_url() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -383,13 +383,13 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_url() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_url() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -421,13 +421,13 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_url() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_args() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -459,13 +459,13 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_args() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_user_agent() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -502,13 +502,13 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_user_agent() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_referer() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -546,13 +546,13 @@ ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_white_referer() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_referer() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -589,13 +589,13 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_referer() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_cookie() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -689,13 +689,13 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
         }
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_cookie() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret_value;
 }
 
 
 ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_post() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -729,7 +729,7 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_MATCHED;
     } else {
         ngx_http_waf_dp(r, "not matched");
-        ngx_http_waf_dp(r, "ngx_http_waf_handler_check_black_post() ... end");
+        ngx_http_waf_dp_func_end(r);
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 }
@@ -740,7 +740,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
                                          ngx_array_t* array, 
                                          const u_char* rule_type, 
                                          lru_cache_t* cache) {
-    ngx_http_waf_dp(r, "ngx_http_waf_regex_exec_arrray() ... start");
+    ngx_http_waf_dp_func_start(r);
     
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -813,6 +813,6 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
         ngx_http_waf_dp(r, "not matched");
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_regex_exec_arrray() ... end");
+    ngx_http_waf_dp_func_end(r);
     return result.is_matched;
 }

@@ -369,6 +369,13 @@
 
 
 #ifndef NGX_HTTP_WAF_NO_DEBUG
+#define ngx_http_waf_dp_func_start(r) { \
+    if (r != NULL) { \
+        ngx_http_waf_dpf(r, "%s start", __func__); \
+    } \
+}
+
+
 #define ngx_http_waf_dp(r, str) { \
     if (r != NULL) {    \
         ngx_log_error(NGX_LOG_DEBUG, (r)->connection->log, 0,  \
@@ -383,11 +390,24 @@
             "ngx_waf_debug: ["fmt"] at %s:%s:%d, ngx_waf %s", __VA_ARGS__, __func__, __FILE__, __LINE__, NGX_HTTP_WAF_VERSION); \
     }  \
 }
+
+
+#define ngx_http_waf_dp_func_end(r) { \
+    if (r != NULL) { \
+        ngx_http_waf_dpf(r, "%s end", __func__); \
+    } \
+}
 #else
+#define ngx_http_waf_dp_func_start(...) {}
+
+
 #define ngx_http_waf_dp(...) {}
 
 
 #define ngx_http_waf_dpf(...) {}
+
+
+#define ngx_http_waf_dp_func_end(...) {}
 #endif
 
 

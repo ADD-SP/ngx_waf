@@ -32,7 +32,7 @@ static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r,
 
 
 ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_captcha() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -122,13 +122,13 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r) {
             return NGX_HTTP_WAF_MATCHED;
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_handler_captcha() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
 ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "ngx_http_waf_captcha_test() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -156,13 +156,13 @@ ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r) {
             return NGX_HTTP_WAF_FAULT;
     }
 
-    ngx_http_waf_dp(r, "ngx_http_waf_captcha_test() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAULT;
 }
 
 
 static ngx_int_t _gen_info(ngx_http_request_t* r, _info_t* info) {
-    ngx_http_waf_dp(r, "_gen_info() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     time_t now = time(NULL);
 
@@ -181,13 +181,13 @@ static ngx_int_t _gen_info(ngx_http_request_t* r, _info_t* info) {
     }
     ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "_gen_info() ... end");
+    ngx_http_waf_dp_func_end(r);
     return _gen_hmac(r, info);
 }
 
 
 static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, _info_t* info) {
-    ngx_http_waf_dp(r, "_gen_verify_cookie() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
@@ -231,13 +231,13 @@ static ngx_int_t _gen_verify_cookie(ngx_http_request_t *r, _info_t* info) {
     header->value.len = sprintf((char*)header->value.data, "__waf_captcha_hmac=%s; Path=/", info->hmac);
     ngx_http_waf_dpf(r, "success %V", &header->value);
 
-    ngx_http_waf_dp(r, "_gen_verify_cookie() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t _gen_hmac(ngx_http_request_t *r, _info_t* info) {
-    ngx_http_waf_dp(r, "_gen_hmac() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -277,13 +277,13 @@ static ngx_int_t _gen_hmac(ngx_http_request_t *r, _info_t* info) {
         ngx_http_waf_dp(r, "failed");
     }
 
-    ngx_http_waf_dp(r, "_gen_hmac() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 }
 
 
 static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_cookies() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -368,13 +368,13 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     }
     ngx_http_waf_dp(r, "no");
 
-    ngx_http_waf_dp(r, "_verify_cookies() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
 static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_captcha_dispatcher() ... end");
+    ngx_http_waf_dp_func_end(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -421,13 +421,13 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
         }
     }
 
-    ngx_http_waf_dp(r, "_verify_captcha_dispatcher() ... end");
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAIL;
 }
 
 
 static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_hCaptcha() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -441,13 +441,13 @@ static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
                                                  NGX_HTTP_WAF_FALSE,
                                                  INT_MIN);
     
-    ngx_http_waf_dp(r, "_verify_hCaptcha() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 }
 
 
 static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_reCAPTCHAv2() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -461,13 +461,13 @@ static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
                                                  NGX_HTTP_WAF_FALSE,
                                                  INT_MIN);
     
-    ngx_http_waf_dp(r, "_verify_reCAPTCHAv2() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 }
 
 
 static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_verify_reCAPTCHAv3() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -481,7 +481,7 @@ static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
                                                  NGX_HTTP_WAF_TRUE,
                                                  loc_conf->waf_captcha_reCAPTCHAv3_score);
     
-    ngx_http_waf_dp(r, "_verify_reCAPTCHAv3() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 }
 
@@ -492,7 +492,7 @@ static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r,
     ngx_str_t url,
     ngx_int_t is_reCAPTCHA_v3,
     ngx_int_t score) {
-    ngx_http_waf_dp(r, "_verfiy_reCAPTCHA_compatible() ... start");
+    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -609,6 +609,6 @@ static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r,
         }
     }
     
-    ngx_http_waf_dp(r, "_verfiy_reCAPTCHA_compatible() ... end");
+    ngx_http_waf_dp_func_end(r);
     return ret;
 }
