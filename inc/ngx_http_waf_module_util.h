@@ -176,6 +176,9 @@ ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size
 void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx);
 
 
+void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr);
+
+
 void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details);
 
 

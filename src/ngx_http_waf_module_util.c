@@ -575,17 +575,39 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
         ngx_http_waf_loc_conf_t* parent = (*conf)->parent;
         ngx_http_waf_loc_conf_t* _conf = *conf;
 
-        while (
-            (ngx_http_waf_is_valid_ptr_value(_conf->shm_zone_cc_deny) == NGX_HTTP_WAF_FALSE
-        ||  ngx_http_waf_is_valid_ptr_value(_conf->ip_access_statistics) == NGX_HTTP_WAF_FALSE)
-        &&  parent != NULL) {
-            _conf->shm_zone_cc_deny = parent->shm_zone_cc_deny;
+        while (!ngx_http_waf_is_valid_ptr_value(_conf->ip_access_statistics)
+               && parent != NULL) {
             _conf->ip_access_statistics = parent->ip_access_statistics;
+            parent = parent->parent;
+        }
+
+        parent = (*conf)->parent;
+
+        while (!ngx_http_waf_is_valid_ptr_value(_conf->action_cache_captcha)
+               && parent != NULL) {
+            _conf->action_cache_captcha = parent->action_cache_captcha;
             parent = parent->parent;
         }
     }
 
     ngx_http_waf_dp(r, "ngx_http_waf_get_ctx_and_conf() ... end");
+}
+
+
+void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr) {
+    ngx_memset(inx_addr, 0, sizeof(inx_addr_t));
+    ngx_int_t ip_type = r->connection->sockaddr->sa_family;
+
+    if (ip_type == AF_INET) {
+        struct sockaddr_in* s_addr_in = (struct sockaddr_in*)(r->connection->sockaddr);
+        ngx_memcpy(&(inx_addr->ipv4), &(s_addr_in->sin_addr), sizeof(struct in_addr));
+    } 
+#if (NGX_HAVE_INET6)
+    else {
+        struct sockaddr_in6* s_addr_in6 = (struct sockaddr_in6*)(r->connection->sockaddr);
+        ngx_memcpy(&(inx_addr->ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
+    }
+#endif
 }
 
 

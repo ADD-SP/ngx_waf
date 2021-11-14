@@ -55,7 +55,7 @@
 
 #define NGX_HTTP_WAF_CAPTCHA_PASS            (10)
 
-#define NGX_HTTP_WAF_BAD                     (11)
+#define NGX_HTTP_WAF_FAULT                   (11)
 
 #define NGX_HTTP_WAF_NEXT_FILTER             (12)
 
@@ -363,6 +363,10 @@
 
 
 #define ngx_strcpy(d, s) (strcpy((char*)d, (const char*)s))
+
+
+#define ngx_is_null_str(s) ((s) == NULL || (s)->data == NULL || (s)->len == 0)
+
 
 #ifndef NGX_HTTP_WAF_NO_DEBUG
 #define ngx_http_waf_dp(r, str) { \

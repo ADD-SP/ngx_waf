@@ -27,6 +27,7 @@
 #include <ngx_http_waf_module_shm.h>
 #include <ngx_http_waf_module_modsecurity.h>
 #include <ngx_http_waf_module_data.h>
+#include <ngx_http_waf_module_action.h>
 
 
 extern ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
@@ -107,9 +108,9 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
 
 
 /**
- * @brief 读取配置项 waf_http_status，该项用来设置返回的状态码。
+ * @brief 读取配置项 waf_action，用于设置拦截后的动作。
 */
-char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**

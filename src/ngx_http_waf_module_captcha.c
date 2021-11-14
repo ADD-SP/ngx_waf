@@ -6,13 +6,6 @@ typedef struct {
     u_char hmac[crypto_hash_sha256_BYTES * 2 + 1];
 } _info_t;
 
-static ngx_int_t _gen_nocache_header(ngx_http_request_t* r);
-
-static ngx_int_t _gen_pass_ctx(ngx_http_request_t* r);
-
-static ngx_int_t _gen_show_html_ctx(ngx_http_request_t* r);
-
-static ngx_int_t _gen_show_str_ctx(ngx_http_request_t* r, char* str);
 
 static ngx_int_t _gen_info(ngx_http_request_t* r, _info_t* info);
 
@@ -38,7 +31,7 @@ static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r,
     ngx_int_t score);
 
 
-ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "ngx_http_waf_handler_captcha() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -52,96 +45,80 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
 
     ngx_http_waf_dp(r, "verifying cookie");    
     switch (_verify_cookies(r)) {
-        case NGX_HTTP_WAF_BAD:
+        case NGX_HTTP_WAF_FAULT:
             ngx_http_waf_dp(r, "bad ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
             return NGX_HTTP_WAF_MATCHED;
         case NGX_HTTP_WAF_SUCCESS:
             ngx_http_waf_dp(r, "success");
 
             ngx_http_waf_dpf(r, "checking if request_uri(%V) equals verify_url(%V)", 
                 &r->uri, &loc_conf->waf_captcha_verify_url);
+            
             if (r->uri.len == loc_conf->waf_captcha_verify_url.len
             && ngx_memcmp(r->uri.data, loc_conf->waf_captcha_verify_url.data, r->uri.len) == 0) {
                 ngx_http_waf_dp(r, "equal");
-                ngx_http_waf_dp(r, "generating response string(good)");
-                if (_gen_show_str_ctx(r, "good") != NGX_HTTP_WAF_SUCCESS) {
-                    ngx_http_waf_dp(r, "failed ... return");
-                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                    return NGX_HTTP_WAF_BAD;
-                }
-                ngx_http_waf_dp(r, "success ... return");
-                *out_http_status = NGX_DECLINED;
+                ngx_http_waf_append_action_str(r, "good", sizeof("good") - 1, NGX_HTTP_OK, ACTION_FLAG_FROM_CAPTCHA);
                 return NGX_HTTP_WAF_MATCHED;
             }
+
             ngx_http_waf_dp(r, "not equal");
             break;
+
         case NGX_HTTP_WAF_FAIL:
             ngx_http_waf_dp(r, "failed");
             ngx_http_waf_dp(r, "verifying captcha");
+
             switch (_verify_captcha_dispatcher(r)) {
-                case NGX_HTTP_WAF_BAD:
+                case NGX_HTTP_WAF_FAULT:
                     ngx_http_waf_dp(r, "bad ... return");
-                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
                     return NGX_HTTP_WAF_MATCHED;
+
                 case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
                     ngx_http_waf_dp(r, "challenging ... return");
-                    ngx_http_waf_dp(r, "generating ctx to show captcha");
-                    if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
-                        ngx_http_waf_dp(r, "failed ... return");
-                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                        return NGX_HTTP_WAF_BAD;
-                    }
-                    ngx_http_waf_dp(r, "success ... return");
-                    *out_http_status = NGX_DECLINED;
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "CHALLENGE");
+                    ngx_http_waf_append_action_captcha(r, ACTION_FLAG_FROM_CAPTCHA);
                     return NGX_HTTP_WAF_MATCHED;
+
                 case NGX_HTTP_WAF_CAPTCHA_BAD:
-                    ngx_http_waf_dp(r, "generating response string(bad)");
-                    if (_gen_show_str_ctx(r, "bad") != NGX_HTTP_WAF_SUCCESS) {
-                        ngx_http_waf_dp(r, "failed ... return");
-                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                        return NGX_HTTP_WAF_BAD;
-                    }
-                    ngx_http_waf_dp(r, "success ... return");
-                    *out_http_status = NGX_DECLINED;
+                    ngx_http_waf_dp(r, "captcha bad ... return");
+                    ngx_http_waf_append_action_str(r, "bad", sizeof("bad") - 1, NGX_HTTP_OK, ACTION_FLAG_FROM_CAPTCHA);
                     return NGX_HTTP_WAF_MATCHED;
+
                 case NGX_HTTP_WAF_CAPTCHA_PASS:
                 {
                     ngx_http_waf_dp(r, "pass");
                     ngx_http_waf_dp(r, "generating releated info");
                     _info_t* info = ngx_pcalloc(r->pool, sizeof(_info_t));
+
                     if (info != NULL
                     &&  _gen_info(r, info) == NGX_HTTP_WAF_SUCCESS
-                    &&  _gen_verify_cookie(r, info) == NGX_HTTP_WAF_SUCCESS
-                    &&  _gen_pass_ctx(r) == NGX_HTTP_WAF_SUCCESS
-                    &&  _gen_show_str_ctx(r, "good") == NGX_HTTP_WAF_SUCCESS) {
+                    &&  _gen_verify_cookie(r, info) == NGX_HTTP_WAF_SUCCESS) {
                         ngx_http_waf_dp(r, "success ... return");
-                        *out_http_status = NGX_DECLINED;
+                        ngx_http_waf_set_rule_info(r, "CAPTCHA", "PASS");
+                        ngx_http_waf_append_action_str(r, "good", sizeof("good") - 1, NGX_HTTP_OK, ACTION_FLAG_FROM_CAPTCHA);
+
                     } else {
                         ngx_http_waf_dp(r, "failed ... return");
-                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                        ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
                     }
+
                     return NGX_HTTP_WAF_MATCHED;
                 }
                 case NGX_HTTP_WAF_FAIL:
-                    ngx_http_waf_dp(r, "gen ctx to show captcha");
-                    if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
-                        ngx_http_waf_dp(r, "failed ... return");
-                        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                        return NGX_HTTP_WAF_BAD;
-                    }
-                    ngx_http_waf_dp(r, "success ... return");
-                    *out_http_status = NGX_DECLINED;
+                    ngx_http_waf_dp(r, "failed ... return");
+                    ngx_http_waf_append_action_captcha(r, ACTION_FLAG_FROM_CAPTCHA);
                     return NGX_HTTP_WAF_MATCHED;
                 default:
-                    ngx_http_waf_dp(r, "failed ... return");
-                    *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                    ngx_http_waf_dp(r, "default ... return");
+                    ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
                     return NGX_HTTP_WAF_MATCHED;
             }
             break;
         default:
             ngx_http_waf_dp(r, "default ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
             return NGX_HTTP_WAF_MATCHED;
     }
 
@@ -149,7 +126,8 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r, ngx_int_t* out_htt
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
-ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+
+ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "ngx_http_waf_captcha_test() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -158,135 +136,28 @@ ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r, ngx_int_t* out_http_s
 
     ngx_http_waf_dp(r, "verifying captcha");
     switch (_verify_captcha_dispatcher(r)) {
-        case NGX_HTTP_WAF_BAD:
+        case NGX_HTTP_WAF_FAULT:
             ngx_http_waf_dp(r, "bad ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-            return NGX_HTTP_WAF_BAD;
+            return NGX_HTTP_WAF_FAULT;
         case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
             ngx_http_waf_dp(r, "challenging ... return");
-            ngx_http_waf_dp(r, "generating ctx to show captcha");
-            if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
-                ngx_http_waf_dp(r, "failed ... return");
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                return NGX_HTTP_WAF_BAD;
-            }
-            ngx_http_waf_dp(r, "success ... return");
             return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
         case NGX_HTTP_WAF_CAPTCHA_BAD:
-            ngx_http_waf_dp(r, "bad captcha");
-            ngx_http_waf_dp(r, "generating response string(bad)");
-            if (_gen_show_str_ctx(r, "bad") != NGX_HTTP_WAF_SUCCESS) {
-                ngx_http_waf_dp(r, "failed ... return");
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                return NGX_HTTP_WAF_BAD;
-            }
-            ngx_http_waf_dp(r, "success ... return");
-            *out_http_status = NGX_DECLINED;
+            ngx_http_waf_dp(r, "bad captcha ... return");
             return NGX_HTTP_WAF_CAPTCHA_BAD;
         case NGX_HTTP_WAF_CAPTCHA_PASS:
-            ngx_http_waf_dp(r, "captcha pass");
-            ngx_http_waf_dp(r, "generating releated info");
-            if (_gen_pass_ctx(r) != NGX_HTTP_WAF_SUCCESS
-            ||  _gen_show_str_ctx(r, "good") != NGX_HTTP_WAF_SUCCESS) {
-                ngx_http_waf_dp(r, "failed ... return");
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                return NGX_HTTP_WAF_BAD;
-            }
-            ngx_http_waf_dp(r, "success ... return");
+            ngx_http_waf_dp(r, "captcha pass ... return");
             return NGX_HTTP_WAF_CAPTCHA_PASS;
         case NGX_HTTP_WAF_FAIL:
-            ngx_http_waf_dp(r, "failed");
-            if (_gen_show_html_ctx(r) != NGX_HTTP_WAF_SUCCESS) {
-                ngx_http_waf_dp(r, "failed ... return");
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
-                return NGX_HTTP_WAF_BAD;
-            }
-            ngx_http_waf_dp(r, "success ... return");
+            ngx_http_waf_dp(r, "failed ... return");
             return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
         default:
             ngx_http_waf_dp(r, "default ... return");
-            return NGX_HTTP_WAF_BAD;
+            return NGX_HTTP_WAF_FAULT;
     }
 
     ngx_http_waf_dp(r, "ngx_http_waf_captcha_test() ... end");
-    return NGX_HTTP_WAF_BAD;
-}
-
-
-static ngx_int_t _gen_nocache_header(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_gen_nocache_header() ... start");
-
-    ngx_http_waf_dp(r, "creating header");
-    ngx_table_elt_t* header = (ngx_table_elt_t *)ngx_list_push(&(r->headers_out.headers));
-    if (header == NULL) {
-        ngx_http_waf_dp(r, "failed ... return");
-        return NGX_HTTP_WAF_FAIL; 
-    }
-    header->hash = 1;
-    header->lowcase_key = (u_char*)"cache-control";
-    ngx_str_set(&header->key, "Cache-control");
-    ngx_str_set(&header->value, "no-store");
-
-    ngx_http_waf_dp(r, "_gen_nocache_header() ... end");
-    return NGX_HTTP_WAF_SUCCESS;
-}
-
-
-static ngx_int_t _gen_pass_ctx(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_gen_pass_ctx() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-    
-    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-    ctx->blocked = NGX_HTTP_WAF_FALSE;
-    ctx->captcha = NGX_HTTP_WAF_FALSE;
-    ngx_http_waf_set_rule_info(r, "CAPTCHA", "PASS");
-
-    ngx_http_waf_dp(r, "_gen_pass_ctx() ... end");
-    return NGX_HTTP_WAF_TRUE;
-}
-
-
-static ngx_int_t _gen_show_html_ctx(ngx_http_request_t* r) {
-    ngx_http_waf_dp(r, "_gen_show_html_ctx() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    ngx_http_waf_register_content_handler(r);
-    
-    ctx->gernal_logged = NGX_HTTP_WAF_TRUE;
-    ctx->blocked = NGX_HTTP_WAF_TRUE;
-    ctx->captcha = NGX_HTTP_WAF_TRUE;
-    ngx_http_waf_set_rule_info(r, "CAPTCHA", "CHALLENGE");
-
-    ngx_http_waf_dp(r, "_gen_show_html_ctx() ... end");
-    return _gen_nocache_header(r);
-}
-
-
-static ngx_int_t _gen_show_str_ctx(ngx_http_request_t* r, char* str) {
-    ngx_http_waf_dp(r, "_gen_show_str_ctx() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    ngx_http_waf_register_content_handler(r);
-    
-    size_t len = ngx_strlen(str);
-    ctx->response_str = ngx_pnalloc(r->pool, len + 1);
-    if (ctx->response_str == NULL) {
-        ngx_http_waf_dp(r, "no memory ... return");
-        return NGX_HTTP_WAF_FAIL;
-    }
-
-    ngx_http_waf_dpf(r, "copying string(%s)", str);
-    ngx_memcpy(ctx->response_str, str, len);
-    ctx->response_str[len] = '\0';
-
-    ngx_http_waf_dp(r, "_gen_show_str_ctx() ... end");
-    return _gen_nocache_header(r);
+    return NGX_HTTP_WAF_FAULT;
 }
 
 
@@ -424,7 +295,7 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
 
     if (under_attack_client == NULL || under_attack_expect == NULL) {
         ngx_http_waf_dp(r, "no memcoy ... return");
-        return NGX_HTTP_WAF_BAD;
+        return NGX_HTTP_WAF_FAULT;
     }
 
     ngx_int_t cookie_count = 0;
@@ -477,7 +348,7 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "generating hmac");
     if (_gen_hmac(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
         ngx_http_waf_dp(r, "failed ... return");
-        return NGX_HTTP_WAF_BAD;
+        return NGX_HTTP_WAF_FAULT;
     }
     ngx_http_waf_dpf(r, "success(%s)", under_attack_expect->hmac);
 
@@ -513,7 +384,7 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
     uri.data = ngx_pnalloc(r->pool, r->uri.len + 1);
     if (uri.data == NULL) {
         ngx_http_waf_dp(r, "no memory ... return");
-        return NGX_HTTP_WAF_BAD;
+        return NGX_HTTP_WAF_FAULT;
     }
     ngx_memcpy(uri.data, r->uri.data, r->uri.len);
     uri.data[r->uri.len] = '\0';
@@ -539,7 +410,7 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
                 is_valid = _verify_reCAPTCHAv3(r);
                 break;
             default:
-                return NGX_HTTP_WAF_BAD;
+                return NGX_HTTP_WAF_FAULT;
         }
         if (is_valid == NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "pass");

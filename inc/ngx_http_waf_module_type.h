@@ -38,9 +38,8 @@
 /**
  * @typedef ngx_http_waf_check
  * @brief 请求检查函数的函数指针
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
 */
-typedef ngx_int_t (*ngx_http_waf_check_pt)(ngx_http_request_t* r, ngx_int_t* out_http_status);
+typedef ngx_int_t (*ngx_http_waf_check_pt)(ngx_http_request_t* r);
 
 
 /**
@@ -117,7 +116,7 @@ typedef struct key_value_s {
  * @brief 内存池类型
 */
 typedef enum {
-    MEM_POOL_FLAG_NONE      = 0,
+    MEM_POOL_FLAG_UNSET     = 0,
     MEM_POOL_FLAG_STDC      = 1,
     MEM_POOL_FLAG_NGX       = 2,
     MEM_POOL_FLAG_NGX_SHARD = 4
@@ -226,18 +225,43 @@ typedef struct ip_trie_s {
 
 
 typedef enum {
-    ACTION_FLAG_NONE,
-    ACTION_FLAG_RETURN,
-    ACTION_FLAG_CAPTCHA,
-    ACTION_FLAG_STR,
+    ACTION_FLAG_NONE                = 0x0,
+    ACTION_FLAG_UNSET               = 0x1,
+    ACTION_FLAG_DECLINE             = 0x2,
+    ACTION_FLAG_FOLLOW              = 0x4,
+    ACTION_FLAG_RETURN              = 0x8,
+    ACTION_FLAG_REG_CONTENT         = 0x10,
+    ACTION_FLAG_STR                 = 0x20,
+    ACTION_FLAG_HTML                = 0x40,
+    ACTION_FLAG_FROM_WHITE_LIST     = 0x80,
+    ACTION_FLAG_FROM_BLACK_LIST     = 0x100,
+    ACTION_FLAG_FROM_CC_DENY        = 0x200,
+    ACTION_FLAG_FROM_MODSECURITY    = 0x400,
+    ACTION_FLAG_FROM_CAPTCHA        = 0x800,
+    ACTION_FLAG_FROM_UNDER_ATTACK   = 0x1000,
+    ACTION_FLAG_FROM_VERIFY_BOT     = 0x2000,
+    ACTION_FLAG_EXPAND_CAPTCHA      = 0x4000,
+    ACTION_FLAG_EXPAND_UNDER_ATTACK = 0X8000
 } action_flag_e;
 
 
 typedef struct action_s {
     action_flag_e flag;
+    struct action_s* next;
+    struct action_s* prev;
     union {
-        ngx_int_t http_status;
-        ngx_str_t res_str;
+        ngx_uint_t http_status;
+
+        struct {
+            ngx_uint_t http_status;
+            ngx_str_t str;
+        } extra_str;
+
+        struct {
+            ngx_uint_t http_status;
+            ngx_str_t html;
+        } extra_html;
+
     } extra;
 } action_t;
 
@@ -248,16 +272,15 @@ typedef struct action_s {
 */
 typedef struct ngx_http_waf_ctx_s {
     ngx_http_request_t*             r;
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    ngx_int_t                       modsecurity_status;                         /**< ModSecurity 规则所返回的 HTTP 状态码 */
-#endif
     Transaction                    *modsecurity_transaction;                    /**< ModSecurity 的事务 */
     ngx_str_t                       rule_type;                                  /**< 触发的规则类型 */                         
     ngx_str_t                       rule_deatils;                               /**< 触发的规则内容 */
     ngx_buf_t                       req_body;                                   /**< 请求体 */
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
     char                           *response_str;                               /**< 如果不为 NULL 则返回所指的字符串和 200 状态码 */
+    action_t                       *action_chain;
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
+    ngx_int_t                       modsecurity_status;                         /**< ModSecurity 规则所返回的 HTTP 状态码 */
     ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
     ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
 #endif
@@ -265,8 +288,6 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
     ngx_int_t                       checked:1;                                  /**< 是否启动了检测流程 */
     ngx_int_t                       blocked:1;                                  /**< 是否拦截了本次请求 */
-    ngx_int_t                       captcha:1;                                  /**< 是否需要执行验证码 */
-    ngx_int_t                       under_attack:1;                             /**< 是否触发了 Under Attack Mode */
     ngx_int_t                       read_body_done:1;                           /**< 是否已经请求读取请求体 */
     ngx_int_t                       waiting_more_body:1;                        /**< 是否等待读取更多请求体 */
     ngx_int_t                       has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
@@ -291,8 +312,6 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
     ngx_int_t                       waf_cache;                                  /**< 是否启用缓存 */
     ngx_int_t                       waf_cache_capacity;                         /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_http_status;                            /**< 常规检测项目拦截后返回的状态码 */
-    ngx_int_t                       waf_http_status_cc;                         /**< CC 防护出发后返回的状态码 */
     ngx_int_t                       waf_verify_bot;                             /**< 0 为关闭，1 为开启但不拦截疑似的假 Bot，2 会拦截疑似的假 Bot */
     ngx_int_t                       waf_verify_bot_type;                        /**< 位图，表示检测哪些 Bot */
     ngx_array_t                    *waf_verify_bot_google_ua_regexp;            /**< Googlebot 的合法 User-Agent */
@@ -320,6 +339,12 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_modsecurity_rules_remote_key;
     ngx_str_t                       waf_modsecurity_rules_remote_url;
     ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
+    action_t                       *action_chain_blacklist;
+    action_t                       *action_chain_cc_deny;
+    action_t                       *action_chain_modsecurity;
+    action_t                       *action_chain_verify_bot;
+    ngx_shm_zone_t                 *action_zone_captcha;
+    lru_cache_t                    *action_cache_captcha;
     ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */
     void                           *modsecurity_rules;                          /**< ModSecurity 规则容器 */
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */

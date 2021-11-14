@@ -11,7 +11,7 @@ extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 /**
  * @brief 进行五秒盾检测
 */
-ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r);
 
 
 #endif

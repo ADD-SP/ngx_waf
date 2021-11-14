@@ -38,108 +38,98 @@ void ngx_http_waf_handler_cleanup(void *data);
 
 /**
  * @brief 检查客户端 IP 地址是否在白名单中。
- * @param[out] out_http_status 当出发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED IP 地址在白名单中。
  * @retval NOT_MATCHED IP 地址不在白名单中。
 */
-ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查客户端 IP 地址是否在黑名单中。
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED IP 地址在黑名单中。
  * @retval NOT_MATCHED IP 地址不在黑名单中。
 */
-ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查客户端 IP 地址的访问频次（60 秒内）是否超出了限制。
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果超出 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 超出限制。
  * @retval NOT_MATCHED 未超出限制。
 */
-ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查 URL 是否在白名单中。
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在白名单中。
  * @retval NOT_MATCHED 不在白名单中
 */
-ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查 URL 是否在黑名单中
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查请求参数是否在黑名单中
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查 UserAgent 是否在黑名单中
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查 Referer 是否在白名单中
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在白名单中。
  * @retval NOT_MATCHED 不在白黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查 Referer 是否在黑名单中
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查 Cookie 是否在黑名单中
- * @param[out] out_http_status 当触发规则时需要返回的 HTTP 状态码。
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
 */
-ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
 
 
 /**

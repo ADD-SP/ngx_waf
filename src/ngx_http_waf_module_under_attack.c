@@ -20,10 +20,7 @@ static ngx_int_t _gen_cookie(ngx_http_request_t *r, _info_t* under_attack);
 static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack);
 
 
-static void _gen_ctx(ngx_http_request_t *r);
-
-
-ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "ngx_http_waf_handler_under_attack() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -87,7 +84,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
     ngx_http_waf_dp(r, "generating expected message")
     if (_gen_verification(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
         ngx_http_waf_dp(r, "failed ... return");
-        *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+        ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
         return NGX_HTTP_WAF_MATCHED;
     }
     ngx_http_waf_dp(r, "success");
@@ -103,12 +100,10 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
     if (ngx_memcmp(&under_attack_client, &under_attack_expect, sizeof(_info_t)) != 0) {
         ngx_http_waf_dp(r, "failed");
 
-        _gen_ctx(r);
-
         ngx_http_waf_dp(r, "generating new info");
         if (_gen_under_attack_info(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
         }
         ngx_http_waf_dp(r, "success");
@@ -116,12 +111,13 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
         ngx_http_waf_dp(r, "generating new cookies");
         if (_gen_cookie(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
         }
         ngx_http_waf_dp(r, "success ... return");
         
-        *out_http_status = NGX_DECLINED;
+        ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);                 
+
         return NGX_HTTP_WAF_MATCHED;
     }
 
@@ -133,12 +129,10 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
     if (client_time == NGX_ERROR || difftime(time(NULL), client_time) > 60 * 30) {
         ngx_http_waf_dp(r, "expired info");
 
-        _gen_ctx(r);
-
         ngx_http_waf_dp(r, "generating new info");
         if (_gen_under_attack_info(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
         }
         ngx_http_waf_dp(r, "success");
@@ -146,17 +140,17 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r, ngx_int_t* ou
         ngx_http_waf_dp(r, "generating new cookies");
         if (_gen_cookie(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
-            *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
         }
         ngx_http_waf_dp(r, "success ... return");
 
-        *out_http_status = NGX_DECLINED;
+        ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);
         return NGX_HTTP_WAF_MATCHED;
+
     } else if (difftime(time(NULL), client_time) <= 5) {
         ngx_http_waf_dp(r, "on delay ... return");
-        *out_http_status = NGX_DECLINED;
-        _gen_ctx(r);
+        ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);
         return NGX_HTTP_WAF_MATCHED;
     }
 
@@ -269,21 +263,4 @@ static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack)
 
     ngx_http_waf_dp(r, "_gen_verification() ... end");
     return ngx_http_waf_sha256(under_attack->hmac, sizeof(under_attack->hmac), &buf, sizeof(buf));
-}
-
-
-static void _gen_ctx(ngx_http_request_t *r) {
-    ngx_http_waf_dp(r, "_gen_ctx() ... start");
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-    ngx_http_waf_register_content_handler(r);
-    
-    ctx->gernal_logged = 1;
-    ctx->blocked = 1;
-    ctx->under_attack = 1;
-    ngx_http_waf_set_rule_info(r, "UNDER-ATTACK", "");
-
-    ngx_http_waf_dp(r, "_gen_ctx() ... end");
 }

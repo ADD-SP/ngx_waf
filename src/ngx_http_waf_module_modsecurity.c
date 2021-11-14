@@ -74,7 +74,7 @@ void ngx_http_waf_modsecurity_handler_log(void* log, const void* data) {
 }
 
 
-ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "ngx_http_waf_handler_modsecurity() ... start");
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -96,6 +96,10 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
+    action_t* action = NULL;
+    ngx_http_waf_copy_action_chain(r->pool, action, loc_conf->action_chain_modsecurity);
+    
+
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_thread_task_t* task = ngx_thread_task_alloc(r->pool, sizeof(ngx_http_request_t));
     if (task == NULL) {
@@ -114,12 +118,26 @@ ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out
     return NGX_HTTP_WAF_MATCHED;
 #else
 
+    ngx_int_t http_status = NGX_DECLINED;
+    ngx_int_t ret = _process_request(r, &http_status);
+    if (ret == NGX_HTTP_WAF_MATCHED) {
+        if (http_status >= 400 && http_status < 600) {
+            if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FOLLOW)) {
+                ngx_http_waf_append_action_return(r, http_status, ACTION_FLAG_FROM_MODSECURITY);
+
+            } else {
+                ngx_http_waf_append_action_chain(r, action);
+            }
+
+        } else {
+            ngx_http_waf_append_action_return(r, http_status, ACTION_FLAG_FROM_MODSECURITY);
+        }
+    }
+
     ngx_http_waf_dp(r, "ngx_http_waf_handler_modsecurity() ... end");
-    return _process_request(r, out_http_status);
+    return ret;
 
 #endif
-
-
 }
 
 

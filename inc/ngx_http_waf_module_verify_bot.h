@@ -7,7 +7,7 @@
 #include <ngx_http_waf_module_check.h>
 
 
-ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r);
 
 
 #endif

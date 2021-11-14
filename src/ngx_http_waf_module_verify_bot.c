@@ -8,9 +8,9 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r);
 
 static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r);
 
-static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail);
+// static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail);
 
-ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r, ngx_int_t* out_http_status) {
+ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "ngx_http_waf_handler_verify_bot() ... start");
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -21,23 +21,25 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r, ngx_int_t* out_
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
+    action_t* action_internal_err = ngx_pcalloc(r->pool, sizeof(action_t));
+    ngx_http_waf_set_action_return(action_internal_err, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
+
+    action_t* action_decline = ngx_pcalloc(r->pool, sizeof(action_t));
+    ngx_http_waf_set_action_decline(action_decline, ACTION_FLAG_FROM_CAPTCHA);
+
+    action_t* action = NULL;
+    ngx_http_waf_copy_action_chain(r->pool, action, loc_conf->action_chain_verify_bot);
+
     #define ngx_http_waf_func(handler, bot) {                                   \
         ngx_http_waf_dpf(r, "verfiying %s", bot);                               \
         ngx_int_t rc = (handler)(r);                                            \
         if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {     \
-            ngx_http_waf_dp(r, "fake bot");                                     \
-            *out_http_status = loc_conf->waf_http_status;                       \
-            ngx_http_waf_dp(r, "generating ctx");                               \
-            if (_gen_ctx(r, (bot)) != NGX_HTTP_WAF_SUCCESS) {                   \
-                ngx_http_waf_dp(r, "failed ... return");                        \
-                *out_http_status = NGX_HTTP_INTERNAL_SERVER_ERROR;              \
-                return NGX_HTTP_WAF_MATCHED;                                                         \
-            }                                                                   \
-            ngx_http_waf_dp(r, "success ... return")                            \
+            ngx_http_waf_dp(r, "fake bot ... return");                          \
+            ngx_http_waf_append_action_chain(r, action);                        \
             return NGX_HTTP_WAF_MATCHED;                                        \
         } else if (rc == NGX_HTTP_WAF_SUCCESS) {                                \
             ngx_http_waf_dp(r, "real bot ... return");                          \
-            *out_http_status = NGX_DECLINED;                                    \
+            ngx_http_waf_append_action_chain(r, action_decline);                \
             return NGX_HTTP_WAF_MATCHED;                                        \
         }                                                                       \
     }
@@ -375,13 +377,13 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
     return NGX_HTTP_WAF_FAKE_BOT;
 }
 
-static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail) {
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+// static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail) {
+//     ngx_http_waf_ctx_t* ctx = NULL;
+//     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
-    ctx->gernal_logged = 1;
-    ctx->blocked = 1;
-    ngx_http_waf_set_rule_info(r, "FAKE-BOT", (char*)detail);
+//     ctx->gernal_logged = 1;
+//     ctx->blocked = 1;
+//     ngx_http_waf_set_rule_info(r, "FAKE-BOT", (char*)detail);
 
-    return NGX_HTTP_WAF_SUCCESS;
-}
+//     return NGX_HTTP_WAF_SUCCESS;
+// }

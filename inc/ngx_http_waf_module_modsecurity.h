@@ -15,7 +15,7 @@ void ngx_http_waf_body_filter_init();
 void ngx_http_waf_modsecurity_handler_log(void* log, const void* data);
 
 
-ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r, ngx_int_t* out_http_status);
+ngx_int_t ngx_http_waf_handler_modsecurity(ngx_http_request_t* r);
 
 
 ngx_int_t ngx_http_waf_header_filter(ngx_http_request_t *r);
