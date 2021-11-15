@@ -24,7 +24,7 @@ void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_t* pool) {
 
     ngx_memzero(_lru, sizeof(lru_cache_t));
 
-    ngx_memcpy(&_lru->pool, &pool, sizeof(mem_pool_t));
+    _lru->pool = pool;
     _lru->last_eliminate = time(NULL);
     _lru->capacity = capacity;
     _lru->hash_head = NULL;
