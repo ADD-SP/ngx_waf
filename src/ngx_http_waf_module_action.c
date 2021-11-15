@@ -270,7 +270,7 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             ngx_http_waf_dp(r, "success");
 
             ngx_http_waf_dp(r, "adding cache");
-            lru_cache_add_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr), 0);
+            lru_cache_add_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr), 60 * 60);
 
             if (result.status == NGX_HTTP_WAF_SUCCESS) {
                 ngx_http_waf_dp(r, "success");

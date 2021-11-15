@@ -61,13 +61,33 @@ shm_init_t* ngx_http_waf_shm_init_handler_add(shm_t* shm) {
         return NULL;
     }
 
-    init->handler = NULL;
+    init->init_handler = NULL;
+    init->gc_handler = NULL;
     init->data = NULL;
     ngx_str_null(&init->tag);
 
     LL_PREPEND(shm->init_chain, init);
 
     return init;
+}
+
+
+ngx_int_t ngx_http_waf_shm_gc(shm_t* shm) {
+    shm_init_t* init = NULL;
+
+    ngx_int_t low_memory = NGX_HTTP_WAF_FALSE;
+
+    LL_FOREACH(shm->init_chain, init) {
+        if (init->gc_handler != NULL) {
+            ngx_int_t rc = init->gc_handler(shm, init->data, &low_memory);
+
+            if (rc != NGX_HTTP_WAF_SUCCESS) {
+                return NGX_HTTP_WAF_FAIL;
+            }
+        }
+    }
+
+    return NGX_HTTP_WAF_SUCCESS;
 }
 
 
@@ -139,12 +159,12 @@ static ngx_int_t _shm_zone_init_handler(ngx_shm_zone_t *zone, void *data) {
                     continue;
                 }
 
-                if (init->handler(shm->pool, init->data, old_init->data) != NGX_HTTP_WAF_SUCCESS) {
+                if (init->init_handler(shm, init->data, old_init->data) != NGX_HTTP_WAF_SUCCESS) {
                     return NGX_ERROR;
                 }
             }
         } else {
-            if (init->handler(shm->pool, init->data, NULL) != NGX_HTTP_WAF_SUCCESS) {
+            if (init->init_handler(shm, init->data, NULL) != NGX_HTTP_WAF_SUCCESS) {
                 return NGX_ERROR;
             }
         }

@@ -133,11 +133,18 @@ typedef struct mem_pool_s {
 } mem_pool_t;
 
 
-typedef ngx_int_t (*shm_init_pt)(mem_pool_t* pool, void* data, void* old_data);
+typedef struct shm_s shm_t;
+
+
+typedef ngx_int_t (*shm_init_pt)(shm_t* shm, void* data, void* old_data);
+
+/** 垃圾收集函数 */
+typedef ngx_int_t (*shm_gc_pt)(shm_t* shm, void* data, ngx_int_t* low_memory);
 
 
 typedef struct shm_init_s {
-    shm_init_pt handler;
+    shm_init_pt init_handler;
+    shm_gc_pt  gc_handler;
     void* data;
     ngx_str_t tag;
     struct shm_init_s* next;
@@ -195,6 +202,7 @@ typedef struct lru_cache_s {
     size_t                            capacity;           /**< 最多嫩容纳多少个缓存项 */
     lru_cache_item_t                 *hash_head;          /**< uthash 的表头 */
     lru_cache_item_t                 *chain_head;         /**< utlist 的表头 */
+    ngx_int_t                         no_memory:1;        /**< 近期是否触发惰性淘汰 */
 } lru_cache_t;
 
 
@@ -294,6 +302,15 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
     ngx_int_t                       register_content_handler:1;                 /**< 是否已经注册或应该注册内容处理程序 */
 } ngx_http_waf_ctx_t;
+
+
+/**
+ * @struct ngx_http_waf_main_conf_t
+ * @brief http 块配置项
+*/
+typedef struct ngx_http_waf_main_conf_s {
+    ngx_array_t                    *shms;                                       /**< 共享内存列表 */
+} ngx_http_waf_main_conf_t;
 
 
 /**

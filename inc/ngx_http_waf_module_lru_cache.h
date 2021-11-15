@@ -32,7 +32,10 @@ void lru_cache_free(lru_cache_t* lru, void* addr);
 void lru_cache_delete(lru_cache_t* lru, void* key, size_t key_len);
 
 
-void lru_cache_eliminate(lru_cache_t* lru, size_t count);
+ngx_uint_t lru_cache_eliminate_expire(lru_cache_t* lru, size_t count);
+
+
+ngx_uint_t lru_cache_eliminate(lru_cache_t* lru, size_t count);
 
 
 #endif

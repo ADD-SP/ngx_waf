@@ -42,13 +42,10 @@ static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf);
 
 
-static ngx_int_t _shm_handler_cc_deny_init(mem_pool_t* pool, void* data, void* old_data);
+static ngx_int_t _shm_handler_init(shm_t* shm, void* data, void* old_data);
 
 
-static ngx_int_t _shm_handler_action_cache_captcha_init(mem_pool_t* pool, void* data, void* old_data);
-
-
-static ngx_int_t _shm_handler_captcha_init(mem_pool_t* pool, void* data, void* old_data);
+static ngx_int_t _shm_handler_gc(shm_t* shm, void* data, ngx_int_t* low_memory);
 
 
 static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool);
@@ -64,6 +61,8 @@ static void _modsecurity_pcre_free(void* ptr);
 
 
 char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_main_conf_t* main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
+
     ngx_str_t* p_str = cf->args->elts;
 
     ngx_str_t zone_name;
@@ -114,7 +113,7 @@ char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         goto duplicate_zone_name;
     }
 
-    shm_t* shm = ngx_pcalloc(cf->pool, sizeof(shm_t));
+    shm_t* shm = ngx_array_push(main_conf->shms);
     
     if (shm == NULL) {
         goto unexpected_error;
@@ -123,6 +122,8 @@ char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     if (ngx_http_waf_shm_init(shm, cf, &zone_name, zone_size) != NGX_HTTP_WAF_SUCCESS) {
         goto unexpected_error;
     }
+
+
 
     return NGX_CONF_OK;
 
@@ -357,9 +358,10 @@ char* ngx_http_waf_cc_deny_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
             
 
-            init->data = loc_conf;
+            init->data = &loc_conf->ip_access_statistics;
             init->tag = tag;
-            init->handler = _shm_handler_cc_deny_init;
+            init->init_handler = _shm_handler_init;
+            init->gc_handler = _shm_handler_gc;
 
             utarray_free(temp);
             
@@ -764,9 +766,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
                 goto unexpected_error;
             }
 
-            init->data = loc_conf;
+            init->data = &loc_conf->waf_captcha_cache;
             init->tag = tag;
-            init->handler = _shm_handler_captcha_init;
+            init->init_handler = _shm_handler_init;
+            init->gc_handler = _shm_handler_gc;
 
             utarray_free(temp);
             
@@ -1246,9 +1249,10 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 goto unexpected_error;
             }
 
-            init->data = loc_conf;
+            init->data = &loc_conf->action_cache_captcha;
             init->tag = tag;
-            init->handler = _shm_handler_action_cache_captcha_init;
+            init->init_handler = _shm_handler_init;
+            init->gc_handler = _shm_handler_gc;
 
             utarray_free(temp);
             
@@ -1437,6 +1441,23 @@ char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t
 
     return NGX_CONF_OK;
 
+}
+
+
+void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
+    ngx_http_waf_main_conf_t* main_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_main_conf_t));
+
+    if (main_conf == NULL) {
+        return NULL;
+    }
+
+    main_conf->shms = ngx_array_create(cf->pool, 5, sizeof(shm_t));
+
+    if (main_conf->shms == NULL) {
+        return NULL;
+    }
+
+    return main_conf;
 }
 
 
@@ -1744,46 +1765,44 @@ ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
 }
 
 
-static ngx_int_t _shm_handler_cc_deny_init(mem_pool_t* pool, void* data, void* old_data) {
-    ngx_http_waf_loc_conf_t* loc_conf = data;
-    ngx_http_waf_loc_conf_t* old_loc_conf = old_data;
+static ngx_int_t _shm_handler_init(shm_t* shm, void* data, void* old_data) {
+    lru_cache_t** cache = data;
+    lru_cache_t** old_cache = old_data;
 
-    if (old_loc_conf != NULL) {
-        loc_conf->ip_access_statistics = old_loc_conf->ip_access_statistics;
+    if (old_cache != NULL) {
+        *cache = *old_cache;
 
     } else {
-        lru_cache_init(&loc_conf->ip_access_statistics, SIZE_MAX, pool);
+        lru_cache_init(cache, SIZE_MAX, shm->pool);
     }
 
     return NGX_HTTP_WAF_SUCCESS;
 }
 
 
-static ngx_int_t _shm_handler_action_cache_captcha_init(mem_pool_t* pool, void* data, void* old_data) {
-    ngx_http_waf_loc_conf_t* loc_conf = data;
-    ngx_http_waf_loc_conf_t* old_loc_conf = old_data;
+static ngx_int_t _shm_handler_gc(shm_t* shm, void* data, ngx_int_t* low_memory) {
+    lru_cache_t** cache = data;
+    uint32_t num = randombytes_uniform(10);
 
-    if (old_loc_conf != NULL) {
-        loc_conf->action_cache_captcha = old_loc_conf->action_cache_captcha;
+    ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)shm->zone->shm.addr;
 
-    } else {
-        lru_cache_init(&loc_conf->action_cache_captcha, SIZE_MAX, pool);
-    }
+    ngx_shmtx_lock(&shpool->mutex);
 
-    return NGX_HTTP_WAF_SUCCESS;
-}
-
-
-static ngx_int_t _shm_handler_captcha_init(mem_pool_t* pool, void* data, void* old_data) {
-    ngx_http_waf_loc_conf_t* loc_conf = data;
-    ngx_http_waf_loc_conf_t* old_loc_conf = old_data;
-
-    if (old_loc_conf != NULL) {
-        loc_conf->waf_captcha_cache = old_loc_conf->waf_captcha_cache;
+    if (num >= 2) {
+        lru_cache_eliminate_expire(*cache, 5);
 
     } else {
-        lru_cache_init(&loc_conf->waf_captcha_cache, SIZE_MAX, pool);
+        if ((*cache)->no_memory) {
+            *low_memory = NGX_HTTP_WAF_TRUE;
+            (*cache)->no_memory = 0;
+            lru_cache_eliminate(*cache, 5);
+
+        } else {
+            lru_cache_eliminate_expire(*cache, 5);
+        }
     }
+
+    ngx_shmtx_unlock(&shpool->mutex);
 
     return NGX_HTTP_WAF_SUCCESS;
 }

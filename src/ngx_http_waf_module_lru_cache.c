@@ -30,6 +30,7 @@ void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_t* pool) {
     _lru->hash_head = NULL;
     _lru->chain_head = NULL;
     _lru->pool = pool;
+    _lru->no_memory = 0;
 
     *lru = _lru;
 }
@@ -64,6 +65,7 @@ lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len
     item = mem_pool_calloc(lru->pool, sizeof(lru_cache_item_t));
     while (item == NULL && HASH_COUNT(lru->hash_head) != 0) {
         lru_cache_eliminate(lru, 1);
+        lru->no_memory = 1;
         item = mem_pool_calloc(lru->pool, sizeof(lru_cache_item_t));
     }
 
@@ -76,6 +78,7 @@ lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len
     item->key_ptr = mem_pool_calloc(lru->pool, key_len);
     while (item->key_ptr == NULL && HASH_COUNT(lru->hash_head) != 0) {
         lru_cache_eliminate(lru, 1);
+        lru->no_memory = 1;
         item->key_ptr = mem_pool_calloc(lru->pool, key_len);
     }
 
@@ -192,16 +195,39 @@ void lru_cache_delete(lru_cache_t* lru, void* key, size_t key_len) {
 }
 
 
-void lru_cache_eliminate(lru_cache_t* lru, size_t count) {
+ngx_uint_t lru_cache_eliminate_expire(lru_cache_t* lru, size_t count) {
     assert(lru != NULL);
     assert(count != 0);
 
-    for (size_t i = 0; i < count; i++) {
-        if (lru->chain_head != NULL) {
+    ngx_uint_t _count = 0; 
+
+    time_t now = time(NULL);
+    
+    for (size_t i = 0; i < count && lru->chain_head != NULL; i++) {
+        if (lru->chain_head->expire < now) {
             lru_cache_item_t* tail = lru->chain_head->prev;
             lru_cache_delete(lru, tail->key_ptr, tail->key_byte_length);
+            _count++;
         }
     }
+
+    return _count;
+}
+
+
+ngx_uint_t lru_cache_eliminate(lru_cache_t* lru, size_t count) {
+    assert(lru != NULL);
+    assert(count != 0);
+
+    ngx_uint_t _count = 0; 
+
+    for (size_t i = 0; i < count && lru->chain_head != NULL; i++) {
+        lru_cache_item_t* tail = lru->chain_head->prev;
+        lru_cache_delete(lru, tail->key_ptr, tail->key_byte_length);
+        _count++;
+    }
+
+    return _count;
 }
 
 
@@ -241,6 +267,7 @@ static void* _lru_cache_hash_calloc(lru_cache_t* lru, size_t n) {
     void* ret = mem_pool_calloc(lru->pool, n);
     while (ret == NULL && HASH_COUNT(lru->hash_head) != 0) {
         lru_cache_eliminate(lru, 1);
+        lru->no_memory = 1;
         ret = mem_pool_calloc(lru->pool, n);
     }
     assert(ret != NULL);

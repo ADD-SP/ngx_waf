@@ -117,7 +117,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
 static ngx_http_module_t ngx_http_waf_module_ctx = {
     NULL,
     ngx_http_waf_init_after_load_config,
-    NULL, 
+    ngx_http_waf_create_main_conf, 
     NULL, 
     NULL, 
     NULL,
@@ -146,6 +146,9 @@ static ngx_int_t _read_request_body(ngx_http_request_t* r);
 
 
 static void _handler_read_request_body(ngx_http_request_t* r);
+
+
+static ngx_int_t _gc(ngx_http_request_t* r);
 
 
 ngx_int_t ngx_http_waf_init_process(ngx_cycle_t *cycle) {
@@ -184,6 +187,8 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "do nothing due to not enabled ... return");
         return NGX_DECLINED;
     }
+
+    _gc(r);
 
     if (ctx == NULL) {
         ngx_http_waf_dp(r, "no ctx ... return");
@@ -384,6 +389,11 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
 }
 
 
+void ngx_http_waf_handler_cleanup(void *data) {
+    return;
+}
+
+
 static ngx_int_t _read_request_body(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
@@ -471,6 +481,25 @@ static void _handler_read_request_body(ngx_http_request_t* r) {
 }
 
 
-void ngx_http_waf_handler_cleanup(void *data) {
-    return;
+static ngx_int_t _gc(ngx_http_request_t* r) {
+    ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_core_conf_t* ccf = (ngx_core_conf_t *)ngx_get_conf(ngx_cycle->conf_ctx, ngx_core_module);
+
+    uint32_t num = randombytes_uniform(ccf->worker_processes);
+
+    if (num > 0) {
+        return NGX_HTTP_WAF_SUCCESS;
+    }
+
+    shm_t* shms = mcf->shms->elts;
+
+    for (size_t i = 0; i < mcf->shms->nelts; i++) {
+        shm_t* shm = &shms[i];
+
+        if (ngx_http_waf_shm_gc(shm) != NGX_HTTP_WAF_SUCCESS) {
+            return NGX_HTTP_WAF_FAIL;
+        }
+    }
+
+    return NGX_HTTP_WAF_SUCCESS;
 }

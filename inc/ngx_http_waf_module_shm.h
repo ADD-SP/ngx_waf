@@ -10,6 +10,9 @@ ngx_int_t ngx_http_waf_shm_init(shm_t* shm, ngx_conf_t* cf, ngx_str_t* name, siz
 shm_init_t* ngx_http_waf_shm_init_handler_add(shm_t* shm);
 
 
+ngx_int_t ngx_http_waf_shm_gc(shm_t* shm);
+
+
 shm_t* ngx_http_waf_shm_get(ngx_str_t* name);
 
 

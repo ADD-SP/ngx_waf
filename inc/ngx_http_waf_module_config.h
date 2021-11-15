@@ -126,6 +126,12 @@ char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t
 
 
 /**
+ * @brief 初始化结构体 ngx_http_waf_main_t
+*/
+void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
+
+
+/**
  * @brief 初始化结构体 ngx_http_waf_loc_conf_t
 */
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf);
