@@ -335,6 +335,10 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_captcha_verify_url;                     /**< 本模块接管的用于验证的 URL */
     ngx_int_t                       waf_captcha_expire;                         /**< 验证码的有效期 */
     ngx_str_t                       waf_captcha_html;                           /**< 验证码页面的 HTML 数据 */
+    ngx_int_t                       waf_captcha_max_fails;                      /**< 验证码的最大失败次数 */
+    ngx_int_t                       waf_captcha_duration;                       /**< 验证码的拉黑时长（秒） */
+    ngx_shm_zone_t                 *waf_captcha_shm_zone;                       /**< 验证码的共享内存 */
+    lru_cache_t                    *waf_captcha_cache;                          /**< 验证码的 LRU 缓存 */
     ngx_int_t                       waf_modsecurity;                            /**< 是否启用 ModSecurity */
     ngx_str_t                       waf_modsecurity_rules_file;                 /**< ModSecurity 规则文件的绝对路径 */
     ngx_str_t                       waf_modsecurity_rules_remote_key;

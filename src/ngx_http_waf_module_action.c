@@ -2,27 +2,27 @@
 
 
 typedef struct _captcha_cache_s {
-    ngx_uint_t bad_count;
+    ngx_int_t count;
     ngx_uint_t error_page:1;    /**< 1: 返回 403, 0: CAPTCHA */
 } _captcha_cache_t;
- 
-
-ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action);
 
 
-ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action);
+static ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action);
 
 
-void _perform_action_reg_content(ngx_http_request_t* r, action_t* action);
+static ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action);
 
 
-ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action);
+static void _perform_action_reg_content(ngx_http_request_t* r, action_t* action);
 
 
-ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action);
+static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action);
 
 
-ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content_type, ngx_uint_t http_status);
+static ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action);
+
+
+static ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content_type, ngx_uint_t http_status);
 
 
 ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
@@ -51,6 +51,12 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "searching cache");
     lru_cache_find_result_t result = lru_cache_find(cache, &inx_addr, sizeof(inx_addr));
 
+    ngx_http_waf_dp(r, "unlocking shared memory")
+    ngx_shmtx_unlock(&shpool->mutex);
+    ngx_http_waf_dp(r, "success");
+
+    ngx_int_t need_delete = 0;
+
     if (result.status == NGX_HTTP_WAF_KEY_EXISTS) {
         ngx_http_waf_dp(r, "cache exists");
 
@@ -64,28 +70,69 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
 
             case NGX_HTTP_WAF_CAPTCHA_CHALLENGE:
                 ngx_http_waf_dp(r, "challenge");
-                ngx_http_waf_append_action_captcha(r, ACTION_FLAG_NONE);
+                
+                if (ngx_http_waf_captcha_inc_fails(r) == NGX_HTTP_WAF_MATCHED) {
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "TO MANY FAILS");
+                    ngx_http_waf_append_action_return(r, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_CAPTCHA);
+
+                } else {
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "CHALLENGE");
+                    ngx_http_waf_append_action_captcha(r, ACTION_FLAG_FROM_CAPTCHA);   
+                }
+
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
 
             case NGX_HTTP_WAF_CAPTCHA_BAD:
                 ngx_http_waf_dp(r, "bad");
-                ngx_http_waf_append_action_str(r, "bad", sizeof("bad") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
+
+                if (ngx_http_waf_captcha_inc_fails(r) == NGX_HTTP_WAF_MATCHED) {
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "TO MANY FAILS");
+                    ngx_http_waf_append_action_return(r, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_CAPTCHA);
+
+                } else {
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "bad");
+                    ngx_http_waf_append_action_str(r, "bad", sizeof("bad") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
+                }
+
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
 
             case NGX_HTTP_WAF_CAPTCHA_PASS:
                 ngx_http_waf_dp(r, "pass");
-                lru_cache_delete(cache, &inx_addr, sizeof(inx_addr));
+                need_delete = 1;
                 ngx_http_waf_append_action_str(r, "good", sizeof("good") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
+                ret_value = NGX_HTTP_WAF_MATCHED;
+                break;
+
+            case NGX_HTTP_WAF_FAIL:
+                ngx_http_waf_dp(r, "fail");
+
+                if (ngx_http_waf_captcha_inc_fails(r) == NGX_HTTP_WAF_MATCHED) {
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "TO MANY FAILS");
+                    ngx_http_waf_append_action_return(r, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_CAPTCHA);
+
+                } else {
+                    ngx_http_waf_set_rule_info(r, "CAPTCHA", "CHALLENGE");
+                    ngx_http_waf_append_action_captcha(r, ACTION_FLAG_FROM_CAPTCHA); 
+                }
+                
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
         }
     }
 
-    ngx_http_waf_dp(r, "unlocking shared memory")
-    ngx_shmtx_unlock(&shpool->mutex);
-    ngx_http_waf_dp(r, "success");
+    if (need_delete) {
+        ngx_http_waf_dp(r, "locking shared memory");
+        ngx_shmtx_lock(&shpool->mutex);
+        ngx_http_waf_dp(r, "success");
+
+        lru_cache_delete(cache, &inx_addr, sizeof(inx_addr));
+
+        ngx_http_waf_dp(r, "unlocking shared memory")
+        ngx_shmtx_unlock(&shpool->mutex);
+        ngx_http_waf_dp(r, "success");
+    }
 
     ngx_http_waf_dp_func_end(r);
     return ret_value;
@@ -167,7 +214,7 @@ ngx_int_t ngx_http_waf_perform_action_at_content(ngx_http_request_t* r) {
 }
 
 
-ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action) {
+static ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp_func_start(r);
     ngx_int_t ret = action->extra.http_status;
     ngx_http_waf_dpf(r, "return %i", ret);
@@ -176,7 +223,7 @@ ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action) {
 }
 
 
-ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action) {
+static ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp_func_start(r);
     ngx_http_waf_dp(r, "return NGX_DECLINED");
     ngx_http_waf_dp_func_end(r);
@@ -185,14 +232,14 @@ ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action) {
 }
 
 
-void _perform_action_reg_content(ngx_http_request_t* r, action_t* action) {
+static void _perform_action_reg_content(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp_func_start(r);
     ngx_http_waf_register_content_handler(r);
     ngx_http_waf_dp_func_end(r);
 }
 
 
-ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
+static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -236,7 +283,7 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
                 }
 
                 *result.data = tmp;
-                tmp->bad_count = 0;
+                tmp->count = 0;
 
                 if (!ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CC_DENY)) {
                     tmp->error_page = 1;
@@ -245,7 +292,6 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
 
             } else if (result.status == NGX_HTTP_WAF_KEY_EXISTS) {
                 _captcha_cache_t* tmp = *result.data;
-                tmp->bad_count++;
                 
                 if (!ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CC_DENY)) {
                     tmp->error_page = 0;
@@ -323,7 +369,7 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
 }
 
 
-ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action) {
+static ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp_func_start(r);
     ngx_str_t content_type = ngx_string("text/plain");
     ngx_http_waf_dp_func_end(r);
@@ -331,7 +377,7 @@ ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action) {
 }
 
 
-ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content_type, ngx_uint_t http_status) {
+static ngx_int_t _gen_response(ngx_http_request_t* r, ngx_str_t data, ngx_str_t content_type, ngx_uint_t http_status) {
     ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_dp(r, "discard_request_body");

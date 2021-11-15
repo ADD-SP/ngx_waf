@@ -44,11 +44,16 @@ lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len
 
     lru_cache_item_t* item = _lru_cache_hash_find(lru, key, key_len);
     if (item != NULL) {
-        CDL_DELETE(lru->chain_head, item);
-        CDL_PREPEND(lru->chain_head, item);
-        ret.status = NGX_HTTP_WAF_KEY_EXISTS;
-        ret.data = &item->data;
-        return ret;
+        if (item->expire < time(NULL)) {
+            lru_cache_delete(lru, key, key_len);
+
+        } else {
+            CDL_DELETE(lru->chain_head, item);
+            CDL_PREPEND(lru->chain_head, item);
+            ret.status = NGX_HTTP_WAF_KEY_EXISTS;
+            ret.data = &item->data;
+            return ret;
+        }
     }
 
     if (HASH_COUNT(lru->hash_head) >= lru->capacity) {

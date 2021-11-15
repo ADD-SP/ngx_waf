@@ -48,6 +48,9 @@ static ngx_int_t _shm_handler_cc_deny_init(mem_pool_t* pool, void* data, void* o
 static ngx_int_t _shm_handler_action_cache_captcha_init(mem_pool_t* pool, void* data, void* old_data);
 
 
+static ngx_int_t _shm_handler_captcha_init(mem_pool_t* pool, void* data, void* old_data);
+
+
 static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool);
 
 
@@ -689,11 +692,97 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
             ngx_memcpy(loc_conf->waf_captcha_verify_url.data, p->data, p->len);
             loc_conf->waf_captcha_verify_url.len = p->len;
 
+        }  else if (_streq(p->data, "max_fails")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            UT_array* temp = NULL;
+            if (ngx_http_waf_str_split(p, ':', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
+                goto error;
+            }
+
+            if (utarray_len(temp) != 2) {
+                goto error;
+            }
+
+            ngx_str_t* max_fails = NULL;
+            ngx_str_t* duration = NULL;
+
+            max_fails = (ngx_str_t*)utarray_next(temp, NULL);
+            duration = (ngx_str_t*)utarray_next(temp, max_fails);
+
+            loc_conf->waf_captcha_max_fails = ngx_atoi(max_fails->data, max_fails->len);
+
+            if (loc_conf->waf_captcha_max_fails == NGX_ERROR
+                || loc_conf->waf_captcha_max_fails <= 0) {
+                goto error;
+            }
+
+            loc_conf->waf_captcha_duration = ngx_http_waf_parse_time(duration->data);
+
+            if (loc_conf->waf_captcha_duration == NGX_ERROR) {
+                goto error;
+            }
+
+        }  else if (_streq(p->data, "zone")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            UT_array* temp = NULL;
+            if (ngx_http_waf_str_split(p, ':', 256, &temp) != NGX_HTTP_WAF_SUCCESS) {
+                goto error;
+            }
+
+            if (utarray_len(temp) != 2) {
+                goto error;
+            }
+
+            ngx_str_t* zone_name = NULL;
+            ngx_str_t* zone_tag = NULL;
+            zone_name = (ngx_str_t*)utarray_next(temp, NULL);
+            zone_tag = (ngx_str_t*)utarray_next(temp, zone_name);
+
+            ngx_str_t tag;
+            tag.data = ngx_pcalloc(cf->pool, zone_tag->len + sizeof("captcha"));
+            tag.len = zone_tag->len + sizeof("captcha") - 1;
+            ngx_sprintf(tag.data, "%s%s", zone_tag->data, "captcha");
+            zone_tag = &tag;
+
+            shm_t* shm = ngx_http_waf_shm_get(zone_name);
+
+            if (shm == NULL) {
+                goto no_zone;
+            }
+
+            if (ngx_http_waf_shm_tag_is_used(zone_name, zone_tag) == NGX_HTTP_WAF_TRUE) {
+                goto reused_tag;
+            }
+
+            loc_conf->waf_captcha_shm_zone = shm->zone;
+
+            shm_init_t* init = ngx_http_waf_shm_init_handler_add(shm);
+            
+            if (init == NULL) {
+                goto unexpected_error;
+            }
+
+            init->data = loc_conf;
+            init->tag = tag;
+            init->handler = _shm_handler_captcha_init;
+
+            utarray_free(temp);
+            
         } else {
             goto error;
         }
 
         utarray_free(array);
+    }
+
+    if (!ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha_max_fails)
+        || !ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha_duration)) {
+
+        if (!ngx_http_waf_is_valid_ptr_value(loc_conf->waf_captcha_shm_zone)) {
+            goto max_fails_with_zone;
+        }
     }
 
     if (ngx_is_null_str(&loc_conf->waf_captcha_html)) {
@@ -708,7 +797,14 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         loc_conf->waf_captcha_html.len = len;
     }
 
-    if (loc_conf->waf_captcha_api.data == NULL || loc_conf->waf_captcha_api.len == 0) {
+    if (ngx_is_null_str(&loc_conf->waf_captcha_hCaptcha_secret)
+        || ngx_is_null_str(&loc_conf->waf_captcha_reCAPTCHAv2_secret)
+        || ngx_is_null_str(&loc_conf->waf_captcha_reCAPTCHAv3_secret)) {
+        
+        goto no_secret;
+    }
+
+    if (ngx_is_null_str(&loc_conf->waf_captcha_api)) {
         switch (loc_conf->waf_captcha_type) {
             case NGX_HTTP_WAF_HCAPTCHA:
                 ngx_str_set(&loc_conf->waf_captcha_api, "https://hcaptcha.com/siteverify");
@@ -728,6 +824,32 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
     }
 
     return NGX_CONF_OK;
+
+no_secret:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+        "ngx_waf: you must set the parameter [secret]");
+    return NGX_CONF_ERROR;
+
+
+max_fails_with_zone:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+        "ngx_waf: If you set the parameter [max_fails], you must set the parameter [zone]");
+    return NGX_CONF_ERROR;
+
+unexpected_error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: unexpected error");
+    return NGX_CONF_ERROR;
+
+reused_tag:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: each tag of a zone can only be used once");
+    return NGX_CONF_ERROR;
+
+no_zone:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: zone name does not exists");
+    return NGX_CONF_ERROR;
 
 no_sitekey:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
@@ -1368,6 +1490,9 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_value(child->waf_captcha_type, parent->waf_captcha_type, 0);
     ngx_conf_merge_value(child->waf_captcha_expire, parent->waf_captcha_expire, 60 * 30);
     ngx_conf_merge_value(child->waf_captcha_reCAPTCHAv3_score, parent->waf_captcha_reCAPTCHAv3_score, NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_captcha_max_fails, parent->waf_captcha_max_fails, NGX_CONF_UNSET);
+    ngx_conf_merge_value(child->waf_captcha_duration, parent->waf_captcha_duration, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_captcha_shm_zone, parent->waf_captcha_shm_zone, NULL);
 
     if (child->waf_captcha_html.data == NULL || child->waf_captcha_html.len == 0) {
         ngx_memcpy(&(child->waf_captcha_html), &(parent->waf_captcha_html), sizeof(ngx_str_t));
@@ -1649,6 +1774,21 @@ static ngx_int_t _shm_handler_action_cache_captcha_init(mem_pool_t* pool, void* 
 }
 
 
+static ngx_int_t _shm_handler_captcha_init(mem_pool_t* pool, void* data, void* old_data) {
+    ngx_http_waf_loc_conf_t* loc_conf = data;
+    ngx_http_waf_loc_conf_t* old_loc_conf = old_data;
+
+    if (old_loc_conf != NULL) {
+        loc_conf->waf_captcha_cache = old_loc_conf->waf_captcha_cache;
+
+    } else {
+        lru_cache_init(&loc_conf->waf_captcha_cache, SIZE_MAX, pool);
+    }
+
+    return NGX_HTTP_WAF_SUCCESS;
+}
+
+
 static ngx_int_t _load_into_container(ngx_conf_t* cf, const char* file_name, void* container, ngx_int_t mode) {
     FILE* fp = fopen(file_name, "r");
     ngx_int_t line_number = 0;
@@ -1832,6 +1972,9 @@ static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     conf->waf_captcha_type = NGX_CONF_UNSET;
     conf->waf_captcha_expire = NGX_CONF_UNSET;
     conf->waf_captcha_reCAPTCHAv3_score = NGX_CONF_UNSET;
+    conf->waf_captcha_shm_zone = NGX_CONF_UNSET_PTR;
+    conf->waf_captcha_max_fails = NGX_CONF_UNSET;
+    conf->waf_captcha_duration = NGX_CONF_UNSET;
 
     conf->waf_cc_deny = NGX_CONF_UNSET;
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;

@@ -588,6 +588,14 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
             _conf->action_cache_captcha = parent->action_cache_captcha;
             parent = parent->parent;
         }
+
+        parent = (*conf)->parent;
+
+        while (!ngx_http_waf_is_valid_ptr_value(_conf->waf_captcha_cache)
+               && parent != NULL) {
+            _conf->waf_captcha_cache = parent->waf_captcha_cache;
+            parent = parent->parent;
+        }
     }
 
     ngx_http_waf_dp_func_end(r);

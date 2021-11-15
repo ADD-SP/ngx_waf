@@ -116,14 +116,6 @@ waf_cc_deny rate=100r/m;
 --- must_die
 
 
-=== TEST: Bad directive waf_cc_deny (12)
-
---- config
-waf_cc_deny CAPTCHA rate=100r/m;
-
---- must_die
-
-
 === TEST: Bad directive waf_cache (1)
 
 --- config
@@ -244,6 +236,7 @@ waf_cc_deny on rate=100r/m zone=test:cc;
 
 --- must_die
 
+
 === TEST: Duplicate tag
 
 --- http_config
@@ -256,5 +249,29 @@ waf_cc_deny on rate=100r/m zone=test:cc;
 location /t {
     waf_cc_deny on rate=100r/m zone=test:cc;
 }
+
+--- must_die
+
+
+=== TEST: waf_captcha without sitekey
+
+--- config
+waf_captcha on prov=reCAPTCHAv3 secret=xxx;
+
+--- must_die
+
+
+=== TEST: waf_captcha without secret
+
+--- config
+waf_captcha on prov=reCAPTCHAv3 sitekey=xxx;
+
+--- must_die
+
+
+=== TEST: waf_captcha without zone
+
+--- config
+waf_captcha on prov=reCAPTCHAv3 sitekey=xxx secret=xxx max_fails=100:60m;
 
 --- must_die
