@@ -14,10 +14,13 @@
 void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_t* pool);
 
 
-lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len);
+lru_cache_add_result_t lru_cache_add(lru_cache_t* lru, void* key, size_t key_len, time_t expire);
 
 
 lru_cache_find_result_t lru_cache_find(lru_cache_t* lru, void* key, size_t key_len);
+
+
+void lru_cache_set_expire(lru_cache_t* lru, void* key, size_t key_len, time_t expire);
 
 
 void* lru_cache_calloc(lru_cache_t* lru, size_t size);

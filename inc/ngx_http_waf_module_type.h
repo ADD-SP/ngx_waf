@@ -177,6 +177,7 @@ typedef lru_cache_result_t lru_cache_find_result_t;
 typedef struct lru_cache_item_s {
     u_char                             *key_ptr;            /**< 用于哈希的关键字 */
     size_t                              key_byte_length;    /**< 关键字占用的字节数 */
+    time_t                              expire;             /**< 过期时间（秒） */
     void                               *data;               /**< 缓存项的具体数据 */
     struct lru_cache_item_s            *prev;               /**< utlist 关键成员 */
     struct lru_cache_item_s            *next;               /**< utlist 关键成员 */

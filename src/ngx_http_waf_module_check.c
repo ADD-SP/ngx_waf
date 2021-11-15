@@ -165,7 +165,12 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "not found");
 
         ngx_http_waf_dp(r, "adding cache");
-        lru_cache_add_result_t tmp1 = lru_cache_add(loc_conf->ip_access_statistics, &inx_addr, sizeof(inx_addr_t));
+        lru_cache_add_result_t tmp1 = lru_cache_add(
+            loc_conf->ip_access_statistics, 
+            &inx_addr, 
+            sizeof(inx_addr_t), 
+            loc_conf->waf_cc_deny_cycle);
+
         if (tmp1.status == NGX_HTTP_WAF_SUCCESS) {
             statis = mem_pool_calloc(loc_conf->ip_access_statistics->pool, sizeof(ip_statis_t));
             if (statis == NULL) {
@@ -179,13 +184,14 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
             ctx->rate = 0;
             *(tmp1.data) = statis;
             ngx_http_waf_dp(r, "success");
+
         } else {
             goto exception;
         }
     }
 
-    double diff_second_record = difftime(now, statis->record_time);
-    double diff_second_block = difftime(now, statis->block_time);
+    // double diff_second_record = difftime(now, statis->record_time);
+    // double diff_second_block = difftime(now, statis->block_time);
 
     if (statis->count != NGX_MAX_INT_T_VALUE) {
         statis->count++;
@@ -193,36 +199,45 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
 
     ctx->rate = statis->count;
 
-    /* 如果已经被拦截 */
-    if (statis->is_blocked == NGX_HTTP_WAF_TRUE) {
-        /* 如果还在拦截时间内 */
-        if (diff_second_block < duration) {
-            ngx_http_waf_dp(r, "still blocked");
-            goto matched;
-        } else {
-            ngx_http_waf_dp(r, "reset record");
-            statis->count = 1;
-            statis->is_blocked = NGX_HTTP_WAF_FALSE;
-            statis->record_time = now;
-            statis->block_time = 0;
-            ctx->rate = 1;
+    if (statis->count > loc_conf->waf_cc_deny_limit) {
+        if (statis->count -1 <= loc_conf->waf_cc_deny_limit) {
+            lru_cache_set_expire(loc_conf->ip_access_statistics, &inx_addr, sizeof(inx_addr_t), 
+                loc_conf->waf_cc_deny_duration);
         }
+
+        goto matched;
     }
-    /* 如果还在一个统计周期内 */ 
-    else if (diff_second_record <= loc_conf->waf_cc_deny_cycle) {
-        /* 如果访问频率超出限制 */
-        if (statis->count > limit) {
-            ngx_http_waf_dp(r, "start blocking");
-            goto matched;
-        }
-    } else {
-        ngx_http_waf_dp(r, "expired cache");
-        statis->count = 1;
-        statis->is_blocked = NGX_HTTP_WAF_FALSE;
-        statis->record_time = now;
-        statis->block_time = 0;
-        ctx->rate = 1;
-    }
+
+    // /* 如果已经被拦截 */
+    // if (statis->is_blocked == NGX_HTTP_WAF_TRUE) {
+    //     /* 如果还在拦截时间内 */
+    //     if (diff_second_block < duration) {
+    //         ngx_http_waf_dp(r, "still blocked");
+    //         goto matched;
+    //     } else {
+    //         ngx_http_waf_dp(r, "reset record");
+    //         statis->count = 1;
+    //         statis->is_blocked = NGX_HTTP_WAF_FALSE;
+    //         statis->record_time = now;
+    //         statis->block_time = 0;
+    //         ctx->rate = 1;
+    //     }
+    // }
+    // /* 如果还在一个统计周期内 */ 
+    // else if (diff_second_record <= loc_conf->waf_cc_deny_cycle) {
+    //     /* 如果访问频率超出限制 */
+    //     if (statis->count > limit) {
+    //         ngx_http_waf_dp(r, "start blocking");
+    //         goto matched;
+    //     }
+    // } else {
+    //     ngx_http_waf_dp(r, "expired cache");
+    //     statis->count = 1;
+    //     statis->is_blocked = NGX_HTTP_WAF_FALSE;
+    //     statis->record_time = now;
+    //     statis->block_time = 0;
+    //     ctx->rate = 1;
+    // }
 
 
     goto unlock;
@@ -236,10 +251,6 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
     block: 
     {
         ngx_http_waf_dp(r, "flow: block");
-        if (statis->is_blocked == NGX_HTTP_WAF_FALSE) {
-            statis->is_blocked = NGX_HTTP_WAF_TRUE;
-            statis->block_time = now;
-        }
 
         ctx->gernal_logged = 1;
         ctx->blocked = 1;
@@ -740,7 +751,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
         && loc_conf->waf_cache_capacity != NGX_CONF_UNSET
         && cache != NULL) {
         ngx_http_waf_dp(r, "adding cache");
-        lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char));
+        lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char), 0);
         if (tmp.status == NGX_HTTP_WAF_SUCCESS) {
             *(tmp.data) = lru_cache_calloc(cache, sizeof(check_result_t));
             if (*(tmp.data) == NULL) {
