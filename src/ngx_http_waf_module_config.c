@@ -1731,6 +1731,12 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 }
 
 
+ngx_int_t ngx_http_waf_preconfiguration(ngx_conf_t* cf) {
+    ngx_http_waf_shm_clear_inner_data();
+    return NGX_OK;
+}
+
+
 ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
     ngx_http_handler_pt* h;
     ngx_http_core_main_conf_t* cmcf;

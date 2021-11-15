@@ -143,6 +143,9 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf);
 char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf);
 
 
+ngx_int_t ngx_http_waf_preconfiguration(ngx_conf_t* cf);
+
+
 /**
  * @brief 在读取完全部配置后进行一些操作。
  * @li 将处理函数挂载到对应的请求处理阶段。

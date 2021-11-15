@@ -17,6 +17,11 @@ static _zone_t* _zones = NULL;
 static ngx_int_t _shm_zone_init_handler(ngx_shm_zone_t *zone, void *data);
 
 
+void ngx_http_waf_shm_clear_inner_data() {
+    _zones = NULL;
+}
+
+
 
 ngx_int_t ngx_http_waf_shm_init(shm_t* shm, ngx_conf_t* cf, ngx_str_t* name, size_t size) {
     if (ngx_http_waf_shm_get(name) != NULL) {
