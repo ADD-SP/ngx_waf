@@ -1,6 +1,12 @@
 #include <ngx_http_waf_module_action.h>
 
 
+typedef struct _captcha_cache_s {
+    ngx_uint_t bad_count;
+    ngx_uint_t error_page:1;    /**< 1: 返回 403, 0: CAPTCHA */
+} _captcha_cache_t;
+ 
+
 ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action);
 
 
@@ -195,6 +201,7 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
     ngx_str_t content_type = ngx_string("text/html");
 
     inx_addr_t inx_addr;
+    ngx_uint_t error_page = 0;
     ngx_http_waf_make_inx_addr(r, &inx_addr);
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
@@ -215,19 +222,49 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             ngx_shmtx_lock(&shpool->mutex);
             ngx_http_waf_dp(r, "success");
 
+            ngx_http_waf_dp(r, "adding cache");
             lru_cache_add_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr));
-            
-            if (result.status != NGX_HTTP_WAF_SUCCESS
-                && result.status != NGX_HTTP_WAF_KEY_EXISTS) {
+
+            if (result.status == NGX_HTTP_WAF_SUCCESS) {
+                ngx_http_waf_dp(r, "success");
+
+                _captcha_cache_t* tmp = lru_cache_calloc(cache, sizeof(_captcha_cache_t));
+
+                if (tmp == NULL) {
+                    ngx_http_waf_dp(r, "no memory ... return");
+                    ret_value = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                }
+
+                *result.data = tmp;
+                tmp->bad_count = 0;
+
+                if (!ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CC_DENY)) {
+                    tmp->error_page = 1;
+                    error_page = tmp->error_page;
+                }
+
+            } else if (result.status == NGX_HTTP_WAF_KEY_EXISTS) {
+                _captcha_cache_t* tmp = *result.data;
+                tmp->bad_count++;
+                
+                if (!ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CC_DENY)) {
+                    tmp->error_page = 0;
+                    error_page = tmp->error_page;
+                }
+                
+            } else {
+                ngx_http_waf_dp(r, "error");
                 ret_value = NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
-
+            
             ngx_http_waf_dp(r, "unlocking shared memory");
             ngx_shmtx_unlock(&shpool->mutex);
             ngx_http_waf_dp(r, "success");
         }
 
         if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CC_DENY)) {
+            ngx_http_waf_dp(r, "found");
+
             lru_cache_t* cache = loc_conf->ip_access_statistics;
 
             if (!ngx_http_waf_is_valid_ptr_value(cache)) {
@@ -242,10 +279,11 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             ngx_shmtx_lock(&shpool->mutex);
             ngx_http_waf_dp(r, "success");
 
+            ngx_http_waf_dp(r, "searching cache");
             lru_cache_find_result_t result = lru_cache_find(cache, &inx_addr, sizeof(inx_addr));
 
             if (result.status == NGX_HTTP_WAF_KEY_NOT_EXISTS) {
-                ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+                ngx_http_waf_dp(r, "not found");
                 ret_value = NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
 
@@ -264,11 +302,24 @@ ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
     
 
     if (ret_value != NGX_HTTP_WAF_NOT_MATCHED) {
+        ngx_http_finalize_request(r, ret_value);
         return ret_value;
     }
 
+    
+    if (error_page) {
+        ngx_http_waf_dp(r, "error page 403");
+        r->main->count++;
+        ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+        ret_value = NGX_DECLINED;
+
+    } else {
+        ngx_http_waf_dp(r, "gen response");
+        ret_value = _gen_response(r, action->extra.extra_html.html, content_type, action->extra.extra_html.http_status);
+    }
+
     ngx_http_waf_dp_func_end(r);
-    return _gen_response(r, action->extra.extra_html.html, content_type, action->extra.extra_html.http_status);
+    return ret_value;
 }
 
 
