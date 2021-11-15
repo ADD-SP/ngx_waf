@@ -40,6 +40,8 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
         } else if (rc == NGX_HTTP_WAF_SUCCESS) {                                \
             ngx_http_waf_dp(r, "real bot ... return");                          \
             ngx_http_waf_append_action_chain(r, action_decline);                \
+            ngx_http_waf_set_rule_info(r, "FAKE-BOT", bot,                      \
+                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);                          \
             return NGX_HTTP_WAF_MATCHED;                                        \
         }                                                                       \
     }

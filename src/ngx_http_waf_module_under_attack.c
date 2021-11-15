@@ -116,7 +116,8 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
         }
         ngx_http_waf_dp(r, "success ... return");
         
-        ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);                 
+        ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);   
+        ngx_http_waf_set_rule_info(r, "UNDER-ATTACK", "", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
 
         return NGX_HTTP_WAF_MATCHED;
     }
@@ -146,11 +147,13 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "success ... return");
 
         ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);
+        ngx_http_waf_set_rule_info(r, "UNDER-ATTACK", "", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
         return NGX_HTTP_WAF_MATCHED;
 
     } else if (difftime(time(NULL), client_time) <= 5) {
         ngx_http_waf_dp(r, "on delay ... return");
         ngx_http_waf_append_action_under_attack(r, ACTION_FLAG_FROM_UNDER_ATTACK);
+        ngx_http_waf_set_rule_info(r, "UNDER-ATTACK", "", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
         return NGX_HTTP_WAF_MATCHED;
     }
 

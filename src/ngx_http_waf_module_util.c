@@ -619,7 +619,7 @@ void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr) {
 }
 
 
-void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details) {
+void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details, ngx_int_t gernal_logged, ngx_int_t blocked) {
     ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
@@ -637,6 +637,14 @@ void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details
     ctx->rule_deatils.data = ngx_pcalloc(r->pool, details_len);
     ctx->rule_deatils.len = details_len;
     ngx_memcpy(ctx->rule_deatils.data, details, details_len);
+
+    if (gernal_logged == NGX_HTTP_WAF_TRUE) {
+        ctx->gernal_logged = 1;
+    }
+
+    if (blocked == NGX_HTTP_WAF_TRUE) {
+        ctx->blocked = 1;
+    }
 
     ngx_http_waf_dp_func_end(r);
 }

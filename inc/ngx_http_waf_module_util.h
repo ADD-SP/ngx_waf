@@ -179,7 +179,7 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
 void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr);
 
 
-void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details);
+void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details, ngx_int_t gernal_logged, ngx_int_t blocked);
 
 
 ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* in, char** out);

@@ -30,7 +30,8 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
             ctx->blocked = 0;
-            ngx_http_waf_set_rule_info(r, "WHITE-IPV4", ip_trie_node->data);
+            ngx_http_waf_set_rule_info(r, "WHITE-IPV4", ip_trie_node->data,
+                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
             ngx_http_waf_append_action(r, action);
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -44,7 +45,8 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
             ctx->blocked = 0;
-            ngx_http_waf_set_rule_info(r, "WHITE-IPV6", ip_trie_node->data);
+            ngx_http_waf_set_rule_info(r, "WHITE-IPV6", ip_trie_node->data,
+                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
             ngx_http_waf_append_action(r, action);
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -85,7 +87,8 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
             ctx->blocked = 1;
-            ngx_http_waf_set_rule_info(r, "BLACK-IPV4", ip_trie_node->data);
+            ngx_http_waf_set_rule_info(r, "BLACK-IPV4", ip_trie_node->data,
+                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
             ngx_http_waf_append_action_chain(r, action);
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -99,7 +102,8 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r) {
             ngx_http_waf_dpf(r, "matched(%s)", ip_trie_node->data);
             ctx->gernal_logged = 1;
             ctx->blocked = 1;
-            ngx_http_waf_set_rule_info(r, "BLACK-IPV6", ip_trie_node->data);
+            ngx_http_waf_set_rule_info(r, "BLACK-IPV6", ip_trie_node->data,
+                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
             ngx_http_waf_append_action_chain(r, action);
             ret_value = NGX_HTTP_WAF_MATCHED;
         } else {
@@ -254,7 +258,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
 
         ctx->gernal_logged = 1;
         ctx->blocked = 1;
-        ngx_http_waf_set_rule_info(r, "CC-DENY", "");
+        ngx_http_waf_set_rule_info(r, "CC-DENY", "", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
         ngx_http_waf_append_action_chain(r, action);
         ret_value = NGX_HTTP_WAF_MATCHED;
         time_t remain = duration - (now - statis->block_time);
@@ -769,7 +773,9 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
 
     if (result.is_matched == NGX_HTTP_WAF_MATCHED) {
         ngx_http_waf_dp(r, "matched");
-        ngx_http_waf_set_rule_info(r, (char*)rule_type, (char*)result.detail);
+
+        /* 这里不设置 ctx->gernal_logged 和 ctx->blocked，参数只是凑数的。 */
+        ngx_http_waf_set_rule_info(r, (char*)rule_type, (char*)result.detail, 0, 0);
 
     } else {
         ngx_http_waf_dp(r, "not matched");
