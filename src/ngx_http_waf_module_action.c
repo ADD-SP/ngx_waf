@@ -270,7 +270,10 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
             ngx_http_waf_dp(r, "success");
 
             ngx_http_waf_dp(r, "adding cache");
-            lru_cache_add_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr), 60 * 60);
+
+            /** 过期时间为 [15, 60] 分钟 */
+            time_t expire = (time_t)randombytes_uniform(60 * 15) + 60 * 45;
+            lru_cache_add_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr), expire);
 
             if (result.status == NGX_HTTP_WAF_SUCCESS) {
                 ngx_http_waf_dp(r, "success");

@@ -224,7 +224,9 @@ ngx_int_t ngx_http_waf_captcha_inc_fails(ngx_http_request_t* r) {
     ngx_shmtx_lock(&shpool->mutex);
     ngx_http_waf_dp(r, "success");
 
-    lru_cache_find_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr), 0);
+    /** 过期时间为 [15, 60] 分钟 */
+    time_t expire = (time_t)randombytes_uniform(60 * 15) + 60 * 45;
+    lru_cache_find_result_t result = lru_cache_add(cache, &inx_addr, sizeof(inx_addr), expire);
 
     if (result.status == NGX_HTTP_WAF_SUCCESS) {
         _cache_info_t* tmp = lru_cache_calloc(cache, sizeof(_cache_info_t));

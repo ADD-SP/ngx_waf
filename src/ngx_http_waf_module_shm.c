@@ -86,8 +86,24 @@ ngx_int_t ngx_http_waf_shm_gc(shm_t* shm) {
         if (init->gc_handler != NULL) {
             ngx_int_t rc = init->gc_handler(shm, init->data, &low_memory);
 
+            if (low_memory == NGX_HTTP_WAF_TRUE) {
+                break;
+            }
+
             if (rc != NGX_HTTP_WAF_SUCCESS) {
                 return NGX_HTTP_WAF_FAIL;
+            }
+        }
+    }
+
+    if (low_memory == NGX_HTTP_WAF_TRUE) {
+        LL_FOREACH(shm->init_chain, init) {
+            if (init->gc_handler != NULL) {
+                ngx_int_t rc = init->gc_handler(shm, init->data, &low_memory);
+
+                if (rc != NGX_HTTP_WAF_SUCCESS) {
+                    return NGX_HTTP_WAF_FAIL;
+                }
             }
         }
     }

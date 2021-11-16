@@ -1788,24 +1788,21 @@ static ngx_int_t _shm_handler_init(shm_t* shm, void* data, void* old_data) {
 
 static ngx_int_t _shm_handler_gc(shm_t* shm, void* data, ngx_int_t* low_memory) {
     lru_cache_t** cache = data;
-    uint32_t num = randombytes_uniform(10);
 
     ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)shm->zone->shm.addr;
 
     ngx_shmtx_lock(&shpool->mutex);
 
-    if (num >= 2) {
-        lru_cache_eliminate_expire(*cache, 5);
+    if ((*cache)->no_memory) {
+        (*cache)->no_memory = 0;
+        *low_memory = NGX_HTTP_WAF_TRUE;
+    }
 
+    if (*low_memory == NGX_HTTP_WAF_TRUE) {
+        lru_cache_eliminate(*cache, 5);
+        
     } else {
-        if ((*cache)->no_memory) {
-            *low_memory = NGX_HTTP_WAF_TRUE;
-            (*cache)->no_memory = 0;
-            lru_cache_eliminate(*cache, 5);
-
-        } else {
-            lru_cache_eliminate_expire(*cache, 5);
-        }
+        lru_cache_eliminate_expire(*cache, 5);
     }
 
     ngx_shmtx_unlock(&shpool->mutex);

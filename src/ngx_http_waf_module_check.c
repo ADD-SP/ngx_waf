@@ -755,7 +755,10 @@ ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r,
         && loc_conf->waf_cache_capacity != NGX_CONF_UNSET
         && cache != NULL) {
         ngx_http_waf_dp(r, "adding cache");
-        lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char), 0);
+
+        /* 过期时间为 [5, 10] 分钟 */
+        time_t expire = (time_t)randombytes_uniform(60 * 5) + 60 * 5;
+        lru_cache_add_result_t tmp = lru_cache_add(cache, str->data, str->len * sizeof(u_char), expire);
         if (tmp.status == NGX_HTTP_WAF_SUCCESS) {
             *(tmp.data) = lru_cache_calloc(cache, sizeof(check_result_t));
             if (*(tmp.data) == NULL) {
