@@ -355,7 +355,6 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
     
     if (error_page) {
         ngx_http_waf_dp(r, "error page 403");
-        r->main->count++;
         ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
         ret_value = NGX_DECLINED;
 

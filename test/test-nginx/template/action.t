@@ -67,7 +67,7 @@ waf_rule_path ${base_dir}//waf/rules/;
 waf_action blacklist=CAPTCHA zone=test:tag;
 waf_captcha off prov=reCAPTCHAv3 secret=xxxx sitekey=xxx;
 
---- pipelined_requests eval
+--- request eval
 [
     "GET /www.bak",
     "GET /"
@@ -181,7 +181,7 @@ waf_captcha off prov=reCAPTCHAv3 secret=xx sitekey=xxx;
 waf_action modsecurity=CAPTCHA zone=test:action;
 
 
---- pipelined_requests eval
+--- request eval
 [
     "GET /t?test=deny",
     "GET /"
@@ -239,7 +239,7 @@ waf_action verify_bot=CAPTCHA zone=test:action;
     "User-Agent: Googlebot"
 ]
 
---- pipelined_requests eval
+--- request eval
 [
     "GET /",
     "GET /"
