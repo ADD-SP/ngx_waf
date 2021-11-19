@@ -92,7 +92,9 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
 
                 } else {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "bad", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
-                    ngx_http_waf_append_action_str(r, "bad", sizeof("bad") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
+                    ngx_str_t* res_str = ngx_pcalloc(r->pool, sizeof(ngx_str_t));
+                    ngx_str_set(res_str, "bad");
+                    ngx_http_waf_append_action_str(r, res_str, NGX_HTTP_OK, ACTION_FLAG_NONE);
                 }
 
                 ret_value = NGX_HTTP_WAF_MATCHED;
@@ -101,7 +103,9 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
             case NGX_HTTP_WAF_CAPTCHA_PASS:
                 ngx_http_waf_dp(r, "pass");
                 need_delete = 1;
-                ngx_http_waf_append_action_str(r, "good", sizeof("good") - 1, NGX_HTTP_OK, ACTION_FLAG_NONE);
+                ngx_str_t* res_str = ngx_pcalloc(r->pool, sizeof(ngx_str_t));
+                ngx_str_set(res_str, "good");
+                ngx_http_waf_append_action_str(r, res_str, NGX_HTTP_OK, ACTION_FLAG_NONE);
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
 
@@ -253,7 +257,7 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
 
     ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
 
-    if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_EXPAND_CAPTCHA)) {
+    if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_CAPTCHA)) {
         if (!ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CAPTCHA)) {
             lru_cache_t* cache = loc_conf->action_cache_captcha;
 
@@ -363,7 +367,7 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
 
     } else {
         ngx_http_waf_dp(r, "gen response");
-        ret_value = _gen_response(r, action->extra.extra_html.html, content_type, action->extra.extra_html.http_status);
+        ret_value = _gen_response(r, *action->extra.extra_html.html, content_type, action->extra.extra_html.http_status);
     }
 
     ngx_http_waf_dp_func_end(r);
@@ -375,7 +379,7 @@ static ngx_int_t _perform_action_str(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp_func_start(r);
     ngx_str_t content_type = ngx_string("text/plain");
     ngx_http_waf_dp_func_end(r);
-    return _gen_response(r, action->extra.extra_str.str, content_type, action->extra.extra_str.http_status);
+    return _gen_response(r, *action->extra.extra_str.str, content_type, action->extra.extra_str.http_status);
 }
 
 

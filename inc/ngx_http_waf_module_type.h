@@ -248,8 +248,8 @@ typedef enum {
     ACTION_FLAG_FROM_CAPTCHA        = 0x800,
     ACTION_FLAG_FROM_UNDER_ATTACK   = 0x1000,
     ACTION_FLAG_FROM_VERIFY_BOT     = 0x2000,
-    ACTION_FLAG_EXPAND_CAPTCHA      = 0x4000,
-    ACTION_FLAG_EXPAND_UNDER_ATTACK = 0X8000
+    ACTION_FLAG_CAPTCHA             = 0x4000,
+    ACTION_FLAG_UNDER_ATTACK        = 0X8000
 } action_flag_e;
 
 
@@ -262,12 +262,12 @@ typedef struct action_s {
 
         struct {
             ngx_uint_t http_status;
-            ngx_str_t str;
+            ngx_str_t* str;
         } extra_str;
 
         struct {
             ngx_uint_t http_status;
-            ngx_str_t html;
+            ngx_str_t* html;
         } extra_html;
 
     } extra;
@@ -361,6 +361,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_modsecurity_rules_remote_key;
     ngx_str_t                       waf_modsecurity_rules_remote_url;
     ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
+    ngx_str_t                       waf_block_page;                             /**< 封禁页面的 HTML */
     action_t                       *action_chain_blacklist;
     action_t                       *action_chain_cc_deny;
     action_t                       *action_chain_modsecurity;

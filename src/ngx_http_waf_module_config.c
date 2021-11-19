@@ -1114,10 +1114,20 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     loc_conf->action_chain_modsecurity = ngx_pcalloc(cf->pool, sizeof(action_t));
     loc_conf->action_chain_verify_bot = ngx_pcalloc(cf->pool, sizeof(action_t));
 
-    ngx_http_waf_set_action_return(loc_conf->action_chain_blacklist, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_BLACK_LIST);
-    ngx_http_waf_set_action_return(loc_conf->action_chain_cc_deny, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_CC_DENY);
-    ngx_http_waf_set_action_follow(loc_conf->action_chain_modsecurity, ACTION_FLAG_FROM_MODSECURITY);
-    ngx_http_waf_set_action_return(loc_conf->action_chain_verify_bot, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_VERIFY_BOT);
+    ngx_http_waf_set_action_return(loc_conf->action_chain_blacklist, 
+        NGX_HTTP_FORBIDDEN, 
+        ACTION_FLAG_FROM_BLACK_LIST | ACTION_FLAG_UNSET);
+    
+    ngx_http_waf_set_action_return(loc_conf->action_chain_cc_deny, 
+        NGX_HTTP_SERVICE_UNAVAILABLE, 
+        ACTION_FLAG_FROM_CC_DENY | ACTION_FLAG_UNSET);
+
+    ngx_http_waf_set_action_follow(loc_conf->action_chain_modsecurity, 
+        ACTION_FLAG_FROM_MODSECURITY | ACTION_FLAG_UNSET);
+
+    ngx_http_waf_set_action_return(loc_conf->action_chain_verify_bot, 
+        NGX_HTTP_FORBIDDEN, 
+        ACTION_FLAG_FROM_VERIFY_BOT | ACTION_FLAG_UNSET);
 
 
     for (size_t i = 1; i < cf->args->nelts; i++) {
@@ -1137,7 +1147,10 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             p = (ngx_str_t*)utarray_next(array, p);
 
             if (_strcaseeq(p->data, "CAPTCHA")) {
-                ngx_http_waf_set_action_expand_captcha(loc_conf->action_chain_blacklist, ACTION_FLAG_FROM_BLACK_LIST);
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_blacklist,
+                    ACTION_FLAG_FROM_BLACK_LIST | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
 
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
@@ -1155,7 +1168,10 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             p = (ngx_str_t*)utarray_next(array, p);
 
             if (_strcaseeq(p->data, "CAPTCHA")) {
-                ngx_http_waf_set_action_expand_captcha(loc_conf->action_chain_cc_deny, ACTION_FLAG_FROM_CC_DENY);
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_cc_deny,
+                    ACTION_FLAG_FROM_CC_DENY | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
 
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
@@ -1173,7 +1189,10 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             p = (ngx_str_t*)utarray_next(array, p);
 
             if (_strcaseeq(p->data, "CAPTCHA")) {
-                ngx_http_waf_set_action_expand_captcha(loc_conf->action_chain_modsecurity, ACTION_FLAG_FROM_MODSECURITY);
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_modsecurity,
+                    ACTION_FLAG_FROM_MODSECURITY | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
 
             } else if (_strcaseeq(p->data, "FOLLOW")) {
                 ngx_http_waf_set_action_follow(loc_conf->action_chain_modsecurity, ACTION_FLAG_FROM_MODSECURITY);
@@ -1194,7 +1213,10 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             p = (ngx_str_t*)utarray_next(array, p);
 
             if (_strcaseeq(p->data, "CAPTCHA")) {
-                ngx_http_waf_set_action_expand_captcha(loc_conf->action_chain_verify_bot, ACTION_FLAG_FROM_VERIFY_BOT);
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_verify_bot,
+                    ACTION_FLAG_FROM_VERIFY_BOT | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
 
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
@@ -1625,11 +1647,10 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_http_waf_set_action_return(default_action, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_VERIFY_BOT);
     ngx_conf_merge_ptr_value(child->action_chain_verify_bot, parent->action_chain_verify_bot, default_action);
 
-    /* 这段代码必须在展开 action_chain 之前写 */
-    if (ngx_http_waf_check_flag(parent->action_chain_blacklist->flag, ACTION_FLAG_EXPAND_CAPTCHA)
-        || ngx_http_waf_check_flag(parent->action_chain_cc_deny->flag, ACTION_FLAG_EXPAND_CAPTCHA)
-        || ngx_http_waf_check_flag(parent->action_chain_modsecurity->flag, ACTION_FLAG_EXPAND_CAPTCHA)
-        || ngx_http_waf_check_flag(parent->action_chain_verify_bot->flag, ACTION_FLAG_EXPAND_CAPTCHA)) {
+    if (ngx_http_waf_check_flag(parent->action_chain_blacklist->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(parent->action_chain_cc_deny->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(parent->action_chain_modsecurity->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(parent->action_chain_verify_bot->flag, ACTION_FLAG_CAPTCHA)) {
         
         if (parent->waf_captcha_type == 0
             || ngx_is_null_str(&parent->waf_captcha_html)
@@ -1645,11 +1666,10 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         }
     }
 
-    /* 这段代码必须在展开 action_chain 之前写 */
-    if (ngx_http_waf_check_flag(child->action_chain_blacklist->flag, ACTION_FLAG_EXPAND_CAPTCHA)
-        || ngx_http_waf_check_flag(child->action_chain_cc_deny->flag, ACTION_FLAG_EXPAND_CAPTCHA)
-        || ngx_http_waf_check_flag(child->action_chain_modsecurity->flag, ACTION_FLAG_EXPAND_CAPTCHA)
-        || ngx_http_waf_check_flag(child->action_chain_verify_bot->flag, ACTION_FLAG_EXPAND_CAPTCHA)) {
+    if (ngx_http_waf_check_flag(child->action_chain_blacklist->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(child->action_chain_cc_deny->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(child->action_chain_modsecurity->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(child->action_chain_verify_bot->flag, ACTION_FLAG_CAPTCHA)) {
         
         if (child->waf_captcha_type == 0
             || ngx_is_null_str(&child->waf_captcha_html)
@@ -1664,65 +1684,6 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
             return NGX_CONF_ERROR;
         }
     }
-
-
-    /* 完成 action 的展开工作，此工作必须在处理完指令 waf_captcha 和 waf_action 之后进行。 */
-    #define _expand_captcha(chain, html, len, from) {                               \
-        if (ngx_http_waf_check_flag((chain)->flag, ACTION_FLAG_EXPAND_CAPTCHA)) {   \
-            action_t* old_head = (chain);                                           \
-            action_t* new_head = NULL;                                              \
-            ngx_http_waf_make_action_chain_captcha(cf->pool,                        \
-                new_head,                                                           \
-                (from),                                                             \
-                html,                                                               \
-                len);                                                               \
-            DL_DELETE(old_head, old_head);                                          \
-            DL_CONCAT(new_head, old_head);                                          \
-            (chain) = new_head;                                                     \
-        }                                                                           \
-    }
-
-
-
-    _expand_captcha(parent->action_chain_blacklist, 
-        parent->waf_captcha_html.data, 
-        parent->waf_captcha_html.len,
-        ACTION_FLAG_FROM_BLACK_LIST);
-    
-    _expand_captcha(parent->action_chain_cc_deny, 
-        parent->waf_captcha_html.data, 
-        parent->waf_captcha_html.len,
-        ACTION_FLAG_FROM_CC_DENY);
-    
-    _expand_captcha(parent->action_chain_modsecurity, 
-        parent->waf_captcha_html.data, 
-        parent->waf_captcha_html.len,
-        ACTION_FLAG_FROM_MODSECURITY);
-
-    _expand_captcha(parent->action_chain_verify_bot, 
-        parent->waf_captcha_html.data, 
-        parent->waf_captcha_html.len,
-        ACTION_FLAG_FROM_VERIFY_BOT);
-
-    _expand_captcha(child->action_chain_blacklist, 
-        child->waf_captcha_html.data, 
-        child->waf_captcha_html.len,
-        ACTION_FLAG_FROM_BLACK_LIST);
-    
-    _expand_captcha(child->action_chain_cc_deny, 
-        child->waf_captcha_html.data, 
-        child->waf_captcha_html.len,
-        ACTION_FLAG_FROM_CC_DENY);
-    
-    _expand_captcha(child->action_chain_modsecurity, 
-        child->waf_captcha_html.data, 
-        child->waf_captcha_html.len,
-        ACTION_FLAG_FROM_MODSECURITY);
-
-    _expand_captcha(child->action_chain_verify_bot, 
-        child->waf_captcha_html.data, 
-        child->waf_captcha_html.len,
-        ACTION_FLAG_FROM_VERIFY_BOT);
 
     
     #undef _expand_captcha
@@ -2012,6 +1973,8 @@ static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
     conf->waf_modsecurity_transaction_id = NGX_CONF_UNSET_PTR;
     conf->modsecurity_instance = NGX_CONF_UNSET_PTR;
     conf->modsecurity_rules = NGX_CONF_UNSET_PTR;
+
+    ngx_str_null(&conf->waf_block_page);
 
     conf->action_chain_blacklist = NGX_CONF_UNSET_PTR;
     conf->action_chain_cc_deny = NGX_CONF_UNSET_PTR;
