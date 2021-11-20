@@ -12,9 +12,6 @@ extern ngx_module_t ngx_http_waf_module;
 #define _strncaseeq(s1, s2) ( ngx_strncasecmp((u_char*)(s1), (u_char*)(s2), n) == 0 )
 
 
-static void _cleanup(void* data);
-
-
 static ngx_pool_t* _modsecurity_pcre_pool;
 
 
@@ -22,6 +19,9 @@ static void* _old_modsecurity_pcre_malloc;
 
 
 static void* _old_modsecurity_pcre_free;
+
+
+static void _cleanup(void* data);
 
 
 static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
@@ -37,9 +37,6 @@ static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
 
 
 static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf);
-
-
-static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf);
 
 
 static ngx_int_t _shm_handler_init(shm_t* shm, void* data, void* old_data);
@@ -1525,7 +1522,139 @@ void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
 
 
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
-    return _init_conf(cf);
+        static u_char s_rand_str[129] = { 0 };
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
+    static ngx_str_t s_thread_pool_name;
+    static ngx_thread_pool_t * s_thread_pool = NULL;
+#endif
+    if (s_rand_str[0] == '\0') {
+        ngx_http_waf_rand_str(s_rand_str, 128);
+    }
+
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
+    ngx_str_set(&s_thread_pool_name, "ngx_waf");
+    s_thread_pool = ngx_thread_pool_get(cf->cycle, &s_thread_pool_name);
+    if (s_thread_pool == NULL) {
+        s_thread_pool = ngx_thread_pool_add(cf, &s_thread_pool_name);
+        if (s_thread_pool == NULL) {
+            return NULL;
+        }
+    }
+#endif
+
+    ngx_http_waf_loc_conf_t* conf = NULL;
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_loc_conf_t));
+    if (conf == NULL) {
+        return NULL;
+    }
+
+    ngx_strcpy(conf->random_str, s_rand_str);
+    conf->is_alloc = NGX_HTTP_WAF_FALSE;
+
+    conf->waf = NGX_CONF_UNSET;
+
+    conf->waf_rule_path.len = NGX_CONF_UNSET_SIZE;
+
+    conf->waf_mode = 0;
+
+    conf->waf_verify_bot = NGX_CONF_UNSET;
+    conf->waf_verify_bot_type = NGX_CONF_UNSET;
+    conf->waf_verify_bot_google_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_bing_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_baidu_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_yandex_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_google_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_bing_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_baidu_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_yandex_domain_regexp = NGX_CONF_UNSET_PTR;
+
+    conf->waf_under_attack = NGX_CONF_UNSET;
+    ngx_str_null(&conf->waf_under_attack_html);
+
+    conf->waf_captcha = NGX_CONF_UNSET;
+    ngx_str_null(&conf->waf_captcha_html);
+    conf->waf_captcha_type = NGX_CONF_UNSET;
+    conf->waf_captcha_expire = NGX_CONF_UNSET;
+    conf->waf_captcha_reCAPTCHAv3_score = NGX_CONF_UNSET;
+    conf->waf_captcha_shm_zone = NGX_CONF_UNSET_PTR;
+    conf->waf_captcha_max_fails = NGX_CONF_UNSET;
+    conf->waf_captcha_duration = NGX_CONF_UNSET;
+
+    conf->waf_cc_deny = NGX_CONF_UNSET;
+    conf->waf_cc_deny_limit = NGX_CONF_UNSET;
+    conf->waf_cc_deny_duration = NGX_CONF_UNSET;
+    conf->waf_cc_deny_cycle = NGX_CONF_UNSET;
+    conf->shm_zone_cc_deny = NGX_CONF_UNSET_PTR;
+    conf->ip_access_statistics = NGX_CONF_UNSET_PTR;
+
+    conf->waf_cache = NGX_CONF_UNSET;
+    conf->waf_cache_capacity = NGX_CONF_UNSET;
+
+    conf->waf_modsecurity = NGX_CONF_UNSET;
+    conf->waf_modsecurity_transaction_id = NGX_CONF_UNSET_PTR;
+    conf->modsecurity_instance = NGX_CONF_UNSET_PTR;
+    conf->modsecurity_rules = NGX_CONF_UNSET_PTR;
+
+    ngx_str_null(&conf->waf_block_page);
+
+    conf->action_chain_blacklist = NGX_CONF_UNSET_PTR;
+    conf->action_chain_cc_deny = NGX_CONF_UNSET_PTR;
+    conf->action_chain_modsecurity = NGX_CONF_UNSET_PTR;
+    conf->action_chain_verify_bot = NGX_CONF_UNSET_PTR;
+    conf->action_zone_captcha = NGX_CONF_UNSET_PTR;
+    conf->action_cache_captcha = NGX_CONF_UNSET_PTR;
+
+    ngx_str_null(&conf->waf_modsecurity_rules_file);
+    ngx_str_null(&conf->waf_modsecurity_rules_remote_key);
+    ngx_str_null(&conf->waf_modsecurity_rules_remote_url);
+    conf->ip_access_statistics = NULL;
+#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
+    conf->thread_pool = s_thread_pool;
+#endif
+    conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
+
+    conf->black_url = NGX_CONF_UNSET_PTR;
+    conf->black_args = NGX_CONF_UNSET_PTR;
+    conf->black_ua = NGX_CONF_UNSET_PTR;
+    conf->black_referer = NGX_CONF_UNSET_PTR;
+    conf->black_cookie = NGX_CONF_UNSET_PTR;
+    conf->black_post = NGX_CONF_UNSET_PTR;
+    conf->white_url = NGX_CONF_UNSET_PTR;
+    conf->white_referer = NGX_CONF_UNSET_PTR;
+    conf->white_ipv4 = NGX_CONF_UNSET_PTR;
+    conf->black_ipv4 = NGX_CONF_UNSET_PTR;
+#if (NGX_HAVE_INET6)
+    conf->white_ipv6 = NGX_CONF_UNSET_PTR;
+    conf->black_ipv6 = NGX_CONF_UNSET_PTR;
+#endif
+
+    conf->black_url_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_args_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_cookie_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_referer_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_ua_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_url_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_referer_inspection_cache = NGX_CONF_UNSET_PTR;
+
+
+    conf->check_proc[0] = ngx_http_waf_perform_action_at_access_start;
+    conf->check_proc[1] = ngx_http_waf_handler_check_white_ip;
+    conf->check_proc[2] = ngx_http_waf_handler_check_black_ip;
+    conf->check_proc[3] = ngx_http_waf_handler_verify_bot;
+    conf->check_proc[4] = ngx_http_waf_handler_check_cc;
+    conf->check_proc[5] = ngx_http_waf_handler_captcha;
+    conf->check_proc[6] = ngx_http_waf_handler_under_attack;
+    conf->check_proc[7] = ngx_http_waf_handler_check_white_url;
+    conf->check_proc[8] = ngx_http_waf_handler_check_black_url;
+    conf->check_proc[9] = ngx_http_waf_handler_check_black_args;
+    conf->check_proc[10] = ngx_http_waf_handler_check_black_user_agent;
+    conf->check_proc[11] = ngx_http_waf_handler_check_white_referer;
+    conf->check_proc[12] = ngx_http_waf_handler_check_black_referer;
+    conf->check_proc[13] = ngx_http_waf_handler_check_black_cookie;
+    conf->check_proc[14] = ngx_http_waf_handler_check_black_post;
+    conf->check_proc[15] = ngx_http_waf_handler_modsecurity;
+
+    return conf;
 }
 
 
@@ -1806,7 +1935,7 @@ ngx_int_t ngx_http_waf_preconfiguration(ngx_conf_t* cf) {
 }
 
 
-ngx_int_t ngx_http_waf_init_after_load_config(ngx_conf_t* cf) {
+ngx_int_t ngx_http_waf_postconfiguration(ngx_conf_t* cf) {
     ngx_http_handler_pt* h;
     ngx_http_core_main_conf_t* cmcf;
 
@@ -2005,143 +2134,6 @@ static ngx_int_t _load_into_container(ngx_conf_t* cf, const char* file_name, voi
     fclose(fp);
     ngx_pfree(cf->pool, str);
     return NGX_HTTP_WAF_SUCCESS;
-}
-
-
-static ngx_http_waf_loc_conf_t* _init_conf(ngx_conf_t* cf) {
-    static u_char s_rand_str[129] = { 0 };
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    static ngx_str_t s_thread_pool_name;
-    static ngx_thread_pool_t * s_thread_pool = NULL;
-#endif
-    if (s_rand_str[0] == '\0') {
-        ngx_http_waf_rand_str(s_rand_str, 128);
-    }
-
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    ngx_str_set(&s_thread_pool_name, "ngx_waf");
-    s_thread_pool = ngx_thread_pool_get(cf->cycle, &s_thread_pool_name);
-    if (s_thread_pool == NULL) {
-        s_thread_pool = ngx_thread_pool_add(cf, &s_thread_pool_name);
-        if (s_thread_pool == NULL) {
-            return NULL;
-        }
-    }
-#endif
-
-    ngx_http_waf_loc_conf_t* conf = NULL;
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_loc_conf_t));
-    if (conf == NULL) {
-        return NULL;
-    }
-
-    ngx_strcpy(conf->random_str, s_rand_str);
-    conf->is_alloc = NGX_HTTP_WAF_FALSE;
-
-    conf->waf = NGX_CONF_UNSET;
-
-    conf->waf_rule_path.len = NGX_CONF_UNSET_SIZE;
-
-    conf->waf_mode = 0;
-
-    conf->waf_verify_bot = NGX_CONF_UNSET;
-    conf->waf_verify_bot_type = NGX_CONF_UNSET;
-    conf->waf_verify_bot_google_ua_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_bing_ua_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_baidu_ua_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_yandex_ua_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_google_domain_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_bing_domain_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_baidu_domain_regexp = NGX_CONF_UNSET_PTR;
-    conf->waf_verify_bot_yandex_domain_regexp = NGX_CONF_UNSET_PTR;
-
-    conf->waf_under_attack = NGX_CONF_UNSET;
-    ngx_str_null(&conf->waf_under_attack_html);
-
-    conf->waf_captcha = NGX_CONF_UNSET;
-    ngx_str_null(&conf->waf_captcha_html);
-    conf->waf_captcha_type = NGX_CONF_UNSET;
-    conf->waf_captcha_expire = NGX_CONF_UNSET;
-    conf->waf_captcha_reCAPTCHAv3_score = NGX_CONF_UNSET;
-    conf->waf_captcha_shm_zone = NGX_CONF_UNSET_PTR;
-    conf->waf_captcha_max_fails = NGX_CONF_UNSET;
-    conf->waf_captcha_duration = NGX_CONF_UNSET;
-
-    conf->waf_cc_deny = NGX_CONF_UNSET;
-    conf->waf_cc_deny_limit = NGX_CONF_UNSET;
-    conf->waf_cc_deny_duration = NGX_CONF_UNSET;
-    conf->waf_cc_deny_cycle = NGX_CONF_UNSET;
-    conf->shm_zone_cc_deny = NGX_CONF_UNSET_PTR;
-    conf->ip_access_statistics = NGX_CONF_UNSET_PTR;
-
-    conf->waf_cache = NGX_CONF_UNSET;
-    conf->waf_cache_capacity = NGX_CONF_UNSET;
-
-    conf->waf_modsecurity = NGX_CONF_UNSET;
-    conf->waf_modsecurity_transaction_id = NGX_CONF_UNSET_PTR;
-    conf->modsecurity_instance = NGX_CONF_UNSET_PTR;
-    conf->modsecurity_rules = NGX_CONF_UNSET_PTR;
-
-    ngx_str_null(&conf->waf_block_page);
-
-    conf->action_chain_blacklist = NGX_CONF_UNSET_PTR;
-    conf->action_chain_cc_deny = NGX_CONF_UNSET_PTR;
-    conf->action_chain_modsecurity = NGX_CONF_UNSET_PTR;
-    conf->action_chain_verify_bot = NGX_CONF_UNSET_PTR;
-    conf->action_zone_captcha = NGX_CONF_UNSET_PTR;
-    conf->action_cache_captcha = NGX_CONF_UNSET_PTR;
-
-    ngx_str_null(&conf->waf_modsecurity_rules_file);
-    ngx_str_null(&conf->waf_modsecurity_rules_remote_key);
-    ngx_str_null(&conf->waf_modsecurity_rules_remote_url);
-    conf->ip_access_statistics = NULL;
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    conf->thread_pool = s_thread_pool;
-#endif
-    conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
-
-    conf->black_url = NGX_CONF_UNSET_PTR;
-    conf->black_args = NGX_CONF_UNSET_PTR;
-    conf->black_ua = NGX_CONF_UNSET_PTR;
-    conf->black_referer = NGX_CONF_UNSET_PTR;
-    conf->black_cookie = NGX_CONF_UNSET_PTR;
-    conf->black_post = NGX_CONF_UNSET_PTR;
-    conf->white_url = NGX_CONF_UNSET_PTR;
-    conf->white_referer = NGX_CONF_UNSET_PTR;
-    conf->white_ipv4 = NGX_CONF_UNSET_PTR;
-    conf->black_ipv4 = NGX_CONF_UNSET_PTR;
-#if (NGX_HAVE_INET6)
-    conf->white_ipv6 = NGX_CONF_UNSET_PTR;
-    conf->black_ipv6 = NGX_CONF_UNSET_PTR;
-#endif
-
-    conf->black_url_inspection_cache = NGX_CONF_UNSET_PTR;
-    conf->black_args_inspection_cache = NGX_CONF_UNSET_PTR;
-    conf->black_cookie_inspection_cache = NGX_CONF_UNSET_PTR;
-    conf->black_referer_inspection_cache = NGX_CONF_UNSET_PTR;
-    conf->black_ua_inspection_cache = NGX_CONF_UNSET_PTR;
-    conf->white_url_inspection_cache = NGX_CONF_UNSET_PTR;
-    conf->white_referer_inspection_cache = NGX_CONF_UNSET_PTR;
-
-
-    conf->check_proc[0] = ngx_http_waf_perform_action_at_access_start;
-    conf->check_proc[1] = ngx_http_waf_handler_check_white_ip;
-    conf->check_proc[2] = ngx_http_waf_handler_check_black_ip;
-    conf->check_proc[3] = ngx_http_waf_handler_verify_bot;
-    conf->check_proc[4] = ngx_http_waf_handler_check_cc;
-    conf->check_proc[5] = ngx_http_waf_handler_captcha;
-    conf->check_proc[6] = ngx_http_waf_handler_under_attack;
-    conf->check_proc[7] = ngx_http_waf_handler_check_white_url;
-    conf->check_proc[8] = ngx_http_waf_handler_check_black_url;
-    conf->check_proc[9] = ngx_http_waf_handler_check_black_args;
-    conf->check_proc[10] = ngx_http_waf_handler_check_black_user_agent;
-    conf->check_proc[11] = ngx_http_waf_handler_check_white_referer;
-    conf->check_proc[12] = ngx_http_waf_handler_check_black_referer;
-    conf->check_proc[13] = ngx_http_waf_handler_check_black_cookie;
-    conf->check_proc[14] = ngx_http_waf_handler_check_black_post;
-    conf->check_proc[15] = ngx_http_waf_handler_modsecurity;
-
-    return conf;
 }
 
 

@@ -124,7 +124,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
 
 static ngx_http_module_t ngx_http_waf_module_ctx = {
     ngx_http_waf_preconfiguration,
-    ngx_http_waf_init_after_load_config,
+    ngx_http_waf_postconfiguration,
     ngx_http_waf_create_main_conf, 
     NULL, 
     NULL, 
