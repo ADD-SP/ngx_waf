@@ -95,6 +95,14 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NULL
    },
    {
+        ngx_string("waf_block_page"),
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+        ngx_http_waf_block_page_conf,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        0,
+        NULL
+   },
+   {
         ngx_string("waf_modsecurity"),
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE123,
         ngx_http_waf_modsecurity_conf,

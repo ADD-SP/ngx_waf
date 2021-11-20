@@ -1156,7 +1156,8 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
                 if (code == NGX_ERROR
-                    || code <= 0) {
+                    || code < 300
+                    || code >= 600) {
                     goto error;
                 }
 
@@ -1177,7 +1178,8 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
                 if (code == NGX_ERROR
-                    || code <= 0) {
+                    || code < 300
+                    || code >= 600) {
                     goto error;
                 }
 
@@ -1201,7 +1203,8 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
                 if (code == NGX_ERROR
-                    || code <= 0) {
+                    || code < 300
+                    || code >= 600) {
                     goto error;
                 }
 
@@ -1306,6 +1309,44 @@ error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
+}
+
+
+char* ngx_http_waf_block_page_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+
+    ngx_str_t* _file = (ngx_str_t*)cf->args->elts + 1;
+
+    char* file = ngx_http_waf_c_str(_file, cf->pool);
+
+    if (strcasecmp(file, "default") == 0) {
+        ngx_str_set(&loc_conf->waf_block_page, ngx_http_waf_data_html_block);
+
+    } else {
+        FILE* fp = fopen((char*)file, "r");
+
+        if (fp == NULL) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOENT, 
+                "ngx_waf: Unable to open file %s.", file);
+            return NGX_CONF_ERROR;
+        }
+
+        fseek(fp, 0, SEEK_END);
+        size_t file_size = ftell(fp);
+        loc_conf->waf_block_page.len = file_size;
+        loc_conf->waf_block_page.data = ngx_pcalloc(cf->pool, file_size + sizeof(u_char));
+
+        fseek(fp, 0, SEEK_SET);
+        if (fread(loc_conf->waf_block_page.data, sizeof(u_char), file_size, fp) != file_size) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EPERM, 
+                "ngx_waf: Failed to read file %s completely..", file);
+            return NGX_CONF_ERROR;
+        }
+
+        fclose(fp);
+    }
+
+    return NGX_CONF_OK;
 }
 
 
@@ -1685,8 +1726,75 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         }
     }
 
-    
-    #undef _expand_captcha
+    ngx_conf_merge_str_value(child->waf_block_page, parent->waf_block_page, "");
+
+    if (!ngx_is_null_str(&parent->waf_block_page)) {
+        if (ngx_http_waf_check_flag(parent->action_chain_blacklist->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_blacklist,
+                parent->action_chain_blacklist->extra.http_status,
+                ACTION_FLAG_FROM_BLACK_LIST,
+                &parent->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(parent->action_chain_cc_deny->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_cc_deny,
+                parent->action_chain_cc_deny->extra.http_status,
+                ACTION_FLAG_FROM_CC_DENY,
+                &parent->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(parent->action_chain_modsecurity->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_modsecurity,
+                parent->action_chain_modsecurity->extra.http_status,
+                ACTION_FLAG_FROM_MODSECURITY,
+                &parent->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(parent->action_chain_verify_bot->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_verify_bot,
+                parent->action_chain_verify_bot->extra.http_status,
+                ACTION_FLAG_FROM_VERIFY_BOT,
+                &parent->waf_block_page);
+        }
+    }
+
+    if (!ngx_is_null_str(&child->waf_block_page)) {
+        if (ngx_http_waf_check_flag(child->action_chain_blacklist->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_blacklist,
+                child->action_chain_blacklist->extra.http_status,
+                ACTION_FLAG_FROM_BLACK_LIST,
+                &child->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(child->action_chain_cc_deny->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_cc_deny,
+                child->action_chain_cc_deny->extra.http_status,
+                ACTION_FLAG_FROM_CC_DENY,
+                &child->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(child->action_chain_modsecurity->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_modsecurity,
+                child->action_chain_modsecurity->extra.http_status,
+                ACTION_FLAG_FROM_MODSECURITY,
+                &child->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(child->action_chain_verify_bot->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_verify_bot,
+                child->action_chain_verify_bot->extra.http_status,
+                ACTION_FLAG_FROM_VERIFY_BOT,
+                &child->waf_block_page);
+        }
+    }
 
     return NGX_CONF_OK;
 }

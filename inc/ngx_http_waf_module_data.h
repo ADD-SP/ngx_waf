@@ -16,4 +16,7 @@ extern unsigned char ngx_http_waf_data_html_template_reCAPTCHAv2_invisible[1581]
 extern unsigned char ngx_http_waf_data_html_template_reCAPTCHAv3[1650];
 
 
+extern unsigned char ngx_http_waf_data_html_block[377];
+
+
 #endif

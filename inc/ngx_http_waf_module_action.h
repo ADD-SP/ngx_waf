@@ -114,37 +114,39 @@
 }
 
 
-#define ngx_http_waf_make_action_chain_captcha(pool, head, ex_flag, html) {             \
-    head = NULL;                                                                        \
-    action_t* tmp = ngx_pcalloc((pool), sizeof(action_t));                              \
-    ngx_http_waf_set_action_reg_content(tmp, (ex_flag) | ACTION_FLAG_CAPTCHA);          \
-    DL_APPEND(head, tmp);                                                               \
-    tmp = ngx_pcalloc((pool), sizeof(action_t));                                        \
-    ngx_http_waf_set_action_decline(tmp, (ex_flag) | ACTION_FLAG_CAPTCHA);              \
-    DL_APPEND(head, tmp);                                                               \
-    tmp = ngx_pcalloc((pool), sizeof(action_t));                                        \
-    ngx_http_waf_set_action_html(tmp,                                                   \
-        (html),                                                                         \
-        NGX_HTTP_SERVICE_UNAVAILABLE,                                                   \
-        (ex_flag) | ACTION_FLAG_CAPTCHA);                                               \
-    DL_APPEND(head, tmp);                                                               \
+#define ngx_http_waf_make_action_chain_html(pool, head, status, ex_flag, html) {    \
+    action_t* _head = NULL;                                                         \
+    action_t* tmp = ngx_pcalloc((pool), sizeof(action_t));                          \
+    ngx_http_waf_set_action_reg_content(tmp, (ex_flag));                            \
+    DL_APPEND(_head, tmp);                                                          \
+    tmp = ngx_pcalloc((pool), sizeof(action_t));                                    \
+    ngx_http_waf_set_action_decline(tmp, (ex_flag));                                \
+    DL_APPEND(_head, tmp);                                                          \
+    tmp = ngx_pcalloc((pool), sizeof(action_t));                                    \
+    ngx_http_waf_set_action_html(tmp,                                               \
+        (html),                                                                     \
+        (status),                                                                   \
+        (ex_flag));                                                                 \
+    DL_APPEND(_head, tmp);                                                          \
+    head = _head;                                                                   \
+}
+
+
+#define ngx_http_waf_make_action_chain_captcha(pool, head, ex_flag, html) {         \
+    ngx_http_waf_make_action_chain_html((pool),                                     \
+        (head),                                                                     \
+        NGX_HTTP_SERVICE_UNAVAILABLE,                                               \
+        (ex_flag) | ACTION_FLAG_CAPTCHA,                                            \
+        (html));                                                                    \
 }
 
 
 #define ngx_http_waf_make_action_chain_under_attack(pool, head, ex_flag, html) {    \
-    head = NULL;                                                                    \
-    action_t* tmp = ngx_pcalloc((pool), sizeof(action_t));                          \
-    ngx_http_waf_set_action_reg_content(tmp, (ex_flag) | ACTION_FLAG_UNDER_ATTACK); \
-    DL_APPEND(head, tmp);                                                           \
-    tmp = ngx_pcalloc((pool), sizeof(action_t));                                    \
-    ngx_http_waf_set_action_decline(tmp, (ex_flag) | ACTION_FLAG_UNDER_ATTACK);     \
-    DL_APPEND(head, tmp);                                                           \
-    tmp = ngx_pcalloc((pool), sizeof(action_t));                                    \
-    ngx_http_waf_set_action_html(tmp,                                               \
-        (html),                                                                     \
+    ngx_http_waf_make_action_chain_html((pool),                                     \
+        (head),                                                                     \
         NGX_HTTP_SERVICE_UNAVAILABLE,                                               \
-        (ex_flag) | ACTION_FLAG_UNDER_ATTACK);                                      \
-    DL_APPEND(head, tmp);                                                           \
+        (ex_flag) | ACTION_FLAG_UNDER_ATTACK,                                       \
+        (html));                                                                    \
 }
 
 

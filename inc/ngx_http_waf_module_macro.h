@@ -365,7 +365,7 @@
 #define ngx_strcpy(d, s) (strcpy((char*)d, (const char*)s))
 
 
-#define ngx_is_null_str(s) ((s) == NULL || (s)->data == NULL || (s)->len == 0)
+#define ngx_is_null_str(s) ((s) == NULL || (s)->data == NULL || (s)->len == 0 || ((s)->data[0] == '\0' && (s)->len == 1))
 
 
 #ifndef NGX_HTTP_WAF_NO_DEBUG

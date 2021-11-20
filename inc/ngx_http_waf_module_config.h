@@ -114,6 +114,12 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**
+ * @brief 读取配置项 waf_block_page，用于设置拦截后的页面。
+*/
+char* ngx_http_waf_block_page_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
  * @brief 读取配置项 waf_modsecurity，该项用来设置 Modsecurity 的参数。
 */
 char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
