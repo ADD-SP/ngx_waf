@@ -140,7 +140,8 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r) {
     || ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_cc_deny_cycle)
     || !ngx_http_waf_is_valid_ptr_value(loc_conf->shm_zone_cc_deny)
     || !ngx_http_waf_is_valid_ptr_value(loc_conf->ip_access_statistics)) {
-        ngx_http_waf_dp(r, "no configuratiion ... return");
+        ngx_http_waf_dp(r, "invalid configuratiion ... return");
+        ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CC_DENY);
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
