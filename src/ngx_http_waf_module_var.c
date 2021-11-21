@@ -194,8 +194,7 @@ ngx_int_t _waf_rate_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v,
 
     _init(r, v);
 
-    u_char* buf = ngx_palloc(r->pool, NGX_INT64_LEN + sizeof(u_char));
-    ngx_memzero(buf, sizeof(u_char) * 64);
+    u_char* buf = ngx_pcalloc(r->pool, NGX_INT_T_LEN + sizeof(u_char));
     v->len = ngx_sprintf(buf, "%i", ctx->rate) - buf;
     v->data = buf;
     ngx_http_waf_dpf(r, "$waf_rate=%s", (char*)v->data);
