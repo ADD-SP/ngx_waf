@@ -180,9 +180,9 @@
 }
 
 
-#define ngx_http_waf_append_action_html(r, _html, status, flag) {           \
+#define ngx_http_waf_append_action_html(r, _html, status, ex_flag) {        \
     action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));              \
-    ngx_http_waf_set_action_str(action, (_html), (status), (ex_flag));      \
+    ngx_http_waf_set_action_html(action, (_html), (status), (ex_flag));     \
     ngx_http_waf_append_action_reg_content((r), (ex_flag));                 \
     ngx_http_waf_append_action_decline((r), (ex_flag));                     \
     ngx_http_waf_append_action(r, action);                                  \

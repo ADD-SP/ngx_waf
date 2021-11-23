@@ -73,7 +73,17 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
                 
                 if (ngx_http_waf_captcha_inc_fails(r) == NGX_HTTP_WAF_MATCHED) {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "TO MANY FAILS", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
-                    ngx_http_waf_append_action_return(r, NGX_HTTP_TOO_MANY_REQUESTS, ACTION_FLAG_FROM_CAPTCHA);
+
+                    if (ngx_is_null_str(&loc_conf->waf_block_page)) {
+                        ngx_http_waf_append_action_return(r, NGX_HTTP_TOO_MANY_REQUESTS, ACTION_FLAG_FROM_CAPTCHA);
+
+                    } else {
+                        ngx_http_waf_append_action_html(r,
+                            &loc_conf->waf_block_page,
+                            NGX_HTTP_TOO_MANY_REQUESTS,
+                            ACTION_FLAG_FROM_CAPTCHA);
+                    }
+                    
 
                 } else {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "CHALLENGE", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
@@ -88,7 +98,16 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
 
                 if (ngx_http_waf_captcha_inc_fails(r) == NGX_HTTP_WAF_MATCHED) {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "TO MANY FAILS", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
-                    ngx_http_waf_append_action_return(r, NGX_HTTP_TOO_MANY_REQUESTS, ACTION_FLAG_FROM_CAPTCHA);
+                    
+                    if (ngx_is_null_str(&loc_conf->waf_block_page)) {
+                        ngx_http_waf_append_action_return(r, NGX_HTTP_TOO_MANY_REQUESTS, ACTION_FLAG_FROM_CAPTCHA);
+
+                    } else {
+                        ngx_http_waf_append_action_html(r,
+                            &loc_conf->waf_block_page,
+                            NGX_HTTP_TOO_MANY_REQUESTS,
+                            ACTION_FLAG_FROM_CAPTCHA);
+                    }
 
                 } else {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "bad", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
@@ -114,7 +133,16 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
 
                 if (ngx_http_waf_captcha_inc_fails(r) == NGX_HTTP_WAF_MATCHED) {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "TO MANY FAILS", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
-                    ngx_http_waf_append_action_return(r, NGX_HTTP_TOO_MANY_REQUESTS, ACTION_FLAG_FROM_CAPTCHA);
+                    
+                    if (ngx_is_null_str(&loc_conf->waf_block_page)) {
+                        ngx_http_waf_append_action_return(r, NGX_HTTP_TOO_MANY_REQUESTS, ACTION_FLAG_FROM_CAPTCHA);
+
+                    } else {
+                        ngx_http_waf_append_action_html(r,
+                            &loc_conf->waf_block_page,
+                            NGX_HTTP_TOO_MANY_REQUESTS,
+                            ACTION_FLAG_FROM_CAPTCHA);
+                    }
 
                 } else {
                     ngx_http_waf_set_rule_info(r, "CAPTCHA", "CHALLENGE", NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
@@ -362,8 +390,12 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
     
     if (error_page) {
         ngx_http_waf_dp(r, "error page 403");
-        ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
-        ret_value = NGX_DECLINED;
+        if (ngx_is_null_str(&loc_conf->waf_block_page)) {
+            ngx_http_finalize_request(r, NGX_HTTP_FORBIDDEN);
+
+        } else {
+            ret_value = _gen_response(r, loc_conf->waf_block_page, content_type, NGX_HTTP_FORBIDDEN);
+        }
 
     } else {
         ngx_http_waf_dp(r, "gen response");
