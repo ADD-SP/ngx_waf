@@ -171,21 +171,29 @@ static ngx_int_t _shm_zone_init_handler(ngx_shm_zone_t *zone, void *data) {
     LL_FOREACH(shm->init_chain, init) {
         if (old_shm != NULL) {
             shm_init_t* old_init = NULL;
+            int flag = NGX_HTTP_WAF_FALSE;
             LL_FOREACH(old_shm->init_chain, old_init) {
-                if (old_init->tag.len == init->tag.len
-                    && ngx_strncmp(old_init->tag.data, init->tag.data, init->tag.len) == 0) {
-                    
-                    if (init->init_handler(shm, init->data, old_init->data) != NGX_HTTP_WAF_SUCCESS) {
-                        return NGX_ERROR;
-                    }
-                    
-                } else {
-                    
-                    if (init->init_handler(shm, init->data, NULL) != NGX_HTTP_WAF_SUCCESS) {
-                        return NGX_ERROR;
-                    }
+                if (old_init->tag.len != init->tag.len) {
+                    continue;
+                }
+                
+                if (ngx_strncmp(old_init->tag.data, init->tag.data, init->tag.len) != 0) {
+                    continue;
+                }
+
+                flag = NGX_HTTP_WAF_TRUE;
+
+                if (init->init_handler(shm, init->data, old_init->data) != NGX_HTTP_WAF_SUCCESS) {
+                    return NGX_ERROR;
                 }
             }
+
+            if (flag == NGX_HTTP_WAF_FALSE) {
+                if (init->init_handler(shm, init->data, NULL) != NGX_HTTP_WAF_SUCCESS) {
+                    return NGX_ERROR;
+                }
+            }
+
         } else {
             if (init->init_handler(shm, init->data, NULL) != NGX_HTTP_WAF_SUCCESS) {
                 return NGX_ERROR;
