@@ -65,8 +65,8 @@ RUN set -xe \
     &&  git clone https://github.com/jedisct1/libsodium.git --branch ${LIB_SODIUM_VER} libsodium \
     &&  cd libsodium \
     &&  ./configure --prefix=/usr/local/libsodium --with-pic \
-    &&  make -j$(nproc) \
-    &&  make check -j$(nproc) \ 
+    &&  make \
+    &&  make check \ 
     &&  make install
 
 RUN wget --quiet https://github.com/ssdeep-project/ssdeep/releases/download/release-${SSDEEP_VERSION}/ssdeep-${SSDEEP_VERSION}.tar.gz \

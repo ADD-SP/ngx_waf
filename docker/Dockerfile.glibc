@@ -56,8 +56,8 @@ RUN set -xe \
     &&  git clone https://github.com/jedisct1/libsodium.git --branch ${LIB_SODIUM_VER} libsodium \
     &&  cd libsodium \
     &&  ./configure --prefix=/usr/local/libsodium --with-pic \
-    &&  make -j$(nproc) \
-    &&  make check -j$(nproc) \ 
+    &&  make  \
+    &&  make check  \ 
     &&  make install
 
 RUN set -xe \
@@ -73,7 +73,7 @@ RUN set -xe \
         --add-dynamic-module=/usr/local/src/ngx_waf \
         --with-compat \
         --with-cc-opt='-fstack-protector-strong' \
-    &&  make modules -j$(nproc)
+    &&  make modules
 
 
 FROM busybox:stable-glibc
