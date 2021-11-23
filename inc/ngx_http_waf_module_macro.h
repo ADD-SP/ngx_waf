@@ -6,7 +6,7 @@
 #ifndef NGX_HTTP_WAF_MODULE_MACRO_H
 #define NGX_HTTP_WAF_MODULE_MACRO_H
 
-#define NGX_HTTP_WAF_VERSION "v10.0.0-dev-patch-7"
+#define NGX_HTTP_WAF_VERSION "v10.0.0-dev-patch-8"
 
 #define NGX_HTTP_WAF_ASYNC_MODSECURITY       (0)
 
