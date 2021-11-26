@@ -1,14 +1,19 @@
 ARG NGX_VER=stable
+
+FROM owasp/modsecurity:3.0.5-alpine AS modsecurity
+
+ARG NGX_VER=stable
 FROM nginx:${NGX_VER}-alpine as base
 ARG CHANGE_SOURCE=false
 ARG NGX_VER=stable
 ARG LIB_SODIUM_VER=1.0.18-RELEASE
-ARG MODSEC_VERSION=3.0.5
-ARG FUZZY_VERSION=2.1.0
-ARG SSDEEP_VERSION=2.14.1
+ARG MODSEC_VERSION=v3.0.5
+ARG CJSON_VERSION=v1.7.15
+ARG UTHASH_VERSION=v2.3.0
 
 WORKDIR /usr/local/src
 COPY . ./ngx_waf
+COPY --from=modsecurity /usr/local/modsecurity/ /usr/local/modsecurity/
 
 SHELL ["/bin/sh", "-o", "pipefail", "-c"]
 RUN set -xe \
@@ -41,48 +46,28 @@ RUN set -xe \
             libmaxminddb \
             flex \
             bison \
-            ca-certificates \
-            coreutils \
-            curl-dev \
-            geoip-dev \
-            libstdc++ \
-            libxml2-dev \
-            lmdb-dev \
-            openssl \
-            yajl-dev \
     &&  if [ ${CHANGE_SOURCE} = true ]; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \
     &&  pip3 install lastversion
 
 RUN set -xe \
-    &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git ngx_waf/lib/cjson
+    &&  git clone https://github.com/DaveGamble/cJSON.git --branch ${CJSON_VERSION}  ngx_waf/lib/cjson
 
 RUN set -xe \
-    &&  git clone -b v2.3.0 https://github.com/troydhanson/uthash.git ngx_waf/lib/uthash
+    &&  git clone https://github.com/troydhanson/uthash.git --branch ${UTHASH_VERSION} ngx_waf/lib/uthash
 
 RUN set -xe \
     &&  git clone https://github.com/jedisct1/libsodium.git --branch ${LIB_SODIUM_VER} libsodium \
     &&  cd libsodium \
     &&  ./configure --prefix=/usr/local/libsodium --with-pic \
-    &&  make \
-    &&  make check \ 
+    &&  make -j$(nproc) \
+    &&  make check -j$(nproc) \ 
     &&  make install
 
-RUN wget --quiet https://github.com/ssdeep-project/ssdeep/releases/download/release-${SSDEEP_VERSION}/ssdeep-${SSDEEP_VERSION}.tar.gz \
-    && tar -xvzf ssdeep-${SSDEEP_VERSION}.tar.gz \
-    && cd ssdeep-${SSDEEP_VERSION} \
-    && ./configure \
-    && make install
-
-
-RUN git clone https://github.com/SpiderLabs/ModSecurity --branch v"$MODSEC_VERSION" --depth 1 \
-    && cd ModSecurity \
-    && ./build.sh \
-    && git submodule init \
-    && git submodule update \
-    && ./configure --prefix=/usr/local/modsecurity --with-yajl --with-ssdeep --with-lmdb \
-    && make install
+RUN set -xe \
+    && git clone https://github.com/SpiderLabs/ModSecurity.git --branch ${MODSEC_VERSION} \
+    && cp -r ModSecurity/headers /usr/local/modsecurity/include
 
 RUN set -xe \
     &&  lastversion --download="nginx.tar.gz" --major ${NGX_VER} https://nginx.org \
@@ -98,7 +83,7 @@ RUN set -xe \
         --add-dynamic-module=/usr/local/src/ngx_waf \
         --with-compat \
         --with-cc-opt='-fstack-protector-strong' \
-    &&  make modules
+    &&  make modules -j$(nproc)
 
 
 FROM busybox:stable-musl
