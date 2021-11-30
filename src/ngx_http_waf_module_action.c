@@ -152,6 +152,9 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
         }
+
+    } else {
+        ngx_http_waf_dp(r, "cache not exists");
     }
 
     if (need_delete) {
@@ -159,7 +162,9 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
         ngx_shmtx_lock(&shpool->mutex);
         ngx_http_waf_dp(r, "success");
 
+        ngx_http_waf_dp(r, "deleting cache");
         lru_cache_delete(cache, &inx_addr, sizeof(inx_addr));
+        ngx_http_waf_dp(r, "success");
 
         ngx_http_waf_dp(r, "unlocking shared memory")
         ngx_shmtx_unlock(&shpool->mutex);
@@ -287,6 +292,8 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
 
     if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_CAPTCHA)) {
         if (!ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CAPTCHA)) {
+            ngx_http_waf_dp(r, "action not from CPATCHA");
+
             lru_cache_t* cache = loc_conf->action_cache_captcha;
 
             if (!ngx_http_waf_is_valid_ptr_value(cache)) {
@@ -344,7 +351,7 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
         }
 
         if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_FROM_CC_DENY)) {
-            ngx_http_waf_dp(r, "found");
+            ngx_http_waf_dp(r, "action from CC_DENY");
 
             lru_cache_t* cache = loc_conf->ip_access_statistics;
 
@@ -367,6 +374,8 @@ static ngx_int_t _perform_action_html(ngx_http_request_t* r, action_t* action) {
                 ngx_http_waf_dp(r, "not found");
                 ret_value = NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
+
+            ngx_http_waf_dp(r, "found");
 
             ip_statis_t* ip_statis = *(result.data);
             ip_statis->count = 0;
