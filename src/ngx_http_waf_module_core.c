@@ -199,12 +199,18 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         http_status = NGX_DECLINED;
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Skip scheduling.");
+
+    } else if (ngx_http_waf_check_flag(loc_conf->waf_mode, r->method) == NGX_HTTP_WAF_FALSE) {
+        http_status = NGX_DECLINED;
+        
     } else if (r->internal != 0 && ctx->checked == NGX_HTTP_WAF_TRUE) {
         http_status = NGX_DECLINED;
         ngx_log_debug(NGX_LOG_DEBUG_CORE, r->connection->log, 0, 
             "ngx_waf_debug: Skip scheduling.");
+
     } else if (_read_request_body(r) == NGX_HTTP_WAF_BAD) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
+
     } else {
         ctx->checked = NGX_HTTP_WAF_TRUE;
         ngx_http_waf_check_pt* funcs = loc_conf->check_proc;
