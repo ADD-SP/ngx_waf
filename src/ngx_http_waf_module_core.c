@@ -325,6 +325,11 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_waf_dp(r, "success");
     }
 
+    if (ngx_http_waf_check_flag(!loc_conf->waf_mode, r->method)) {
+        ngx_http_waf_dp(r, "do nothing due to waf_mode ... return");
+        return NGX_DECLINED;
+    }
+
 
     if (ctx->waiting_more_body) {
         return NGX_DONE;
