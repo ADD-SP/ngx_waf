@@ -790,6 +790,10 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
         utarray_free(array);
     }
 
+    if (loc_conf->waf_captcha == NGX_CONF_UNSET) {
+        goto no_prov;
+    }
+
     if (!ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha_max_fails)
         || !ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha_duration)) {
 
@@ -837,6 +841,11 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
     }
 
     return NGX_CONF_OK;
+
+no_prov:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+        "ngx_waf: you must set the parameter [prov]");
+    return NGX_CONF_ERROR;
 
 no_secret:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
