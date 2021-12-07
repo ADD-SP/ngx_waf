@@ -231,6 +231,8 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
         #undef _parse_mode
 
+#ifndef NGX_HTTP_WAF_NO_EASTER_EGG
+
         if (modes[i].len == sizeof("NICO") - 1
             && ngx_memcmp(modes[i].data, "NICO", sizeof("NICO") - 1) == 0) {
             fprintf(stderr, 
@@ -239,6 +241,8 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             
             continue;
         }
+
+#endif
 
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: invalid value.");
@@ -1327,11 +1331,16 @@ char* ngx_http_waf_block_page_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
 
     if (_strcaseeq(file, "default")) {
         ngx_str_set(&loc_conf->waf_block_page, ngx_http_waf_data_html_block);
+    } 
 
-    } else if (_strcaseeq(file, "SpongeBob")) {
+#ifndef NGX_HTTP_WAF_NO_EASTER_EGG
+    else if (_strcaseeq(file, "SpongeBob")) {
         ngx_str_set(&loc_conf->waf_block_page, ngx_http_waf_data_html_sponge_bob);
 
-    } else {
+    } 
+#endif
+
+    else {
         FILE* fp = fopen((char*)file, "r");
 
         if (fp == NULL) {
