@@ -1,5 +1,7 @@
 #include <ngx_http_waf_module_verify_bot.h>
 
+typedef ngx_int_t (*_handler)(ngx_http_request_t *r);
+
 static ngx_int_t _verify_google_bot(ngx_http_request_t* r);
 
 static ngx_int_t _verify_bing_bot(ngx_http_request_t* r);
@@ -15,6 +17,15 @@ static ngx_int_t _verify_by_rdns(ngx_http_request_t* r, ngx_array_t* ua_regex, n
 // static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail);
 
 ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
+    static void* _func[] = {
+        _verify_google_bot, "GoogleBot",
+        _verify_bing_bot, "BingBot",
+        _verify_baidu_spider, "Baiduspider",
+        _verify_yandex_bot, "YandexBot",
+        _verify_sogou_spider, "SogouSpider",
+        NULL, NULL
+    };
+
     ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
@@ -34,29 +45,34 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
     action_t* action = NULL;
     ngx_http_waf_copy_action_chain(r->pool, action, loc_conf->action_chain_verify_bot);
 
-    #define ngx_http_waf_func(handler, bot) {                                   \
-        ngx_http_waf_dpf(r, "verfiying %s", bot);                               \
-        ngx_int_t rc = (handler)(r);                                            \
-        if (rc == NGX_HTTP_WAF_FAKE_BOT && loc_conf->waf_verify_bot == 2) {     \
-            ngx_http_waf_dp(r, "fake bot ... return");                          \
-            ngx_http_waf_append_action_chain(r, action);                        \
-            return NGX_HTTP_WAF_MATCHED;                                        \
-        } else if (rc == NGX_HTTP_WAF_SUCCESS) {                                \
-            ngx_http_waf_dp(r, "real bot ... return");                          \
-            ngx_http_waf_append_action_chain(r, action_decline);                \
-            ngx_http_waf_set_rule_info(r, "FAKE-BOT", bot,                      \
-                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);                          \
-            return NGX_HTTP_WAF_MATCHED;                                        \
-        }                                                                       \
+
+    for (int i = 0; _func[i] != NULL; i += 2) {
+        ngx_http_waf_dpf(r, "verfiying %s", _func[i + 1]);
+        _handler handler = (_handler)_func[i];
+        ngx_int_t rc = handler(r);
+
+        if (rc == NGX_HTTP_WAF_FAKE_BOT) {
+            ngx_http_waf_dp(r, "fake bot ... return");
+            if (loc_conf->waf_verify_bot == 2) {
+                ngx_http_waf_set_rule_info(r, "FAKE-BOT", _func[i + 1],
+                    NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
+                ngx_http_waf_append_action_chain(r, action);
+                return NGX_HTTP_WAF_MATCHED;
+
+            } else {
+                ngx_http_waf_set_rule_info(r, "FAKE-BOT", _func[i + 1],
+                    NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
+                return NGX_HTTP_WAF_NOT_MATCHED;
+            }
+
+        } else if (rc == NGX_HTTP_WAF_SUCCESS){
+            ngx_http_waf_dp(r, "real bot ... return");
+            ngx_http_waf_append_action_chain(r, action_decline);
+            ngx_http_waf_set_rule_info(r, "REAL-BOT", _func[i + 1],
+                NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
+            return NGX_HTTP_WAF_MATCHED;
+        }   
     }
-
-    ngx_http_waf_func(_verify_google_bot, "GoogleBot");
-    ngx_http_waf_func(_verify_bing_bot, "BingBot");
-    ngx_http_waf_func(_verify_baidu_spider, "BaiduSpider");
-    ngx_http_waf_func(_verify_yandex_bot, "YandexBot");
-    ngx_http_waf_func(_verify_sogou_spider, "SogouSpider");
-
-    #undef ngx_http_waf_func
 
     ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
