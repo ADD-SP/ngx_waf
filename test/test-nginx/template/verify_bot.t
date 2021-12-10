@@ -98,3 +98,22 @@ User-Agent: YandexBot
 
 --- error_code chomp
 403
+
+=== TEST: Fake SogouSpider
+
+--- config
+waf on;
+waf_mode GET UA;
+waf_rule_path ${base_dir}/waf/rules/;
+waf_cc_deny off rate=100r/m;
+waf_cache off capacity=50;
+waf_verify_bot strict;
+
+--- request
+GET /
+
+--- more_headers
+User-Agent: Sogou web spider
+
+--- error_code chomp
+403

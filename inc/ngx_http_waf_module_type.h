@@ -336,10 +336,12 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_array_t                    *waf_verify_bot_bing_ua_regexp;              /**< Bingbot 的合法 User-Agent */
     ngx_array_t                    *waf_verify_bot_baidu_ua_regexp;             /**< BaiduSpider 的合法 User-Agent */
     ngx_array_t                    *waf_verify_bot_yandex_ua_regexp;            /**< Yandexbot 的合法 User-Agent */
+    ngx_array_t                    *waf_verify_bot_sogou_ua_regexp;             /**< SogouSpider 的合法 User-Agent */
     ngx_array_t                    *waf_verify_bot_google_domain_regexp;        /**< Googlebot 的合法的主机名 */
     ngx_array_t                    *waf_verify_bot_bing_domain_regexp;          /**< Bingbot 的合法的主机名 */
     ngx_array_t                    *waf_verify_bot_baidu_domain_regexp;         /**< BaiduSpider 的合法的主机名 */
     ngx_array_t                    *waf_verify_bot_yandex_domain_regexp;        /**< Yandexbot 的合法的主机名 */
+    ngx_array_t                    *waf_verify_bot_sogou_domain_regexp;         /**< SogouSpider 的合法的主机名 */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_str_t                       waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
     ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */

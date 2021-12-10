@@ -1045,6 +1045,16 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
         NULL
     };
 
+    static char* s_sogou_spider_ua_regexp[] = {
+        "Sogou.*spider",
+        NULL
+    };
+
+    static char* s_sogou_spider_domain_regexp[] = {
+        "sogou\\.com$",
+        NULL
+    };
+
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
@@ -1084,6 +1094,8 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
     _make_regexp_array(s_baidu_spider_domain_regexp, loc_conf->waf_verify_bot_baidu_domain_regexp);
     _make_regexp_array(s_yandex_bot_ua_regexp, loc_conf->waf_verify_bot_yandex_ua_regexp);
     _make_regexp_array(s_yandex_bot_domain_regexp, loc_conf->waf_verify_bot_yandex_domain_regexp);
+    _make_regexp_array(s_sogou_spider_ua_regexp, loc_conf->waf_verify_bot_sogou_ua_regexp);
+    _make_regexp_array(s_sogou_spider_domain_regexp, loc_conf->waf_verify_bot_sogou_domain_regexp);
 
 
 
@@ -1102,6 +1114,7 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
         _parse_robot("BingBot", NGX_HTTP_WAF_BING_BOT);
         _parse_robot("BaiduSpider", NGX_HTTP_WAF_BAIDU_SPIDER);
         _parse_robot("YandexBot", NGX_HTTP_WAF_YANDEX_BOT);
+        _parse_robot("SogouSpider", NGX_HTTP_WAF_SOGOU_SPIDER);
         
         goto error;
 
@@ -1112,7 +1125,8 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
         loc_conf->waf_verify_bot_type = NGX_HTTP_WAF_GOOGLE_BOT 
                                       | NGX_HTTP_WAF_BING_BOT 
                                       | NGX_HTTP_WAF_BAIDU_SPIDER 
-                                      | NGX_HTTP_WAF_YANDEX_BOT;
+                                      | NGX_HTTP_WAF_YANDEX_BOT
+                                      | NGX_HTTP_WAF_SOGOU_SPIDER;
     }
 
     return NGX_CONF_OK;
@@ -1593,10 +1607,12 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->waf_verify_bot_bing_ua_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_baidu_ua_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_yandex_ua_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_sogou_ua_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_google_domain_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_bing_domain_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_baidu_domain_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_yandex_domain_regexp = NGX_CONF_UNSET_PTR;
+    conf->waf_verify_bot_sogou_domain_regexp = NGX_CONF_UNSET_PTR;
 
     conf->waf_under_attack = NGX_CONF_UNSET;
     ngx_str_null(&conf->waf_under_attack_html);
@@ -1767,10 +1783,12 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->waf_verify_bot_bing_ua_regexp, parent->waf_verify_bot_bing_ua_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_baidu_ua_regexp, parent->waf_verify_bot_baidu_ua_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_yandex_ua_regexp, parent->waf_verify_bot_yandex_ua_regexp, NULL);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_sogou_ua_regexp, parent->waf_verify_bot_sogou_ua_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_google_domain_regexp, parent->waf_verify_bot_google_domain_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_bing_domain_regexp, parent->waf_verify_bot_bing_domain_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_baidu_domain_regexp, parent->waf_verify_bot_baidu_domain_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_yandex_domain_regexp, parent->waf_verify_bot_yandex_domain_regexp, NULL);
+    ngx_conf_merge_ptr_value(child->waf_verify_bot_sogou_domain_regexp, parent->waf_verify_bot_sogou_domain_regexp, NULL);
 
 
     if (child->waf_mode == 0) {

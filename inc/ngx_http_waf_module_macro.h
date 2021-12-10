@@ -79,6 +79,8 @@
 
 #define NGX_HTTP_WAF_YANDEX_BOT              (NGX_HTTP_WAF_BAIDU_SPIDER << 1)
 
+#define NGX_HTTP_WAF_SOGOU_SPIDER            (NGX_HTTP_WAF_YANDEX_BOT << 1)
+
 
 /**
  * @def NGX_HTTP_WAF_RULE_MAX_LEN
