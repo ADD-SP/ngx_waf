@@ -1059,7 +1059,7 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
     ngx_str_t* p_str = cf->args->elts;
 
     loc_conf->waf_verify_bot = NGX_CONF_UNSET;
-    loc_conf->waf_verify_bot_type = 0;
+    loc_conf->waf_verify_bot_type = BOT_TYPE_UNSET;
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_verify_bot = 1;
@@ -1110,23 +1110,23 @@ char* ngx_http_waf_verify_bot_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
             continue;                                                                                       \
         }                                                                                                   \
 
-        _parse_robot("GoogleBot", NGX_HTTP_WAF_GOOGLE_BOT);
-        _parse_robot("BingBot", NGX_HTTP_WAF_BING_BOT);
-        _parse_robot("BaiduSpider", NGX_HTTP_WAF_BAIDU_SPIDER);
-        _parse_robot("YandexBot", NGX_HTTP_WAF_YANDEX_BOT);
-        _parse_robot("SogouSpider", NGX_HTTP_WAF_SOGOU_SPIDER);
+        _parse_robot("GoogleBot", BOT_TYPE_GOOGLE);
+        _parse_robot("BingBot", BOT_TYPE_BING);
+        _parse_robot("BaiduSpider", BOT_TYPE_BAIDU);
+        _parse_robot("YandexBot", BOT_TYPE_YANDEX);
+        _parse_robot("SogouSpider", BOT_TYPE_SOGOU);
         
         goto error;
 
         #undef _parse_robot
     }
 
-    if (loc_conf->waf_verify_bot_type == 0) {
-        loc_conf->waf_verify_bot_type = NGX_HTTP_WAF_GOOGLE_BOT 
-                                      | NGX_HTTP_WAF_BING_BOT 
-                                      | NGX_HTTP_WAF_BAIDU_SPIDER 
-                                      | NGX_HTTP_WAF_YANDEX_BOT
-                                      | NGX_HTTP_WAF_SOGOU_SPIDER;
+    if (loc_conf->waf_verify_bot_type == BOT_TYPE_UNSET) {
+        loc_conf->waf_verify_bot_type = BOT_TYPE_GOOGLE 
+                                      | BOT_TYPE_BING 
+                                      | BOT_TYPE_BAIDU 
+                                      | BOT_TYPE_SOGOU
+                                      | BOT_TYPE_YANDEX;
     }
 
     return NGX_CONF_OK;
@@ -1602,7 +1602,7 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->waf_mode = 0;
 
     conf->waf_verify_bot = NGX_CONF_UNSET;
-    conf->waf_verify_bot_type = NGX_CONF_UNSET;
+    conf->waf_verify_bot_type = BOT_TYPE_UNSET;
     conf->waf_verify_bot_google_ua_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_bing_ua_regexp = NGX_CONF_UNSET_PTR;
     conf->waf_verify_bot_baidu_ua_regexp = NGX_CONF_UNSET_PTR;
@@ -1778,7 +1778,11 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     }
 
     ngx_conf_merge_value(child->waf_verify_bot, parent->waf_verify_bot, NGX_CONF_UNSET);
-    ngx_conf_merge_value(child->waf_verify_bot_type, parent->waf_verify_bot_type, NGX_CONF_UNSET);
+    
+    if (child->waf_verify_bot_type == BOT_TYPE_UNSET) {
+        child->waf_verify_bot_type = parent->waf_verify_bot_type;
+    }
+
     ngx_conf_merge_ptr_value(child->waf_verify_bot_google_ua_regexp, parent->waf_verify_bot_google_ua_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_bing_ua_regexp, parent->waf_verify_bot_bing_ua_regexp, NULL);
     ngx_conf_merge_ptr_value(child->waf_verify_bot_baidu_ua_regexp, parent->waf_verify_bot_baidu_ua_regexp, NULL);

@@ -69,7 +69,7 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_GOOGLE_BOT)) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, BOT_TYPE_GOOGLE)) {
         return NGX_HTTP_WAF_FAIL;
     }
 
@@ -88,7 +88,7 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BING_BOT)) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, BOT_TYPE_BING)) {
         return NGX_HTTP_WAF_FAIL;
     }
 
@@ -107,7 +107,7 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_BAIDU_SPIDER)) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, BOT_TYPE_BAIDU)) {
         return NGX_HTTP_WAF_FAIL;
     }
 
@@ -125,7 +125,7 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_YANDEX_BOT)) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, BOT_TYPE_YANDEX)) {
         return NGX_HTTP_WAF_FAIL;
     }
 
@@ -143,7 +143,7 @@ static ngx_int_t _verify_sogou_spider(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, NGX_HTTP_WAF_SOGOU_SPIDER)) {
+    if (!ngx_http_waf_check_flag(loc_conf->waf_verify_bot_type, BOT_TYPE_SOGOU)) {
         return NGX_HTTP_WAF_FAIL;
     }
 

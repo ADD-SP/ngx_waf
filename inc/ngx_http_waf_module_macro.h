@@ -71,17 +71,6 @@
 #define NGX_HTTP_WAF_RECAPTCHA_V3            (4)
 
 
-#define NGX_HTTP_WAF_GOOGLE_BOT              (1)
-
-#define NGX_HTTP_WAF_BING_BOT                (NGX_HTTP_WAF_GOOGLE_BOT << 1)
-
-#define NGX_HTTP_WAF_BAIDU_SPIDER            (NGX_HTTP_WAF_BING_BOT << 1)
-
-#define NGX_HTTP_WAF_YANDEX_BOT              (NGX_HTTP_WAF_BAIDU_SPIDER << 1)
-
-#define NGX_HTTP_WAF_SOGOU_SPIDER            (NGX_HTTP_WAF_YANDEX_BOT << 1)
-
-
 /**
  * @def NGX_HTTP_WAF_RULE_MAX_LEN
  * @brief 每条规则的占用的最大字节数。

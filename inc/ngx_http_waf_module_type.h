@@ -233,6 +233,17 @@ typedef struct ip_trie_s {
 
 
 typedef enum {
+    BOT_TYPE_NONE       = 0X0,
+    BOT_TYPE_UNSET      = 0X1,
+    BOT_TYPE_GOOGLE     = 0X2,
+    BOT_TYPE_BING       = 0X4,
+    BOT_TYPE_BAIDU      = 0X8,
+    BOT_TYPE_SOGOU      = 0X10,
+    BOT_TYPE_YANDEX     = 0X20
+} bot_type_e;
+
+
+typedef enum {
     ACTION_FLAG_NONE                = 0x0,
     ACTION_FLAG_UNSET               = 0x1,
     ACTION_FLAG_DECLINE             = 0x2,
