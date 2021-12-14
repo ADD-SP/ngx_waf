@@ -495,24 +495,24 @@ static void _handler_read_request_body(ngx_http_request_t* r) {
 
 
 static ngx_int_t _gc(ngx_http_request_t* r) {
-    // ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
-    // ngx_core_conf_t* ccf = (ngx_core_conf_t *)ngx_get_conf(ngx_cycle->conf_ctx, ngx_core_module);
+    ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_core_conf_t* ccf = (ngx_core_conf_t *)ngx_get_conf(ngx_cycle->conf_ctx, ngx_core_module);
 
-    // uint32_t num = randombytes_uniform(ccf->worker_processes);
+    uint32_t num = randombytes_uniform(ccf->worker_processes);
 
-    // if (num > 0) {
-    //     return NGX_HTTP_WAF_SUCCESS;
-    // }
+    if (num > 0) {
+        return NGX_HTTP_WAF_SUCCESS;
+    }
 
-    // shm_t* shms = mcf->shms->elts;
+    shm_t* shms = mcf->shms->elts;
 
-    // for (size_t i = 0; i < mcf->shms->nelts; i++) {
-    //     shm_t* shm = &shms[i];
+    for (size_t i = 0; i < mcf->shms->nelts; i++) {
+        shm_t* shm = &shms[i];
 
-    //     if (ngx_http_waf_shm_gc(shm) != NGX_HTTP_WAF_SUCCESS) {
-    //         return NGX_HTTP_WAF_FAIL;
-    //     }
-    // }
+        if (ngx_http_waf_shm_gc(shm) != NGX_HTTP_WAF_SUCCESS) {
+            return NGX_HTTP_WAF_FAIL;
+        }
+    }
 
     return NGX_HTTP_WAF_SUCCESS;
 }
