@@ -142,19 +142,35 @@ error:
 
 
 char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-    if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
-        return NGX_CONF_ERROR;
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+    if (p_str[1].len == 3 && ngx_memcmp(p_str[1].data, "off", 3) == 0) {
+        loc_conf->waf = 0;
+        return NGX_CONF_OK;
     }
 
-    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    if (p_str[1].len == 2 && ngx_memcmp(p_str[1].data, "on", 2) == 0) {
+        loc_conf->waf = 1;
 
-    if (loc_conf->waf == 1) {
         if (_init_rule_containers(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
             return NGX_CONF_ERROR;
         }
+
+        return NGX_CONF_OK;
     }
 
-    return NGX_CONF_OK;
+    if (p_str[1].len == 6 && ngx_memcmp(p_str[1].data, "bypass", 6) == 0) {
+        loc_conf->waf = 2;
+
+        if (_init_rule_containers(cf, loc_conf) != NGX_HTTP_WAF_SUCCESS) {
+            return NGX_CONF_ERROR;
+        }
+
+        return NGX_CONF_OK;
+    }
+
+    return NGX_CONF_ERROR;
 }
 
 

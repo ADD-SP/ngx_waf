@@ -31,6 +31,11 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
+    if (loc_conf->waf == 2) {
+        ngx_http_waf_dp(r, "bypass mode ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
     lru_cache_t* cache = loc_conf->action_cache_captcha;
 
     if (!ngx_http_waf_is_valid_ptr_value(cache)) {
@@ -180,8 +185,13 @@ ngx_int_t ngx_http_waf_perform_action_at_access_end(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
-    // ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (loc_conf->waf == 2) {
+        ngx_http_waf_dp(r, "bypass mode ... return");
+        return NGX_DECLINED;
+    }
 
     ngx_int_t ret_value = NGX_DECLINED;
     action_t *elt = NULL, *tmp = NULL;

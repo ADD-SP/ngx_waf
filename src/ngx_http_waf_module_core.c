@@ -19,7 +19,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_FLAG,
         ngx_http_waf_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
-        offsetof(ngx_http_waf_loc_conf_t, waf),
+        0,
         NULL
    },
    {
@@ -319,7 +319,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     }
 
     
-    if (ctx->register_content_handler) {
+    if (ctx->register_content_handler && loc_conf->waf == 1) {
         ngx_http_waf_dp(r, "registering content handler");
         ngx_http_waf_register_content_handler(r);
         ngx_http_waf_dp(r, "success");

@@ -332,7 +332,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     struct ngx_http_waf_loc_conf_s *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
     u_char                          random_str[129];                            /**< 随机字符串 */
     ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
-    ngx_int_t                       waf;                                        /**< 是否启用本模块 */
+    ngx_int_t                       waf;                                        /**< 0: 禁用, 1 启用, 2 旁路模式 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
     uint64_t                        waf_mode;                                   /**< 检测模式 */
     ngx_int_t                       waf_cc_deny;                                /**< 0 为关闭，1 超出限制拉黑，2 超出限制弹出验证码三次，三次均失败则拉黑 */
@@ -341,7 +341,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
     ngx_int_t                       waf_cache;                                  /**< 是否启用缓存 */
     ngx_int_t                       waf_cache_capacity;                         /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_verify_bot;                             /**< 0 为关闭，1 为开启但不拦截疑似的假 Bot，2 会拦截疑似的假 Bot */
+    ngx_int_t                       waf_verify_bot;                             /**< 0: 禁用, 1 仅放行假爬虫, 2: 拦截假爬虫 */
     ngx_int_t                       waf_verify_bot_type;                        /**< 位图，表示检测哪些 Bot */
     ngx_array_t                    *waf_verify_bot_google_ua_regexp;            /**< Googlebot 的合法 User-Agent */
     ngx_array_t                    *waf_verify_bot_bing_ua_regexp;              /**< Bingbot 的合法 User-Agent */
