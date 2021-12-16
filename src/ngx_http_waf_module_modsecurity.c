@@ -501,10 +501,10 @@ static ngx_int_t _process_request_body(ngx_http_request_t* r, ngx_int_t* out_htt
 
     Transaction *transaction = ctx->modsecurity_transaction;
 
-    if (ctx->has_req_body == NGX_HTTP_WAF_FALSE) {
+    if (ctx->has_req_body) {
         ngx_str_t body;
         body.data = ctx->req_body.pos;
-        body.len = ctx->req_body.last - ctx->req_body.last;
+        body.len = ctx->req_body.last - ctx->req_body.pos;
         ngx_http_waf_dpf(r, "appending request body %V", &body);
         if (msc_append_request_body(transaction, body.data, body.len) != 1) {
             ngx_http_waf_dp(r, "failed ... return");
