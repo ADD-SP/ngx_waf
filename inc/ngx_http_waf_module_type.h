@@ -375,12 +375,12 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_modsecurity_rules_remote_url;
     ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
     ngx_str_t                       waf_block_page;                             /**< 封禁页面的 HTML */
-    action_t                       *action_chain_blacklist;
-    action_t                       *action_chain_cc_deny;
-    action_t                       *action_chain_modsecurity;
-    action_t                       *action_chain_verify_bot;
-    ngx_shm_zone_t                 *action_zone_captcha;
-    lru_cache_t                    *action_cache_captcha;
+    action_t                       *action_chain_blacklist;                     /**< 黑名单触发后的动作 */
+    action_t                       *action_chain_cc_deny;                       /**< CC 触发后的动作 */
+    action_t                       *action_chain_modsecurity;                   /**< ModSecurity 触发后的动作 */
+    action_t                       *action_chain_verify_bot;                    /**< verify_bot 触发后的动作 */
+    ngx_shm_zone_t                 *action_zone_captcha;                        /**< 验证码动作使用的 zone */
+    lru_cache_t                    *action_cache_captcha;                       /**< 验证码动作使用的 cache */
     ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */
     void                           *modsecurity_rules;                          /**< ModSecurity 规则容器 */
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
