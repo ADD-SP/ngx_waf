@@ -38,4 +38,10 @@ ngx_uint_t lru_cache_eliminate_expire(lru_cache_t* lru, size_t count);
 ngx_uint_t lru_cache_eliminate(lru_cache_t* lru, size_t count);
 
 
+void lru_cache_clear(lru_cache_t* lru);
+
+
+void lru_cache_destroy(lru_cache_t* lru);
+
+
 #endif
