@@ -495,24 +495,65 @@ static void _handler_read_request_body(ngx_http_request_t* r) {
 
 
 static ngx_int_t _gc(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
     ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
     ngx_core_conf_t* ccf = (ngx_core_conf_t *)ngx_get_conf(ngx_cycle->conf_ctx, ngx_core_module);
+    ngx_int_t worker_processes = ccf->worker_processes;
 
-    uint32_t num = randombytes_uniform(ccf->worker_processes);
+    ngx_http_waf_dpf(r, "%i worker processes", worker_processes);
 
-    if (num > 0) {
+    /* 如果至少有一个 worker 进程则计算概率 */
+    if (worker_processes > 1 && randombytes_uniform(worker_processes) != 0) {
         return NGX_HTTP_WAF_SUCCESS;
     }
 
+    /* 首先释放共享内存 */
+    ngx_http_waf_dp(r, "freeing shared memory");
     shm_t* shms = mcf->shms->elts;
 
     for (size_t i = 0; i < mcf->shms->nelts; i++) {
         shm_t* shm = &shms[i];
 
+        ngx_http_waf_dpf(r, "freeing shared memory %V", &shm->name);
+
         if (ngx_http_waf_shm_gc(shm) != NGX_HTTP_WAF_SUCCESS) {
+            ngx_http_waf_dp(r, "failed ... return");
             return NGX_HTTP_WAF_FAIL;
+        }
+
+        ngx_http_waf_dp(r, "success");
+    }
+    
+    /* 最后释放非共享内存 */
+    ngx_http_waf_dp(r, "freeing non-shared memory");
+    lru_cache_t** caches = mcf->local_caches->elts;
+    ngx_uint_t nelts = mcf->local_caches->nelts;
+
+    ngx_http_waf_dpf(r, "%i caches", nelts);
+
+    if (nelts != 0) {
+        for (ngx_uint_t i = 0; i < nelts; i++){
+            lru_cache_t* cache = caches[i];
+
+            if (cache->no_memory) {
+                ngx_http_waf_dp(r, "low memory");
+                cache->no_memory = 0;
+                lru_cache_eliminate(cache, 5);
+
+            } else {
+                ngx_uint_t limit = 10, loop = 0;
+
+                ngx_http_waf_dpf(r, "limit is %ui", limit);
+
+                while (loop < limit && lru_cache_eliminate_expire(cache, 5) >= 3) {
+                    ngx_http_waf_dpf(r, "loop %ui", loop);
+                    loop++;
+                }
+            }
         }
     }
 
+    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 }

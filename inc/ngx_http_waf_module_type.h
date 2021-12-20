@@ -321,6 +321,7 @@ typedef struct ngx_http_waf_ctx_s {
 */
 typedef struct ngx_http_waf_main_conf_s {
     ngx_array_t                    *shms;                                       /**< 共享内存列表 */
+    ngx_array_t                    *local_caches;                                /**< 未使用共享内存的缓存列表 */
 } ngx_http_waf_main_conf_t;
 
 
