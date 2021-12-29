@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev libmodsecurity-dev  libmodsecurity3
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
       - name: Download ${{ matrix.nginx-version }}
         run: |
           if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
@@ -62,6 +62,19 @@ jobs:
           lastversion download nginx:${version}
           mkdir nginx
           tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+      - name: Download and install modsecurity
+        run: |
+          sudo chmod 777 -R /usr/local/src
+          cd /usr/local/src
+          git clone https://github.com/SpiderLabs/ModSecurity.git
+          sudo chmod 777 -R /usr/local/src
+          cd ModSecurity
+          ./build.sh
+          git submodule init
+          git submodule update
+          ./configure --prefix=/usr/local/modsecurity
+          make -j$(nproc)
+          sudo make install
       - name: Download cjson
         run: |
           git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
@@ -76,6 +89,7 @@ jobs:
           else \
             opt='--add-dynamic-module' ;\
           fi
+          export LIB_MODSECURITY=/usr/local/modsecurity
           ./configure ${opt}=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
       - name: Install ${{ matrix.nginx-version }}
         run: |
