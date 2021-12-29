@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev libmodsecurity-dev libmodsecurity3 gcovr
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev gcovr
       - name: Download nginx
         run: |
           sudo chmod 777 -R /usr/local/src
@@ -29,6 +29,19 @@ jobs:
           lastversion download nginx:stable
           mkdir nginx
           tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+      - name: Download and install modsecurity
+        run: |
+          sudo chmod 777 -R /usr/local/src
+          cd /usr/local/src
+          git clone https://github.com/SpiderLabs/ModSecurity.git
+          sudo chmod 777 -R /usr/local/src
+          cd ModSecurity
+          ./build.sh
+          git submodule init
+          git submodule update
+          ./configure --prefix=/usr/local/modsecurity
+          make -j$(nproc)
+          sudo make install
       - name: Download DaveGamble/cJSON.git
         run: |
           git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
@@ -38,6 +51,7 @@ jobs:
       - name: Configure nginx
         run: |
           cd /usr/local/src/nginx
+          export LIB_MODSECURITY=/usr/local/modsecurity
           ./configure --add-module=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-fprofile-arcs -ftest-coverage -O0 -g3' --with-ld-opt='-lgcov'
       - name: Install nginx
         run: |

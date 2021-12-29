@@ -12,6 +12,10 @@ extern ngx_module_t ngx_http_waf_module;
 #define _strncaseeq(s1, s2) ( ngx_strncasecmp((u_char*)(s1), (u_char*)(s2), n) == 0 )
 
 
+extern void *(*pcre_malloc)(size_t);
+extern void  (*pcre_free)(void *);
+
+
 static ngx_pool_t* _modsecurity_pcre_pool;
 
 
