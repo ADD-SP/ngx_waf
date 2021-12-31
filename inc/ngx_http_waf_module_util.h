@@ -67,7 +67,7 @@ ngx_int_t ngx_http_waf_parse_size(u_char* str);
  * @note 数组内容格式为 [key, value, key, value, ......]
  * @warning 使用完毕后请自行释放数组所占用内存。
 */
-ngx_int_t ngx_http_waf_parse_cookie(ngx_str_t* native_cookie, UT_array** array);
+// ngx_int_t ngx_http_waf_parse_cookie(ngx_str_t* native_cookie, UT_array** array);
 
 
 /**

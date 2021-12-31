@@ -243,58 +243,58 @@ ngx_int_t ngx_http_waf_parse_size(u_char* str) {
 }
 
 
-ngx_int_t ngx_http_waf_parse_cookie(ngx_str_t* native_cookie, UT_array** array) {
-    if (array == NULL) {
-        return NGX_HTTP_WAF_FAIL;
-    }
+// ngx_int_t ngx_http_waf_parse_cookie(ngx_str_t* native_cookie, UT_array** array) {
+//     if (array == NULL) {
+//         return NGX_HTTP_WAF_FAIL;
+//     }
 
-    UT_icd icd = ngx_http_waf_make_utarray_ngx_str_icd();
-    utarray_new(*array, &icd);
+//     UT_icd icd = ngx_http_waf_make_utarray_ngx_str_icd();
+//     utarray_new(*array, &icd);
 
-    if (native_cookie == NULL) {
-        return NGX_HTTP_WAF_FAIL;
-    }
-
-
-    UT_array* cookies = NULL;
-    utarray_new(cookies, &icd);
-
-    ngx_http_waf_str_split(native_cookie, ';', native_cookie->len, &cookies);
-    ngx_str_t* p = NULL;
-
-    while (p = (ngx_str_t*)utarray_next(cookies, p), p != NULL) {
-        UT_array* key_and_value = NULL;
-        ngx_str_t temp;
-        temp.data = p->data;
-        temp.len = p->len;
-        if (p->data[0] == ' ') {
-            temp.data += 1;
-            temp.len -= 1;
-        }
-
-        ngx_http_waf_str_split(&temp, '=', native_cookie->len, &key_and_value);
-
-        if (utarray_len(key_and_value) != 2) {
-            return NGX_HTTP_WAF_FAIL;
-        }
-
-        ngx_str_t* key = NULL;
-        ngx_str_t* value = NULL;
+//     if (native_cookie == NULL) {
+//         return NGX_HTTP_WAF_FAIL;
+//     }
 
 
-        key = (ngx_str_t*)utarray_next(key_and_value, NULL);
-        value = (ngx_str_t*)utarray_next(key_and_value, key);
+//     UT_array* cookies = NULL;
+//     utarray_new(cookies, &icd);
+
+//     ngx_http_waf_str_split(native_cookie, ';', native_cookie->len, &cookies);
+//     ngx_str_t* p = NULL;
+
+//     while (p = (ngx_str_t*)utarray_next(cookies, p), p != NULL) {
+//         UT_array* key_and_value = NULL;
+//         ngx_str_t temp;
+//         temp.data = p->data;
+//         temp.len = p->len;
+//         if (p->data[0] == ' ') {
+//             temp.data += 1;
+//             temp.len -= 1;
+//         }
+
+//         ngx_http_waf_str_split(&temp, '=', native_cookie->len, &key_and_value);
+
+//         if (utarray_len(key_and_value) != 2) {
+//             return NGX_HTTP_WAF_FAIL;
+//         }
+
+//         ngx_str_t* key = NULL;
+//         ngx_str_t* value = NULL;
 
 
-        utarray_push_back(*array, key);
-        utarray_push_back(*array, value);
-        utarray_free(key_and_value);
-    }
+//         key = (ngx_str_t*)utarray_next(key_and_value, NULL);
+//         value = (ngx_str_t*)utarray_next(key_and_value, key);
 
-    utarray_free(cookies);
 
-    return NGX_HTTP_WAF_SUCCESS;
-}
+//         utarray_push_back(*array, key);
+//         utarray_push_back(*array, value);
+//         utarray_free(key_and_value);
+//     }
+
+//     utarray_free(cookies);
+
+//     return NGX_HTTP_WAF_SUCCESS;
+// }
 
 
 ngx_int_t ngx_http_waf_parse_query_string(ngx_str_t* native_query_string, key_value_t** hash_head) {

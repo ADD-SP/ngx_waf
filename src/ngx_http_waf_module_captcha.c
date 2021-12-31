@@ -425,7 +425,6 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    ngx_table_elt_t **ppcookie = (ngx_table_elt_t **)(r->headers_in.cookies.elts);
     _info_t* under_attack_client = ngx_pcalloc(r->pool, sizeof(_info_t));
     _info_t* under_attack_expect = ngx_pcalloc(r->pool, sizeof(_info_t));
 
@@ -434,48 +433,47 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_FAULT;
     }
 
-    ngx_int_t cookie_count = 0;
     ngx_memzero(under_attack_client, sizeof(_info_t));
     ngx_memzero(under_attack_expect, sizeof(_info_t));
 
-    for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
-        ngx_table_elt_t *native_cookie = *ppcookie;
-        UT_array* cookies = NULL;
-        if (ngx_http_waf_parse_cookie(&(native_cookie->value), &cookies) != NGX_HTTP_WAF_SUCCESS) {
-            continue;
+    if (r->headers_in.cookies.nelts > 0) {
+        ngx_str_t key, value;
+
+        ngx_str_set(&key, "__waf_captcha_uid");
+        ngx_str_null(&value);
+        ngx_http_waf_dpf(r, "searching cookie %V", &key);
+
+        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+            ngx_http_waf_dpf(r, "found cookie %V", &value);
+            ngx_memcpy(under_attack_client->uid, value.data, value.len);
+
+        } else {
+            ngx_http_waf_dpf(r, "not found cookie %V", &key);
         }
 
-        ngx_str_t* key = NULL;
-        ngx_str_t* value = NULL;
-        ngx_str_t* p = NULL;
+        ngx_str_set(&key, "__waf_captcha_hmac");
+        ngx_str_null(&value);
+        ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-        do {
-            if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
-                break;
-            }
+        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+            ngx_http_waf_dpf(r, "found cookie %V", &value);
+            ngx_memcpy(under_attack_client->hmac, value.data, value.len);
 
-            if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
-                break;
-            }
+        } else {
+            ngx_http_waf_dpf(r, "not found cookie %V", &key);
+        }
 
-            ngx_http_waf_dpf(r, "%V: %V", key, value);
+        ngx_str_set(&key, "__waf_captcha_time");
+        ngx_str_null(&value);
+        ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-            if (ngx_strcmp(key->data, "__waf_captcha_time") == 0) {
-                ngx_memcpy(under_attack_client->time, value->data, ngx_min(sizeof(under_attack_client->time) - 1, value->len));
-                ++cookie_count;
-            }
-            else if (ngx_strcmp(key->data, "__waf_captcha_uid") == 0) {
-                ngx_memcpy(under_attack_client->uid, value->data, ngx_min(sizeof(under_attack_client->uid) - 1, value->len));
-                ++cookie_count;
-            }
-            else if (ngx_strcmp(key->data, "__waf_captcha_hmac") == 0) {
-                ngx_memcpy(under_attack_client->hmac, value->data, ngx_min(sizeof(under_attack_client->hmac) - 1, value->len));
-                ++cookie_count;
-            }
+        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+            ngx_http_waf_dpf(r, "found cookie %V", &value);
+            ngx_memcpy(under_attack_client->time, value.data, value.len);
 
-        } while (p != NULL);
-
-        utarray_free(cookies);
+        } else {
+            ngx_http_waf_dpf(r, "not found cookie %V", &key);
+        }
     }
 
     ngx_memcpy(under_attack_expect, under_attack_client, sizeof(_info_t));

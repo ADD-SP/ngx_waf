@@ -32,57 +32,54 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
-
-    ngx_table_elt_t **ppcookie = (ngx_table_elt_t **)(r->headers_in.cookies.elts);
-    _info_t under_attack_client, under_attack_expect;
-    ngx_memzero(&under_attack_client, sizeof(_info_t));
-    ngx_memzero(&under_attack_expect, sizeof(_info_t));
+    _info_t* under_attack_client = ngx_pcalloc(r->pool, sizeof(_info_t));
+    _info_t* under_attack_expect = ngx_pcalloc(r->pool, sizeof(_info_t));
 
 
-    for (size_t i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
-        ngx_table_elt_t *native_cookie = *ppcookie;
-        UT_array* cookies = NULL;
+    if (r->headers_in.cookies.nelts > 0) {
+        ngx_str_t key, value;
 
-        ngx_http_waf_dpf(r, "parsing cookie %V", &native_cookie->value);
-        if (ngx_http_waf_parse_cookie(&(native_cookie->value), &cookies) != NGX_HTTP_WAF_SUCCESS) {
-            ngx_http_waf_dp(r, "failed ... continuse");
-            continue;
+        ngx_str_set(&key, "__waf_under_attack_time");
+        ngx_str_null(&value);
+        ngx_http_waf_dpf(r, "searching cookie %V", &key);
+
+        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+            ngx_http_waf_dpf(r, "found cookie %V", &key);
+            ngx_memcpy(under_attack_client->time, value.data, value.len);
+
+        } else {
+            ngx_http_waf_dpf(r, "not found cookie %V", &key);
         }
-        ngx_http_waf_dp(r, "success");
 
-        ngx_str_t* key = NULL;
-        ngx_str_t* value = NULL;
-        ngx_str_t* p = NULL;
+        ngx_str_set(&key, "__waf_under_attack_uid");
+        ngx_str_null(&value);
+        ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-        do {
-            if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
-                break;
-            }
+        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+            ngx_http_waf_dpf(r, "found cookie %V", &key);
+            ngx_memcpy(under_attack_client->uid, value.data, value.len);
 
-            if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
-                break;
-            }
+        } else {
+            ngx_http_waf_dpf(r, "not found cookie %V", &key);
+        }
 
-            ngx_http_waf_dpf(r, "%V: %V", key, value);
+        ngx_str_set(&key, "__waf_under_attack_hmac");
+        ngx_str_null(&value);
+        ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-            if (ngx_strcmp(key->data, "__waf_under_attack_time") == 0) {
-                ngx_memcpy(under_attack_client.time, value->data, ngx_min(sizeof(under_attack_client.time) - 1, value->len));
-            }
-            else if (ngx_strcmp(key->data, "__waf_under_attack_uid") == 0) {
-                ngx_memcpy(under_attack_client.uid, value->data, ngx_min(sizeof(under_attack_client.uid) - 1, value->len));
-            }
-            else if (ngx_strcmp(key->data, "__waf_under_attack_hmac") == 0) {
-                ngx_memcpy(under_attack_client.hmac, value->data, ngx_min(sizeof(under_attack_client.hmac) - 1, value->len));
-            }
+        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+            ngx_http_waf_dpf(r, "found cookie %V", &key);
+            ngx_memcpy(under_attack_client->hmac, value.data, value.len);
 
-        } while (p != NULL);
-        utarray_free(cookies);
+        } else {
+            ngx_http_waf_dpf(r, "not found cookie %V", &key);
+        }
     }
 
-    ngx_memcpy(&under_attack_expect, &under_attack_client, sizeof(_info_t));
+    ngx_memcpy(under_attack_expect, under_attack_client, sizeof(_info_t));
 
     ngx_http_waf_dp(r, "generating expected message")
-    if (_gen_verification(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+    if (_gen_verification(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
         ngx_http_waf_dp(r, "failed ... return");
         ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
         return NGX_HTTP_WAF_MATCHED;
@@ -90,18 +87,18 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
     ngx_http_waf_dp(r, "success");
 
     ngx_http_waf_dpf(r, "client.time=%s, client.uid=%s, client.hmac=%s", 
-        under_attack_client.time, under_attack_client.uid, under_attack_client.hmac);
+        under_attack_client->time, under_attack_client->uid, under_attack_client->hmac);
 
     ngx_http_waf_dpf(r, "expect.time=%s, expect.uid=%s, expect.hmac=%s", 
-        under_attack_expect.time, under_attack_expect.uid, under_attack_expect.hmac);
+        under_attack_expect->time, under_attack_expect->uid, under_attack_expect->hmac);
 
     /* 验证 token 是否正确 */
     ngx_http_waf_dp(r, "verifying info");
-    if (ngx_memcmp(&under_attack_client, &under_attack_expect, sizeof(_info_t)) != 0) {
+    if (ngx_memcmp(under_attack_client, under_attack_expect, sizeof(_info_t)) != 0) {
         ngx_http_waf_dp(r, "failed");
 
         ngx_http_waf_dp(r, "generating new info");
-        if (_gen_under_attack_info(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+        if (_gen_under_attack_info(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
             ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
@@ -109,7 +106,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "success");
 
         ngx_http_waf_dp(r, "generating new cookies");
-        if (_gen_cookie(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+        if (_gen_cookie(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
             ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
@@ -125,13 +122,13 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
 
     /* 验证时间是否超过 5 秒 */
     ngx_http_waf_dp(r, "is expired?");
-    time_t client_time = ngx_atoi(under_attack_client.time, ngx_strlen(under_attack_client.time));
+    time_t client_time = ngx_atoi(under_attack_client->time, ngx_strlen(under_attack_client->time));
     /* 如果 Cookie 不合法 或 已经超过 30 分钟 */
     if (client_time == NGX_ERROR || difftime(time(NULL), client_time) > 60 * 30) {
         ngx_http_waf_dp(r, "expired info");
 
         ngx_http_waf_dp(r, "generating new info");
-        if (_gen_under_attack_info(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+        if (_gen_under_attack_info(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
             ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
@@ -139,7 +136,7 @@ ngx_int_t ngx_http_waf_handler_under_attack(ngx_http_request_t* r) {
         ngx_http_waf_dp(r, "success");
 
         ngx_http_waf_dp(r, "generating new cookies");
-        if (_gen_cookie(r, &under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
+        if (_gen_cookie(r, under_attack_expect) != NGX_HTTP_WAF_SUCCESS) {
             ngx_http_waf_dp(r, "failed ... return");
             ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_UNDER_ATTACK);
             return NGX_HTTP_WAF_MATCHED;
