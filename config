@@ -160,7 +160,7 @@ if [ $ngx_found = no  ] ; then
 $0: error: the $ngx_addon_name module requires the $ngx_feature.
 Please run:
         cd $ngx_addon_dir \\
-    &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
+    &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson \\
     &&  cd $PWD
 END
     PWD=''
