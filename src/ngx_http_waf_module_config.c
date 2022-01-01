@@ -11,18 +11,20 @@ extern ngx_module_t ngx_http_waf_module;
 
 #define _strncaseeq(s1, s2) ( ngx_strncasecmp((u_char*)(s1), (u_char*)(s2), n) == 0 )
 
-
+#if !(NGX_PCRE2)
 extern void *(*pcre_malloc)(size_t);
+
 extern void  (*pcre_free)(void *);
+#endif
 
 
+#if !(NGX_PCRE2)
 static ngx_pool_t* _modsecurity_pcre_pool;
-
 
 static void* _old_modsecurity_pcre_malloc;
 
-
 static void* _old_modsecurity_pcre_free;
+#endif
 
 
 static void _cleanup(void* data);
@@ -51,7 +53,7 @@ static ngx_int_t _shm_handler_init(shm_t* shm, void* data, void* old_data);
 
 static ngx_int_t _shm_handler_gc(shm_t* shm, void* data, ngx_int_t* low_memory);
 
-
+#if !(NGX_PCRE2)
 static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool);
 
 
@@ -62,6 +64,7 @@ static void* _modsecurity_pcre_malloc(size_t size);
 
 
 static void _modsecurity_pcre_free(void* ptr);
+#endif
 
 
 char* ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
@@ -1465,16 +1468,21 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
             if (file == NULL) {
                 goto no_memory;
             }
-
+#if !(NGX_PCRE2)
             ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
+#endif
             int rc = msc_rules_add_file(loc_conf->modsecurity_rules, file, &error);
             if (rc < 0) {
+#if !(NGX_PCRE2)
                 _recover_modsecurity_pcre_callback(old_pool);
+#endif
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
                     "ngx_waf: %s", error);
                 return NGX_CONF_ERROR;
             }
+#if !(NGX_PCRE2)
             _recover_modsecurity_pcre_callback(old_pool);
+#endif
             ngx_pfree(cf->pool, file);                                         
                                        
         } else if (_streq(p->data, "remote_key")) {
@@ -1508,16 +1516,22 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
      && loc_conf->waf_modsecurity_rules_remote_url.data != NULL
      && loc_conf->waf_modsecurity_rules_remote_url.len != 0) {
         const char* error;
+#if !(NGX_PCRE2)
         ngx_pool_t* old_pool = _change_modsecurity_pcre_callback(cf->pool);
+#endif
         if (msc_rules_add_remote(loc_conf->modsecurity_rules, 
             (char*)loc_conf->waf_modsecurity_rules_remote_key.data,
             (char*)loc_conf->waf_modsecurity_rules_remote_url.data, &error) < 0) {
+#if !(NGX_PCRE2)
             _recover_modsecurity_pcre_callback(old_pool);
+#endif
             ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
                 "ngx_waf: %s", error);
             return NGX_CONF_ERROR;
         }
+#if !(NGX_PCRE2)
         _recover_modsecurity_pcre_callback(old_pool);
+#endif
     }
 
     ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
@@ -2451,6 +2465,7 @@ static void _cleanup(void* data) {
 }
 
 
+#if !(NGX_PCRE2)
 static ngx_pool_t* _change_modsecurity_pcre_callback(ngx_pool_t* pool) {
     ngx_pool_t* old_pool = NULL;
 
@@ -2491,6 +2506,7 @@ static void* _modsecurity_pcre_malloc(size_t size) {
 static void _modsecurity_pcre_free(void* ptr) {
     ngx_pfree(_modsecurity_pcre_pool, ptr);
 }
+#endif
 
 
 
