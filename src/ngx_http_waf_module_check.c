@@ -587,68 +587,22 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
     size_t i;
     for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
         ngx_str_t* native_cookies = &((**ppcookie).value);
-        UT_array* cookies = NULL;
 
-        ngx_http_waf_dpf(r, "parsing cookie(%V)", native_cookies);
-        if (ngx_http_waf_parse_cookie(native_cookies, &cookies) != NGX_HTTP_WAF_SUCCESS) {
-            ngx_http_waf_dp(r, "failed ... continue");
-            continue;
+        ngx_http_waf_dpf(r, "matching cookie(%V)", native_cookies);
+
+        ngx_array_t* regex_array = loc_conf->black_cookie;
+        lru_cache_t* cache = loc_conf->black_cookie_inspection_cache;
+        ret_value = ngx_http_waf_regex_exec_arrray(r, native_cookies, regex_array, (u_char*)"BLACK-COOKIE", cache);
+
+        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 1;
+            ngx_http_waf_append_action_chain(r, action);
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
         }
-        ngx_http_waf_dp(r, "success");
-
-        ngx_str_t* key = NULL;
-        ngx_str_t* value = NULL;
-        ngx_str_t* p = NULL;
-
-        do {
-            if (key = (ngx_str_t*)utarray_next(cookies, p), p = key, key == NULL) {
-                break;
-            }
-
-            if (value = (ngx_str_t*)utarray_next(cookies, p), p = value, value == NULL) {
-                break;
-            }
-
-            ngx_http_waf_dpf(r, "matching cookie(%V: %V", key, value);
-
-            ngx_str_t temp;
-            temp.len = key->len + value->len;
-            temp.data = (u_char*)ngx_pcalloc(r->pool, sizeof(u_char*) * temp.len);
-            if (temp.data == NULL) {
-                ngx_http_waf_dp(r, "no memory ... continue");
-                continue;
-            }
-            ngx_memcpy(temp.data, key->data, key->len);
-            ngx_memcpy(temp.data + key->len, value->data, sizeof(u_char) * value->len);
-
-            ngx_array_t* regex_array = loc_conf->black_cookie;
-            lru_cache_t* cache = loc_conf->black_cookie_inspection_cache;
-
-            ret_value = ngx_http_waf_regex_exec_arrray(r, &temp, regex_array, (u_char*)"BLACK-COOKIE", cache);
-
-            if (ret_value != NGX_HTTP_WAF_MATCHED) {
-                ret_value = ngx_http_waf_regex_exec_arrray(r, key, regex_array, (u_char*)"BLACK-COOKIE", cache);
-            }
-
-            if (ret_value != NGX_HTTP_WAF_MATCHED) {
-                ret_value = ngx_http_waf_regex_exec_arrray(r, value, regex_array, (u_char*)"BLACK-COOKIE", cache);
-            }
-
-            ngx_pfree(r->pool, temp.data);
-            
-            if (ret_value == NGX_HTTP_WAF_MATCHED) {
-                ngx_http_waf_dp(r, "matched");
-                ctx->gernal_logged = 1;
-                ctx->blocked = 1;
-                ngx_http_waf_append_action_chain(r, action);
-                break;
-            } else {
-                ngx_http_waf_dp(r, "not matched");
-            }
-
-        } while (p != NULL);
-
-        utarray_free(cookies);
 
         if (ctx->blocked) {
             ngx_http_waf_dp(r, "blocked ... break");
