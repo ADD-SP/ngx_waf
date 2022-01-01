@@ -35,8 +35,9 @@ jobs:
     if: ${{ github.event_name	!= 'schedule' }}
     strategy:
       matrix:
-        nginx-version: ['stable nginx', 'mainline nginx']
-        install-type:  ['static module', 'dynamic module']
+        nginx-version: ['stable', 'mainline']
+        module-type:  ['static', 'dynamic']
+        pcre-version: ['pcre', 'pcre2']
     steps:
       - uses: actions/checkout@v2
         with: 
@@ -49,19 +50,32 @@ jobs:
         run: |
           sudo apt-get --yes update
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
-      - name: Download ${{ matrix.nginx-version }}
+      - name: Download nginx-${{ matrix.nginx-version }}
         run: |
-          if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
-            version='stable' ;\
-          else  \
-            version='mainline' ;\
-          fi
           sudo chmod 777 -R /usr/local/src
           cd /usr/local/src
           sudo pip install lastversion
-          lastversion download nginx:${version}
+          lastversion download nginx:${{ matrix.nginx-version }}
           mkdir nginx
           tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+      - name: Download PCRE
+        if: ${{ matrix.pcre-version == 'pcre' || (matrix.pcre-version == 'pcre2' && matrix.nginx-version == 'stable') }}
+        run: |
+          sudo chmod 777 -R /usr/local/src
+          cd /usr/local/src
+          wget https://cfhcable.dl.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.gz -O pcre.tar.gz
+          mkdir pcre
+          tar zxf pcre.tar.gz --directory pcre --strip-components=1
+          sudo chmod 777 -R /usr/local/src
+      - name: Download PCRE2
+        if: ${{ matrix.pcre-version == 'pcre2' && matrix.nginx-version == 'mainline' }}
+        run: |
+          sudo chmod 777 -R /usr/local/src
+          cd /usr/local/src
+          wget https://github.com/PhilipHazel/pcre2/releases/download/pcre2-10.39/pcre2-10.39.tar.gz -O pcre.tar.gz
+          mkdir pcre
+          tar zxf pcre.tar.gz --directory pcre --strip-components=1
+          sudo chmod 777 -R /usr/local/src
       - name: Download and install modsecurity
         run: |
           sudo chmod 777 -R /usr/local/src
@@ -81,17 +95,17 @@ jobs:
       - name: Download uthash
         run: |
           git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
-      - name: Configure ${{ matrix.install-type }}
+      - name: Configure ${{ matrix.module-type }}
         run: |
           cd /usr/local/src/nginx
-          if [ ${{ matrix.install-type }} = 'static module' ] ; then \
+          if [ ${{ matrix.module-type }} = 'static module' ] ; then \
             opt='--add-module' ;\
           else \
             opt='--add-dynamic-module' ;\
           fi
           export LIB_MODSECURITY=/usr/local/modsecurity
-          ./configure ${opt}=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
-      - name: Install ${{ matrix.nginx-version }}
+          ./configure ${opt}=${{ github.workspace }} --with-pcre=/usr/local/src/pcre --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
+      - name: Install nginx-${{ matrix.nginx-version }}
         run: |
           cd /usr/local/src/nginx
           make -j$(nproc)
