@@ -281,6 +281,14 @@ typedef struct ngx_http_waf_ctx_s {
 
 /**
  * @struct ngx_http_waf_loc_conf_t
+*/
+typedef struct ngx_http_waf_main_conf_s {
+    ngx_array_t                    *local_caches;                               /**< 已经启用的所有的缓存管理器数组 */
+} ngx_http_waf_main_conf_t;
+
+
+/**
+ * @struct ngx_http_waf_loc_conf_t
  * @brief 每个 server 块的配置块
 */
 typedef struct ngx_http_waf_loc_conf_s {

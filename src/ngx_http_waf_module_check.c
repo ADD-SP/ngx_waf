@@ -799,6 +799,7 @@ ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
     if (ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_EXTRA_CACHE) == NGX_HTTP_WAF_TRUE
         && loc_conf->waf_inspection_capacity != NGX_CONF_UNSET
         && cache != NULL) {
+
         lru_cache_find_result_t tmp = lru_cache_find(cache, str->data, sizeof(u_char) * str->len);
         if (tmp.status == NGX_HTTP_WAF_KEY_EXISTS) {
             cache_hit = NGX_HTTP_WAF_SUCCESS;

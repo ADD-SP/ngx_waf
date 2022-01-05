@@ -120,6 +120,12 @@ ngx_int_t ngx_http_waf_spend_handler(ngx_http_request_t* r, ngx_http_variable_va
 
 
 /**
+ * @brief 初始化结构体 ngx_http_waf_main_conf_t
+*/
+void* ngx_http_waf_create_main_conf(ngx_conf_t* cf);
+
+
+/**
  * @brief 初始化结构体 ngx_http_waf_loc_conf_t
 */
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf);

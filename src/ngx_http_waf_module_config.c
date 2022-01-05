@@ -4,6 +4,10 @@ extern ngx_module_t ngx_http_waf_module;
 
 extern FILE* ngx_http_waf_in;
 
+
+static void _cleanup_lru_cache(void* data);
+
+
 char* ngx_http_waf_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     if (ngx_conf_set_flag_slot(cf, cmd, conf) != NGX_CONF_OK) {
         return NGX_CONF_ERROR;
@@ -416,6 +420,27 @@ char* ngx_http_waf_http_status_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
         "ngx_waf: invalid value");
     return NGX_CONF_ERROR;
+}
+
+
+void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
+    ngx_http_waf_main_conf_t* main_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_main_conf_t));
+
+    if (main_conf == NULL) {
+        return NULL;
+    }
+
+    main_conf->local_caches = ngx_array_create(cf->pool, 20, sizeof(lru_cache_t*));
+
+    if (main_conf->local_caches == NULL) {
+        return NULL;
+    }
+
+    ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
+    cln->data = main_conf->local_caches;
+    cln->handler = _cleanup_lru_cache;
+
+    return main_conf;
 }
 
 
@@ -959,34 +984,52 @@ ngx_int_t ngx_http_waf_init_cc_shm(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
 
 
 ngx_int_t ngx_http_waf_init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
-    conf->black_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    ngx_http_waf_main_conf_t* main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
+
+    conf->black_url_inspection_cache = NULL;
+    conf->black_args_inspection_cache = NULL;
+    conf->black_ua_inspection_cache = NULL;
+    conf->black_referer_inspection_cache = NULL;
+    conf->black_cookie_inspection_cache = NULL;
+    conf->white_url_inspection_cache = NULL;
+    conf->white_referer_inspection_cache = NULL;
+
+    lru_cache_t** p = NULL;
 
     lru_cache_init(&conf->black_url_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->black_url_inspection_cache;
 
     lru_cache_init(&conf->black_args_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->black_args_inspection_cache;
 
     lru_cache_init(&conf->black_ua_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->black_ua_inspection_cache;
 
     lru_cache_init(&conf->black_referer_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->black_referer_inspection_cache;
 
     lru_cache_init(&conf->black_cookie_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->black_cookie_inspection_cache;
 
     lru_cache_init(&conf->white_url_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->white_url_inspection_cache;
     
     lru_cache_init(&conf->white_referer_inspection_cache, 
-                    conf->waf_inspection_capacity, gernal_pool, cf->pool);
+                    conf->waf_inspection_capacity, std, NULL);
+    p = ngx_array_push(main_conf->local_caches);
+    *p = conf->white_referer_inspection_cache;
 
     return NGX_HTTP_WAF_SUCCESS;
 }
@@ -1130,4 +1173,14 @@ ngx_int_t ngx_http_waf_free_memory(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf
     }
 
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+
+static void _cleanup_lru_cache(void* data) {
+    ngx_array_t* caches = (ngx_array_t*)data;
+
+    for (ngx_uint_t i = 0; i < caches->nelts; i++) {
+        lru_cache_t* cache = ((lru_cache_t**)caches->elts)[i];
+        lru_cache_destory(cache);
+    }
 }

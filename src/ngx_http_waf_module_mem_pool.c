@@ -19,7 +19,7 @@ ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_type_e type, void* native_poo
 void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size) {
     void* addr;
     switch (pool->type) {
-        case std: addr = malloc(byte_size); ngx_memzero(addr, byte_size);break;
+        case std: addr = malloc(byte_size); ngx_memzero(addr, byte_size); break;
         case gernal_pool: addr = ngx_pcalloc(pool->native_pool.gernal_pool, byte_size); break;
         case slab_pool: addr = ngx_slab_calloc_locked(pool->native_pool.slab_pool, byte_size); break;
         default: addr = NULL; break;

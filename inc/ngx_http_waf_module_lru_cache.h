@@ -32,4 +32,7 @@ void lru_cache_delete(lru_cache_t* lru, void* key, size_t key_len);
 void lru_cache_eliminate(lru_cache_t* lru, size_t count);
 
 
+void lru_cache_destory(lru_cache_t* lru);
+
+
 #endif

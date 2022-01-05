@@ -171,6 +171,11 @@ void lru_cache_eliminate(lru_cache_t* lru, size_t count) {
 }
 
 
+void lru_cache_destory(lru_cache_t* lru) {
+    mem_pool_free(&lru->pool, lru);
+}
+
+
 lru_cache_item_t* _lru_cache_hash_find(lru_cache_t* lru, void* key, size_t key_len) {
     lru_cache_item_t* ret;
     HASH_FIND(hh, lru->hash_head, key, key_len, ret);
