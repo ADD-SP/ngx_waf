@@ -1,0 +1,18 @@
+# Number of days of inactivity before an issue becomes stale
+daysUntilStale: 7
+# Number of days of inactivity before a stale issue is closed
+daysUntilClose: 8
+# Issues with these labels will never be considered stale
+exemptLabels:
+  - pinned
+  - security
+  - long-term
+# Label to use when marking an issue as stale
+staleLabel: stale
+# Comment to post when marking an issue as stale. Set to `false` to disable
+markComment: |
+  This issue has been automatically marked as stale because it has not had recent activity. It will be closed if no further activity occurs. Thank you for your contributions.
+  此 issue 因为最近没有任何活动已经被标记，如果在此之后的一段时间内仍没有任何活动则会被关闭。感谢您对项目的支持。
+  
+# Comment to post when closing a stale issue. Set to `false` to disable
+closeComment: false
