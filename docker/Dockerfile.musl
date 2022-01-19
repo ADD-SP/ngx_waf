@@ -82,8 +82,9 @@ RUN set -xe \
         --with-debug \
         --add-dynamic-module=/usr/local/src/ngx_waf \
         --with-compat \
+        --with-threads \
         --with-cc-opt='-fstack-protector-strong' \
-    &&  make modules -j$(nproc)
+    &&  make modules
 
 
 FROM busybox:stable-musl
