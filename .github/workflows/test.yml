@@ -38,6 +38,7 @@ jobs:
         nginx-version: ['stable', 'mainline']
         module-type:  ['static', 'dynamic']
         pcre-version: ['pcre', 'pcre2']
+        thread-opt: [ 'with-threads', 'without-threads' ]
     steps:
       - uses: actions/checkout@v2
         with: 
@@ -50,7 +51,7 @@ jobs:
         run: |
           sudo apt-get --yes update
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
-      - name: Download nginx-${{ matrix.nginx-version }}
+      - name: Download Nginx
         run: |
           sudo chmod 777 -R /usr/local/src
           cd /usr/local/src
@@ -95,17 +96,23 @@ jobs:
       - name: Download uthash
         run: |
           git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
-      - name: Configure ${{ matrix.module-type }}
+      - name: Configure Nginx
         run: |
           cd /usr/local/src/nginx
+
           if [ ${{ matrix.module-type }} = 'static module' ] ; then \
-            opt='--add-module' ;\
+            opt='--add-module=${{ github.workspace }}' ;\
           else \
-            opt='--add-dynamic-module' ;\
+            opt='--add-dynamic-module=${{ github.workspace }}' ;\
           fi
+
+          if [ ${{ matrix.thread-opt }} = 'with-threads' ] ; then \
+            opt="${opt} --with-threads" ;\
+          fi
+
           export LIB_MODSECURITY=/usr/local/modsecurity
-          ./configure ${opt}=${{ github.workspace }} --with-pcre=/usr/local/src/pcre --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
-      - name: Install nginx-${{ matrix.nginx-version }}
+          ./configure ${opt} --with-pcre=/usr/local/src/pcre --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
+      - name: Install Nginx
         run: |
           cd /usr/local/src/nginx
           make -j$(nproc)
@@ -121,6 +128,11 @@ jobs:
           sudo chmod 777 -R /tmp
           cd test/test-nginx
           export MODULE_TEST_PATH=/tmp/module_test
+
+          if [ ${{ matrix.thread-opt }} = 'without-threads' ] ; then \
+            export WITHOUT_THREADS=1 ;\
+          fi
+
           sh ./init.sh
           exec sudo sh start.sh t/*.t
           

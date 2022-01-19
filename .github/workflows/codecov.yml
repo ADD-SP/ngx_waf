@@ -52,7 +52,7 @@ jobs:
         run: |
           cd /usr/local/src/nginx
           export LIB_MODSECURITY=/usr/local/modsecurity
-          ./configure --add-module=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-fprofile-arcs -ftest-coverage -O0 -g3' --with-ld-opt='-lgcov'
+          ./configure --with-threads --add-module=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-fprofile-arcs -ftest-coverage -O0 -g3' --with-ld-opt='-lgcov'
       - name: Install nginx
         run: |
           cd /usr/local/src/nginx
