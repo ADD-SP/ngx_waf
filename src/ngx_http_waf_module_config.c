@@ -1603,6 +1603,18 @@ void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
     cln->data = main_conf->local_caches;
     cln->handler = _cleanup_lru_cache;
 
+#if (NGX_THREADS)
+    ngx_str_t name;
+    ngx_str_set(&name, "ngx_waf_network");
+    main_conf->thread_pool_network = ngx_thread_pool_get(cf->cycle, &name);
+    if (main_conf->thread_pool_network == NULL) {
+        main_conf->thread_pool_network = ngx_thread_pool_add(cf, &name);
+        if (main_conf->thread_pool_network == NULL) {
+            return NULL;
+        }
+    }
+#endif
+
     return main_conf;
 }
 

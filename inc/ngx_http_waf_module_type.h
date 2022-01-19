@@ -247,20 +247,21 @@ typedef enum {
     ACTION_FLAG_NONE                = 0x0,
     ACTION_FLAG_UNSET               = 0x1,
     ACTION_FLAG_DECLINE             = 0x2,
-    ACTION_FLAG_FOLLOW              = 0x4,
-    ACTION_FLAG_RETURN              = 0x8,
-    ACTION_FLAG_REG_CONTENT         = 0x10,
-    ACTION_FLAG_STR                 = 0x20,
-    ACTION_FLAG_HTML                = 0x40,
-    ACTION_FLAG_FROM_WHITE_LIST     = 0x80,
-    ACTION_FLAG_FROM_BLACK_LIST     = 0x100,
-    ACTION_FLAG_FROM_CC_DENY        = 0x200,
-    ACTION_FLAG_FROM_MODSECURITY    = 0x400,
-    ACTION_FLAG_FROM_CAPTCHA        = 0x800,
-    ACTION_FLAG_FROM_UNDER_ATTACK   = 0x1000,
-    ACTION_FLAG_FROM_VERIFY_BOT     = 0x2000,
-    ACTION_FLAG_CAPTCHA             = 0x4000,
-    ACTION_FLAG_UNDER_ATTACK        = 0X8000
+    ACTION_FLAG_DONE                = 0x4,
+    ACTION_FLAG_FOLLOW              = 0x8,
+    ACTION_FLAG_RETURN              = 0x10,
+    ACTION_FLAG_REG_CONTENT         = 0x20,
+    ACTION_FLAG_STR                 = 0x40,
+    ACTION_FLAG_HTML                = 0x80,
+    ACTION_FLAG_FROM_WHITE_LIST     = 0x100,
+    ACTION_FLAG_FROM_BLACK_LIST     = 0x200,
+    ACTION_FLAG_FROM_CC_DENY        = 0x400,
+    ACTION_FLAG_FROM_MODSECURITY    = 0x800,
+    ACTION_FLAG_FROM_CAPTCHA        = 0x1000,
+    ACTION_FLAG_FROM_UNDER_ATTACK   = 0x2000,
+    ACTION_FLAG_FROM_VERIFY_BOT     = 0x4000,
+    ACTION_FLAG_CAPTCHA             = 0x8000,
+    ACTION_FLAG_UNDER_ATTACK        = 0X10000
 } action_flag_e;
 
 
@@ -304,6 +305,11 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
     ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
 #endif
+    ngx_int_t                       handler_index;                              /**< 当前处理函数的索引 */
+#if (NGX_THREADS) 
+    ngx_int_t                       async_captcha:1;                            /**< 是否完成了对 CAPTCHA API 的异步请求 */
+    ngx_int_t                       async_captcha_pass:1;                       /**< CAPTCHA API 的异步请求验证否通过 */
+#endif
     ngx_int_t                       pre_content_run:1;                          /**< 是否已经执行过 pre_content handler */
     ngx_int_t                       gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
     ngx_int_t                       checked:1;                                  /**< 是否启动了检测流程 */
@@ -321,7 +327,10 @@ typedef struct ngx_http_waf_ctx_s {
 */
 typedef struct ngx_http_waf_main_conf_s {
     ngx_array_t                    *shms;                                       /**< 共享内存列表 */
-    ngx_array_t                    *local_caches;                                /**< 未使用共享内存的缓存列表 */
+    ngx_array_t                    *local_caches;                               /**< 未使用共享内存的缓存列表 */
+#if (NGX_THREADS)
+    ngx_thread_pool_t              *thread_pool_network;                        /**< 用于网络请求的线程池 */
+#endif
 } ngx_http_waf_main_conf_t;
 
 

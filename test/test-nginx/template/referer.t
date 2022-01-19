@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET REFERER;
@@ -25,6 +28,9 @@ Referer: /test
 
 
 === TEST: Black referer
+
+--- main_config
+${main_config}
 
 --- config
 waf on;
@@ -53,6 +59,9 @@ waf_cache off capacity=50;
 
 
 === TEST: White referer
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

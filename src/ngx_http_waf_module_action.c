@@ -13,6 +13,9 @@ static ngx_int_t _perform_action_return(ngx_http_request_t* r, action_t* action)
 static ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action);
 
 
+static ngx_int_t _perform_action_done(ngx_http_request_t* r, action_t* action);
+
+
 static void _perform_action_reg_content(ngx_http_request_t* r, action_t* action);
 
 
@@ -156,6 +159,12 @@ ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r) {
                 
                 ret_value = NGX_HTTP_WAF_MATCHED;
                 break;
+
+            case NGX_HTTP_WAF_ASYNC:
+                ngx_http_waf_dp(r, "async");
+                ngx_http_waf_append_action_done(r, ACTION_FLAG_FROM_CAPTCHA);
+                ret_value = NGX_HTTP_WAF_MATCHED;
+                break;
         }
 
     } else {
@@ -209,6 +218,12 @@ ngx_int_t ngx_http_waf_perform_action_at_access_end(ngx_http_request_t* r) {
             ngx_http_waf_dp(r, "action is return");
             DL_DELETE(ctx->action_chain, elt);
             ret_value = _perform_action_return(r, elt);
+            break;
+
+        } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_DONE)) {
+            ngx_http_waf_dp(r, "action is done");
+            DL_DELETE(ctx->action_chain, elt);
+            ret_value = _perform_action_done(r, elt);
             break;
 
         } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_REG_CONTENT)) {
@@ -276,6 +291,14 @@ static ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action
     ngx_http_waf_dp_func_end(r);
     return NGX_DECLINED;
     
+}
+
+
+static ngx_int_t _perform_action_done(ngx_http_request_t* r, action_t* action) {
+    ngx_http_waf_dp_func_start(r);
+    ngx_http_waf_dp(r, "return NGX_DONE");
+    ngx_http_waf_dp_func_end(r);
+    return NGX_DONE;
 }
 
 

@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET ARGS;
@@ -21,6 +24,9 @@ GET /?s=test0
 200
 
 === TEST: Black query string
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -41,6 +44,9 @@ location /t {
 
 
 === TEST: General with transaction ID
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

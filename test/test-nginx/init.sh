@@ -8,7 +8,12 @@ if [ -z "$MODULE_TEST_PATH" ] ; then
 fi
 
 base_dir="$MODULE_TEST_PATH"
+main_config="thread_pool ngx_waf_network threads=64;"
 origin_dir=$(pwd)
+
+if [ "$WITHOUT_THREADS" = "1" ] ; then
+    main_config=""
+fi
 
 rm -rf "$base_dir"
 mkdir -p "$base_dir"

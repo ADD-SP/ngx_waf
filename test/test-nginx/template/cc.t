@@ -7,8 +7,10 @@ __DATA__
 
 === TEST: General
 
---- http_config
+--- main_config
+${main_config}
 
+--- http_config
 waf_zone name=ngx_waf_test size=10m;
 
 --- config

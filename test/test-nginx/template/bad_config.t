@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: Bad directive waf
 
+--- main_config
+${main_config}
+
 --- config
 waf bad;
 
@@ -14,6 +17,9 @@ waf bad;
 
 
 === TEST: Bad directive waf_rule_path
+
+--- main_config
+${main_config}
 
 --- config
 waf_rule_path ${base_dir}/waf/rules;
@@ -23,6 +29,9 @@ waf_rule_path ${base_dir}/waf/rules;
 
 === TEST: Bad directive waf_mode
 
+--- main_config
+${main_config}
+
 --- config
 waf_mode BAD;
 
@@ -30,6 +39,9 @@ waf_mode BAD;
 
 
 === TEST: Bad directive waf_cc_deny (1)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cc_deny on rate=100/m;
@@ -39,12 +51,18 @@ waf_cc_deny on rate=100/m;
 
 === TEST: Bad directive waf_cc_deny (2)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cc_deny on rate=r/m;
 
 --- must_die
 
 === TEST: Bad directive waf_cc_deny (3)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cc_deny on rate=-1r/m;
@@ -54,6 +72,9 @@ waf_cc_deny on rate=-1r/m;
 
 === TEST: Bad directive waf_cc_deny (4)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cc_deny on rate=100r;
 
@@ -61,6 +82,9 @@ waf_cc_deny on rate=100r;
 
 
 === TEST: Bad directive waf_cc_deny (5)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cc_deny on rate=100r/b;
@@ -70,6 +94,9 @@ waf_cc_deny on rate=100r/b;
 
 === TEST: Bad directive waf_cc_deny (6)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cc_deny on;
 
@@ -77,6 +104,9 @@ waf_cc_deny on;
 
 
 === TEST: Bad directive waf_cc_deny (7)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cc_deny on rate=100r/m duration=1;
@@ -86,6 +116,9 @@ waf_cc_deny on rate=100r/m duration=1;
 
 === TEST: Bad directive waf_cc_deny (8)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cc_deny on rate=100r/m duration=1b;
 
@@ -93,6 +126,9 @@ waf_cc_deny on rate=100r/m duration=1b;
 
 
 === TEST: Bad directive waf_cc_deny (9)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cc_deny on rate=100r/m duration=1h size=10z;
@@ -102,6 +138,9 @@ waf_cc_deny on rate=100r/m duration=1h size=10z;
 
 === TEST: Bad directive waf_cc_deny (10)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cc_deny on rate=100r/m duration=1h bad=bad;
 
@@ -109,6 +148,9 @@ waf_cc_deny on rate=100r/m duration=1h bad=bad;
 
 
 === TEST: Bad directive waf_cc_deny (11)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cc_deny rate=100r/m;
@@ -118,6 +160,9 @@ waf_cc_deny rate=100r/m;
 
 === TEST: Bad directive waf_cache (1)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cache capacity=50;
 
@@ -125,6 +170,9 @@ waf_cache capacity=50;
 
 
 === TEST: Bad directive waf_cache (2)
+
+--- main_config
+${main_config}
 
 --- config
 waf_cache on capacity=-1;
@@ -134,6 +182,9 @@ waf_cache on capacity=-1;
 
 === TEST: Bad directive waf_cache (3)
 
+--- main_config
+${main_config}
+
 --- config
 waf_cache on bad=bad;
 
@@ -141,6 +192,9 @@ waf_cache on bad=bad;
 
 
 === TEST: Bad directive waf_modsecurity (1)
+
+--- main_config
+${main_config}
 
 --- config
 waf_modsecurity bad file=${base_dir}/waf/modsec/modsecurity.conf;
@@ -150,6 +204,9 @@ waf_modsecurity bad file=${base_dir}/waf/modsec/modsecurity.conf;
 
 === TEST: Bad directive waf_modsecurity (2)
 
+--- main_config
+${main_config}
+
 --- config
 waf_modsecurity on file=${base_dir}/waf/modsec/bad.conf;
 
@@ -157,6 +214,9 @@ waf_modsecurity on file=${base_dir}/waf/modsec/bad.conf;
 
 
 === TEST: Bad directive waf_modsecurity (3)
+
+--- main_config
+${main_config}
 
 --- config
 waf_modsecurity on bad=bad;
@@ -166,6 +226,9 @@ waf_modsecurity on bad=bad;
 
 === TEST: Bad directive waf_verify_bot (1)
 
+--- main_config
+${main_config}
+
 --- config
 waf_verify_bot bad;
 
@@ -173,6 +236,9 @@ waf_verify_bot bad;
 
 
 === TEST: Bad directive waf_verify_bot (2)
+
+--- main_config
+${main_config}
 
 --- config
 waf_verify_bot on bad;
@@ -182,6 +248,9 @@ waf_verify_bot on bad;
 
 === TEST: Bad directive waf_under_attack (1)
 
+--- main_config
+${main_config}
+
 --- config
 waf_under_attack bad;
 
@@ -189,6 +258,9 @@ waf_under_attack bad;
 
 
 === TEST: Bad directive waf_under_attack (2)
+
+--- main_config
+${main_config}
 
 --- config
 waf_under_attack on bad;
@@ -198,6 +270,9 @@ waf_under_attack on bad;
 
 === TEST: Bad directive waf_under_attack (3)
 
+--- main_config
+${main_config}
+
 --- config
 waf_under_attack on bad;
 
@@ -205,6 +280,9 @@ waf_under_attack on bad;
 
 
 === TEST: Bad directive waf_under_attack (4)
+
+--- main_config
+${main_config}
 
 --- config
 waf_under_attack on file=bad;
@@ -214,6 +292,9 @@ waf_under_attack on file=bad;
 
 === TEST: Bad directive waf_http_status
 
+--- main_config
+${main_config}
+
 --- config
 waf_http_status bad;
 
@@ -222,12 +303,18 @@ waf_http_status bad;
 
 === TEST: Bad directive waf_priority
 
+--- main_config
+${main_config}
+
 --- config
 waf_priority "W-IP IP VERIFY-BOT CC CAPTCHA UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE POST"
 
 --- must_die
 
 === TEST: Non-existent zone
+
+--- main_config
+${main_config}
 
 --- http_config
 
@@ -239,8 +326,10 @@ waf_cc_deny on rate=100r/m zone=test:cc;
 
 === TEST: Duplicate tag
 
---- http_config
+--- main_config
+${main_config}
 
+--- http_config
 waf_zone name=test size=10m;
 
 --- config
@@ -255,6 +344,9 @@ location /t {
 
 === TEST: waf_captcha without sitekey
 
+--- main_config
+${main_config}
+
 --- config
 waf_captcha on prov=reCAPTCHAv3 secret=xxx;
 
@@ -263,6 +355,9 @@ waf_captcha on prov=reCAPTCHAv3 secret=xxx;
 
 === TEST: waf_captcha without secret
 
+--- main_config
+${main_config}
+
 --- config
 waf_captcha on prov=reCAPTCHAv3 sitekey=xxx;
 
@@ -270,6 +365,9 @@ waf_captcha on prov=reCAPTCHAv3 sitekey=xxx;
 
 
 === TEST: waf_captcha without zone
+
+--- main_config
+${main_config}
 
 --- config
 waf_captcha on prov=reCAPTCHAv3 sitekey=xxx secret=xxx max_fails=100:60m;

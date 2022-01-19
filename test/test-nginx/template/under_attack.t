@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: Under Attack Mode
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;

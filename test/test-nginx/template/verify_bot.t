@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET UA;
@@ -24,6 +27,9 @@ GET /
 200
 
 === TEST: Fake Googlebot
+
+--- main_config
+${main_config}
 
 --- config
 waf on;
@@ -44,6 +50,9 @@ User-Agent: Googlebot
 
 === TEST: Fake bingbot
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET UA;
@@ -62,6 +71,9 @@ User-Agent: bingbot
 403
 
 === TEST: Fake Baiduspider
+
+--- main_config
+${main_config}
 
 --- config
 waf on;
@@ -82,6 +94,9 @@ User-Agent: Baiduspider
 
 === TEST: Fake YandexBot
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET UA;
@@ -100,6 +115,9 @@ User-Agent: YandexBot
 403
 
 === TEST: Fake SogouSpider
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

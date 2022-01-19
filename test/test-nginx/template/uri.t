@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET URL;
@@ -28,6 +31,9 @@ waf_cache off capacity=50;
 
 === TEST: Black URI
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -48,6 +54,9 @@ waf_cache on capacity=50;
 ]
 
 === TEST: White URI
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

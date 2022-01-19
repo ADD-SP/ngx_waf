@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET URL IP;
@@ -30,6 +33,9 @@ real_ip_header X-Real-IP;
 ]
 
 === TEST: White IPV4
+
+--- main_config
+${main_config}
 
 --- config
 waf on;
@@ -70,6 +76,9 @@ real_ip_header X-Real-IP;
 ]
 
 === TEST: Black IPV4
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

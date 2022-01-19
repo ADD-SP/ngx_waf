@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: No method GET
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL !GET;
@@ -23,6 +26,9 @@ GET /www.bak
 
 === TEST: No method POST
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL !POST;
@@ -38,6 +44,9 @@ POST /www.bak
 404
 
 === TEST: No method HEAD
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

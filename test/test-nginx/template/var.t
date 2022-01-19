@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: Check value
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -39,6 +42,9 @@ error_page 403 /error;
 
 === TEST: Check run
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -70,6 +76,9 @@ error_page 403 /error;
 
 
 === TEST: Check \$waf_rate
+
+--- main_config
+${main_config}
 
 --- http_config
 

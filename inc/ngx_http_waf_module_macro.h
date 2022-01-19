@@ -61,6 +61,8 @@
 
 #define NGX_HTTP_WAF_ALREADY_EXISTS          (13)
 
+#define NGX_HTTP_WAF_ASYNC                   (14)
+
 
 #define NGX_HTTP_WAF_HCAPTCHA                (1)
 

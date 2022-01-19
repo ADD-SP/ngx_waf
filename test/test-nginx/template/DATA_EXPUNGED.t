@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: NICO
 
+--- main_config
+${main_config}
+
 --- config
 waf_mode NICO;
 
@@ -18,6 +21,9 @@ GET /
 
 
 === TEST: SpongeBob
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

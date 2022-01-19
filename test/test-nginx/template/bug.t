@@ -11,6 +11,9 @@ __DATA__
 
 此问题最早发现于 v9.0.5，已经于 v9.0.6 修复。
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;

@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET COOKIE;
@@ -24,6 +27,9 @@ Cookie: s=test
 200
 
 === TEST: Black cookie
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: Blacklist with return
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -56,8 +59,10 @@ real_ip_header X-Real-IP;
 
 === TEST: Blacklist with CAPTCHA
 
---- http_config
+--- main_config
+${main_config}
 
+--- http_config
 waf_zone name=test size=20m;
 
 --- config
@@ -88,8 +93,10 @@ waf_captcha off prov=reCAPTCHAv3 secret=xxxx sitekey=xxx;
 
 === TEST: CC with return
 
---- http_config
+--- main_config
+${main_config}
 
+--- http_config
 waf_zone name=test size=10m;
 
 --- config
@@ -113,6 +120,9 @@ waf_action cc_deny=400;
 
 
 === TEST: CC with CAPTCHA
+
+--- main_config
+${main_config}
 
 --- http_config
 
@@ -147,6 +157,9 @@ waf_action cc_deny=CAPTCHA zone=test:action;
 
 === TEST: Modsecurity with return
 
+--- main_config
+${main_config}
+
 --- http_config
 
 waf_zone name=test size=10m;
@@ -168,8 +181,10 @@ GET /t?test=deny
 
 === TEST: Modsecurity with CAPTCHA
 
---- http_config
+--- main_config
+${main_config}
 
+--- http_config
 waf_zone name=test size=10m;
 
 --- config
@@ -202,6 +217,9 @@ waf_action modsecurity=CAPTCHA zone=test:action;
 
 === TEST: Verify bot with return
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET UA;
@@ -221,8 +239,10 @@ User-Agent: Googlebot
 
 === TEST: Verify bot with CAPTCHA
 
---- http_config
+--- main_config
+${main_config}
 
+--- http_config
 waf_zone name=test size=10m;
 
 --- config

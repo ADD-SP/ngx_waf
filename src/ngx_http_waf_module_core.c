@@ -278,6 +278,13 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ctx->has_req_body = 0;
         ctx->waiting_more_body = 0;
         ctx->pre_content_run = 0;
+        ctx->handler_index = 0;
+
+#if (NGX_THREADS)
+        ctx->async_captcha = 0;
+        ctx->async_captcha_pass = 0;
+#endif
+
         ctx->checked = 0;
         ctx->blocked = 0;
         ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
@@ -353,10 +360,10 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         }
     }
 
-    if (!r->internal && ctx->checked) {
-        ngx_http_waf_dp(r, "do nothing due to multiple internal redirects ... return");
-        return NGX_DECLINED;
-    }
+    // if (!r->internal && ctx->checked) {
+    //     ngx_http_waf_dp(r, "do nothing due to multiple internal redirects ... return");
+    //     return NGX_DECLINED;
+    // }
 
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     if (ctx->start_from_thread == NGX_HTTP_WAF_TRUE) {
@@ -368,10 +375,17 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
     }
 #endif
 
+#if (NGX_THREADS)
+    if (ctx->checked && !ctx->async_captcha) {
+        ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");
+        return NGX_DECLINED;
+    }
+#else
     if (ctx->checked) {
         ngx_http_waf_dp(r, "do nothing due to internal redirect ... return");
         return NGX_DECLINED;
     }
+#endif
 
     ngx_http_waf_dp(r, "reading request body to ctx");
     if (_read_request_body(r) == NGX_HTTP_WAF_FAULT) {
@@ -384,8 +398,8 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
 
     ngx_http_waf_dp(r, "invoke inspection handler");
     ngx_http_waf_check_pt* funcs = loc_conf->check_proc;
-    for (size_t i = 0; funcs[i] != NULL; i++) {
-        is_matched = funcs[i](r);
+    for ( ; funcs[ctx->handler_index] != NULL; (ctx->handler_index)++) {
+        is_matched = funcs[ctx->handler_index](r);
         if (is_matched == NGX_HTTP_WAF_MATCHED) {
             break;
         }

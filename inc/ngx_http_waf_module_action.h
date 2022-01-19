@@ -40,6 +40,16 @@
 }
 
 
+#define ngx_http_waf_set_action_done(action, ex_flag) {         \
+    action_t* head = NULL;                                      \
+    (action)->flag = ACTION_FLAG_DONE | (ex_flag);              \
+    (action)->next = NULL;                                      \
+    (action)->prev = NULL;                                      \
+    DL_APPEND(head, (action));                                  \
+    (action) = head;                                            \
+}
+
+
 #define ngx_http_waf_set_action_follow(action, ex_flag) {       \
     action_t* head = NULL;                                      \
     (action)->flag = ACTION_FLAG_FOLLOW | (ex_flag);            \
@@ -160,6 +170,13 @@
 #define ngx_http_waf_append_action_decline(r, ex_flag) {            \
     action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));      \
     ngx_http_waf_set_action_decline(action, (ex_flag));             \
+    ngx_http_waf_append_action(r, action);                          \
+}
+
+
+#define ngx_http_waf_append_action_done(r, ex_flag) {               \
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));      \
+    ngx_http_waf_set_action_done(action, (ex_flag));                \
     ngx_http_waf_append_action(r, action);                          \
 }
 

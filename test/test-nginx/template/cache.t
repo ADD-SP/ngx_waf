@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: Cache
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;

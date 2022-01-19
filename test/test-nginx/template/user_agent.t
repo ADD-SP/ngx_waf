@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: General
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode GET UA;
@@ -24,6 +27,9 @@ User-Agent: test-user-agent
 200
 
 === TEST: Black user-agent
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

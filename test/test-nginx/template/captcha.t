@@ -7,6 +7,9 @@ __DATA__
 
 === TEST: hCaptcha
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -41,6 +44,9 @@ waf_captcha on prov=hCaptcha secret=xx sitekey=xx;
 
 === TEST: reCAPTCHAv2 checkbox
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -73,6 +79,9 @@ waf_captcha on prov=reCAPTCHAv2:checkbox secret=xx sitekey=xx;
 
 === TEST: reCAPTCHAv2 invisible
 
+--- main_config
+${main_config}
+
 --- config
 waf on;
 waf_mode FULL;
@@ -104,6 +113,9 @@ waf_captcha on prov=reCAPTCHAv2:invisible secret=xx sitekey=xx;
 ]
 
 === TEST: reCAPTCHAv3
+
+--- main_config
+${main_config}
 
 --- config
 waf on;

@@ -11,6 +11,20 @@ typedef struct _cache_info_s {
     ngx_int_t count;
 } _cache_info_t;
 
+#if (NGX_THREADS)
+typedef struct {
+    ngx_http_request_t* r;
+    ngx_str_t response_key;
+    ngx_str_t secret;
+    ngx_str_t url;
+    ngx_int_t is_reCAPTCHA_v3;
+    ngx_int_t score;
+} _captcha_info_t;
+
+
+extern ngx_module_t ngx_http_waf_module;
+#endif
+
 
 static ngx_int_t _gen_info(ngx_http_request_t* r, _info_t* info);
 
@@ -34,6 +48,13 @@ static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r,
     ngx_str_t url,
     ngx_int_t is_reCAPTCHA_v3,
     ngx_int_t score);
+
+
+#if (NGX_THREADS)
+static void _verfiy_reCAPTCHA_compatible_invoke(void* data, ngx_log_t* log);
+
+static void _verfiy_reCAPTCHA_compatible_completion(ngx_event_t* event);
+#endif
 
 
 ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r) {
@@ -177,6 +198,12 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r) {
                     }
 
                     return NGX_HTTP_WAF_MATCHED;
+#if (NGX_THREADS)
+                case NGX_HTTP_WAF_ASYNC:
+                    ngx_http_waf_dp(r, "async ... return");
+                    ngx_http_waf_append_action_done(r, ACTION_FLAG_FROM_CAPTCHA);
+                    return NGX_HTTP_WAF_MATCHED;
+#endif
                 default:
                     ngx_http_waf_dp(r, "default ... return");
                     ngx_http_waf_append_action_return(r, NGX_HTTP_INTERNAL_SERVER_ERROR, ACTION_FLAG_FROM_CAPTCHA);
@@ -218,6 +245,9 @@ ngx_int_t ngx_http_waf_captcha_test(ngx_http_request_t* r) {
         case NGX_HTTP_WAF_FAIL:
             ngx_http_waf_dp(r, "failed ... return");
             return NGX_HTTP_WAF_CAPTCHA_CHALLENGE;
+        case NGX_HTTP_WAF_ASYNC:
+            ngx_http_waf_dp(r, "async ... return");
+            return NGX_HTTP_WAF_ASYNC;
         default:
             ngx_http_waf_dp(r, "default ... return");
             return NGX_HTTP_WAF_FAULT;
@@ -517,7 +547,8 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_end(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_http_waf_dp(r, "allocating memory to store uri");
     ngx_str_t uri = ngx_null_string;
@@ -534,30 +565,56 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
 
     if (ngx_strcmp(uri.data, loc_conf->waf_captcha_verify_url.data) == 0 
     &&  ngx_http_waf_check_flag(r->method, NGX_HTTP_POST)) {
-        ngx_int_t is_valid = NGX_HTTP_WAF_FALSE;
+
+#if (NGX_THREADS)
+        if (ctx->async_captcha) {
+            ngx_http_waf_dp(r, "recall by async");
+            ctx->async_captcha = 0;
+            ngx_http_waf_dp_func_end(r);
+            return ctx->async_captcha_pass ? NGX_HTTP_WAF_CAPTCHA_PASS : NGX_HTTP_WAF_CAPTCHA_BAD;
+        }
+#endif
+        ngx_int_t rc = NGX_HTTP_WAF_FALSE;
+
         switch (loc_conf->waf_captcha_type) {
             case NGX_HTTP_WAF_HCAPTCHA:
                 ngx_http_waf_dp(r, "verifying hCaptcha");
-                is_valid = _verify_hCaptcha(r);
+                rc = _verify_hCaptcha(r);
                 break;
             case NGX_HTTP_WAF_RECAPTCHA_V2_CHECKBOX:
             case NGX_HTTP_WAF_RECAPTCHA_V2_INVISIBLE:
                 ngx_http_waf_dp(r, "verifying reCAPTCHAv2");
-                is_valid = _verify_reCAPTCHAv2(r);
+                rc = _verify_reCAPTCHAv2(r);
                 break;
             case NGX_HTTP_WAF_RECAPTCHA_V3:
                 ngx_http_waf_dp(r, "verifying reCAPTCHAv3");
-                is_valid = _verify_reCAPTCHAv3(r);
+                rc = _verify_reCAPTCHAv3(r);
                 break;
+            case NGX_HTTP_WAF_ASYNC:
+                ngx_http_waf_dp(r, "async ... return");
+                return NGX_HTTP_WAF_ASYNC;
             default:
+                ngx_http_waf_dp(r, "internal error ... return");
                 return NGX_HTTP_WAF_FAULT;
         }
-        if (is_valid == NGX_HTTP_WAF_SUCCESS) {
-            ngx_http_waf_dp(r, "pass");
-            return NGX_HTTP_WAF_CAPTCHA_PASS;
-        } else {
-            ngx_http_waf_dp(r, "bad");
-            return NGX_HTTP_WAF_CAPTCHA_BAD;
+
+        switch (rc) {
+            case NGX_HTTP_WAF_SUCCESS:
+                ngx_http_waf_dp(r, "pass");
+                ngx_http_waf_dp_func_end(r);
+                return NGX_HTTP_WAF_CAPTCHA_PASS;
+            case NGX_HTTP_WAF_FAIL:
+                ngx_http_waf_dp(r, "bad");
+                ngx_http_waf_dp_func_end(r);
+                return NGX_HTTP_WAF_CAPTCHA_BAD;
+            case NGX_HTTP_WAF_ASYNC:
+                ngx_http_waf_dp(r, "async ... return");
+                ngx_http_waf_dp_func_end(r);
+                return NGX_HTTP_WAF_ASYNC;
+            default:
+                ngx_http_waf_dp(r, "internal error ... return");
+                ngx_http_waf_dp_func_end(r);
+                return NGX_HTTP_WAF_FAULT;
         }
     }
 
@@ -569,60 +626,173 @@ static ngx_int_t _verify_captcha_dispatcher(ngx_http_request_t* r) {
 static ngx_int_t _verify_hCaptcha(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
-    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_str_t response_key = ngx_string("h-captcha-response");
-    ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
-                                                 response_key,
-                                                 loc_conf->waf_captcha_hCaptcha_secret,
-                                                 loc_conf->waf_captcha_api,
-                                                 NGX_HTTP_WAF_FALSE,
-                                                 INT_MIN);
+
+#if (NGX_THREADS)
+    ngx_http_waf_main_conf_t* main_conf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_thread_task_t* task = ngx_thread_task_alloc(r->pool, sizeof(_captcha_info_t));
+
+    if (task == NULL) {
+        return NGX_HTTP_WAF_FAULT;
+    }
+
+    _captcha_info_t* info = task->ctx;
+    info->r = r;
+    info->response_key = response_key;
+    info->secret = loc_conf->waf_captcha_hCaptcha_secret;
+    info->url = loc_conf->waf_captcha_api;
+    info->is_reCAPTCHA_v3 = NGX_HTTP_WAF_FALSE;
+    info->score = INT_MIN;
+
+    task->handler = _verfiy_reCAPTCHA_compatible_invoke;
+    task->event.handler = _verfiy_reCAPTCHA_compatible_completion;
+    task->event.data = info;
+
+    if (ngx_thread_task_post(main_conf->thread_pool_network, task) != NGX_OK) {
+        ngx_http_waf_dp_func_end(r);
+        return _verfiy_reCAPTCHA_compatible(r,
+                                            response_key,
+                                            loc_conf->waf_captcha_hCaptcha_secret,
+                                            loc_conf->waf_captcha_api,
+                                            NGX_HTTP_WAF_FALSE,
+                                            INT_MIN);
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return NGX_HTTP_WAF_ASYNC;
+
+#else
+
+    ngx_int_t ret = _verfiy_reCAPTCHA_compatible( r,
+                                        response_key,
+                                        loc_conf->waf_captcha_hCaptcha_secret,
+                                        loc_conf->waf_captcha_api,
+                                        NGX_HTTP_WAF_FALSE,
+                                        INT_MIN);
     
     ngx_http_waf_dp_func_end(r);
     return ret;
+#endif
 }
 
 
 static ngx_int_t _verify_reCAPTCHAv2(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
-    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_str_t response_key = ngx_string("g-recaptcha-response");
-    ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
-                                                 response_key,
-                                                 loc_conf->waf_captcha_reCAPTCHAv2_secret,
-                                                 loc_conf->waf_captcha_api,
-                                                 NGX_HTTP_WAF_FALSE,
-                                                 INT_MIN);
+
+
+#if (NGX_THREADS)
+    ngx_http_waf_main_conf_t* main_conf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_thread_task_t* task = ngx_thread_task_alloc(r->pool, sizeof(_captcha_info_t));
+
+    if (task == NULL) {
+        return NGX_HTTP_WAF_FAULT;
+    }
+
+    _captcha_info_t* info = task->ctx;
+    info->r = r;
+    info->response_key = response_key;
+    info->secret = loc_conf->waf_captcha_reCAPTCHAv2_secret;
+    info->url = loc_conf->waf_captcha_api;
+    info->is_reCAPTCHA_v3 = NGX_HTTP_WAF_FALSE;
+    info->score = INT_MIN;
+
+    task->handler = _verfiy_reCAPTCHA_compatible_invoke;
+    task->event.handler = _verfiy_reCAPTCHA_compatible_completion;
+    task->event.data = info;
+
+    if (ngx_thread_task_post(main_conf->thread_pool_network, task) != NGX_OK) {
+        ngx_http_waf_dp_func_end(r);
+        return _verfiy_reCAPTCHA_compatible(r,
+                                            response_key,
+                                            loc_conf->waf_captcha_reCAPTCHAv2_secret,
+                                            loc_conf->waf_captcha_api,
+                                            NGX_HTTP_WAF_FALSE,
+                                            INT_MIN);
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return NGX_HTTP_WAF_ASYNC;
+
+#else
+
+    ngx_int_t ret = _verfiy_reCAPTCHA_compatible( r,
+                                        response_key,
+                                        loc_conf->waf_captcha_reCAPTCHAv2_secret,
+                                        loc_conf->waf_captcha_api,
+                                        NGX_HTTP_WAF_FALSE,
+                                        INT_MIN);
     
     ngx_http_waf_dp_func_end(r);
     return ret;
+#endif
 }
 
 
 static ngx_int_t _verify_reCAPTCHAv3(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
-    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     ngx_str_t response_key = ngx_string("g-recaptcha-response");
-    ngx_int_t ret = _verfiy_reCAPTCHA_compatible(r,
-                                                 response_key,
-                                                 loc_conf->waf_captcha_reCAPTCHAv3_secret,
-                                                 loc_conf->waf_captcha_api,
-                                                 NGX_HTTP_WAF_TRUE,
-                                                 loc_conf->waf_captcha_reCAPTCHAv3_score);
+
+
+#if (NGX_THREADS)
+    ngx_http_waf_main_conf_t* main_conf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_thread_task_t* task = ngx_thread_task_alloc(r->pool, sizeof(_captcha_info_t));
+
+    if (task == NULL) {
+        return NGX_HTTP_WAF_FAULT;
+    }
+
+    _captcha_info_t* info = task->ctx;
+    info->r = r;
+    info->response_key = response_key;
+    info->secret = loc_conf->waf_captcha_reCAPTCHAv3_secret;
+    info->url = loc_conf->waf_captcha_api;
+    info->is_reCAPTCHA_v3 = NGX_HTTP_WAF_TRUE;
+    info->score = loc_conf->waf_captcha_reCAPTCHAv3_score;
+
+    task->handler = _verfiy_reCAPTCHA_compatible_invoke;
+    task->event.handler = _verfiy_reCAPTCHA_compatible_completion;
+    task->event.data = info;
+
+    if (ngx_thread_task_post(main_conf->thread_pool_network, task) != NGX_OK) {
+        ngx_http_waf_dp_func_end(r);
+        return _verfiy_reCAPTCHA_compatible(r,
+                                            response_key,
+                                            loc_conf->waf_captcha_reCAPTCHAv3_secret,
+                                            loc_conf->waf_captcha_api,
+                                            NGX_HTTP_WAF_TRUE,
+                                            loc_conf->waf_captcha_reCAPTCHAv3_score);
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return NGX_HTTP_WAF_ASYNC;
+
+#else
+
+    ngx_int_t ret = _verfiy_reCAPTCHA_compatible( r,
+                                        response_key,
+                                        loc_conf->waf_captcha_reCAPTCHAv3_secret,
+                                        loc_conf->waf_captcha_api,
+                                        NGX_HTTP_WAF_TRUE,
+                                        loc_conf->waf_captcha_reCAPTCHAv3_score);
     
     ngx_http_waf_dp_func_end(r);
     return ret;
+#endif
 }
 
 
@@ -752,3 +922,45 @@ static ngx_int_t _verfiy_reCAPTCHA_compatible(ngx_http_request_t* r,
     ngx_http_waf_dp_func_end(r);
     return ret;
 }
+
+#if (NGX_THREADS)
+static void _verfiy_reCAPTCHA_compatible_invoke(void* data, ngx_log_t* log) {
+    _captcha_info_t* info = data;
+    ngx_http_request_t* r = info->r;
+
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    if (_verfiy_reCAPTCHA_compatible(r, info->response_key, info->secret, info->url, 
+        info->is_reCAPTCHA_v3, info->score) == NGX_HTTP_WAF_SUCCESS) {
+        ctx->async_captcha_pass = 1;
+
+    } else {
+        ctx->async_captcha_pass = 0;
+    }
+
+    ngx_http_waf_dp_func_end(r);
+}
+
+
+
+static void _verfiy_reCAPTCHA_compatible_completion(ngx_event_t* event) {
+    _captcha_info_t* info = event->data;
+    ngx_http_request_t* r = info->r;
+
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ctx->async_captcha = 1;
+
+    ngx_http_core_run_phases(r);
+
+    ngx_http_waf_dp_func_end(r);
+}
+#endif
