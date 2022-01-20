@@ -1,4 +1,5 @@
 #ifndef __NGX_HTTP_WAF_MODULE_DATA_H__
+#define __NGX_HTTP_WAF_MODULE_DATA_H__
 
 
 extern unsigned char ngx_http_waf_data_html_under_attack[555];

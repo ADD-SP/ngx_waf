@@ -4,8 +4,8 @@
 */
 
 
-#ifndef NGX_HTTP_WAF_MODULE_TYPE_H
-#define NGX_HTTP_WAF_MODULE_TYPE_H
+#ifndef __NGX_HTTP_WAF_MODULE_TYPE_H__
+#define __NGX_HTTP_WAF_MODULE_TYPE_H__
 
 #include <uthash.h>
 #include <utarray.h>

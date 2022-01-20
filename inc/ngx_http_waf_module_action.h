@@ -1,4 +1,5 @@
 #ifndef __NGX_HTTP_WAF_MODULE_ACTION_H__
+#define __NGX_HTTP_WAF_MODULE_ACTION_H__
 
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>

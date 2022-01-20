@@ -3,8 +3,8 @@
  * @brief 配置块的初始化和请求检测函数。
 */
 
-#ifndef NGX_HTTP_WAF_MODULE_CORE_H
-#define NGX_HTTP_WAF_MODULE_CORE_H
+#ifndef __NGX_HTTP_WAF_MODULE_CORE_H__
+#define __NGX_HTTP_WAF_MODULE_CORE_H__
 
 
 #include <stdio.h>

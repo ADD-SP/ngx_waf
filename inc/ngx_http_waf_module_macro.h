@@ -3,8 +3,8 @@
  * @brief 定义一些必要的宏
 */
 
-#ifndef NGX_HTTP_WAF_MODULE_MACRO_H
-#define NGX_HTTP_WAF_MODULE_MACRO_H
+#ifndef __NGX_HTTP_WAF_MODULE_MACRO_H__
+#define __NGX_HTTP_WAF_MODULE_MACRO_H__
 
 #define NGX_HTTP_WAF_VERSION "v10.1.1"
 

@@ -3,8 +3,8 @@
  * @brief IP 前缀树。
 */
 
-#ifndef NGX_HTTP_WAF_MODULE_IP_TRIE_h
-#define NGX_HTTP_WAF_MODULE_IP_TRIE_h
+#ifndef __NGX_HTTP_WAF_MODULE_IP_TRIE_H__
+#define __NGX_HTTP_WAF_MODULE_IP_TRIE_H__
 
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>

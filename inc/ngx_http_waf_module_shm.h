@@ -1,4 +1,5 @@
 #ifndef __NGX_HTTP_WAF_MODULE_SHM_H__
+#define __NGX_HTTP_WAF_MODULE_SHM_H__
 
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_mem_pool.h>
