@@ -926,7 +926,7 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
     }
 
 
-    if (utarray_len(array) != 15) {
+    if (utarray_len(array) != 16) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: you must specify the priority of all inspections");
         return NGX_CONF_ERROR;
@@ -944,6 +944,7 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         }
 
         _parse_priority("CC", ngx_http_waf_handler_check_cc);
+        _parse_priority("SYSGUARD", ngx_http_waf_handler_sysguard);
         _parse_priority("W-IP", ngx_http_waf_handler_check_white_ip);
         _parse_priority("IP", ngx_http_waf_handler_check_black_ip);
         _parse_priority("W-URL", ngx_http_waf_handler_check_white_url);
@@ -1172,6 +1173,9 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     loc_conf->action_chain_cc_deny = ngx_pcalloc(cf->pool, sizeof(action_t));
     loc_conf->action_chain_modsecurity = ngx_pcalloc(cf->pool, sizeof(action_t));
     loc_conf->action_chain_verify_bot = ngx_pcalloc(cf->pool, sizeof(action_t));
+    loc_conf->action_chain_sysguard_load = ngx_pcalloc(cf->pool, sizeof(action_t));
+    loc_conf->action_chain_sysguard_mem = ngx_pcalloc(cf->pool, sizeof(action_t));
+    loc_conf->action_chain_sysguard_swap = ngx_pcalloc(cf->pool, sizeof(action_t));
 
     ngx_http_waf_set_action_return(loc_conf->action_chain_blacklist, 
         NGX_HTTP_FORBIDDEN, 
@@ -1187,6 +1191,18 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_set_action_return(loc_conf->action_chain_verify_bot, 
         NGX_HTTP_FORBIDDEN, 
         ACTION_FLAG_FROM_VERIFY_BOT | ACTION_FLAG_UNSET);
+
+    ngx_http_waf_set_action_return(loc_conf->action_chain_sysguard_load,
+        NGX_HTTP_SERVICE_UNAVAILABLE,
+        ACTION_FLAG_FROM_SYSGUARD_LOAD | ACTION_FLAG_UNSET);
+
+    ngx_http_waf_set_action_return(loc_conf->action_chain_sysguard_mem,
+        NGX_HTTP_SERVICE_UNAVAILABLE,
+        ACTION_FLAG_FROM_SYSGUARD_MEM | ACTION_FLAG_UNSET);
+
+    ngx_http_waf_set_action_return(loc_conf->action_chain_sysguard_swap,
+        NGX_HTTP_SERVICE_UNAVAILABLE,
+        ACTION_FLAG_FROM_SYSGUARD_SWAP | ACTION_FLAG_UNSET);
 
 
     for (size_t i = 1; i < cf->args->nelts; i++) {
@@ -1214,14 +1230,24 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
-                if (code == NGX_ERROR
-                    || code < 300
-                    || code >= 600) {
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_blacklist, 
+                        uri, args, ACTION_FLAG_FROM_BLACK_LIST);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_blacklist, code, ACTION_FLAG_FROM_BLACK_LIST);
+
+                } else {
                     goto error;
                 }
-
-                ngx_http_waf_set_action_return(loc_conf->action_chain_blacklist, code, ACTION_FLAG_FROM_BLACK_LIST);
-
             }
             
         } else if (_streq(p->data, "cc_deny")) {
@@ -1236,14 +1262,24 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
-                if (code == NGX_ERROR
-                    || code < 300
-                    || code >= 600) {
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_cc_deny, 
+                        uri, args, ACTION_FLAG_FROM_BLACK_LIST);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_cc_deny, code, ACTION_FLAG_FROM_CC_DENY);
+
+                } else {
                     goto error;
                 }
-
-                ngx_http_waf_set_action_return(loc_conf->action_chain_cc_deny, code, ACTION_FLAG_FROM_CC_DENY);
-
             }
 
         } else if (_streq(p->data, "modsecurity")) {
@@ -1261,14 +1297,24 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
-                if (code == NGX_ERROR
-                    || code < 300
-                    || code >= 600) {
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_modsecurity, 
+                        uri, args, ACTION_FLAG_FROM_MODSECURITY);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_modsecurity, code, ACTION_FLAG_FROM_MODSECURITY);
+
+                } else {
                     goto error;
                 }
-
-                ngx_http_waf_set_action_return(loc_conf->action_chain_modsecurity, code, ACTION_FLAG_FROM_MODSECURITY);
-
             }
 
         }  else if (_streq(p->data, "verify_bot")) {
@@ -1283,12 +1329,123 @@ char* ngx_http_waf_action_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
             } else {
                 ngx_int_t code = ngx_atoi(p->data, p->len);
 
-                if (code == NGX_ERROR
-                    || code <= 0) {
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_verify_bot, 
+                        uri, args, ACTION_FLAG_FROM_VERIFY_BOT);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_verify_bot, code, ACTION_FLAG_FROM_VERIFY_BOT);
+
+                } else {
                     goto error;
                 }
 
-                ngx_http_waf_set_action_return(loc_conf->action_chain_verify_bot, code, ACTION_FLAG_FROM_VERIFY_BOT);
+            }
+
+        } else if (_streq(p->data, "sysguard_load")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            if (_strcaseeq(p->data, "CAPTCHA")) {
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_sysguard_load,
+                    ACTION_FLAG_FROM_SYSGUARD_LOAD | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
+
+            } else {
+                ngx_int_t code = ngx_atoi(p->data, p->len);
+
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_sysguard_load, 
+                        uri, args, ACTION_FLAG_FROM_SYSGUARD_LOAD);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_sysguard_load, code, ACTION_FLAG_FROM_SYSGUARD_LOAD);
+
+                } else {
+                    goto error;
+                }
+
+            }
+
+        } else if (_streq(p->data, "sysguard_mem")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            if (_strcaseeq(p->data, "CAPTCHA")) {
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_sysguard_mem,
+                    ACTION_FLAG_FROM_SYSGUARD_MEM | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
+
+            } else {
+                ngx_int_t code = ngx_atoi(p->data, p->len);
+
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_sysguard_mem, 
+                        uri, args, ACTION_FLAG_FROM_SYSGUARD_MEM);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_sysguard_mem, code, ACTION_FLAG_FROM_SYSGUARD_MEM);
+
+                } else {
+                    goto error;
+                }
+
+            }
+
+        } else if (_streq(p->data, "sysguard_swap")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            if (_strcaseeq(p->data, "CAPTCHA")) {
+                ngx_http_waf_make_action_chain_captcha(cf->pool, 
+                    loc_conf->action_chain_sysguard_swap,
+                    ACTION_FLAG_FROM_SYSGUARD_SWAP | ACTION_FLAG_CAPTCHA,
+                    &loc_conf->waf_captcha_html);
+
+            } else {
+                ngx_int_t code = ngx_atoi(p->data, p->len);
+
+                if (code == NGX_ERROR) {
+                    ngx_str_t* uri = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+                    ngx_str_t* args = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+
+                    uri->data = ngx_pstrdup(cf->pool, p);
+                    uri->len = p->len;
+
+                    ngx_str_set(args, "");
+
+                    ngx_http_waf_set_action_internal_redirect(loc_conf->action_chain_sysguard_swap, 
+                        uri, args, ACTION_FLAG_FROM_SYSGUARD_SWAP);
+    
+                } else if (code >= 400 && code < 600) {
+                    ngx_http_waf_set_action_return(loc_conf->action_chain_sysguard_swap, code, ACTION_FLAG_FROM_SYSGUARD_SWAP);
+
+                } else {
+                    goto error;
+                }
 
             }
 
@@ -1418,7 +1575,7 @@ char* ngx_http_waf_block_page_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* con
 
 
 char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
-        ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
@@ -1585,6 +1742,95 @@ char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t
 }
 
 
+char* ngx_http_waf_sysguard_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_str_t* p_str = cf->args->elts;
+
+    if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
+        loc_conf->waf_sysguard = 1;
+
+    } else if (ngx_strncmp(p_str[1].data, "off", ngx_min(p_str[1].len, 3)) == 0) {
+        loc_conf->waf_sysguard = 0;
+
+    } else {
+        goto error;
+    }
+
+    if (loc_conf->waf_sysguard == 0) {
+        return NGX_CONF_OK;
+    }
+
+    for (size_t i = 2; i < cf->args->nelts; i++) {
+        UT_array* array = NULL;
+        if (ngx_http_waf_str_split(p_str + i, '=', 256, &array) != NGX_HTTP_WAF_SUCCESS) {
+            goto error;
+        }
+
+        if (utarray_len(array) != 2) {
+            goto error;
+        }
+
+        ngx_str_t* p = NULL;
+        p = (ngx_str_t*)utarray_next(array, p);
+
+        if (_streq(p->data, "load")) {    
+            p = (ngx_str_t*)utarray_next(array, p);
+            
+            loc_conf->waf_sysguard_load_threshold = atof((const char*)(p->data));
+            
+            if (ngx_abs(loc_conf->waf_sysguard_load_threshold - 0) <= 1e-7) {
+                goto low_threshold;
+            }
+                                       
+        } else if (_streq(p->data, "mem")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            loc_conf->waf_sysguard_mem_threshold = atof((const char*)(p->data));
+
+            if (ngx_abs(loc_conf->waf_sysguard_mem_threshold - 0) <= 1e-7) {
+                goto low_threshold;
+            }
+
+        } else if (_streq(p->data, "swap")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            loc_conf->waf_sysguard_mem_threshold = atof((const char*)(p->data));
+
+            if (ngx_abs(loc_conf->waf_sysguard_swap_threshold - 0) <= 1e-7) {
+                goto low_threshold;
+            }
+
+        } else if (_streq(p->data, "interval")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            loc_conf->waf_sysguard_interval = ngx_http_waf_parse_time(p->data);
+
+            if (loc_conf->waf_sysguard_interval == NGX_ERROR
+                || loc_conf->waf_sysguard_interval <= 0) {
+                goto error;
+            }
+
+        } else {
+            goto error;
+        }
+
+        utarray_free(array);
+    }
+
+    return NGX_CONF_OK;
+
+low_threshold:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: threshold is too low");
+    return NGX_CONF_ERROR;
+
+error:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: invalid value");
+    return NGX_CONF_ERROR;
+}
+
+
 void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
     ngx_http_waf_main_conf_t* main_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_main_conf_t));
 
@@ -1695,12 +1941,22 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->modsecurity_instance = NGX_CONF_UNSET_PTR;
     conf->modsecurity_rules = NGX_CONF_UNSET_PTR;
 
+    conf->waf_sysguard = NGX_CONF_UNSET;
+    conf->waf_sysguard_interval = NGX_CONF_UNSET;
+    conf->waf_sysguard_load_threshold = NGX_CONF_UNSET_DOUBLE;
+    conf->waf_sysguard_mem_threshold = NGX_CONF_UNSET_DOUBLE;
+    conf->waf_sysguard_swap_threshold = NGX_CONF_UNSET_DOUBLE;
+
     ngx_str_null(&conf->waf_block_page);
 
     conf->action_chain_blacklist = NGX_CONF_UNSET_PTR;
     conf->action_chain_cc_deny = NGX_CONF_UNSET_PTR;
     conf->action_chain_modsecurity = NGX_CONF_UNSET_PTR;
     conf->action_chain_verify_bot = NGX_CONF_UNSET_PTR;
+    conf->action_chain_sysguard_load = NGX_CONF_UNSET_PTR;
+    conf->action_chain_sysguard_mem = NGX_CONF_UNSET_PTR;
+    conf->action_chain_sysguard_swap = NGX_CONF_UNSET_PTR;
+
     conf->action_zone_captcha = NGX_CONF_UNSET_PTR;
     conf->action_cache_captcha = NGX_CONF_UNSET_PTR;
 
@@ -1739,20 +1995,21 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
 
     conf->check_proc[0] = ngx_http_waf_perform_action_at_access_start;
     conf->check_proc[1] = ngx_http_waf_handler_check_white_ip;
-    conf->check_proc[2] = ngx_http_waf_handler_check_black_ip;
-    conf->check_proc[3] = ngx_http_waf_handler_verify_bot;
-    conf->check_proc[4] = ngx_http_waf_handler_check_cc;
-    conf->check_proc[5] = ngx_http_waf_handler_captcha;
-    conf->check_proc[6] = ngx_http_waf_handler_under_attack;
-    conf->check_proc[7] = ngx_http_waf_handler_check_white_url;
-    conf->check_proc[8] = ngx_http_waf_handler_check_black_url;
-    conf->check_proc[9] = ngx_http_waf_handler_check_black_args;
-    conf->check_proc[10] = ngx_http_waf_handler_check_black_user_agent;
-    conf->check_proc[11] = ngx_http_waf_handler_check_white_referer;
-    conf->check_proc[12] = ngx_http_waf_handler_check_black_referer;
-    conf->check_proc[13] = ngx_http_waf_handler_check_black_cookie;
-    conf->check_proc[14] = ngx_http_waf_handler_check_black_post;
-    conf->check_proc[15] = ngx_http_waf_handler_modsecurity;
+    conf->check_proc[2] = ngx_http_waf_handler_sysguard;
+    conf->check_proc[3] = ngx_http_waf_handler_check_black_ip;
+    conf->check_proc[4] = ngx_http_waf_handler_verify_bot;
+    conf->check_proc[5] = ngx_http_waf_handler_check_cc;
+    conf->check_proc[6] = ngx_http_waf_handler_captcha;
+    conf->check_proc[7] = ngx_http_waf_handler_under_attack;
+    conf->check_proc[8] = ngx_http_waf_handler_check_white_url;
+    conf->check_proc[9] = ngx_http_waf_handler_check_black_url;
+    conf->check_proc[10] = ngx_http_waf_handler_check_black_args;
+    conf->check_proc[11] = ngx_http_waf_handler_check_black_user_agent;
+    conf->check_proc[12] = ngx_http_waf_handler_check_white_referer;
+    conf->check_proc[13] = ngx_http_waf_handler_check_black_referer;
+    conf->check_proc[14] = ngx_http_waf_handler_check_black_cookie;
+    conf->check_proc[15] = ngx_http_waf_handler_check_black_post;
+    conf->check_proc[16] = ngx_http_waf_handler_modsecurity;
 
     return conf;
 }
@@ -1882,6 +2139,12 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     }
 
 
+    ngx_conf_merge_value(child->waf_sysguard, parent->waf_sysguard, NGX_CONF_UNSET);
+    ngx_conf_merge_double_value(child->waf_sysguard_load_threshold, parent->waf_sysguard_load_threshold, DBL_MAX);
+    ngx_conf_merge_double_value(child->waf_sysguard_mem_threshold, parent->waf_sysguard_mem_threshold, DBL_MAX);
+    ngx_conf_merge_double_value(child->waf_sysguard_swap_threshold, parent->waf_sysguard_swap_threshold, DBL_MAX);
+
+
     if (parent->is_custom_priority == NGX_HTTP_WAF_TRUE
     &&  child->is_custom_priority == NGX_HTTP_WAF_FALSE) {
         ngx_memcpy(child->check_proc, parent->check_proc, sizeof(parent->check_proc));
@@ -1889,7 +2152,11 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 
     ngx_conf_merge_ptr_value(child->action_zone_captcha, parent->action_zone_captcha, NULL);
 
+    /* 开始合并不同配置层级的动作链 */
+
     action_t* default_action = ngx_pcalloc(cf->pool, sizeof(action_t));
+
+    /* 如果父级动作链未配置则初始化这些动作链 */
 
     if (!ngx_http_waf_is_valid_ptr_value(parent->action_chain_blacklist)) {
         parent->action_chain_blacklist = ngx_pcalloc(cf->pool, sizeof(action_t));
@@ -1911,6 +2178,23 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         ngx_http_waf_set_action_return(parent->action_chain_verify_bot, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_VERIFY_BOT);
     }
 
+    if (!ngx_http_waf_is_valid_ptr_value(parent->action_chain_sysguard_load)) {
+        parent->action_chain_sysguard_load = ngx_pcalloc(cf->pool, sizeof(action_t));
+        ngx_http_waf_set_action_return(parent->action_chain_sysguard_load, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_SYSGUARD_LOAD);
+    }
+
+    if (!ngx_http_waf_is_valid_ptr_value(parent->action_chain_sysguard_mem)) {
+        parent->action_chain_sysguard_mem = ngx_pcalloc(cf->pool, sizeof(action_t));
+        ngx_http_waf_set_action_return(parent->action_chain_sysguard_mem, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_SYSGUARD_MEM);
+    }
+
+    if (!ngx_http_waf_is_valid_ptr_value(parent->action_chain_sysguard_swap)) {
+        parent->action_chain_sysguard_swap = ngx_pcalloc(cf->pool, sizeof(action_t));
+        ngx_http_waf_set_action_return(parent->action_chain_sysguard_swap, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_SYSGUARD_SWAP);
+    }
+
+    /* 如果当前层级的动作链未配置则先初始化，再从父级合并。 */
+
     ngx_http_waf_set_action_return(default_action, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_BLACK_LIST);
     ngx_conf_merge_ptr_value(child->action_chain_blacklist, parent->action_chain_blacklist, default_action);
 
@@ -1923,10 +2207,24 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_http_waf_set_action_return(default_action, NGX_HTTP_FORBIDDEN, ACTION_FLAG_FROM_VERIFY_BOT);
     ngx_conf_merge_ptr_value(child->action_chain_verify_bot, parent->action_chain_verify_bot, default_action);
 
+    ngx_http_waf_set_action_return(default_action, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_SYSGUARD_LOAD);
+    ngx_conf_merge_ptr_value(child->action_chain_sysguard_load, parent->action_chain_sysguard_load, default_action);
+
+    ngx_http_waf_set_action_return(default_action, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_SYSGUARD_MEM);
+    ngx_conf_merge_ptr_value(child->action_chain_sysguard_mem, parent->action_chain_sysguard_mem, default_action);
+
+    ngx_http_waf_set_action_return(default_action, NGX_HTTP_SERVICE_UNAVAILABLE, ACTION_FLAG_FROM_SYSGUARD_SWAP);
+    ngx_conf_merge_ptr_value(child->action_chain_sysguard_swap, parent->action_chain_sysguard_swap, default_action);
+
+    /* 如果任意的动作链执行了验证码，则检查验证码的配置是否正确。 */
+
     if (ngx_http_waf_check_flag(parent->action_chain_blacklist->flag, ACTION_FLAG_CAPTCHA)
         || ngx_http_waf_check_flag(parent->action_chain_cc_deny->flag, ACTION_FLAG_CAPTCHA)
         || ngx_http_waf_check_flag(parent->action_chain_modsecurity->flag, ACTION_FLAG_CAPTCHA)
-        || ngx_http_waf_check_flag(parent->action_chain_verify_bot->flag, ACTION_FLAG_CAPTCHA)) {
+        || ngx_http_waf_check_flag(parent->action_chain_verify_bot->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(parent->action_chain_sysguard_load->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(parent->action_chain_sysguard_mem->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(parent->action_chain_sysguard_swap->flag, ACTION_FLAG_CAPTCHA)) {
         
         if (parent->waf_captcha_type == 0
             || ngx_is_null_str(&parent->waf_captcha_html)
@@ -1945,7 +2243,10 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     if (ngx_http_waf_check_flag(child->action_chain_blacklist->flag, ACTION_FLAG_CAPTCHA)
         || ngx_http_waf_check_flag(child->action_chain_cc_deny->flag, ACTION_FLAG_CAPTCHA)
         || ngx_http_waf_check_flag(child->action_chain_modsecurity->flag, ACTION_FLAG_CAPTCHA)
-        || ngx_http_waf_check_flag(child->action_chain_verify_bot->flag, ACTION_FLAG_CAPTCHA)) {
+        || ngx_http_waf_check_flag(child->action_chain_verify_bot->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(child->action_chain_sysguard_load->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(child->action_chain_sysguard_mem->flag, ACTION_FLAG_CAPTCHA)
+        || ngx_http_waf_check_flag(child->action_chain_sysguard_swap->flag, ACTION_FLAG_CAPTCHA)) {
         
         if (child->waf_captcha_type == 0
             || ngx_is_null_str(&child->waf_captcha_html)
@@ -1962,6 +2263,11 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     }
 
     ngx_conf_merge_str_value(child->waf_block_page, parent->waf_block_page, "");
+
+    /* 
+        如果自定义了拦截页面的 HTML，则需要修改部分动作链。
+        比如即某个动作链的动作是直接返回指定的 HTTP 状态码，此时就需要修改它。 
+    */
 
     if (!ngx_is_null_str(&parent->waf_block_page)) {
         if (ngx_http_waf_check_flag(parent->action_chain_blacklist->flag, ACTION_FLAG_RETURN)) {
@@ -1993,6 +2299,30 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
                 parent->action_chain_verify_bot,
                 parent->action_chain_verify_bot->extra.http_status,
                 ACTION_FLAG_FROM_VERIFY_BOT,
+                &parent->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(parent->action_chain_sysguard_load->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_sysguard_load,
+                parent->action_chain_sysguard_load->extra.http_status,
+                ACTION_FLAG_FROM_SYSGUARD_LOAD,
+                &parent->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(parent->action_chain_sysguard_mem->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_sysguard_mem,
+                parent->action_chain_sysguard_mem->extra.http_status,
+                ACTION_FLAG_FROM_SYSGUARD_MEM,
+                &parent->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(parent->action_chain_sysguard_swap->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                parent->action_chain_sysguard_swap,
+                parent->action_chain_sysguard_swap->extra.http_status,
+                ACTION_FLAG_FROM_SYSGUARD_SWAP,
                 &parent->waf_block_page);
         }
     }
@@ -2027,6 +2357,30 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
                 child->action_chain_verify_bot,
                 child->action_chain_verify_bot->extra.http_status,
                 ACTION_FLAG_FROM_VERIFY_BOT,
+                &child->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(child->action_chain_sysguard_load->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_sysguard_load,
+                child->action_chain_sysguard_load->extra.http_status,
+                ACTION_FLAG_FROM_SYSGUARD_LOAD,
+                &child->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(child->action_chain_sysguard_mem->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_sysguard_mem,
+                child->action_chain_sysguard_mem->extra.http_status,
+                ACTION_FLAG_FROM_SYSGUARD_MEM,
+                &child->waf_block_page);
+        }
+
+        if (ngx_http_waf_check_flag(child->action_chain_sysguard_swap->flag, ACTION_FLAG_RETURN)) {
+            ngx_http_waf_make_action_chain_html(cf->pool, 
+                child->action_chain_sysguard_swap,
+                child->action_chain_sysguard_swap->extra.http_status,
+                ACTION_FLAG_FROM_SYSGUARD_SWAP,
                 &child->waf_block_page);
         }
     }

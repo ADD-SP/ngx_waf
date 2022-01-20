@@ -15,6 +15,8 @@
 
 #include <string.h>
 #include <utarray.h>
+#include <float.h>
+#include <limits.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_var.h>
@@ -28,6 +30,7 @@
 #include <ngx_http_waf_module_modsecurity.h>
 #include <ngx_http_waf_module_data.h>
 #include <ngx_http_waf_module_action.h>
+#include <ngx_http_waf_module_sysguard.h>
 
 
 extern ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
@@ -129,6 +132,12 @@ char* ngx_http_waf_modsecurity_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
  * @brief 读取配置项 waf_modsecurity_transaction_id，该项用来设置 Modsecurity 的事务 ID。
 */
 char* ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+/**
+ * @brief 读取配置项 waf_sysguard，该项用于设置系统状态检测的相关参数。
+*/
+char* ngx_http_waf_sysguard_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
 
 
 /**

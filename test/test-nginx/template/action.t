@@ -91,6 +91,33 @@ waf_captcha off prov=reCAPTCHAv3 secret=xxxx sitekey=xxx;
 ]
 
 
+
+=== TEST: Blacklist with internal redirect
+
+--- main_config
+${main_config}
+
+--- http_config
+waf_zone name=test size=20m;
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_action blacklist=/t zone=test:tag;
+
+location /t {
+    return 405;
+}
+
+--- request
+GET /www.bak
+
+--- error_code chomp
+405
+
+
+
 === TEST: CC with return
 
 --- main_config
@@ -155,6 +182,45 @@ waf_action cc_deny=CAPTCHA zone=test:action;
 ]
 
 
+=== TEST: CC with internal redirect
+
+--- main_config
+${main_config}
+
+--- http_config
+
+waf_zone name=test size=10m;
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_cc_deny on rate=1r/h duration=1h zone=test:cc;
+waf_action cc_deny=/t;
+
+location /t {
+    return 405;
+}
+
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
+
+--- response_body_like eval
+[
+    "work",
+    "405"
+]
+
+--- error_code eval
+[
+    200,
+    405
+]
+
+
 === TEST: Modsecurity with return
 
 --- main_config
@@ -213,6 +279,34 @@ waf_action modsecurity=CAPTCHA zone=test:action;
     403,
     503
 ]
+
+
+=== TEST: Modsecurity with internal redirect
+
+--- main_config
+${main_config}
+
+--- http_config
+
+waf_zone name=test size=10m;
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_modsecurity on file=${base_dir}//waf/modsec/modsecurity.conf;
+waf_action modsecurity=/t;
+
+location /t {
+    return 405;
+}
+
+
+--- request
+GET /t?test=deny
+
+--- error_code chomp
+405
 
 
 === TEST: Verify bot with return
@@ -277,3 +371,112 @@ waf_action verify_bot=CAPTCHA zone=test:action;
     503
 ]
 
+
+=== TEST: Verify bot with internal redirect
+
+--- main_config
+${main_config}
+
+--- config
+waf on;
+waf_mode GET UA;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_verify_bot strict;
+waf_action verify_bot=/t;
+
+location /t {
+    return 405;
+}
+
+--- request
+GET /
+
+--- more_headers
+User-Agent: Googlebot
+
+--- error_code chomp
+405
+
+
+=== TEST: Sysguard with return
+
+--- main_config
+${main_config}
+
+--- http_config
+waf_zone name=test size=20m;
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_action sysguard_mem=403 zone=test:tag;
+waf_sysguard on mem=0.01;
+
+--- request
+GET /
+
+
+--- error_code chomp
+403
+
+
+=== TEST: Sysguard with CAPTCHA
+
+--- main_config
+${main_config}
+
+--- http_config
+waf_zone name=test size=20m;
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_action sysguard_mem=CAPTCHA zone=test:tag;
+waf_sysguard on mem=0.01;
+waf_captcha off prov=reCAPTCHAv3 secret=xx sitekey=xxx;
+
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
+
+--- response_body_like eval
+[
+    "403",
+    "captcha"
+]
+
+--- error_code eval
+[
+    403,
+    503
+]
+
+
+=== TEST: Sysguard with internal redirect
+
+--- main_config
+${main_config}
+
+--- http_config
+waf_zone name=test size=20m;
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}//waf/rules/;
+waf_action sysguard_mem=/t zone=test:tag;
+waf_sysguard on mem=0.01;
+
+location /t {
+    return 405;
+}
+
+--- request
+GET /
+
+--- error_code chomp
+405

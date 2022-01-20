@@ -373,3 +373,47 @@ ${main_config}
 waf_captcha on prov=reCAPTCHAv3 sitekey=xxx secret=xxx max_fails=100:60m;
 
 --- must_die
+
+
+=== TEST: Bad directive waf_sysguard (1)
+
+--- main_config
+${main_config}
+
+--- config
+waf_syaguard offf;
+
+--- must_die
+
+
+=== TEST: Bad directive waf_sysguard (2)
+
+--- main_config
+${main_config}
+
+--- config
+waf_syaguard on loaddd=0.1;
+
+--- must_die
+
+
+=== TEST: Bad directive waf_sysguard (3)
+
+--- main_config
+${main_config}
+
+--- config
+waf_syaguard on load=0;
+
+--- must_die
+
+
+=== TEST: Bad directive waf_sysguard (4)
+
+--- main_config
+${main_config}
+
+--- config
+waf_syaguard on load=-0.5;
+
+--- must_die

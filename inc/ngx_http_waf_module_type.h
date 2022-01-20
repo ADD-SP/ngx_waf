@@ -250,18 +250,23 @@ typedef enum {
     ACTION_FLAG_DONE                = 0x4,
     ACTION_FLAG_FOLLOW              = 0x8,
     ACTION_FLAG_RETURN              = 0x10,
-    ACTION_FLAG_REG_CONTENT         = 0x20,
-    ACTION_FLAG_STR                 = 0x40,
-    ACTION_FLAG_HTML                = 0x80,
-    ACTION_FLAG_FROM_WHITE_LIST     = 0x100,
-    ACTION_FLAG_FROM_BLACK_LIST     = 0x200,
-    ACTION_FLAG_FROM_CC_DENY        = 0x400,
-    ACTION_FLAG_FROM_MODSECURITY    = 0x800,
-    ACTION_FLAG_FROM_CAPTCHA        = 0x1000,
-    ACTION_FLAG_FROM_UNDER_ATTACK   = 0x2000,
-    ACTION_FLAG_FROM_VERIFY_BOT     = 0x4000,
-    ACTION_FLAG_CAPTCHA             = 0x8000,
-    ACTION_FLAG_UNDER_ATTACK        = 0X10000
+    ACTION_FLAG_INTERNAL_REDIRECT   = 0x20,
+    ACTION_FLAG_REG_CONTENT         = 0x40,
+    ACTION_FLAG_STR                 = 0x80,
+    ACTION_FLAG_HTML                = 0x100,
+    ACTION_FLAG_FROM_WHITE_LIST     = 0x200,
+    ACTION_FLAG_FROM_BLACK_LIST     = 0x400,
+    ACTION_FLAG_FROM_CC_DENY        = 0x800,
+    ACTION_FLAG_FROM_MODSECURITY    = 0x1000,
+    ACTION_FLAG_FROM_CAPTCHA        = 0x2000,
+    ACTION_FLAG_FROM_UNDER_ATTACK   = 0x4000,
+    ACTION_FLAG_FROM_VERIFY_BOT     = 0x8000,
+    ACTION_FLAG_FROM_SYSGUARD       = 0x10000,
+    ACTION_FLAG_FROM_SYSGUARD_LOAD  = 0x20000,
+    ACTION_FLAG_FROM_SYSGUARD_MEM   = 0x40000,
+    ACTION_FLAG_FROM_SYSGUARD_SWAP  = 0x80000,
+    ACTION_FLAG_CAPTCHA             = 0x100000,
+    ACTION_FLAG_UNDER_ATTACK        = 0X200000,
 } action_flag_e;
 
 
@@ -281,6 +286,11 @@ typedef struct action_s {
             ngx_uint_t http_status;
             ngx_str_t* html;
         } extra_html;
+
+        struct {
+            ngx_str_t* uri;
+            ngx_str_t* args;
+        } extra_internal_redirect;
 
     } extra;
 } action_t;
@@ -385,10 +395,18 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_modsecurity_rules_remote_url;
     ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
     ngx_str_t                       waf_block_page;                             /**< 封禁页面的 HTML */
+    ngx_int_t                       waf_sysguard;                               /**< 是否启用系统状态检测 */
+    ngx_int_t                       waf_sysguard_interval;                      /**< 系统状态检测的间隔（秒） */
+    double                          waf_sysguard_load_threshold;                /**< 系统负载阈值 */
+    double                          waf_sysguard_mem_threshold;                 /**< 内存阈值 */
+    double                          waf_sysguard_swap_threshold;                /**< 交换空间阈值 */
     action_t                       *action_chain_blacklist;                     /**< 黑名单触发后的动作 */
     action_t                       *action_chain_cc_deny;                       /**< CC 触发后的动作 */
     action_t                       *action_chain_modsecurity;                   /**< ModSecurity 触发后的动作 */
     action_t                       *action_chain_verify_bot;                    /**< verify_bot 触发后的动作 */
+    action_t                       *action_chain_sysguard_load;                 /**< sysguard_load 触发后的动作 */
+    action_t                       *action_chain_sysguard_mem;                  /**< sysguard_mem 触发后的动作 */
+    action_t                       *action_chain_sysguard_swap;                 /**< sysguard_swap 触发后的动作 */
     ngx_shm_zone_t                 *action_zone_captcha;                        /**< 验证码动作使用的 zone */
     lru_cache_t                    *action_cache_captcha;                       /**< 验证码动作使用的 cache */
     ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */

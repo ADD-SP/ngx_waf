@@ -72,6 +72,18 @@
 }
 
 
+#define ngx_http_waf_set_action_internal_redirect(action, uri, args, ex_flag) { \
+    action_t* head = NULL;                                                      \
+    (action)->flag = ACTION_FLAG_INTERNAL_REDIRECT | (ex_flag);                 \
+    (action)->extra.extra_internal_redirect.uri = uri;                          \
+    (action)->extra.extra_internal_redirect.args = args;                        \
+    (action)->next = NULL;                                                      \
+    (action)->prev = NULL;                                                      \
+    DL_APPEND(head, (action));                                                  \
+    (action) = head;                                                            \
+}
+
+
 #define ngx_http_waf_set_action_str(action, _str, status, ex_flag) {        \
     action_t* head = NULL;                                                  \
     (action)->flag = ACTION_FLAG_STR | (ex_flag);                           \
@@ -165,6 +177,13 @@
     action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));      \
     ngx_http_waf_set_action_return(action, (status), (ex_flag));    \
     ngx_http_waf_append_action(r, action);                          \
+}
+
+
+#define ngx_http_waf_append_action_internal_redirect(r, uri, args, ex_flag) {   \
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));                  \
+    ngx_http_waf_set_action_internal_redirect((action), uri, args, (ex_flag));  \
+    ngx_http_waf_append_action(r, action);                                      \
 }
 
 

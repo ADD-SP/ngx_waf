@@ -73,6 +73,9 @@
 #define NGX_HTTP_WAF_RECAPTCHA_V3            (4)
 
 
+#define NGX_CONF_UNSET_DOUBLE                (DBL_MAX)
+
+
 /**
  * @def NGX_HTTP_WAF_RULE_MAX_LEN
  * @brief 每条规则的占用的最大字节数。
@@ -344,6 +347,13 @@
 
 
 #define ngx_http_waf_is_valid_ptr_value(x) (((x) != NGX_CONF_UNSET_PTR) && ((x) != NULL))
+
+
+#define ngx_conf_merge_double_value(conf, prev, default) {          \
+    if (conf == NGX_CONF_UNSET_DOUBLE) {                            \
+        conf = (prev == NGX_CONF_UNSET_DOUBLE) ? default : prev;    \
+    }                                                               \
+}
 
 
 #define ngx_http_waf_make_utarray_ngx_str_icd() { sizeof(ngx_str_t), NULL, ngx_http_waf_utarray_ngx_str_ctor, ngx_http_waf_utarray_ngx_str_dtor }

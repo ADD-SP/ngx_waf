@@ -118,6 +118,14 @@ static ngx_command_t ngx_http_waf_commands[] = {
         0,
         NULL
    },
+   {
+        ngx_string("waf_sysguard"),
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE123,
+        ngx_http_waf_sysguard_conf,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        0,
+        NULL
+   },
     ngx_null_command
 };
 

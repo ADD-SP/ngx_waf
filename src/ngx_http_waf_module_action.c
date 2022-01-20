@@ -16,6 +16,9 @@ static ngx_int_t _perform_action_decline(ngx_http_request_t* r, action_t* action
 static ngx_int_t _perform_action_done(ngx_http_request_t* r, action_t* action);
 
 
+static ngx_int_t _perform_action_internal_redirect(ngx_http_request_t* r, action_t* action);
+
+
 static void _perform_action_reg_content(ngx_http_request_t* r, action_t* action);
 
 
@@ -231,6 +234,11 @@ ngx_int_t ngx_http_waf_perform_action_at_access_end(ngx_http_request_t* r) {
             DL_DELETE(ctx->action_chain, elt);
             _perform_action_reg_content(r, elt);
 
+        } else if (ngx_http_waf_check_flag(elt->flag, ACTION_FLAG_INTERNAL_REDIRECT)) {
+            ngx_http_waf_dp(r, "action is internal redirect");
+            DL_DELETE(ctx->action_chain, elt);
+            _perform_action_internal_redirect(r, elt);
+
         } else {
             abort();
         }
@@ -299,6 +307,17 @@ static ngx_int_t _perform_action_done(ngx_http_request_t* r, action_t* action) {
     ngx_http_waf_dp(r, "return NGX_DONE");
     ngx_http_waf_dp_func_end(r);
     return NGX_DONE;
+}
+
+
+static ngx_int_t _perform_action_internal_redirect(ngx_http_request_t* r, action_t* action) {
+    ngx_http_waf_dp_func_start(r);
+    ngx_http_waf_dpf(r, "internal redirect to %V?%V", 
+        action->extra.extra_internal_redirect.uri,
+        action->extra.extra_internal_redirect.args);
+    ngx_http_waf_dp_func_end(r);
+    return ngx_http_internal_redirect(r, action->extra.extra_internal_redirect.uri,
+        action->extra.extra_internal_redirect.args);
 }
 
 

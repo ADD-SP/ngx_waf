@@ -17,6 +17,7 @@ deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_captcha.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_verify_bot.h \
     $ngx_addon_dir/inc/ngx_http_waf_module_modsecurity.h \
+    $ngx_addon_dir/inc/ngx_http_waf_module_sysguard.h \
     $ngx_addon_dir/lib/cjson/cJSON.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
@@ -34,6 +35,7 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_verify_bot.c \
     $ngx_addon_dir/src/ngx_http_waf_module_modsecurity.c \
     $ngx_addon_dir/src/ngx_http_waf_module_util.c \
+    $ngx_addon_dir/src/ngx_http_waf_module_sysguard.c \
     $ngx_addon_dir/lib/cjson/cJSON.c"
 
 
