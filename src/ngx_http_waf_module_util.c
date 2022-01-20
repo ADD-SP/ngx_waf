@@ -568,6 +568,7 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
                 }
             }
         }
+        ngx_http_set_ctx(r, *ctx, ngx_http_waf_module);
     }
     
     if (conf != NULL) {
