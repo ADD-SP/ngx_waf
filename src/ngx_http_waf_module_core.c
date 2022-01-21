@@ -533,8 +533,9 @@ static ngx_int_t _gc(ngx_http_request_t* r) {
     /* 首先释放共享内存 */
     ngx_http_waf_dp(r, "freeing shared memory");
     shm_t* shms = mcf->shms->elts;
+    size_t n = mcf->shms->nelts * (randombytes_uniform(3) / 10.0);
 
-    for (size_t i = 0; i < mcf->shms->nelts; i++) {
+    for (size_t i = 0; i < n; i++) {
         shm_t* shm = &shms[i];
 
         ngx_http_waf_dpf(r, "freeing shared memory %V", &shm->name);
@@ -555,8 +556,10 @@ static ngx_int_t _gc(ngx_http_request_t* r) {
     ngx_http_waf_dpf(r, "%i caches", nelts);
 
     if (nelts != 0) {
-        for (ngx_uint_t i = 0; i < nelts; i++){
-            lru_cache_t* cache = caches[i];
+        n = nelts * (randombytes_uniform(3) / 10.0);
+
+        for (ngx_uint_t i = 0; i < n; i++){
+            lru_cache_t* cache = caches[randombytes_uniform(nelts)];
 
             if (cache->no_memory) {
                 ngx_http_waf_dp(r, "low memory");
