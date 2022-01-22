@@ -26,6 +26,30 @@ Cookie: s=test
 --- error_code chomp
 200
 
+
+=== TEST: White cookie
+
+--- main_config
+${main_config}
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}/waf/rules/;
+waf_cc_deny off rate=100r/m;
+waf_cache on capacity=50;
+
+
+--- request
+GET /www.bak
+
+--- more_headers
+Cookie: TEST_WHITE_COOKIE
+
+--- error_code eval
+404
+
+
 === TEST: Black cookie
 
 --- main_config

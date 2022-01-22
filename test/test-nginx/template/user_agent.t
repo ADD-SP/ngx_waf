@@ -26,6 +26,29 @@ User-Agent: test-user-agent
 --- error_code chomp
 200
 
+
+=== TEST: White user-agent
+
+--- main_config
+${main_config}
+
+--- config
+waf on;
+waf_mode FULL;
+waf_rule_path ${base_dir}/waf/rules/;
+waf_cc_deny off rate=100r/m;
+waf_cache on capacity=50;
+
+--- request
+GET /www.bak
+
+--- more_headers
+User-Agent: TEST_WHITE_USER_AGENT
+
+--- error_code chomp
+404
+
+
 === TEST: Black user-agent
 
 --- main_config

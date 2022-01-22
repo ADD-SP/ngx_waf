@@ -411,6 +411,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *action_cache_captcha;                       /**< 验证码动作使用的 cache */
     ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */
     void                           *modsecurity_rules;                          /**< ModSecurity 规则容器 */
+
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
 #if (NGX_HAVE_INET6)
     ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
@@ -420,13 +421,21 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_array_t                    *black_ua;                                   /**< user-agent 黑名单 */
     ngx_array_t                    *black_referer;                              /**< Referer 黑名单 */
     ngx_array_t                    *black_cookie;                               /**< Cookie 黑名单 */
+    ngx_array_t                    *black_header;                               /**< Header 黑名单 */
     ngx_array_t                    *black_post;                                 /**< 请求体内容黑名单 */
+
     ip_trie_t                      *white_ipv4;                                 /**< IPV4 白名单 */
 #if (NGX_HAVE_INET6)
     ip_trie_t                      *white_ipv6;                                 /**< IPV6 白名单 */
 #endif
     ngx_array_t                    *white_url;                                  /**< URL 白名单 */
+    ngx_array_t                    *white_args;                                 /**< args 白名单 */
+    ngx_array_t                    *white_ua;                                   /**< user-agent 白名单 */
     ngx_array_t                    *white_referer;                              /**< Referer 白名单 */
+    ngx_array_t                    *white_cookie;                               /**< Cookie 白名单 */
+    ngx_array_t                    *white_header;                               /**< Header 白名单 */
+    ngx_array_t                    *white_post;                                 /**< 请求体内容白名单 */
+
     ngx_shm_zone_t                 *shm_zone_cc_deny;                           /**< 共享内存 */
     lru_cache_t                    *ip_access_statistics;                       /**< IP 访问频率统计表 */
     lru_cache_t                    *black_url_inspection_cache;                 /**< URL 黑名单检查缓存 */
@@ -434,13 +443,18 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
     lru_cache_t                    *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
     lru_cache_t                    *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
+    lru_cache_t                    *black_header_inspection_cache;              /**< Header 黑名单检查缓存 */
     lru_cache_t                    *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
+    lru_cache_t                    *white_args_inspection_cache;                /**< ARGS 白名单检查缓存 */
+    lru_cache_t                    *white_ua_inspection_cache;                  /**< User-Agent 白名单检查缓存 */
     lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
+    lru_cache_t                    *white_cookie_inspection_cache;              /**< Cookie 白名单检查缓存 */
+    lru_cache_t                    *white_header_inspection_cache;              /**< Header 白名单检查缓存 */
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_thread_pool_t              *thread_pool;
 #endif
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
-    ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
+    ngx_http_waf_check_pt           check_proc[30];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_loc_conf_t;
 
 

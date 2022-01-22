@@ -248,6 +248,7 @@ char* ngx_http_waf_mode_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         _parse_mode("RBODY", "!RBODY", NGX_HTTP_WAF_MODE_INSPECT_RB);
         _parse_mode("ARGS", "!ARGS", NGX_HTTP_WAF_MODE_INSPECT_ARGS);
         _parse_mode("UA", "!UA", NGX_HTTP_WAF_MODE_INSPECT_UA);
+        _parse_mode("HEADER", "!HEADER", NGX_HTTP_WAF_MODE_INSPECT_HEADER);
         _parse_mode("COOKIE", "!COOKIE", NGX_HTTP_WAF_MODE_INSPECT_COOKIE);
         _parse_mode("REFERER", "!REFERER", NGX_HTTP_WAF_MODE_INSPECT_REFERER);
         _parse_mode("STD", "!STD", NGX_HTTP_WAF_MODE_STD);
@@ -926,7 +927,7 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
     }
 
 
-    if (utarray_len(array) != 16) {
+    if (utarray_len(array) != 22) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: you must specify the priority of all inspections");
         return NGX_CONF_ERROR;
@@ -949,16 +950,22 @@ char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
         _parse_priority("IP", ngx_http_waf_handler_check_black_ip);
         _parse_priority("W-URL", ngx_http_waf_handler_check_white_url);
         _parse_priority("URL", ngx_http_waf_handler_check_black_url);
+        _parse_priority("W-ARGS", ngx_http_waf_handler_check_white_args);
         _parse_priority("ARGS", ngx_http_waf_handler_check_black_args);
+        _parse_priority("W-UA", ngx_http_waf_handler_check_white_user_agent);
         _parse_priority("UA", ngx_http_waf_handler_check_black_user_agent);
         _parse_priority("W-REFERER", ngx_http_waf_handler_check_white_referer);
         _parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
+        _parse_priority("W-COOKIE", ngx_http_waf_handler_check_white_cookie);
         _parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
         _parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
+        _parse_priority("W-POST", ngx_http_waf_handler_check_white_post);
         _parse_priority("POST", ngx_http_waf_handler_check_black_post);
         _parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
         _parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
         _parse_priority("MODSECURITY", ngx_http_waf_handler_modsecurity);
+        _parse_priority("W-HEADER", ngx_http_waf_handler_check_white_header);
+        _parse_priority("HEADER", ngx_http_waf_handler_check_black_header);
 
         #undef _parse_priority
 
@@ -1974,9 +1981,15 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->black_ua = NGX_CONF_UNSET_PTR;
     conf->black_referer = NGX_CONF_UNSET_PTR;
     conf->black_cookie = NGX_CONF_UNSET_PTR;
+    conf->black_header = NGX_CONF_UNSET_PTR;
     conf->black_post = NGX_CONF_UNSET_PTR;
     conf->white_url = NGX_CONF_UNSET_PTR;
+    conf->white_args = NGX_CONF_UNSET_PTR;
+    conf->white_ua = NGX_CONF_UNSET_PTR;
     conf->white_referer = NGX_CONF_UNSET_PTR;
+    conf->white_cookie = NGX_CONF_UNSET_PTR;
+    conf->white_header = NGX_CONF_UNSET_PTR;
+    conf->white_post = NGX_CONF_UNSET_PTR;
     conf->white_ipv4 = NGX_CONF_UNSET_PTR;
     conf->black_ipv4 = NGX_CONF_UNSET_PTR;
 #if (NGX_HAVE_INET6)
@@ -1989,8 +2002,13 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->black_cookie_inspection_cache = NGX_CONF_UNSET_PTR;
     conf->black_referer_inspection_cache = NGX_CONF_UNSET_PTR;
     conf->black_ua_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->black_header_inspection_cache = NGX_CONF_UNSET_PTR;
     conf->white_url_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_args_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_cookie_inspection_cache = NGX_CONF_UNSET_PTR;
     conf->white_referer_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_ua_inspection_cache = NGX_CONF_UNSET_PTR;
+    conf->white_header_inspection_cache = NGX_CONF_UNSET_PTR;
 
 
     conf->check_proc[0] = ngx_http_waf_perform_action_at_access_start;
@@ -2002,14 +2020,20 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->check_proc[6] = ngx_http_waf_handler_captcha;
     conf->check_proc[7] = ngx_http_waf_handler_under_attack;
     conf->check_proc[8] = ngx_http_waf_handler_check_white_url;
-    conf->check_proc[9] = ngx_http_waf_handler_check_black_url;
-    conf->check_proc[10] = ngx_http_waf_handler_check_black_args;
-    conf->check_proc[11] = ngx_http_waf_handler_check_black_user_agent;
-    conf->check_proc[12] = ngx_http_waf_handler_check_white_referer;
-    conf->check_proc[13] = ngx_http_waf_handler_check_black_referer;
-    conf->check_proc[14] = ngx_http_waf_handler_check_black_cookie;
-    conf->check_proc[15] = ngx_http_waf_handler_check_black_post;
-    conf->check_proc[16] = ngx_http_waf_handler_modsecurity;
+    conf->check_proc[9] = ngx_http_waf_handler_check_white_args;
+    conf->check_proc[10] = ngx_http_waf_handler_check_white_user_agent;
+    conf->check_proc[11] = ngx_http_waf_handler_check_white_referer;
+    conf->check_proc[12] = ngx_http_waf_handler_check_white_cookie;
+    conf->check_proc[13] = ngx_http_waf_handler_check_white_header;
+    conf->check_proc[14] = ngx_http_waf_handler_check_white_post;
+    conf->check_proc[15] = ngx_http_waf_handler_check_black_url;
+    conf->check_proc[16] = ngx_http_waf_handler_check_black_args;
+    conf->check_proc[17] = ngx_http_waf_handler_check_black_user_agent;
+    conf->check_proc[18] = ngx_http_waf_handler_check_black_referer;
+    conf->check_proc[19] = ngx_http_waf_handler_check_black_cookie;
+    conf->check_proc[20] = ngx_http_waf_handler_check_black_header;
+    conf->check_proc[21] = ngx_http_waf_handler_check_black_post;
+    conf->check_proc[22] = ngx_http_waf_handler_modsecurity;
 
     return conf;
 }
@@ -2034,13 +2058,20 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->black_ipv6, parent->black_ipv6, NULL);
 #endif
     ngx_conf_merge_ptr_value(child->white_url, parent->white_url, NULL);
+    ngx_conf_merge_ptr_value(child->white_args, parent->white_args, NULL);
+    ngx_conf_merge_ptr_value(child->white_ua, parent->white_ua, NULL);
     ngx_conf_merge_ptr_value(child->white_referer, parent->white_referer, NULL);
+    ngx_conf_merge_ptr_value(child->white_cookie, parent->white_cookie, NULL);
+    ngx_conf_merge_ptr_value(child->white_header, parent->white_header, NULL);
+    ngx_conf_merge_ptr_value(child->white_post, parent->white_post, NULL);
+
     ngx_conf_merge_ptr_value(child->black_url, parent->black_url, NULL);
     ngx_conf_merge_ptr_value(child->black_args, parent->black_args, NULL);
     ngx_conf_merge_ptr_value(child->black_ua, parent->black_ua, NULL);
-    ngx_conf_merge_ptr_value(child->black_post, parent->black_post, NULL);
-    ngx_conf_merge_ptr_value(child->black_cookie, parent->black_cookie, NULL);
     ngx_conf_merge_ptr_value(child->black_referer, parent->black_referer, NULL);
+    ngx_conf_merge_ptr_value(child->black_cookie, parent->black_cookie, NULL);
+    ngx_conf_merge_ptr_value(child->black_header, parent->black_header, NULL);
+    ngx_conf_merge_ptr_value(child->black_post, parent->black_post, NULL);
 
 
     ngx_conf_merge_value(child->waf_cc_deny, parent->waf_cc_deny, NGX_CONF_UNSET);
@@ -2117,8 +2148,14 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->black_ua_inspection_cache, parent->black_ua_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->black_referer_inspection_cache, parent->black_referer_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->black_cookie_inspection_cache, parent->black_cookie_inspection_cache, NULL);
+    ngx_conf_merge_ptr_value(child->black_header_inspection_cache, parent->black_header_inspection_cache, NULL);
+
     ngx_conf_merge_ptr_value(child->white_url_inspection_cache, parent->white_url_inspection_cache, NULL);
+    ngx_conf_merge_ptr_value(child->white_args_inspection_cache, parent->white_args_inspection_cache, NULL);
+    ngx_conf_merge_ptr_value(child->white_ua_inspection_cache, parent->white_ua_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->white_referer_inspection_cache, parent->white_referer_inspection_cache, NULL);
+    ngx_conf_merge_ptr_value(child->white_cookie_inspection_cache, parent->white_cookie_inspection_cache, NULL);
+    ngx_conf_merge_ptr_value(child->white_header_inspection_cache, parent->white_header_inspection_cache, NULL);
 
 
     ngx_conf_merge_value(child->waf_modsecurity, parent->waf_modsecurity, NGX_CONF_UNSET);
@@ -2605,53 +2642,41 @@ static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) 
     conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
     conf->black_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
     conf->black_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->black_header_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+
     conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->white_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->white_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
     conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->white_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->white_header_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
 
     mem_pool_t* pool = calloc(1, sizeof(mem_pool_t));
     mem_pool_init(pool, MEM_POOL_FLAG_STDC, NULL);
 
-    lru_cache_init(&conf->black_url_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
 
-    lru_cache_t** p = ngx_array_push(main_conf->local_caches);
-    *p = conf->black_url_inspection_cache;
+#define _init_lru_cache_and_append_to_chain(cache) {            \
+    lru_cache_init(&cache, conf->waf_cache_capacity, pool);     \
+    lru_cache_t** p = ngx_array_push(main_conf->local_caches);  \
+    *p = conf->black_url_inspection_cache;                      \
+}
 
-    lru_cache_init(&conf->black_args_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
-    
-    p = ngx_array_push(main_conf->local_caches);
-    *p = conf->black_args_inspection_cache;
+    _init_lru_cache_and_append_to_chain(conf->black_url_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->black_args_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->black_ua_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->black_referer_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->black_cookie_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->black_header_inspection_cache);
 
-    lru_cache_init(&conf->black_ua_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
+    _init_lru_cache_and_append_to_chain(conf->white_url_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->white_args_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->white_ua_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->white_referer_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->white_cookie_inspection_cache);
+    _init_lru_cache_and_append_to_chain(conf->white_header_inspection_cache);
 
-    p = ngx_array_push(main_conf->local_caches);
-    *p = conf->black_ua_inspection_cache;
 
-    lru_cache_init(&conf->black_referer_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
-
-    p = ngx_array_push(main_conf->local_caches);
-    *p = conf->black_referer_inspection_cache;
-
-    lru_cache_init(&conf->black_cookie_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
-
-    p = ngx_array_push(main_conf->local_caches);
-    *p = conf->black_cookie_inspection_cache;
-
-    lru_cache_init(&conf->white_url_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
-
-    p = ngx_array_push(main_conf->local_caches);
-    *p = conf->white_url_inspection_cache;
-    
-    lru_cache_init(&conf->white_referer_inspection_cache, 
-                    conf->waf_cache_capacity, pool);
-
-    p = ngx_array_push(main_conf->local_caches);
-    *p = conf->white_referer_inspection_cache;
+#undef _init_lru_cache_and_append_to_chain
 
     return NGX_HTTP_WAF_SUCCESS;
 }
@@ -2693,13 +2718,19 @@ static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_UA_FILE, conf->black_ua, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_REFERER_FILE, conf->black_referer, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_COOKIE_FILE, conf->black_cookie, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_HEADER_FILE, conf->black_header, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_POST_FILE, conf->black_post, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV4_FILE, conf->white_ipv4, 1);
 #if (NGX_HAVE_INET6)
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV6_FILE, conf->white_ipv6, 2);
 #endif
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, conf->white_url, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_ARGS_FILE, conf->white_args, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_UA_FILE, conf->white_ua, 0);
     ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, conf->white_referer, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_COOKIE_FILE, conf->white_cookie, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_HEADER_FILE, conf->white_header, 0);
+    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_POST_FILE, conf->white_post, 0);
     
 #undef ngx_http_waf_check_and_load_conf
 
@@ -2719,9 +2750,16 @@ static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* 
     conf->black_ua = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->black_referer = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->black_cookie = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    conf->black_header = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->black_post = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->white_url = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    conf->white_args = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    conf->white_ua = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
     conf->white_referer = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    conf->white_cookie = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    conf->white_header = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+    conf->white_post = ngx_array_create(cf->pool, 1, sizeof(ngx_regex_elt_t));
+
     conf->white_ipv4 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
     conf->black_ipv4 = ngx_pcalloc(cf->pool, sizeof(ip_trie_t));
 #if (NGX_HAVE_INET6)
@@ -2734,9 +2772,15 @@ static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* 
     ||  conf->black_ua == NULL
     ||  conf->black_referer == NULL
     ||  conf->black_cookie == NULL
+    ||  conf->black_header == NULL
     ||  conf->black_post == NULL
     ||  conf->white_url == NULL
+    ||  conf->white_args == NULL
+    ||  conf->white_ua == NULL
     ||  conf->white_referer == NULL
+    ||  conf->white_cookie == NULL
+    ||  conf->white_header == NULL
+    ||  conf->white_post == NULL
     ||  conf->white_ipv4 == NULL
     ||  conf->black_ipv4 == NULL
 #if (NGX_HAVE_INET6)

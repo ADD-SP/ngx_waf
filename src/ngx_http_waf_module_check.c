@@ -393,6 +393,44 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r) {
 }
 
 
+ngx_int_t ngx_http_waf_handler_check_white_args(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_set_action_decline(action, ACTION_FLAG_FROM_WHITE_LIST);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_ARGS | r->method)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_str_t* p_args = &r->args;
+    ngx_array_t* regex_array = loc_conf->white_args;
+    lru_cache_t* cache = loc_conf->white_args_inspection_cache;
+
+    ngx_http_waf_dpf(r, "matching args(%V)", p_args);
+    ret_value = ngx_http_waf_regex_exec_arrray(r, p_args, regex_array, (u_char*)"WHITE-ARGS", cache);
+
+    if (ret_value == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched");
+        ctx->gernal_logged = 1;
+        ctx->blocked = 0;
+        ngx_http_waf_append_action(r, action);
+    } else {
+        ngx_http_waf_dp(r, "not matched");
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return ret_value;
+}
+
+
 ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
@@ -422,6 +460,49 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r) {
         ctx->gernal_logged = 1;
         ctx->blocked = 1;
         ngx_http_waf_append_action_chain(r, action);
+    } else {
+        ngx_http_waf_dp(r, "not matched");
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return ret_value;
+}
+
+
+ngx_int_t ngx_http_waf_handler_check_white_user_agent(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_set_action_decline(action, ACTION_FLAG_FROM_WHITE_LIST);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_UA | r->method)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    if (r->headers_in.user_agent == NULL) {
+        ngx_http_waf_dp(r, "empty user-agent ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_str_t* p_user_agent = &r->headers_in.user_agent->value;
+    ngx_array_t* regex_array = loc_conf->white_ua;
+    lru_cache_t* cache = loc_conf->white_ua_inspection_cache;
+
+    ngx_http_waf_dpf(r, "matching user-agent(%V)", p_user_agent);
+    ret_value = ngx_http_waf_regex_exec_arrray(r, p_user_agent, regex_array, (u_char*)"WHITE-USER-AGENT", cache);
+
+    if (ret_value == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched");
+        ctx->gernal_logged = 1;
+        ctx->blocked = 0;
+        ngx_http_waf_append_action(r, action);
     } else {
         ngx_http_waf_dp(r, "not matched");
     }
@@ -561,6 +642,60 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r) {
 }
 
 
+ngx_int_t ngx_http_waf_handler_check_white_cookie(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_set_action_decline(action, ACTION_FLAG_FROM_WHITE_LIST);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_COOKIE | r->method)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    } 
+    
+    if (r->headers_in.cookies.nelts == 0) {
+        ngx_http_waf_dp(r, "empty cookies ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
+    size_t i;
+    for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
+        ngx_str_t* native_cookies = &((**ppcookie).value);
+
+        ngx_http_waf_dpf(r, "matching cookie(%V)", native_cookies);
+
+        ngx_array_t* regex_array = loc_conf->white_cookie;
+        lru_cache_t* cache = loc_conf->white_cookie_inspection_cache;
+        ret_value = ngx_http_waf_regex_exec_arrray(r, native_cookies, regex_array, (u_char*)"BLACK-COOKIE", cache);
+
+        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 0;
+            ngx_http_waf_append_action_chain(r, action);
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
+        }
+
+        if (ctx->blocked) {
+            ngx_http_waf_dp(r, "blocked ... break");
+            break;
+        }
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return ret_value;
+}
+
+
 ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
@@ -615,6 +750,184 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
 }
 
 
+ngx_int_t ngx_http_waf_handler_check_white_header(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_set_action_decline(action, ACTION_FLAG_FROM_WHITE_LIST);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_HEADER | r->method)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    } 
+    
+    if (r->headers_in.referer == NULL) {
+        ngx_http_waf_dp(r, "empty referer ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_array_t* regex_array = loc_conf->white_header;
+    lru_cache_t* cache = loc_conf->white_header_inspection_cache;
+    ngx_list_t list = r->headers_in.headers;
+    ngx_list_part_t* part = &list.part;
+
+    for (size_t i = 0; /* void */; i++) {
+        if (i > part->nelts) {
+
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            i = 0;
+        }
+
+        ngx_table_elt_t header = ((ngx_table_elt_t*)part->elts)[i];
+
+        ngx_str_t key_value;
+        key_value.data = ngx_pcalloc(r->pool, header.key.len + header.value.len + 2);
+        key_value.len = header.key.len + header.value.len + 1;
+        ngx_memcpy(key_value.data, header.key.data, header.key.len);
+        key_value.data[header.key.len] = ':';
+        ngx_memcpy(key_value.data + header.key.len + 1, header.value.data, header.value.len);
+
+        ngx_http_waf_dpf(r, "matching header(%V)", &key_value);
+
+        ngx_int_t rc = ngx_http_waf_regex_exec_arrray(r, &key_value, regex_array, (u_char*)"WHITE-HEADER", cache);
+
+        if (rc == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 0;
+            ngx_http_waf_append_action_chain(r, action);
+            ngx_http_waf_dp_func_end(r);
+            return NGX_HTTP_WAF_MATCHED;
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
+        }
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return NGX_HTTP_WAF_NOT_MATCHED;
+}
+
+
+ngx_int_t ngx_http_waf_handler_check_black_header(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_copy_action_chain(r->pool, action, loc_conf->action_chain_blacklist);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_HEADER | r->method)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    } 
+    
+    if (r->headers_in.referer == NULL) {
+        ngx_http_waf_dp(r, "empty referer ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_array_t* regex_array = loc_conf->black_header;
+    lru_cache_t* cache = loc_conf->black_header_inspection_cache;
+    ngx_list_t list = r->headers_in.headers;
+    ngx_list_part_t* part = &list.part;
+
+    for (size_t i = 0; /* void */; i++) {
+        if (i > part->nelts) {
+
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            i = 0;
+        }
+
+        ngx_table_elt_t header = ((ngx_table_elt_t*)part->elts)[i];
+
+        ngx_str_t key_value;
+        key_value.data = ngx_pcalloc(r->pool, header.key.len + header.value.len + 2);
+        key_value.len = header.key.len + header.value.len + 1;
+        ngx_memcpy(key_value.data, header.key.data, header.key.len);
+        key_value.data[header.key.len] = ':';
+        ngx_memcpy(key_value.data + header.key.len + 1, header.value.data, header.value.len);
+
+        ngx_http_waf_dpf(r, "matching header(%V)", &key_value);
+
+        ngx_int_t rc = ngx_http_waf_regex_exec_arrray(r, &key_value, regex_array, (u_char*)"BLACK-HEADER", cache);
+
+        if (rc == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 1;
+            ngx_http_waf_append_action_chain(r, action);
+            ngx_http_waf_dp_func_end(r);
+            return NGX_HTTP_WAF_MATCHED;
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
+        }
+    }
+
+    ngx_http_waf_dp_func_end(r);
+    return NGX_HTTP_WAF_NOT_MATCHED;
+}
+
+
+ngx_int_t ngx_http_waf_handler_check_white_post(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_set_action_decline(action, ACTION_FLAG_FROM_WHITE_LIST);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_RB)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    if (ctx->has_req_body == NGX_HTTP_WAF_FALSE) {
+        ngx_http_waf_dp(r, "empty request body ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_str_t body_str;
+    body_str.data = ctx->req_body.pos;
+    body_str.len = ctx->req_body.last - ctx->req_body.pos;
+
+    ngx_http_waf_dpf(r, "matching request body %V", &body_str);
+    ngx_int_t rc = ngx_http_waf_regex_exec_arrray(r, &body_str, loc_conf->white_post, (u_char*)"WHITE-POST", NULL);
+    if (rc == NGX_HTTP_WAF_MATCHED) {
+        ngx_http_waf_dp(r, "matched");
+        ctx->gernal_logged = 1;
+        ctx->blocked = 0;
+        ngx_http_waf_append_action_chain(r, action);
+        return NGX_HTTP_WAF_MATCHED;
+
+    } else {
+        ngx_http_waf_dp(r, "not matched");
+        ngx_http_waf_dp_func_end(r);
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+}
+
+
 ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
@@ -648,6 +961,7 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r) {
         ctx->blocked = 1;
         ngx_http_waf_append_action_chain(r, action);
         return NGX_HTTP_WAF_MATCHED;
+
     } else {
         ngx_http_waf_dp(r, "not matched");
         ngx_http_waf_dp_func_end(r);

@@ -18,11 +18,17 @@
 #define NGX_HTTP_WAF_UA_FILE                 ("user-agent")
 #define NGX_HTTP_WAF_REFERER_FILE            ("referer")
 #define NGX_HTTP_WAF_COOKIE_FILE             ("cookie")
+#define NGX_HTTP_WAF_HEADER_FILE             ("header")
 #define NGX_HTTP_WAF_POST_FILE               ("post")
 #define NGX_HTTP_WAF_WHITE_IPV4_FILE         ("white-ipv4")
 #define NGX_HTTP_WAF_WHITE_IPV6_FILE         ("white-ipv6")
 #define NGX_HTTP_WAF_WHITE_URL_FILE          ("white-url")
+#define NGX_HTTP_WAF_WHITE_ARGS_FILE         ("white-args")
+#define NGX_HTTP_WAF_WHITE_UA_FILE           ("white-user-agent")
 #define NGX_HTTP_WAF_WHITE_REFERER_FILE      ("white-referer")
+#define NGX_HTTP_WAF_WHITE_COOKIE_FILE       ("white-cookie")
+#define NGX_HTTP_WAF_WHITE_HEADER_FILE       ("white-header")
+#define NGX_HTTP_WAF_WHITE_POST_FILE         ("white-post")
 
 
 #define NGX_HTTP_WAF_FALSE                   (0)
@@ -247,6 +253,13 @@
  * @brief 启用 Referer 检查规则
 */
 #define NGX_HTTP_WAF_MODE_INSPECT_REFERER                    (NGX_HTTP_WAF_MODE_INSPECT_COOKIE << 1)
+
+
+/**
+ * @def NGX_HTTP_WAF_MODE_INSPECT_HEADER
+ * @brief 启用 Header 检查规则
+*/
+#define NGX_HTTP_WAF_MODE_INSPECT_HEADER                     (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
 
 
 /**

@@ -60,4 +60,15 @@ echo "DDDD::/16" >> ./rules/white-ipv6
 echo "/white/" >> ./rules/white-url
 echo "/white/" >> ./rules/white-referer
 
+echo "TEST_WHITE_HEADER" >> ./rules/white-header
+echo "TEST_BLACK_HEADER" >> ./rules/black-header
+
+echo "TEST_WHITE_ARGS" >> ./rules/white-args
+
+echo "TEST_WHITE_COOKIE" >> ./rules/white-cookie
+
+echo "TEST_WHITE_USER_AGENT" >> ./rules/white-user-agent
+
+echo "TEST_WHITE_POST" >> ./rules/white-post
+
 cd "$origin_dir"

@@ -82,12 +82,31 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r);
 
 
 /**
+ * @brief 检查请求参数是否在白名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
+*/
+ngx_int_t ngx_http_waf_handler_check_white_args(ngx_http_request_t* r);
+
+
+
+/**
  * @brief 检查请求参数是否在黑名单中
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
 ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r);
+
+
+/**
+ * @brief 检查 UserAgent 是否在白名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
+*/
+ngx_int_t ngx_http_waf_handler_check_white_user_agent(ngx_http_request_t* r);
 
 
 /**
@@ -103,7 +122,7 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r);
  * @brief 检查 Referer 是否在白名单中
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在白名单中。
- * @retval NOT_MATCHED 不在白黑名单中
+ * @retval NOT_MATCHED 不在白名单中
 */
 ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r);
 
@@ -118,6 +137,15 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r);
 
 
 /**
+ * @brief 检查 Cookie 是否在白名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
+*/
+ngx_int_t ngx_http_waf_handler_check_white_cookie(ngx_http_request_t* r);
+
+
+/**
  * @brief 检查 Cookie 是否在黑名单中
  * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
  * @retval MATCHED 在黑名单中。
@@ -127,7 +155,37 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r);
 
 
 /**
- * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
+ * @brief 检查请求头是否在白名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
+*/
+ngx_int_t ngx_http_waf_handler_check_white_header(ngx_http_request_t* r);
+
+
+/**
+ * @brief 检查 Header 是否在白名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
+*/
+ngx_int_t ngx_http_waf_handler_check_black_header(ngx_http_request_t* r);
+
+
+/**
+ * @brief 检查 Header 是否在白名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在白名单中。
+ * @retval NOT_MATCHED 不在白名单中
+*/
+ngx_int_t ngx_http_waf_handler_check_white_post(ngx_http_request_t* r);
+
+
+/**
+ * @brief 检查 POST_BODY 是否在黑名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
 */
 ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
 
