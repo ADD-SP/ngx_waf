@@ -17,13 +17,17 @@ static ngx_int_t _verify_by_rdns(ngx_http_request_t* r, ngx_array_t* ua_regex, n
 // static ngx_int_t _gen_ctx(ngx_http_request_t* r, const char* detail);
 
 ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
-    static void* _func[] = {
-        _verify_google_bot, "GoogleBot",
-        _verify_bing_bot, "BingBot",
-        _verify_baidu_spider, "Baiduspider",
-        _verify_yandex_bot, "YandexBot",
-        _verify_sogou_spider, "SogouSpider",
-        NULL, NULL
+    static struct {
+        bot_type_e type;
+        _handler func;
+        char* name;
+    } s_handler[] = {
+        { BOT_TYPE_GOOGLE, _verify_google_bot, "GoogleBot"},
+        { BOT_TYPE_BING, _verify_bing_bot, "BingBot"},
+        { BOT_TYPE_BAIDU, _verify_baidu_spider, "Baiduspider"},
+        { BOT_TYPE_YANDEX, _verify_yandex_bot, "YandexBot"},
+        { BOT_TYPE_SOGOU, _verify_sogou_spider, "SogouSpider"},
+        { BOT_TYPE_NONE, NULL, NULL}
     };
 
     ngx_http_waf_dp_func_start(r);
@@ -46,21 +50,20 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
     ngx_http_waf_copy_action_chain(r->pool, action, loc_conf->action_chain_verify_bot);
 
 
-    for (int i = 0; _func[i] != NULL; i += 2) {
-        ngx_http_waf_dpf(r, "verfiying %s", _func[i + 1]);
-        _handler handler = (_handler)_func[i];
-        ngx_int_t rc = handler(r);
+    for (int i = 0; s_handler[i].type != BOT_TYPE_NONE; i++) {
+        ngx_http_waf_dpf(r, "verfiying %s", s_handler[i].name);
+        ngx_int_t rc = s_handler[i].func(r);
 
         if (rc == NGX_HTTP_WAF_FAKE_BOT) {
             ngx_http_waf_dp(r, "fake bot ... return");
             if (loc_conf->waf_verify_bot == 2) {
-                ngx_http_waf_set_rule_info(r, "FAKE-BOT", _func[i + 1],
+                ngx_http_waf_set_rule_info(r, "FAKE-BOT", s_handler[i].name,
                     NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
                 ngx_http_waf_append_action_chain(r, action);
                 return NGX_HTTP_WAF_MATCHED;
 
             } else {
-                ngx_http_waf_set_rule_info(r, "FAKE-BOT", _func[i + 1],
+                ngx_http_waf_set_rule_info(r, "FAKE-BOT", s_handler[i].name,
                     NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
                 return NGX_HTTP_WAF_NOT_MATCHED;
             }
@@ -68,7 +71,7 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
         } else if (rc == NGX_HTTP_WAF_SUCCESS){
             ngx_http_waf_dp(r, "real bot ... return");
             ngx_http_waf_append_action_chain(r, action_decline);
-            ngx_http_waf_set_rule_info(r, "REAL-BOT", _func[i + 1],
+            ngx_http_waf_set_rule_info(r, "REAL-BOT", s_handler[i].name,
                 NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
             return NGX_HTTP_WAF_MATCHED;
         }   
