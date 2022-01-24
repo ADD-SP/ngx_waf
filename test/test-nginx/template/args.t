@@ -15,7 +15,6 @@ waf on;
 waf_mode GET ARGS;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 --- request
 GET /?s=test0
@@ -34,7 +33,6 @@ waf on;
 waf_mode GET ARGS;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 --- request 
 GET /www.bak?TEST_WHITE_ARGS
@@ -53,7 +51,6 @@ waf on;
 waf_mode GET ARGS;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 --- pipelined_requests eval
 [

@@ -15,7 +15,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=hCaptcha secret=xx sitekey=xx;
 
 --- pipelined_requests eval
@@ -52,7 +51,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=reCAPTCHAv2:checkbox secret=xx sitekey=xx;
 
 --- pipelined_requests eval
@@ -87,7 +85,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=reCAPTCHAv2:invisible secret=xx sitekey=xx;
 
 --- pipelined_requests eval
@@ -122,7 +119,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=reCAPTCHAv3 secret=xx score=0.5 sitekey=xx;
 
 --- pipelined_requests eval

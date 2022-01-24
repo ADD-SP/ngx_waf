@@ -164,7 +164,7 @@ waf_cc_deny rate=100r/m;
 ${main_config}
 
 --- config
-waf_cache capacity=50;
+waf_cache capacity=50m;
 
 --- must_die
 
@@ -175,7 +175,7 @@ waf_cache capacity=50;
 ${main_config}
 
 --- config
-waf_cache on capacity=-1;
+waf_cache on capacity=-1m;
 
 --- must_die
 

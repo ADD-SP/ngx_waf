@@ -15,7 +15,6 @@ waf on;
 waf_mode GET RBODY;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 location /t {
 }
@@ -38,7 +37,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache on capacity=50;
 
 --- request
 POST /www.bak
@@ -58,7 +56,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache on capacity=50;
 
 location /t {
 }

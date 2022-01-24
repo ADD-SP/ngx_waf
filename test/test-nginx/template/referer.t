@@ -15,7 +15,6 @@ waf on;
 waf_mode GET REFERER;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 --- request
 GET /
@@ -37,7 +36,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 --- pipelined_requests eval
 [
@@ -68,7 +66,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 --- pipelined_requests eval
 [

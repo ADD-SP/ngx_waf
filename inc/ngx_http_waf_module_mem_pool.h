@@ -16,9 +16,10 @@
  * @param[out] pool 要初始化的内存池
  * @param[in] flag 相关标志位
  * @param[in] native_pool 内存池
+ * @param[in] capacity 内存池容量
  * @return 如果成功返回 NGX_HTTP_WAF_SUCCESS，反之则不是。
 */
-ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_flag_e flag, void* native_pool);
+ngx_int_t mem_pool_init(mem_pool_t* pool, mem_pool_flag_e flag, void* native_pool, size_t capacity);
 
 /**
  * @brief 申请一段连续的内存
@@ -31,8 +32,8 @@ void* mem_pool_calloc(mem_pool_t* pool, ngx_uint_t byte_size);
 /**
  * @brief 释放一段连续的内存
  * @param[in] pool 要操作的内存池
- * @param[in] buffer 内存的首地址
+ * @param[in] ptr 内存的首地址
 */
-void mem_pool_free(mem_pool_t* pool, void* buffer);
+void mem_pool_free(mem_pool_t* pool, void* ptr);
 
 #endif

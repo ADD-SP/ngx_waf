@@ -473,12 +473,14 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         if (_streq(p->data, "capacity")) {
             p = (ngx_str_t*)utarray_next(array, p);
 
-            loc_conf->waf_cache_capacity = ngx_atoi(p->data, p->len);
+            loc_conf->waf_cache_capacity = (ngx_int_t)ngx_parse_size(p);
 
             if (loc_conf->waf_cache_capacity == NGX_ERROR
                 || loc_conf->waf_cache_capacity <= 0) {
                 goto error;
             }
+
+            loc_conf->waf_cache_capacity = ngx_max(loc_conf->waf_cache_capacity, 1024 * 1024 * 5);
             
         } else {
             goto error;
@@ -1975,6 +1977,9 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->thread_pool = s_thread_pool;
 #endif
     conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
+    conf->is_custom_cache = NGX_HTTP_WAF_FALSE;
+
+    conf->base_rules_id = NGX_CONF_UNSET;
 
     conf->black_url = NGX_CONF_UNSET_PTR;
     conf->black_args = NGX_CONF_UNSET_PTR;
@@ -2050,6 +2055,8 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     child->parent = parent;
 
     ngx_conf_merge_value(child->waf, parent->waf, NGX_CONF_UNSET);
+
+    ngx_conf_merge_value(child->base_rules_id, parent->base_rules_id, NGX_CONF_UNSET);
 
     ngx_conf_merge_ptr_value(child->white_ipv4, parent->white_ipv4, NULL);
     ngx_conf_merge_ptr_value(child->black_ipv4, parent->black_ipv4, NULL);
@@ -2156,6 +2163,12 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->white_referer_inspection_cache, parent->white_referer_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->white_cookie_inspection_cache, parent->white_cookie_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->white_header_inspection_cache, parent->white_header_inspection_cache, NULL);
+
+    if (child->is_custom_cache == NGX_HTTP_WAF_FALSE && child->base_rules_id != parent->base_rules_id) {
+        if (_init_lru_cache(cf, child) != NGX_HTTP_WAF_SUCCESS) {
+            return NGX_CONF_ERROR;
+        }
+    }
 
 
     ngx_conf_merge_value(child->waf_modsecurity, parent->waf_modsecurity, NGX_CONF_UNSET);
@@ -2306,121 +2319,63 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         比如即某个动作链的动作是直接返回指定的 HTTP 状态码，此时就需要修改它。 
     */
 
+#define _action_return_to_action_chain_html(action, html, ex_flag) {    \
+    if (ngx_http_waf_check_flag(action->flag, ACTION_FLAG_RETURN)) {    \
+            ngx_http_waf_make_action_chain_html(cf->pool,               \
+                (action),                                               \
+                (action)->extra.http_status,                            \
+                (ex_flag),                                              \
+                &(html));                                               \
+    }                                                                   \
+}
+
     if (!ngx_is_null_str(&parent->waf_block_page)) {
-        if (ngx_http_waf_check_flag(parent->action_chain_blacklist->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_blacklist,
-                parent->action_chain_blacklist->extra.http_status,
-                ACTION_FLAG_FROM_BLACK_LIST,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_blacklist, 
+            parent->waf_block_page, ACTION_FLAG_FROM_BLACK_LIST);
 
-        if (ngx_http_waf_check_flag(parent->action_chain_cc_deny->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_cc_deny,
-                parent->action_chain_cc_deny->extra.http_status,
-                ACTION_FLAG_FROM_CC_DENY,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_cc_deny, 
+            parent->waf_block_page, ACTION_FLAG_FROM_CC_DENY);
 
-        if (ngx_http_waf_check_flag(parent->action_chain_modsecurity->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_modsecurity,
-                parent->action_chain_modsecurity->extra.http_status,
-                ACTION_FLAG_FROM_MODSECURITY,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_modsecurity, 
+            parent->waf_block_page, ACTION_FLAG_FROM_MODSECURITY);
 
-        if (ngx_http_waf_check_flag(parent->action_chain_verify_bot->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_verify_bot,
-                parent->action_chain_verify_bot->extra.http_status,
-                ACTION_FLAG_FROM_VERIFY_BOT,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_verify_bot, 
+            parent->waf_block_page, ACTION_FLAG_FROM_VERIFY_BOT);
 
-        if (ngx_http_waf_check_flag(parent->action_chain_sysguard_load->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_sysguard_load,
-                parent->action_chain_sysguard_load->extra.http_status,
-                ACTION_FLAG_FROM_SYSGUARD_LOAD,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_sysguard_load, 
+            parent->waf_block_page, ACTION_FLAG_FROM_SYSGUARD_LOAD);
 
-        if (ngx_http_waf_check_flag(parent->action_chain_sysguard_mem->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_sysguard_mem,
-                parent->action_chain_sysguard_mem->extra.http_status,
-                ACTION_FLAG_FROM_SYSGUARD_MEM,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_sysguard_mem, 
+            parent->waf_block_page, ACTION_FLAG_FROM_SYSGUARD_MEM);
 
-        if (ngx_http_waf_check_flag(parent->action_chain_sysguard_swap->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                parent->action_chain_sysguard_swap,
-                parent->action_chain_sysguard_swap->extra.http_status,
-                ACTION_FLAG_FROM_SYSGUARD_SWAP,
-                &parent->waf_block_page);
-        }
+        _action_return_to_action_chain_html(parent->action_chain_sysguard_swap, 
+            parent->waf_block_page, ACTION_FLAG_FROM_SYSGUARD_SWAP);
     }
 
     if (!ngx_is_null_str(&child->waf_block_page)) {
-        if (ngx_http_waf_check_flag(child->action_chain_blacklist->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_blacklist,
-                child->action_chain_blacklist->extra.http_status,
-                ACTION_FLAG_FROM_BLACK_LIST,
-                &child->waf_block_page);
-        }
+        _action_return_to_action_chain_html(child->action_chain_blacklist, 
+            child->waf_block_page, ACTION_FLAG_FROM_BLACK_LIST);
 
-        if (ngx_http_waf_check_flag(child->action_chain_cc_deny->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_cc_deny,
-                child->action_chain_cc_deny->extra.http_status,
-                ACTION_FLAG_FROM_CC_DENY,
-                &child->waf_block_page);
-        }
+        _action_return_to_action_chain_html(child->action_chain_cc_deny,
+            child->waf_block_page, ACTION_FLAG_FROM_CC_DENY);
+        
+        _action_return_to_action_chain_html(child->action_chain_modsecurity,
+            child->waf_block_page, ACTION_FLAG_FROM_MODSECURITY);
 
-        if (ngx_http_waf_check_flag(child->action_chain_modsecurity->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_modsecurity,
-                child->action_chain_modsecurity->extra.http_status,
-                ACTION_FLAG_FROM_MODSECURITY,
-                &child->waf_block_page);
-        }
+        _action_return_to_action_chain_html(child->action_chain_verify_bot,
+            child->waf_block_page, ACTION_FLAG_FROM_VERIFY_BOT);
 
-        if (ngx_http_waf_check_flag(child->action_chain_verify_bot->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_verify_bot,
-                child->action_chain_verify_bot->extra.http_status,
-                ACTION_FLAG_FROM_VERIFY_BOT,
-                &child->waf_block_page);
-        }
+        _action_return_to_action_chain_html(child->action_chain_sysguard_load,
+            child->waf_block_page, ACTION_FLAG_FROM_SYSGUARD_LOAD);
 
-        if (ngx_http_waf_check_flag(child->action_chain_sysguard_load->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_sysguard_load,
-                child->action_chain_sysguard_load->extra.http_status,
-                ACTION_FLAG_FROM_SYSGUARD_LOAD,
-                &child->waf_block_page);
-        }
+        _action_return_to_action_chain_html(child->action_chain_sysguard_mem,
+            child->waf_block_page, ACTION_FLAG_FROM_SYSGUARD_MEM);
 
-        if (ngx_http_waf_check_flag(child->action_chain_sysguard_mem->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_sysguard_mem,
-                child->action_chain_sysguard_mem->extra.http_status,
-                ACTION_FLAG_FROM_SYSGUARD_MEM,
-                &child->waf_block_page);
-        }
-
-        if (ngx_http_waf_check_flag(child->action_chain_sysguard_swap->flag, ACTION_FLAG_RETURN)) {
-            ngx_http_waf_make_action_chain_html(cf->pool, 
-                child->action_chain_sysguard_swap,
-                child->action_chain_sysguard_swap->extra.http_status,
-                ACTION_FLAG_FROM_SYSGUARD_SWAP,
-                &child->waf_block_page);
-        }
+        _action_return_to_action_chain_html(child->action_chain_sysguard_swap,
+            child->waf_block_page, ACTION_FLAG_FROM_SYSGUARD_SWAP);
     }
+
+#undef _action_return_to_action_chain_html
 
     return NGX_CONF_OK;
 }
@@ -2637,22 +2592,22 @@ static ngx_int_t _load_into_container(ngx_conf_t* cf, const char* file_name, voi
 static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     ngx_http_waf_main_conf_t* main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
 
-    conf->black_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->black_header_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
+    conf->black_url_inspection_cache = NULL;
+    conf->white_url_inspection_cache = NULL;
+    conf->black_args_inspection_cache = NULL;
+    conf->white_args_inspection_cache = NULL;
+    conf->black_ua_inspection_cache = NULL;
+    conf->white_ua_inspection_cache = NULL;
+    conf->black_cookie_inspection_cache = NULL;
+    conf->white_cookie_inspection_cache = NULL;
+    conf->black_referer_inspection_cache = NULL;
+    conf->white_referer_inspection_cache = NULL;
+    conf->black_header_inspection_cache = NULL;
+    conf->white_header_inspection_cache = NULL;
 
-    conf->white_url_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_args_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_ua_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_referer_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_cookie_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
-    conf->white_header_inspection_cache = ngx_pcalloc(cf->pool, sizeof(lru_cache_t));
 
-    mem_pool_t* pool = calloc(1, sizeof(mem_pool_t));
-    mem_pool_init(pool, MEM_POOL_FLAG_STDC, NULL);
+    mem_pool_t* pool = ngx_pcalloc(cf->pool, sizeof(mem_pool_t));
+    mem_pool_init(pool, MEM_POOL_FLAG_STDC | MEM_POOL_FLAG_FIXED, NULL, (size_t)(conf->waf_cache_capacity));
 
 
 #define _init_lru_cache_and_append_to_chain(cache) {            \
@@ -2693,10 +2648,12 @@ static void _cleanup_lru_cache(void* data) {
 
 
 static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
+    static ngx_int_t s_id = 0;
+
     char* full_path = ngx_palloc(cf->pool, sizeof(char) * NGX_HTTP_WAF_RULE_MAX_LEN);
     char* end = ngx_http_waf_to_c_str((u_char*)full_path, conf->waf_rule_path);
 
-#define ngx_http_waf_check_and_load_conf(cf, folder, end, filename, container, mode) {                          \
+#define _check_and_load_conf(cf, folder, end, filename, container, mode) {                          \
     strcat((folder), (filename));                                                                               \
     if (access((folder), R_OK) != 0) {                                                                          \
         ngx_conf_log_error(NGX_LOG_ERR, (cf), 0, "ngx_waf: %s: %s", (folder), "No such file or directory");     \
@@ -2709,32 +2666,34 @@ static ngx_int_t _load_all_rule(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) {
     *(end) = '\0';                                                                                              \
 }
 
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV4_FILE, conf->black_ipv4, 1);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV4_FILE, conf->black_ipv4, 1);
 #if (NGX_HAVE_INET6)
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV6_FILE, conf->black_ipv6, 2);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_IPV6_FILE, conf->black_ipv6, 2);
 #endif
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_URL_FILE, conf->black_url, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ARGS_FILE, conf->black_args, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_UA_FILE, conf->black_ua, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_REFERER_FILE, conf->black_referer, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_COOKIE_FILE, conf->black_cookie, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_HEADER_FILE, conf->black_header, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_POST_FILE, conf->black_post, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV4_FILE, conf->white_ipv4, 1);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_URL_FILE, conf->black_url, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_ARGS_FILE, conf->black_args, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_UA_FILE, conf->black_ua, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_REFERER_FILE, conf->black_referer, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_COOKIE_FILE, conf->black_cookie, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_HEADER_FILE, conf->black_header, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_POST_FILE, conf->black_post, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV4_FILE, conf->white_ipv4, 1);
 #if (NGX_HAVE_INET6)
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV6_FILE, conf->white_ipv6, 2);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_IPV6_FILE, conf->white_ipv6, 2);
 #endif
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, conf->white_url, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_ARGS_FILE, conf->white_args, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_UA_FILE, conf->white_ua, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, conf->white_referer, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_COOKIE_FILE, conf->white_cookie, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_HEADER_FILE, conf->white_header, 0);
-    ngx_http_waf_check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_POST_FILE, conf->white_post, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_URL_FILE, conf->white_url, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_ARGS_FILE, conf->white_args, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_UA_FILE, conf->white_ua, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_REFERER_FILE, conf->white_referer, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_COOKIE_FILE, conf->white_cookie, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_HEADER_FILE, conf->white_header, 0);
+    _check_and_load_conf(cf, full_path, end, NGX_HTTP_WAF_WHITE_POST_FILE, conf->white_post, 0);
     
-#undef ngx_http_waf_check_and_load_conf
+#undef _check_and_load_conf
 
     ngx_pfree(cf->pool, full_path);
+
+    conf->base_rules_id = s_id++;
 
     return NGX_HTTP_WAF_SUCCESS;
 }
@@ -2798,7 +2757,7 @@ static ngx_int_t _init_rule_containers(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* 
         return NGX_HTTP_WAF_FAIL;
     }
 
-    mem_pool_init(pool, MEM_POOL_FLAG_NGX, cf->pool);
+    mem_pool_init(pool, MEM_POOL_FLAG_NGX, cf->pool, 0);
 
 
     if (ip_trie_init(conf->white_ipv4, pool, AF_INET) != NGX_HTTP_WAF_SUCCESS) {

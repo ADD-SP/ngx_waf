@@ -14,7 +14,6 @@ ${main_config}
 waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
-waf_cache off capacity=50;
 waf_under_attack on;
 
 --- request

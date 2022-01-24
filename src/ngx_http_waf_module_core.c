@@ -561,6 +561,8 @@ static ngx_int_t _gc(ngx_http_request_t* r) {
         for (ngx_uint_t i = 0; i < n; i++){
             lru_cache_t* cache = caches[randombytes_uniform(nelts)];
 
+            ngx_http_waf_dpf(r, "pool: %p, used: %z, capacity: %z", cache->pool, cache->pool->used, cache->pool->capacity);
+
             if (cache->no_memory) {
                 ngx_http_waf_dp(r, "low memory");
                 cache->no_memory = 0;

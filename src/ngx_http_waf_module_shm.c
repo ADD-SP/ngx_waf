@@ -164,7 +164,7 @@ static ngx_int_t _shm_zone_init_handler(ngx_shm_zone_t *zone, void *data) {
     if (shm->pool == NULL) {
         ngx_slab_pool_t* shpool = (ngx_slab_pool_t*)zone->shm.addr;
         shm->pool = ngx_slab_calloc(shpool, sizeof(mem_pool_t));
-        mem_pool_init(shm->pool, MEM_POOL_FLAG_NGX_SHARD, shpool);
+        mem_pool_init(shm->pool, MEM_POOL_FLAG_NGX_SHARD, shpool, 0);
     }
 
     shm_init_t* init = NULL;

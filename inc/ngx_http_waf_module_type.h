@@ -115,10 +115,11 @@ typedef struct key_value_s {
  * @brief 内存池类型
 */
 typedef enum {
-    MEM_POOL_FLAG_UNSET     = 0,
-    MEM_POOL_FLAG_STDC      = 1,
-    MEM_POOL_FLAG_NGX       = 2,
-    MEM_POOL_FLAG_NGX_SHARD = 4
+    MEM_POOL_FLAG_UNSET     = 0,    /**< 未设置 */
+    MEM_POOL_FLAG_STDC      = 1,    /**< 基于 malloc 的内存池 */
+    MEM_POOL_FLAG_NGX       = 2,    /**< 基于 ngx_pool_t 的内存池 */
+    MEM_POOL_FLAG_NGX_SHARD = 4,    /**< 基于 ngx_slab_t 的内存池 */
+    MEM_POOL_FLAG_FIXED     = 8     /**< 固定大小的内存池 */
 } mem_pool_flag_e;
 
 
@@ -128,7 +129,8 @@ typedef enum {
 */
 typedef struct mem_pool_s {
     mem_pool_flag_e                     flag;                   /**< 标识内存池的类型 */
-    size_t                              used_mem;               /**< 正在使用的内存大小（字节） */
+    size_t                              capacity;               /**< 内存池的容量 */
+    size_t                              used;                   /**< 已使用的内存量（字节） */
     void*                               native_pool;
 } mem_pool_t;
 
@@ -361,7 +363,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_cc_deny_cycle;                          /**< CC 防御的统计周期（秒） */
     ngx_int_t                       waf_cache;                                  /**< 是否启用缓存 */
     ngx_int_t                       waf_cache_capacity;                         /**< 用于缓存检查结果的共享内存的大小（字节） */
-    ngx_int_t                       waf_verify_bot;                             /**< 0: 禁用, 1 仅放行假爬虫, 2: 拦截假爬虫 */
+    ngx_int_t                       waf_verify_bot;                             /**< 0: 禁用, 1 仅放行真爬虫, 2: 拦截假爬虫 */
     ngx_int_t                       waf_verify_bot_type;                        /**< 位图，表示检测哪些 Bot */
     ngx_array_t                    *waf_verify_bot_google_ua_regexp;            /**< Googlebot 的合法 User-Agent */
     ngx_array_t                    *waf_verify_bot_bing_ua_regexp;              /**< Bingbot 的合法 User-Agent */
@@ -412,6 +414,14 @@ typedef struct ngx_http_waf_loc_conf_s {
     ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */
     void                           *modsecurity_rules;                          /**< ModSecurity 规则容器 */
 
+    ngx_int_t                       base_rules_id;                              /**< 
+                                                                                     基础规则的 ID 
+                                                                                     基础规则就是所有的黑白名单规则
+                                                                                     每次读取完所有的基础规则后都会生成一个唯一的 ID
+                                                                                     这个 ID 将用于合并不同层级的缓存配置
+                                                                                     防止不同的基础规则使用同一个缓存空间引起混乱     
+                                                                                */
+
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
 #if (NGX_HAVE_INET6)
     ip_trie_t                      *black_ipv6;                                 /**< IPV6 黑名单 */
@@ -454,6 +464,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_thread_pool_t              *thread_pool;
 #endif
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
+    ngx_int_t                       is_custom_cache;                            /**< 用户是否使用了指令 waf_cache */
     ngx_http_waf_check_pt           check_proc[30];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_loc_conf_t;
 

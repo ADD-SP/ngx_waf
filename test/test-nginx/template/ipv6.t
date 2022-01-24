@@ -15,7 +15,6 @@ waf on;
 waf_mode GET URL IP;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 set_real_ip_from 127.0.0.0/8;
 real_ip_header X-Real-IP;
@@ -48,7 +47,6 @@ waf on;
 waf_mode GET URL IP;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 set_real_ip_from 127.0.0.0/8;
 real_ip_header X-Real-IP;
@@ -99,7 +97,6 @@ waf on;
 waf_mode GET URL IP;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 
 set_real_ip_from 127.0.0.0/8;
 real_ip_header X-Real-IP;

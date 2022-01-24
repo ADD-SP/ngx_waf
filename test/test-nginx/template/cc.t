@@ -18,7 +18,6 @@ waf on;
 waf_mode FULL;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny on rate=1r/h zone=ngx_waf_test:test;
-waf_cache off capacity=50;
 
 location /t {
     waf_cc_deny off rate=1r/h;
