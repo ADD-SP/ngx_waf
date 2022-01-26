@@ -419,7 +419,12 @@ typedef struct ngx_http_waf_loc_conf_s {
                                                                                      基础规则就是所有的黑白名单规则
                                                                                      每次读取完所有的基础规则后都会生成一个唯一的 ID
                                                                                      这个 ID 将用于合并不同层级的缓存配置
-                                                                                     防止不同的基础规则使用同一个缓存空间引起混乱     
+                                                                                     防止不同的基础规则使用同一个缓存空间引起混乱
+                                                                                     
+                                                                                     ngx_http_waf_loc_conf_t.verify_bot_cache 
+                                                                                     会和基础规则的缓存一起被初始化
+                                                                                     这会浪费一些内存
+                                                                                     但是对代码的改动最小
                                                                                 */
 
     ip_trie_t                      *black_ipv4;                                 /**< IPV4 黑名单 */
@@ -460,11 +465,15 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
     lru_cache_t                    *white_cookie_inspection_cache;              /**< Cookie 白名单检查缓存 */
     lru_cache_t                    *white_header_inspection_cache;              /**< Header 白名单检查缓存 */
+
+    lru_cache_t                    *verify_bot_cache;                           /**< verify_bot 缓存 */
+
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     ngx_thread_pool_t              *thread_pool;
 #endif
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_int_t                       is_custom_cache;                            /**< 用户是否使用了指令 waf_cache */
+
     ngx_http_waf_check_pt           check_proc[30];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_loc_conf_t;
 

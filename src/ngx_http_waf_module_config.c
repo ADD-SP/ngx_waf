@@ -2015,6 +2015,8 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->white_ua_inspection_cache = NGX_CONF_UNSET_PTR;
     conf->white_header_inspection_cache = NGX_CONF_UNSET_PTR;
 
+    conf->verify_bot_cache = NGX_CONF_UNSET_PTR;
+
 
     conf->check_proc[0] = ngx_http_waf_perform_action_at_access_start;
     conf->check_proc[1] = ngx_http_waf_handler_check_white_ip;
@@ -2164,12 +2166,13 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_ptr_value(child->white_cookie_inspection_cache, parent->white_cookie_inspection_cache, NULL);
     ngx_conf_merge_ptr_value(child->white_header_inspection_cache, parent->white_header_inspection_cache, NULL);
 
+    ngx_conf_merge_ptr_value(child->verify_bot_cache, parent->verify_bot_cache, NULL);
+
     if (child->is_custom_cache == NGX_HTTP_WAF_FALSE && child->base_rules_id != parent->base_rules_id) {
         if (_init_lru_cache(cf, child) != NGX_HTTP_WAF_SUCCESS) {
             return NGX_CONF_ERROR;
         }
     }
-
 
     ngx_conf_merge_value(child->waf_modsecurity, parent->waf_modsecurity, NGX_CONF_UNSET);
     ngx_conf_merge_ptr_value(child->modsecurity_instance, parent->modsecurity_instance, NULL);
@@ -2605,6 +2608,8 @@ static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) 
     conf->black_header_inspection_cache = NULL;
     conf->white_header_inspection_cache = NULL;
 
+    conf->verify_bot_cache = NULL;
+
 
     mem_pool_t* pool = ngx_pcalloc(cf->pool, sizeof(mem_pool_t));
     mem_pool_init(pool, MEM_POOL_FLAG_STDC | MEM_POOL_FLAG_FIXED, NULL, (size_t)(conf->waf_cache_capacity));
@@ -2629,6 +2634,8 @@ static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) 
     _init_lru_cache_and_append_to_chain(conf->white_referer_inspection_cache);
     _init_lru_cache_and_append_to_chain(conf->white_cookie_inspection_cache);
     _init_lru_cache_and_append_to_chain(conf->white_header_inspection_cache);
+
+    _init_lru_cache_and_append_to_chain(conf->verify_bot_cache);
 
 
 #undef _init_lru_cache_and_append_to_chain

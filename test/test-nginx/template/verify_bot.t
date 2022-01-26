@@ -36,15 +36,25 @@ waf_mode GET UA;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_verify_bot strict;
+waf_cache on capacity=5m;
 
---- request
-GET /
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
 
---- more_headers
-User-Agent: Googlebot
+--- more_headers eval
+[
+    "User-Agent: Googlebot",
+    "User-Agent: Googlebot"
+]
 
---- error_code chomp
-403
+
+--- error_code eval
+[
+    403, 403
+]
 
 === TEST: Fake bingbot
 
@@ -57,15 +67,24 @@ waf_mode GET UA;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_verify_bot strict;
+waf_cache on capacity=5m;
 
---- request
-GET /
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
 
---- more_headers
-User-Agent: bingbot
+--- more_headers eval
+[
+    "User-Agent: bingbot",
+    "User-Agent: bingbot"
+]
 
---- error_code chomp
-403
+--- error_code eval
+[
+    403, 403
+]
 
 === TEST: Fake Baiduspider
 
@@ -78,15 +97,25 @@ waf_mode GET UA;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_verify_bot strict;
+waf_cache on capacity=5m;
 
---- request
-GET /
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
 
---- more_headers
-User-Agent: Baiduspider
+--- more_headers eval
+[
+    "User-Agent: Baiduspider",
+    "User-Agent: Baiduspider"
+]
 
---- error_code chomp
-403
+
+--- error_code eval
+[
+    403, 403
+]
 
 === TEST: Fake YandexBot
 
@@ -99,15 +128,24 @@ waf_mode GET UA;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_verify_bot strict;
+waf_cache on capacity=5m;
 
---- request
-GET /
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
 
---- more_headers
-User-Agent: YandexBot
+--- more_headers eval
+[
+    "User-Agent: YandexBot",
+    "User-Agent: YandexBot"
+]
 
---- error_code chomp
-403
+--- error_code eval
+[
+    403, 403
+]
 
 === TEST: Fake SogouSpider
 
@@ -120,12 +158,21 @@ waf_mode GET UA;
 waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
 waf_verify_bot strict;
+waf_cache on capacity=5m;
 
---- request
-GET /
+--- request eval
+[
+    "GET /",
+    "GET /"
+]
 
---- more_headers
-User-Agent: Sogou web spider
+--- more_headers eval
+[
+    "User-Agent: Sogou web spider",
+    "User-Agent: Sogou web spider"
+]
 
---- error_code chomp
-403
+--- error_code eval
+[
+    403, 403
+]
