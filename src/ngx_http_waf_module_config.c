@@ -441,7 +441,7 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* p_str = cf->args->elts;
 
-    loc_conf->waf_cache_capacity = 50;
+    loc_conf->waf_cache_capacity = 1024 * 1024 * 20;
 
     if (ngx_strncmp(p_str[1].data, "on", ngx_min(p_str[1].len, 2)) == 0) {
         loc_conf->waf_cache = 1;
@@ -480,7 +480,7 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
                 goto error;
             }
 
-            loc_conf->waf_cache_capacity = ngx_max(loc_conf->waf_cache_capacity, 1024 * 1024 * 5);
+            loc_conf->waf_cache_capacity = ngx_max(loc_conf->waf_cache_capacity, 1024 * 1024 * 20);
             
         } else {
             goto error;
@@ -2168,7 +2168,8 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 
     ngx_conf_merge_ptr_value(child->verify_bot_cache, parent->verify_bot_cache, NULL);
 
-    if (child->is_custom_cache == NGX_HTTP_WAF_FALSE && child->base_rules_id != parent->base_rules_id) {
+    if (child->is_custom_cache == NGX_HTTP_WAF_FALSE && child->base_rules_id != parent->base_rules_id
+        && !ngx_http_waf_is_unset_or_disable_value(child->waf_captcha)) {
         if (_init_lru_cache(cf, child) != NGX_HTTP_WAF_SUCCESS) {
             return NGX_CONF_ERROR;
         }
@@ -2616,9 +2617,9 @@ static ngx_int_t _init_lru_cache(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf) 
 
 
 #define _init_lru_cache_and_append_to_chain(cache) {            \
-    lru_cache_init(&cache, conf->waf_cache_capacity, pool);     \
+    lru_cache_init(&(cache), conf->waf_cache_capacity, pool);   \
     lru_cache_t** p = ngx_array_push(main_conf->local_caches);  \
-    *p = conf->black_url_inspection_cache;                      \
+    *p = (cache);                                               \
 }
 
     _init_lru_cache_and_append_to_chain(conf->black_url_inspection_cache);
