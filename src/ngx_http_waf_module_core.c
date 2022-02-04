@@ -56,7 +56,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
    },
    {
         ngx_string("waf_under_attack"),
-        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE12,
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_1MORE,
         ngx_http_waf_under_attack_conf,
         NGX_HTTP_LOC_CONF_OFFSET,
         0,

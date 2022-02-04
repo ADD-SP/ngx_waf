@@ -352,7 +352,7 @@ typedef struct ngx_http_waf_main_conf_s {
 */
 typedef struct ngx_http_waf_loc_conf_s {
     struct ngx_http_waf_loc_conf_s *parent;                                     /**< 上层配置，用来定位 CC 防护所使用的共享内存 */
-    u_char                          random_str[129];                            /**< 随机字符串 */
+    u_char                         *default_cookie_secret;                      /**< 随机成成的默认的 cookie secret */
     ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
     ngx_int_t                       waf;                                        /**< 0: 禁用, 1 启用, 2 旁路模式 */
     ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
@@ -377,6 +377,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_array_t                    *waf_verify_bot_sogou_domain_regexp;         /**< SogouSpider 的合法的主机名 */
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_str_t                       waf_under_attack_html;                      /**< 五秒盾的 HTML 数据 */
+    u_char                         *waf_under_attack_cookie_secret;             /**< 用于生成 cookie 的 HMAC */
     ngx_int_t                       waf_captcha;                                /**< 是否启用验证码 */
     ngx_int_t                       waf_captcha_type;                           /**< 验证码的类型 */
     ngx_str_t                       waf_captcha_hCaptcha_secret;                /**< hCaptcha 的 secret */
@@ -391,6 +392,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_captcha_duration;                       /**< 验证码的拉黑时长（秒） */
     ngx_shm_zone_t                 *waf_captcha_shm_zone;                       /**< 验证码的共享内存 */
     lru_cache_t                    *waf_captcha_cache;                          /**< 验证码的 LRU 缓存 */
+    u_char                         *waf_captcha_cookie_secret;                  /**< 用于生成 cookie 的 HMAC */
     ngx_int_t                       waf_modsecurity;                            /**< 是否启用 ModSecurity */
     ngx_str_t                       waf_modsecurity_rules_file;                 /**< ModSecurity 规则文件的绝对路径 */
     ngx_str_t                       waf_modsecurity_rules_remote_key;

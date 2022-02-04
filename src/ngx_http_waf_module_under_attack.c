@@ -3,7 +3,7 @@
 typedef struct {
     u_char time[NGX_TIME_T_LEN + 1];
     u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
-    u_char hmac[crypto_hash_sha256_BYTES * 2 + 1];
+    u_char hmac[NGX_HTTP_WAF_SHA256_HEX_LEN];
 } _info_t;
 
 static ngx_int_t _gen_under_attack_info(ngx_http_request_t* r, _info_t* under_attack);
@@ -238,12 +238,12 @@ static ngx_int_t _gen_verification(ngx_http_request_t *r, _info_t* under_attack)
         inx_addr_t inx_addr;
         u_char time[NGX_TIME_T_LEN + 1];
         u_char uid[NGX_HTTP_WAF_UID_LEN + 1];
-        u_char salt[129];
+        u_char salt[NGX_HTTP_WAF_SHA256_HEX_LEN];
     } buf;
     ngx_memzero(&buf, sizeof(buf));
     ngx_memcpy(buf.time, under_attack->time, sizeof(buf.time));
     ngx_memcpy(buf.uid, under_attack->uid, sizeof(buf.uid));
-    ngx_memcpy(buf.salt, loc_conf->random_str, sizeof(buf.salt));
+    ngx_memcpy(buf.salt, loc_conf->waf_under_attack_cookie_secret, sizeof(buf.salt));
 
     ngx_http_waf_dpf(r, "time=%s, uid=%s, salt=%s", buf.time, buf.uid, buf.salt);
 

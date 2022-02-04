@@ -565,6 +565,15 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
 
             fclose(fp);
 
+        } else if (_streq(p->data, "cookie_secret")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            loc_conf->waf_under_attack_cookie_secret = ngx_pcalloc(cf->pool, NGX_HTTP_WAF_SHA256_HEX_LEN);
+            if (ngx_http_waf_sha256(loc_conf->waf_under_attack_cookie_secret, 
+                NGX_HTTP_WAF_SHA256_HEX_LEN, p->data, p->len) != NGX_HTTP_WAF_SUCCESS) {
+                goto error_sha256;
+            }
+
         } else {
             goto error;
         }
@@ -577,6 +586,11 @@ char* ngx_http_waf_under_attack_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* c
     }
 
     return NGX_CONF_OK;
+
+error_sha256:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+        "ngx_waf: sha256 error");
+    return NGX_CONF_ERROR;
 
 error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
@@ -812,6 +826,15 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
 
             utarray_free(temp);
             
+        } else if (_streq(p->data, "cookie_secret")) {
+            p = (ngx_str_t*)utarray_next(array, p);
+
+            loc_conf->waf_captcha_cookie_secret = ngx_pcalloc(cf->pool, NGX_HTTP_WAF_SHA256_HEX_LEN);
+            if (ngx_http_waf_sha256(loc_conf->waf_captcha_cookie_secret, 
+                NGX_HTTP_WAF_SHA256_HEX_LEN, p->data, p->len) != NGX_HTTP_WAF_SUCCESS) {
+                goto error_sha256;
+            }
+
         } else {
             goto error;
         }
@@ -870,6 +893,11 @@ char* ngx_http_waf_captcha_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) 
     }
 
     return NGX_CONF_OK;
+
+error_sha256:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
+        "ngx_waf: sha256 error");
+    return NGX_CONF_ERROR;
 
 no_prov:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES, 
@@ -1875,13 +1903,17 @@ void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
 
 
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
-        static u_char s_rand_str[129] = { 0 };
+    static u_char s_default_cookie_secret[NGX_HTTP_WAF_SHA256_HEX_LEN] = { 0 };
+
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
     static ngx_str_t s_thread_pool_name;
     static ngx_thread_pool_t * s_thread_pool = NULL;
 #endif
-    if (s_rand_str[0] == '\0') {
-        ngx_http_waf_rand_str(s_rand_str, 128);
+
+    if (s_default_cookie_secret[0] == '\0') {
+        u_char buf[256];
+        randombytes_buf(buf, sizeof(buf));
+        ngx_http_waf_sha256(s_default_cookie_secret, sizeof(s_default_cookie_secret), buf, sizeof(buf));
     }
 
 #if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
@@ -1901,7 +1933,7 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
         return NULL;
     }
 
-    ngx_strcpy(conf->random_str, s_rand_str);
+    conf->default_cookie_secret = s_default_cookie_secret;
     conf->is_alloc = NGX_HTTP_WAF_FALSE;
 
     conf->waf = NGX_CONF_UNSET;
@@ -1925,6 +1957,7 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
 
     conf->waf_under_attack = NGX_CONF_UNSET;
     ngx_str_null(&conf->waf_under_attack_html);
+    conf->waf_under_attack_cookie_secret = NGX_CONF_UNSET_PTR;
 
     conf->waf_captcha = NGX_CONF_UNSET;
     ngx_str_null(&conf->waf_captcha_html);
@@ -1934,6 +1967,7 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->waf_captcha_shm_zone = NGX_CONF_UNSET_PTR;
     conf->waf_captcha_max_fails = NGX_CONF_UNSET;
     conf->waf_captcha_duration = NGX_CONF_UNSET;
+    conf->waf_captcha_cookie_secret = NGX_CONF_UNSET_PTR;
 
     conf->waf_cc_deny = NGX_CONF_UNSET;
     conf->waf_cc_deny_limit = NGX_CONF_UNSET;
@@ -2091,6 +2125,7 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     
 
     ngx_conf_merge_value(child->waf_under_attack, parent->waf_under_attack, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_under_attack_cookie_secret, parent->waf_under_attack_cookie_secret, child->default_cookie_secret);
 
     if (child->waf_under_attack_html.data == NULL || child->waf_under_attack_html.len == 0) {
         ngx_memcpy(&(child->waf_under_attack_html), &(parent->waf_under_attack_html), sizeof(ngx_str_t));
@@ -2102,6 +2137,7 @@ char* ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     ngx_conf_merge_value(child->waf_captcha_reCAPTCHAv3_score, parent->waf_captcha_reCAPTCHAv3_score, NGX_CONF_UNSET);
     ngx_conf_merge_value(child->waf_captcha_max_fails, parent->waf_captcha_max_fails, NGX_CONF_UNSET);
     ngx_conf_merge_value(child->waf_captcha_duration, parent->waf_captcha_duration, NGX_CONF_UNSET);
+    ngx_conf_merge_ptr_value(child->waf_captcha_cookie_secret, parent->waf_captcha_cookie_secret, child->default_cookie_secret);
     ngx_conf_merge_ptr_value(child->waf_captcha_shm_zone, parent->waf_captcha_shm_zone, NULL);
 
     if (child->waf_captcha_html.data == NULL || child->waf_captcha_html.len == 0) {

@@ -96,6 +96,14 @@
 
 #define NGX_HTTP_WAF_MAX_ALLOC_TIMES         (100000)
 
+
+/**
+ * @def NGX_HTTP_WAF_SHA256_HEX_LEN
+ * @brief SHA256 十六进制字符串的长度（含 \0）。
+*/
+#define NGX_HTTP_WAF_SHA256_HEX_LEN          (crypto_hash_sha256_BYTES * 2 + 1)
+
+
 /**
  * @def NGX_HTTP_WAF_SHARE_MEMORY_NAME
  * @brief 用于 CC 防护的共享内存的名称
