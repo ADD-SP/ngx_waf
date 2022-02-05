@@ -944,67 +944,55 @@ error:
 
 char* ngx_http_waf_priority_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_loc_conf_t* loc_conf = conf;
-    ngx_str_t* p_str = cf->args->elts;
-    // u_char error_str[256];
 
     loc_conf->is_custom_priority = NGX_HTTP_WAF_TRUE;
 
-    UT_array* array = NULL;
-    if (ngx_http_waf_str_split(p_str + 1, ' ', 20, &array) != NGX_HTTP_WAF_SUCCESS) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-            "ngx_waf: invalid value");
-        return NGX_CONF_ERROR;
-    }
-
-
-    if (utarray_len(array) != 22) {
+    if (cf->args->nelts - 1 != 22) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
             "ngx_waf: you must specify the priority of all inspections");
         return NGX_CONF_ERROR;
     }
 
-
-    ngx_str_t* p = NULL;
     size_t proc_index = 1;
-    while ((p = (ngx_str_t*)utarray_next(array, p))) {
-        #define _parse_priority(str, pt) {          \
-            if (strcasecmp((str), (char*)(p->data)) == 0) {     \
-                loc_conf->check_proc[proc_index++] = pt;        \
-                continue;                                       \
-            }                                                   \
-        }
+    for (size_t i = 1; i < cf->args->nelts; i++) {
+        ngx_str_t* s = ((ngx_str_t*)(cf->args->elts)) + i;
 
-        _parse_priority("CC", ngx_http_waf_handler_check_cc);
-        _parse_priority("SYSGUARD", ngx_http_waf_handler_sysguard);
-        _parse_priority("W-IP", ngx_http_waf_handler_check_white_ip);
-        _parse_priority("IP", ngx_http_waf_handler_check_black_ip);
-        _parse_priority("W-URL", ngx_http_waf_handler_check_white_url);
-        _parse_priority("URL", ngx_http_waf_handler_check_black_url);
-        _parse_priority("W-ARGS", ngx_http_waf_handler_check_white_args);
-        _parse_priority("ARGS", ngx_http_waf_handler_check_black_args);
-        _parse_priority("W-UA", ngx_http_waf_handler_check_white_user_agent);
-        _parse_priority("UA", ngx_http_waf_handler_check_black_user_agent);
-        _parse_priority("W-REFERER", ngx_http_waf_handler_check_white_referer);
-        _parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
-        _parse_priority("W-COOKIE", ngx_http_waf_handler_check_white_cookie);
-        _parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
-        _parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
-        _parse_priority("W-POST", ngx_http_waf_handler_check_white_post);
-        _parse_priority("POST", ngx_http_waf_handler_check_black_post);
-        _parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
-        _parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
-        _parse_priority("MODSECURITY", ngx_http_waf_handler_modsecurity);
-        _parse_priority("W-HEADER", ngx_http_waf_handler_check_white_header);
-        _parse_priority("HEADER", ngx_http_waf_handler_check_black_header);
+#define _parse_priority(str, pt) {                      \
+    if (sizeof(str) - 1 == s->len                       \
+        && ngx_strncmp(s->data, str, s->len) == 0) {    \
+        loc_conf->check_proc[proc_index++] = pt;        \
+        continue;                                       \
+    }                                                   \
+}
+    _parse_priority("CC", ngx_http_waf_handler_check_cc);
+    _parse_priority("SYSGUARD", ngx_http_waf_handler_sysguard);
+    _parse_priority("W-IP", ngx_http_waf_handler_check_white_ip);
+    _parse_priority("IP", ngx_http_waf_handler_check_black_ip);
+    _parse_priority("W-URL", ngx_http_waf_handler_check_white_url);
+    _parse_priority("URL", ngx_http_waf_handler_check_black_url);
+    _parse_priority("W-ARGS", ngx_http_waf_handler_check_white_args);
+    _parse_priority("ARGS", ngx_http_waf_handler_check_black_args);
+    _parse_priority("W-UA", ngx_http_waf_handler_check_white_user_agent);
+    _parse_priority("UA", ngx_http_waf_handler_check_black_user_agent);
+    _parse_priority("W-REFERER", ngx_http_waf_handler_check_white_referer);
+    _parse_priority("REFERER", ngx_http_waf_handler_check_black_referer);
+    _parse_priority("W-COOKIE", ngx_http_waf_handler_check_white_cookie);
+    _parse_priority("COOKIE", ngx_http_waf_handler_check_black_cookie);
+    _parse_priority("UNDER-ATTACK", ngx_http_waf_handler_under_attack);
+    _parse_priority("W-POST", ngx_http_waf_handler_check_white_post);
+    _parse_priority("POST", ngx_http_waf_handler_check_black_post);
+    _parse_priority("CAPTCHA", ngx_http_waf_handler_captcha);
+    _parse_priority("VERIFY-BOT", ngx_http_waf_handler_verify_bot);
+    _parse_priority("MODSECURITY", ngx_http_waf_handler_modsecurity);
+    _parse_priority("W-HEADER", ngx_http_waf_handler_check_white_header);
+    _parse_priority("HEADER", ngx_http_waf_handler_check_black_header);
 
-        #undef _parse_priority
+#undef _parse_priority
 
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
-                          "ngx_waf: ngx_waf: invalid value [%s]", p->data);
-        return NGX_CONF_ERROR;
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: ngx_waf: invalid value [%V]", s);
+
     }
-
-    utarray_free(array);
 
     return NGX_CONF_OK;
 }
