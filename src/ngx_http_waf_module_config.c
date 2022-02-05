@@ -473,6 +473,13 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
         if (_streq(p->data, "capacity")) {
             p = (ngx_str_t*)utarray_next(array, p);
 
+            if (p->data[p->len - 1] != 'M'
+                && p->data[p->len - 1] != 'm'
+                && p->data[p->len - 1] != 'K'
+                && p->data[p->len - 1] != 'k') {
+                goto no_unit;
+            }
+
             loc_conf->waf_cache_capacity = (ngx_int_t)ngx_parse_size(p);
 
             if (loc_conf->waf_cache_capacity == NGX_ERROR
@@ -494,6 +501,11 @@ char* ngx_http_waf_cache_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     }
 
     return NGX_CONF_OK;
+
+no_unit:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
+        "ngx_waf: you must specify unit for the parameter [capacity], for example [20m]");
+    return NGX_CONF_ERROR;
 
 error:
     ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_EINVAL, 
@@ -2045,16 +2057,16 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     conf->check_proc[2] = ngx_http_waf_handler_sysguard;
     conf->check_proc[3] = ngx_http_waf_handler_check_black_ip;
     conf->check_proc[4] = ngx_http_waf_handler_verify_bot;
-    conf->check_proc[5] = ngx_http_waf_handler_check_cc;
-    conf->check_proc[6] = ngx_http_waf_handler_captcha;
-    conf->check_proc[7] = ngx_http_waf_handler_under_attack;
-    conf->check_proc[8] = ngx_http_waf_handler_check_white_url;
-    conf->check_proc[9] = ngx_http_waf_handler_check_white_args;
-    conf->check_proc[10] = ngx_http_waf_handler_check_white_user_agent;
-    conf->check_proc[11] = ngx_http_waf_handler_check_white_referer;
-    conf->check_proc[12] = ngx_http_waf_handler_check_white_cookie;
-    conf->check_proc[13] = ngx_http_waf_handler_check_white_header;
-    conf->check_proc[14] = ngx_http_waf_handler_check_white_post;
+    conf->check_proc[5] = ngx_http_waf_handler_captcha;
+    conf->check_proc[6] = ngx_http_waf_handler_under_attack;
+    conf->check_proc[7] = ngx_http_waf_handler_check_white_url;
+    conf->check_proc[8] = ngx_http_waf_handler_check_white_args;
+    conf->check_proc[9] = ngx_http_waf_handler_check_white_user_agent;
+    conf->check_proc[10] = ngx_http_waf_handler_check_white_referer;
+    conf->check_proc[11] = ngx_http_waf_handler_check_white_cookie;
+    conf->check_proc[12] = ngx_http_waf_handler_check_white_header;
+    conf->check_proc[13] = ngx_http_waf_handler_check_white_post;
+    conf->check_proc[14] = ngx_http_waf_handler_check_cc;
     conf->check_proc[15] = ngx_http_waf_handler_check_black_url;
     conf->check_proc[16] = ngx_http_waf_handler_check_black_args;
     conf->check_proc[17] = ngx_http_waf_handler_check_black_user_agent;
