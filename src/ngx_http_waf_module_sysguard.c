@@ -92,7 +92,9 @@ static ngx_int_t _get_sysinfo(ngx_http_request_t* r, _sysinfo_t* info) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
-    if (difftime(time(NULL), s_last_get_time) > loc_conf->waf_sysguard_interval) {
+    ngx_int_t interval = (loc_conf->waf_sysguard_interval == NGX_CONF_UNSET) ? 1 : (loc_conf->waf_sysguard_interval);
+
+    if (difftime(time(NULL), s_last_get_time) > interval) {
         s_last_get_time = time(NULL);
 
         struct sysinfo _info;

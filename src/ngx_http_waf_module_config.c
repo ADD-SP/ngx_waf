@@ -1807,6 +1807,8 @@ char* ngx_http_waf_sysguard_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
             goto error;
         }
 
+        loc_conf->waf_sysguard_interval = 1;
+
         ngx_str_t* p = NULL;
         p = (ngx_str_t*)utarray_next(array, p);
 
