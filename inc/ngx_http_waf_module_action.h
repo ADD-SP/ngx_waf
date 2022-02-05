@@ -250,6 +250,12 @@
 }
 
 
+#define ngx_http_waf_is_action_from_sysguard(action_flag)                       \
+    ((ngx_http_waf_check_flag((action_flag), ACTION_FLAG_FROM_SYSGUARD_LOAD)    \
+    || ngx_http_waf_check_flag((action_flag), ACTION_FLAG_FROM_SYSGUARD_MEM)    \
+    || ngx_http_waf_check_flag((action_flag), ACTION_FLAG_FROM_SYSGUARD_SWAP))  \
+    ? 1 : 0)                                                                    \
+
 
 ngx_int_t ngx_http_waf_perform_action_at_access_start(ngx_http_request_t* r);
 

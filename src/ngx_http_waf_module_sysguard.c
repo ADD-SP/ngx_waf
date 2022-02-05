@@ -19,11 +19,18 @@ static ngx_int_t _get_sysinfo(ngx_http_request_t* r, _sysinfo_t* info);
 ngx_int_t ngx_http_waf_handler_sysguard(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
+    ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
     if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_sysguard)) {
         ngx_http_waf_dp(r, "nothing to do ... return");
+        ngx_http_waf_dp_func_end(r);
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    if (ctx->skip_sysguard) {
+        ngx_http_waf_dp(r, "skip sysguard ... return");
         ngx_http_waf_dp_func_end(r);
         return NGX_HTTP_WAF_NOT_MATCHED;
     }

@@ -319,17 +319,18 @@ typedef struct ngx_http_waf_ctx_s {
 #endif
     ngx_int_t                       handler_index;                              /**< 当前处理函数的索引 */
 #if (NGX_THREADS) 
-    ngx_int_t                       async_captcha:1;                            /**< 是否完成了对 CAPTCHA API 的异步请求 */
-    ngx_int_t                       async_captcha_pass:1;                       /**< CAPTCHA API 的异步请求验证否通过 */
+    ngx_uint_t                      async_captcha:1;                            /**< 是否完成了对 CAPTCHA API 的异步请求 */
+    ngx_uint_t                      async_captcha_pass:1;                       /**< CAPTCHA API 的异步请求验证否通过 */
 #endif
-    ngx_int_t                       pre_content_run:1;                          /**< 是否已经执行过 pre_content handler */
-    ngx_int_t                       gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
-    ngx_int_t                       checked:1;                                  /**< 是否启动了检测流程 */
-    ngx_int_t                       blocked:1;                                  /**< 是否拦截了本次请求 */
-    ngx_int_t                       read_body_done:1;                           /**< 是否已经请求读取请求体 */
-    ngx_int_t                       waiting_more_body:1;                        /**< 是否等待读取更多请求体 */
-    ngx_int_t                       has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
-    ngx_int_t                       register_content_handler:1;                 /**< 是否已经注册或应该注册内容处理程序 */
+    ngx_uint_t                      pre_content_run:1;                          /**< 是否已经执行过 pre_content handler */
+    ngx_uint_t                      gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
+    ngx_uint_t                      checked:1;                                  /**< 是否启动了检测流程 */
+    ngx_uint_t                      blocked:1;                                  /**< 是否拦截了本次请求 */
+    ngx_uint_t                      read_body_done:1;                           /**< 是否已经请求读取请求体 */
+    ngx_uint_t                      waiting_more_body:1;                        /**< 是否等待读取更多请求体 */
+    ngx_uint_t                      has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
+    ngx_uint_t                      register_content_handler:1;                 /**< 是否已经注册或应该注册内容处理程序 */
+    ngx_uint_t                      skip_sysguard:1;                            /**< 是否跳过系统监控 */
 } ngx_http_waf_ctx_t;
 
 

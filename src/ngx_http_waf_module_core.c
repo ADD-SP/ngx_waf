@@ -287,6 +287,7 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ctx->waiting_more_body = 0;
         ctx->pre_content_run = 0;
         ctx->handler_index = 0;
+        ctx->skip_sysguard = 0;
 
 #if (NGX_THREADS)
         ctx->async_captcha = 0;
