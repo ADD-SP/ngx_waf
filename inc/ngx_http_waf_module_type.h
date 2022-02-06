@@ -331,6 +331,7 @@ typedef struct ngx_http_waf_ctx_s {
     ngx_uint_t                      has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
     ngx_uint_t                      register_content_handler:1;                 /**< 是否已经注册或应该注册内容处理程序 */
     ngx_uint_t                      skip_sysguard:1;                            /**< 是否跳过系统监控 */
+    ngx_uint_t                      invoke_captcha:1;                           /**< 是否忽略配置并强制开启 CAPTCHA（仅限本次请求） */
 } ngx_http_waf_ctx_t;
 
 

@@ -64,7 +64,8 @@ ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
 
-    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha)) {
+    if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_captcha)
+        && !ctx->invoke_captcha) {
         ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
