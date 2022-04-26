@@ -7,10 +7,6 @@
 #define NGX_HTTP_WAF_MODULE_CORE_H
 
 
-#include <stdio.h>
-#include <uthash.h>
-#include <time.h>
-#include <math.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -21,6 +17,10 @@
 #include <ngx_http_waf_module_check.h>
 #include <ngx_http_waf_module_config.h>
 #include <ngx_http_waf_module_util.h>
+#include <uthash.h>
+#include <stdio.h>
+#include <time.h>
+#include <math.h>
 
 /**
  * @defgroup core 核心模块
