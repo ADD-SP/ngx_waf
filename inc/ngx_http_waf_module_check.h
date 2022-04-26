@@ -13,14 +13,14 @@
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
+#include <uthash.h>
+#include <math.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
 #include <ngx_http_waf_module_captcha.h>
-#include <uthash.h>
-#include <math.h>
 
 
 /**
