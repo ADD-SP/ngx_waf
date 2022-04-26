@@ -13,6 +13,13 @@
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
 
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+#include <ngx_regex.h>
+#include <ngx_inet.h>
+#include <utarray.h>
+#include <string.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_var.h>
@@ -26,8 +33,6 @@
 #include <ngx_http_waf_module_modsecurity.h>
 #include <ngx_http_waf_module_data.h>
 #include <ngx_http_waf_module_action.h>
-#include <utarray.h>
-#include <string.h>
 
 
 extern ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
