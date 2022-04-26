@@ -6,11 +6,16 @@
 #ifndef NGX_HTTP_WAF_MODULE_UTIL_H
 #define NGX_HTTP_WAF_MODULE_UTIL_H
 
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+#include <ngx_regex.h>
+#include <ngx_inet.h>
 #include <utarray.h>
-#include <ngx_http_waf_module_macro.h>
-#include <ngx_http_waf_module_type.h>
 #include <sodium.h>
 #include <curl/curl.h>
+#include <ngx_http_waf_module_type.h>
+#include <ngx_http_waf_module_macro.h>
 
 /**
  * @defgroup util 工具代码
