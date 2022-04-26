@@ -8,8 +8,6 @@
 #define NGX_HTTP_WAF_MODLULE_CHECK_H
 
 
-#include <uthash.h>
-#include <math.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -21,6 +19,8 @@
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
 #include <ngx_http_waf_module_captcha.h>
+#include <uthash.h>
+#include <math.h>
 
 
 /**
