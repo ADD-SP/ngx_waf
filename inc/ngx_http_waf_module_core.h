@@ -12,15 +12,15 @@
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
+#include <uthash.h>
+#include <stdio.h>
+#include <time.h>
+#include <math.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_check.h>
 #include <ngx_http_waf_module_config.h>
 #include <ngx_http_waf_module_util.h>
-#include <uthash.h>
-#include <stdio.h>
-#include <time.h>
-#include <math.h>
 
 /**
  * @defgroup core 核心模块
