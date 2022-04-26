@@ -7,9 +7,6 @@
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
 #define NGX_HTTP_WAF_MODULE_TYPE_H
 
-#include <uthash.h>
-#include <utarray.h>
-#include <utlist.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -18,6 +15,9 @@
 #include <ngx_thread.h>
 #include <ngx_thread_pool.h>
 #include <ngx_http_waf_module_macro.h>
+#include <uthash.h>
+#include <utarray.h>
+#include <utlist.h>
 #include <sodium.h>
 #include <modsecurity/modsecurity.h>
 #include <modsecurity/transaction.h>
