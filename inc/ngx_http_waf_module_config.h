@@ -13,8 +13,8 @@
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
 
-#include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
+#include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_var.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
