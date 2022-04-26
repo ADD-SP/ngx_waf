@@ -3,8 +3,6 @@
  * @brief 读取 nginx.conf 内的配置以及规则文件。
 */
 
-#include <stdio.h>
-
 #ifndef __STDC_WANT_LIB_EXT1__
 #define __STDC_WANT_LIB_EXT1__ 1
 #endif
@@ -19,6 +17,7 @@
 #include <ngx_regex.h>
 #include <ngx_inet.h>
 #include <utarray.h>
+#include <stdio.h>
 #include <string.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_macro.h>
