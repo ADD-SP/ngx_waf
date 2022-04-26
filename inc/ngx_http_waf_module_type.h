@@ -14,13 +14,13 @@
 #include <ngx_inet.h>
 #include <ngx_thread.h>
 #include <ngx_thread_pool.h>
-#include <ngx_http_waf_module_macro.h>
 #include <uthash.h>
 #include <utarray.h>
 #include <utlist.h>
 #include <sodium.h>
 #include <modsecurity/modsecurity.h>
 #include <modsecurity/transaction.h>
+#include <ngx_http_waf_module_macro.h>
 
 #if defined(MODSECURITY_CHECK_VERSION)
 #if MODSECURITY_VERSION_NUM >= 304010
