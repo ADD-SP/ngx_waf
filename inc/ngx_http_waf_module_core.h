@@ -3,15 +3,15 @@
  * @brief 配置块的初始化和请求检测函数。
 */
 
-#include <stdio.h>
-#include <uthash.h>
-#include <time.h>
-#include <math.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
+#include <stdio.h>
+#include <uthash.h>
+#include <time.h>
+#include <math.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_check.h>

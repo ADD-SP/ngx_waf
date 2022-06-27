@@ -3,14 +3,14 @@
  * @brief 相关结构体的定义
 */
 
-#include <uthash.h>
-#include <utarray.h>
-#include <utlist.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
+#include <uthash.h>
+#include <utarray.h>
+#include <utlist.h>
 #include <ngx_http_waf_module_macro.h>
 
 
@@ -146,7 +146,7 @@ typedef enum {
  * @brief 哈希表（字符串 -> 字符串）
 */
 typedef struct key_value_s {
-    ngx_str_t           key;        /**< 键 */   
+    ngx_str_t           key;        /**< 键 */
     ngx_str_t           value;      /**< 值 */
     UT_hash_handle      hh;         /**< uthash 关键成员 */
 } key_value_t;
@@ -298,7 +298,7 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_int_t                       waf_under_attack;                           /**< 是否启用五秒盾 */
     ngx_int_t                       is_alloc;                                   /**< 是否已经分配的存储规则的容器的内存 */
     ngx_int_t                       waf;                                        /**< 是否启用本模块 */
-    ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */  
+    ngx_str_t                       waf_rule_path;                              /**< 配置文件所在目录 */
     uint_fast64_t                   waf_mode;                                   /**< 检测模式 */
     ngx_int_t                       waf_cc_deny_limit;                          /**< CC 防御的限制频率 */
     ngx_int_t                       waf_cc_deny_duration;                       /**< CC 防御的拉黑时长（秒） */

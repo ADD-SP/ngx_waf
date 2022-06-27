@@ -3,13 +3,13 @@
  * @brief 检查诸如 IP，URL 等是否命中规则。
 */
 
-#include <uthash.h>
-#include <math.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <ngx_regex.h>
 #include <ngx_inet.h>
+#include <uthash.h>
+#include <math.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
@@ -157,11 +157,11 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
  * @param[in] cache 检测时所使用的缓存管理器
  * @return 如果匹配到返回 NGX_HTTP_WAF_MATCHED，反之则为 NGX_HTTP_WAF_NOT_MATCHED。
 */
-ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r, 
-                                                  ngx_str_t* str, 
-                                                  ngx_array_t* array, 
-                                                  const u_char* rule_type, 
-                                                  lru_cache_t* cache, 
+ngx_int_t ngx_http_waf_regex_exec_arrray_sqli_xss(ngx_http_request_t* r,
+                                                  ngx_str_t* str,
+                                                  ngx_array_t* array,
+                                                  const u_char* rule_type,
+                                                  lru_cache_t* cache,
                                                   int check_sql_injection,
                                                   int check_xss);
 
