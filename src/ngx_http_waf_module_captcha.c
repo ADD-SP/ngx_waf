@@ -436,14 +436,24 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
     ngx_memzero(under_attack_client, sizeof(_info_t));
     ngx_memzero(under_attack_expect, sizeof(_info_t));
 
+#if (nginx_version >= 1023000)
+    if (r->headers_in.cookie != NULL) {
+        ngx_table_elt_t* cookies = r->headers_in.cookie;
+#else
     if (r->headers_in.cookies.nelts > 0) {
+        ngx_array_t* cookies = &(r->headers_in.cookies);
+#endif
         ngx_str_t key, value;
 
         ngx_str_set(&key, "__waf_captcha_uid");
         ngx_str_null(&value);
         ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+#if (nginx_version >= 1023000)
+        if (ngx_http_parse_multi_header_lines(r, cookies, &key, &value) != NULL) {
+#else
+        if (ngx_http_parse_multi_header_lines(cookies, &key, &value) != NGX_DECLINED) {
+#endif
             ngx_http_waf_dpf(r, "found cookie %V", &value);
             ngx_memcpy(under_attack_client->uid, value.data, value.len);
 
@@ -455,7 +465,11 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
         ngx_str_null(&value);
         ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+#if (nginx_version >= 1023000)
+        if (ngx_http_parse_multi_header_lines(r, cookies, &key, &value) != NULL) {
+#else
+        if (ngx_http_parse_multi_header_lines(cookies, &key, &value) != NGX_DECLINED) {
+#endif
             ngx_http_waf_dpf(r, "found cookie %V", &value);
             ngx_memcpy(under_attack_client->hmac, value.data, value.len);
 
@@ -467,7 +481,11 @@ static ngx_int_t _verify_cookies(ngx_http_request_t* r) {
         ngx_str_null(&value);
         ngx_http_waf_dpf(r, "searching cookie %V", &key);
 
-        if (ngx_http_parse_multi_header_lines(&(r->headers_in.cookies), &key, &value) != NGX_DECLINED) {
+#if (nginx_version >= 1023000)
+        if (ngx_http_parse_multi_header_lines(r, cookies, &key, &value) != NULL) {
+#else
+        if (ngx_http_parse_multi_header_lines(cookies, &key, &value) != NGX_DECLINED) {
+#endif
             ngx_http_waf_dpf(r, "found cookie %V", &value);
             ngx_memcpy(under_attack_client->time, value.data, value.len);
 

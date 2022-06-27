@@ -578,11 +578,56 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
+#if (nginx_version >= 1023000)
+    if (r->headers_in.cookie == NULL) {
+        ngx_http_waf_dp(r, "empty cookies ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_table_elt_t* p = r->headers_in.cookie;
+
+    for (p = r->headers_in.cookie; p != NULL; p = p->next) {
+        size_t len = p->key.len + p->value.len + 1;
+        u_char* buf = ngx_pcalloc(r->pool, sizeof(u_char) * (len + 1));
+
+        size_t offset = 0;
+        ngx_memcpy(buf + offset, p->key.data, sizeof(u_char) * p->key.len);
+
+        offset += sizeof(u_char) * p->key.len;
+        buf[offset] = '=';
+
+        ++offset;
+        ngx_memcpy(buf + offset, p->value.data, sizeof(u_char) * p->value.len);
+
+        ngx_str_t cookie;
+        cookie.len = len;
+        cookie.data = buf;
+
+        ngx_array_t* regex_array = loc_conf->black_cookie;
+        lru_cache_t* cache = loc_conf->black_cookie_inspection_cache;
+        ret_value = ngx_http_waf_regex_exec_arrray(r, &cookie, regex_array, (u_char*)"BLACK-COOKIE", cache);
+
+        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 1;
+            ngx_http_waf_append_action_chain(r, action);
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
+        }
+
+        if (ctx->blocked) {
+            ngx_http_waf_dp(r, "blocked ... break");
+            break;
+        }
+    }
+#else
     if (r->headers_in.cookies.nelts == 0) {
         ngx_http_waf_dp(r, "empty cookies ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
-    
+
     ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
     size_t i;
     for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
@@ -609,6 +654,7 @@ ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
             break;
         }
     }
+#endif
 
     ngx_http_waf_dp_func_end(r);
     return ret_value;
