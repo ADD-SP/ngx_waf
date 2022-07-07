@@ -1,11 +1,11 @@
 %{
+    #include <ngx_http_waf_module_type.h>
+    #include <ngx_http_waf_module_util.h>
+    #include <ngx_http_waf_module_lexer.h>
     #include <math.h>
     #include <stdio.h>
     #include <utarray.h>
     #include <ngx_core.h>
-    #include <ngx_http_waf_module_type.h>
-    #include <ngx_http_waf_module_util.h>
-    #include <ngx_http_waf_module_lexer.h>
     int ngx_http_waf_lex (void);
     void ngx_http_waf_error (UT_array* array, ngx_pool_t* pool, const char* msg);
     void ngx_http_waf_gen_push_str_code(UT_array* array, char* str);

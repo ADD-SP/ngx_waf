@@ -3,12 +3,12 @@
  * @brief LRU 缓存管理器
 */
 
-#ifndef __NGX_HTTP_WAF_MODULE_LRU_CACHE_H__
-#define __NGX_HTTP_WAF_MODULE_LRU_CACHE_H__
-
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_mem_pool.h>
+
+#ifndef __NGX_HTTP_WAF_MODULE_LRU_CACHE_H__
+#define __NGX_HTTP_WAF_MODULE_LRU_CACHE_H__
 
 
 void lru_cache_init(lru_cache_t** lru, size_t capacity, mem_pool_type_e pool_type, void* native_pool);

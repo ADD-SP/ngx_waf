@@ -3,14 +3,6 @@
  * @brief 读取 nginx.conf 内的配置以及规则文件。
 */
 
-#include <stdio.h>
-
-#ifndef __STDC_WANT_LIB_EXT1__
-#define __STDC_WANT_LIB_EXT1__ 1
-#endif
-
-#include <string.h>
-#include <utarray.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
@@ -22,8 +14,17 @@
 #include <ngx_http_waf_module_vm.h>
 
 
+#ifndef __STDC_WANT_LIB_EXT1__
+#define __STDC_WANT_LIB_EXT1__ 1
+#endif
+
+#include <utarray.h>
+#include <stdio.h>
+#include <string.h>
+
 #ifndef NGX_HTTP_WAF_MODULE_CONFIG_H
 #define NGX_HTTP_WAF_MODULE_CONFIG_H
+
 
 ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 

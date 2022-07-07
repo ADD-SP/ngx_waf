@@ -3,20 +3,19 @@
  * @brief 相关结构体的定义
 */
 
-#include <uthash.h>
-#include <utarray.h>
-#include <utlist.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-#include <ngx_regex.h>
-#include <ngx_inet.h>
+// #include <ngx_regex.h>
+// #include <ngx_inet.h>
 #include <ngx_http_waf_module_macro.h>
+#include <uthash.h>
+#include <utarray.h>
+#include <utlist.h>
 
 
 #ifndef NGX_HTTP_WAF_MODULE_TYPE_H
 #define NGX_HTTP_WAF_MODULE_TYPE_H
-
 
 /**
  * @typedef ngx_http_waf_check

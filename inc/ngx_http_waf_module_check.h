@@ -3,22 +3,16 @@
  * @brief 检查诸如 IP，URL 等是否命中规则。
 */
 
-#include <uthash.h>
-#include <math.h>
-#include <ngx_config.h>
-#include <ngx_core.h>
-#include <ngx_http.h>
-#include <ngx_regex.h>
-#include <ngx_inet.h>
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_ip_trie.h>
 #include <ngx_http_waf_module_lru_cache.h>
+#include <uthash.h>
+#include <math.h>
 #include <libinjection.h>
 #include <libinjection_sqli.h>
 #include <libinjection_xss.h>
-
 
 #ifndef NGX_HTTP_WAF_MODLULE_CHECK_H
 #define NGX_HTTP_WAF_MODLULE_CHECK_H

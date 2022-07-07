@@ -3,13 +3,15 @@
  * @brief IPV4 字符串解析，nginx 风格转化为 C 风格字符串。
 */
 
+
+#include <ngx_http_waf_module_macro.h>
+#include <ngx_http_waf_module_type.h>
+#include <utarray.h>
+#include <sodium.h>
+
 #ifndef NGX_HTTP_WAF_MODULE_UTIL_H
 #define NGX_HTTP_WAF_MODULE_UTIL_H
 
-#include <utarray.h>
-#include <ngx_http_waf_module_macro.h>
-#include <ngx_http_waf_module_type.h>
-#include <sodium.h>
 
 /**
  * @defgroup util 工具代码

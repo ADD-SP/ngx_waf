@@ -1,15 +1,14 @@
-#ifndef __NGX_HTTP_WAF_MODULE_VM_H__
-#define __NGX_HTTP_WAF_MODULE_VM_H__
-
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_check.h>
 #include <ngx_http_waf_module_util.h>
-#include <ngx_inet.h>
 #include <utstack.h>
 #include <libinjection.h>
 #include <libinjection_sqli.h>
 #include <libinjection_xss.h>
+
+#ifndef __NGX_HTTP_WAF_MODULE_VM_H__
+#define __NGX_HTTP_WAF_MODULE_VM_H__
 
 void ngx_http_waf_print_code(UT_array* array);
 

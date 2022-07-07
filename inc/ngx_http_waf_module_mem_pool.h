@@ -3,12 +3,12 @@
  * @brief 内存池
 */
 
+#include <ngx_http_waf_module_macro.h>
+#include <ngx_http_waf_module_type.h>
+
 
 #ifndef __NGX_HTTP_WAF_MODULE_MEMORY_POOL_H__
 #define __NGX_HTTP_WAF_MODULE_MEMORY_POOL_H__
-
-#include <ngx_http_waf_module_macro.h>
-#include <ngx_http_waf_module_type.h>
 
 
 /**

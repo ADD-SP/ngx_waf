@@ -1,10 +1,10 @@
-#ifndef __NGX_HTTP_WAF_MODULE_UNDER_ATTACK_H__
-#define __NGX_HTTP_WAF_MODULE_UNDER_ATTACK_H__
-
-
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_check.h>
+
+#ifndef __NGX_HTTP_WAF_MODULE_UNDER_ATTACK_H__
+#define __NGX_HTTP_WAF_MODULE_UNDER_ATTACK_H__
+
 
 extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
