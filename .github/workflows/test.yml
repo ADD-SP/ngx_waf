@@ -30,26 +30,121 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
             -d '{"ref":"refs/heads/current"}'
+
+  build_deps:
+    name: Build dependencies
+    runs-on: ubuntu-latest
+
+    env:
+      BUILD_CACHE_NONCE: 0
+
+    steps:
+      - name: Set environment variables
+        run: |
+          echo "CACHE_ROOT=$HOME/cache-root" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+
+      - name: Checkout SpiderLabs/ModSecurity
+        uses: actions/checkout@v3
+        with:
+          repository: SpiderLabs/ModSecurity
+          path: ModSecurity
+
+      - name: Get ModSecurity commit hash
+        run: |
+          cd ModSecurity
+          echo "MODSECURITY_COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Lookup build cache
+        uses: actions/cache@v3
+        id: cache-deps
+        with:
+          path: ${{ env.CACHE_ROOT }}
+          key: ${{ env.MODSECURITY_COMMIT_HASH }}-${{ env.BUILD_CACHE_NONCE }}
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get --yes update
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
+
+      - name: Download and install ModSecurity
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          cd ModSecurity
+          ./build.sh
+          git submodule init
+          git submodule update
+          ./configure --prefix=/usr/local/modsecurity
+          make -j$(nproc)
+          sudo make install
+
+      - name: Package dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ env.CACHE_ROOT }}
+          mkdir -p /tmp/cache/usr/local
+          sudo cp -r /usr/local/modsecurity /tmp/cache/usr/local
+          tar -C /tmp/cache/ -cvzf ${{ env.CACHE_ROOT }}/cache.tar.gz .
+
+
   native:
     runs-on: ubuntu-latest
     if: ${{ github.event_name	!= 'schedule' }}
+    needs: build_deps
+
+    env:
+      BUILD_CACHE_NONCE: 0
+
     strategy:
       matrix:
         nginx-version: ['stable', 'mainline']
         module-type:  ['static', 'dynamic']
         pcre-version: ['pcre', 'pcre2']
+
     steps:
-      - uses: actions/checkout@v2
-        with: 
-          ref: ${{ github.ref }}
+      - name: Set environment variables
+        run: |
+          echo "CACHE_ROOT=$HOME/cache-root" >> $GITHUB_ENV
+
       - uses: actions/setup-python@v2
         with:
           python-version: '3.x'
           architecture: 'x64'
+
+      - uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.ref }}
+
+      - name: Checkout SpiderLabs/ModSecurity
+        uses: actions/checkout@v3
+        with:
+          repository: SpiderLabs/ModSecurity
+          path: ModSecurity
+
+      - name: Get ModSecurity commit hash
+        run: |
+          cd ModSecurity
+          echo "MODSECURITY_COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Lookup build cache
+        uses: actions/cache@v3
+        id: cache-deps
+        with:
+          path: ${{ env.CACHE_ROOT }}
+          key: ${{ env.MODSECURITY_COMMIT_HASH }}-${{ env.BUILD_CACHE_NONCE }}
+
+      - name: Extract the deps
+        run: sudo tar -C / -xzvf ${{ env.CACHE_ROOT }}/cache.tar.gz
+
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
+
       - name: Download nginx-${{ matrix.nginx-version }}
         run: |
           sudo chmod 777 -R /usr/local/src
@@ -58,6 +153,7 @@ jobs:
           lastversion download nginx:${{ matrix.nginx-version }}
           mkdir nginx
           tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+
       - name: Download PCRE
         if: ${{ matrix.pcre-version == 'pcre' || (matrix.pcre-version == 'pcre2' && matrix.nginx-version == 'stable') }}
         run: |
@@ -67,6 +163,7 @@ jobs:
           mkdir pcre
           tar zxf pcre.tar.gz --directory pcre --strip-components=1
           sudo chmod 777 -R /usr/local/src
+
       - name: Download PCRE2
         if: ${{ matrix.pcre-version == 'pcre2' && matrix.nginx-version == 'mainline' }}
         run: |
@@ -76,25 +173,15 @@ jobs:
           mkdir pcre
           tar zxf pcre.tar.gz --directory pcre --strip-components=1
           sudo chmod 777 -R /usr/local/src
-      - name: Download and install modsecurity
-        run: |
-          sudo chmod 777 -R /usr/local/src
-          cd /usr/local/src
-          git clone https://github.com/SpiderLabs/ModSecurity.git
-          sudo chmod 777 -R /usr/local/src
-          cd ModSecurity
-          ./build.sh
-          git submodule init
-          git submodule update
-          ./configure --prefix=/usr/local/modsecurity
-          make -j$(nproc)
-          sudo make install
+
       - name: Download cjson
         run: |
           git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
+
       - name: Download uthash
         run: |
           git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
+
       - name: Configure ${{ matrix.module-type }}
         run: |
           cd /usr/local/src/nginx
@@ -105,6 +192,7 @@ jobs:
           fi
           export LIB_MODSECURITY=/usr/local/modsecurity
           ./configure ${opt}=${{ github.workspace }} --with-pcre=/usr/local/src/pcre --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
+
       - name: Install nginx-${{ matrix.nginx-version }}
         run: |
           cd /usr/local/src/nginx
@@ -113,9 +201,11 @@ jobs:
           sudo useradd nginx -s /sbin/nologin -M
           sudo chmod 777 -R /usr/local/nginx
           sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
+
       - name: Install Test::Nginx
         run: |
           sudo cpan Test::Nginx
+
       - name: Test
         run: |
           sudo chmod 777 -R /tmp
