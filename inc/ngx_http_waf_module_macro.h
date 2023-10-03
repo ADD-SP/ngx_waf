@@ -17,6 +17,8 @@
 #define NGX_HTTP_WAF_ARGS_FILE               ("args")
 #define NGX_HTTP_WAF_UA_FILE                 ("user-agent")
 #define NGX_HTTP_WAF_REFERER_FILE            ("referer")
+//#define NGX_HTTP_WAF_WHITE_TLS_FPRINT_FILE   ("white-tls-fingerprint")
+//#define NGX_HTTP_WAF_TLS_FPRINT_FILE         ("tls-fingerprint")
 #define NGX_HTTP_WAF_WHITE_COOKIE_FILE       ("white-cookie")
 #define NGX_HTTP_WAF_COOKIE_FILE             ("cookie")
 #define NGX_HTTP_WAF_POST_FILE               ("post")
@@ -244,6 +246,12 @@
 */
 #define NGX_HTTP_WAF_MODE_INSPECT_REFERER                    (NGX_HTTP_WAF_MODE_INSPECT_COOKIE << 1)
 
+/**
+ * @def NGX_HTTP_WAF_MODE_INSPECT_TLS_FINGERPRINT
+ * @brief 启用 TLS FINGERPRINT 检查规则
+*/
+#define NGX_HTTP_WAF_MODE_INSPECT_TLS_FINGERPRINT                     (NGX_HTTP_WAF_MODE_INSPECT_REFERER << 1)
+
 
 /**
  * @def NGX_HTTP_WAF_MODE_CMN_METH
@@ -306,6 +314,7 @@
                                                 | NGX_HTTP_WAF_MODE_INSPECT_ARGS         \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_UA           \
                                                 | NGX_HTTP_WAF_MODE_INSPECT_COOKIE       \
+                                                | NGX_HTTP_WAF_MODE_INSPECT_TLS_FINGERPRINT \
                                                 | NGX_HTTP_WAF_MODE_CMN_METH)
 
 

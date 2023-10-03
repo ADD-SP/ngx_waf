@@ -257,6 +257,7 @@ typedef enum {
     ACTION_FLAG_FROM_CC_DENY        = 0x200,
     ACTION_FLAG_FROM_MODSECURITY    = 0x400,
     ACTION_FLAG_FROM_CAPTCHA        = 0x800,
+    ACTION_FLAG_FROM_TLS_FINGERPRINT= 0x900,
     ACTION_FLAG_FROM_UNDER_ATTACK   = 0x1000,
     ACTION_FLAG_FROM_VERIFY_BOT     = 0x2000,
     ACTION_FLAG_CAPTCHA             = 0x4000,
@@ -392,6 +393,8 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_array_t                    *black_args;                                 /**< args 黑名单 */
     ngx_array_t                    *black_ua;                                   /**< user-agent 黑名单 */
     ngx_array_t                    *black_referer;                              /**< Referer 黑名单 */
+//    ngx_array_t                    *white_tls_fprint;                               /**< White TLS Fingerprint 黑名单 */
+//    ngx_array_t                    *black_tls_fprint;                               /**< TLS Fingerprint 黑名单 */
     ngx_array_t                    *white_cookie;                               /**< White Cookie 黑名单 */
     ngx_array_t                    *black_cookie;                               /**< Cookie 黑名单 */
     ngx_array_t                    *black_post;                                 /**< 请求体内容黑名单 */
@@ -407,6 +410,8 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *black_args_inspection_cache;                /**< ARGS 黑名单检查缓存 */
     lru_cache_t                    *black_ua_inspection_cache;                  /**< User-Agent 黑名单检查缓存 */
     lru_cache_t                    *black_referer_inspection_cache;             /**< Referer 黑名单检查缓存 */
+//    lru_cache_t                    *white_tls_fprint_inspection_cache;              /**< White TLS Fingerprint 黑名单检查缓存 */
+//    lru_cache_t                    *black_tls_fprint_inspection_cache;              /**< TLS Fingerprint 黑名单检查缓存 */
     lru_cache_t                    *white_cookie_inspection_cache;              /**< White Cookie 黑名单检查缓存 */
     lru_cache_t                    *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
     lru_cache_t                    *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */

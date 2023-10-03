@@ -123,30 +123,30 @@ static ngx_command_t ngx_http_waf_commands[] = {
 
 
 static ngx_http_module_t ngx_http_waf_module_ctx = {
-    ngx_http_waf_preconfiguration,
-    ngx_http_waf_postconfiguration,
-    ngx_http_waf_create_main_conf, 
-    NULL, 
-    NULL, 
-    NULL,
-    ngx_http_waf_create_loc_conf,
-    ngx_http_waf_merge_loc_conf
+	ngx_http_waf_preconfiguration,
+	ngx_http_waf_postconfiguration,
+	ngx_http_waf_create_main_conf,
+	NULL,
+	NULL,
+	NULL,
+	ngx_http_waf_create_loc_conf,
+	ngx_http_waf_merge_loc_conf
 };
 
 
 ngx_module_t ngx_http_waf_module = {
-    NGX_MODULE_V1,
-    &ngx_http_waf_module_ctx,       /* module context */
-    ngx_http_waf_commands,          /* module directives */
-    NGX_HTTP_MODULE,                /* module type */
-    NULL,                           /* init master */
-    NULL,                           /* init module */
-    ngx_http_waf_init_process,      /* init process */
-    NULL,                           /* init thread */
-    NULL,                           /* exit thread */
-    NULL,                           /* exit process */
-    NULL,                           /* exit master */
-    NGX_MODULE_V1_PADDING
+	NGX_MODULE_V1,
+	&ngx_http_waf_module_ctx,       /* module context */
+	ngx_http_waf_commands,          /* module directives */
+	NGX_HTTP_MODULE,                /* module type */
+	NULL,                           /* init master */
+	NULL,                           /* init module */
+	ngx_http_waf_init_process,      /* init process */
+	NULL,                           /* init thread */
+	NULL,                           /* exit thread */
+	NULL,                           /* exit process */
+	NULL,                           /* exit master */
+	NGX_MODULE_V1_PADDING
 };
 
 

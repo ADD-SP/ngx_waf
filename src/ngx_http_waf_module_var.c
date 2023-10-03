@@ -9,8 +9,23 @@
         ngx_http_waf_dp(r, "no ctx ... return");        \
         v->not_found = 1;                               \
         return NGX_OK;                                  \
-    }                                   
+}
 
+
+/**
+ * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
+*/
+ngx_int_t _waf_ssl_greased(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+/**
+ * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
+*/
+ngx_int_t _waf_ssl_fingerprint(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+/**
+ * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
+*/
+ngx_int_t _waf_ssl_fingerprint_hash(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
 
 /**
  * @brief 当读取 waf_log 变量时的回调函数，这个变量当启动检查时不为空，反之为空字符串。
@@ -72,10 +87,127 @@ ngx_int_t ngx_http_waf_install_add_var(ngx_conf_t* cf) {
     _install_var("waf_rule_details", _waf_rule_deatils_handler);
     _install_var("waf_spend", _waf_spend_handler);
     _install_var("waf_rate", _waf_rate_handler);
+    _install_var("waf_ssl_greased", _waf_ssl_greased);
+    _install_var("waf_ssl_ja3", _waf_ssl_fingerprint);
+    _install_var("waf_ssl_ja3_hash", _waf_ssl_fingerprint_hash);
 
 #undef _install_var
 
     return NGX_HTTP_WAF_SUCCESS;
+}
+
+ngx_int_t _waf_ssl_greased(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
+{
+	ngx_http_waf_dp_func_start(r);
+
+	_init(r, v);
+
+	if (!ctx->checked) {
+		ngx_http_waf_dp(r, "not checked ... return");
+		v->not_found = 1;
+		return NGX_OK;
+	}
+	if (r->connection == NULL)
+	{
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	if (r->connection->ssl == NULL)
+	{
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	ngx_http_waf_dp(r, "checked ... return");
+	v->len = 1;
+	v->data = (u_char*)(r->connection->ssl->fp_tls_greased ? "1" : "0");
+
+	v->valid = 1;
+	v->no_cacheable = 1;
+	v->not_found = 0;
+
+	ngx_http_waf_dp_func_end(r);
+	return NGX_OK;
+}
+
+ngx_int_t _waf_ssl_fingerprint(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
+{
+	ngx_http_waf_dp_func_start(r);
+
+	_init(r, v);
+
+	if (!ctx->checked) {
+		ngx_http_waf_dp(r, "not checked ... return");
+		v->not_found = 1;
+		return NGX_OK;
+	}
+	if (r->connection == NULL)
+	{
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	if (r->connection->ssl == NULL)
+	{
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	if (r->connection->ssl->fp_ja3_str.data == NULL) {
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	ngx_http_waf_dp(r, "checked ... return");
+	v->data = r->connection->ssl->fp_ja3_str.data;
+	v->len = r->connection->ssl->fp_ja3_str.len;
+	v->valid = 1;
+	v->no_cacheable = 1;
+	v->not_found = 0;
+
+	ngx_http_waf_dp_func_end(r);
+	return NGX_OK;
+}
+
+ngx_int_t _waf_ssl_fingerprint_hash(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
+{
+	ngx_http_waf_dp_func_start(r);
+
+	_init(r, v);
+
+	if (!ctx->checked) {
+		ngx_http_waf_dp(r, "not checked ... return");
+		v->not_found = 1;
+		return NGX_OK;
+	}
+
+	if (r->connection == NULL)
+	{
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	if (r->connection->ssl == NULL)
+	{
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	if (r->connection->ssl->fp_ja3_md5.data == NULL) {
+		ngx_http_waf_dp(r, "not checked ... return");
+		return NGX_OK;
+	}
+
+	ngx_http_waf_dp(r, "checked ... return");
+	v->data = r->connection->ssl->fp_ja3_md5.data;
+	v->len = r->connection->ssl->fp_ja3_md5.len;
+	v->valid = 1;
+	v->no_cacheable = 1;
+	v->not_found = 0;
+
+	ngx_http_waf_dp_func_end(r);
+	return NGX_OK;
 }
 
 ngx_int_t _waf_log_get_handler(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {

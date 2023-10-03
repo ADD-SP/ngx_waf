@@ -133,6 +133,22 @@ ngx_int_t ngx_http_waf_handler_check_white_cookie(ngx_http_request_t* r);
 */
 ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r);
 
+/**
+ * @brief 检查 TLS Fingerprint 是否在黑名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
+*/
+//ngx_int_t ngx_http_waf_handler_check_white_tls_fprint(ngx_http_request_t* r);
+
+/**
+ * @brief 检查 TLS Fingerprint 是否在黑名单中
+ * @return 如果在返回 MATCHED，反之返回 NOT_MATCHED。
+ * @retval MATCHED 在黑名单中。
+ * @retval NOT_MATCHED 不在黑名单中
+*/
+//ngx_int_t ngx_http_waf_handler_check_black_tls_fprint(ngx_http_request_t* r);
+
 
 /**
  * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
