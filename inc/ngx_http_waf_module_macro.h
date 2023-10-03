@@ -17,6 +17,7 @@
 #define NGX_HTTP_WAF_ARGS_FILE               ("args")
 #define NGX_HTTP_WAF_UA_FILE                 ("user-agent")
 #define NGX_HTTP_WAF_REFERER_FILE            ("referer")
+#define NGX_HTTP_WAF_WHITE_COOKIE_FILE       ("white-cookie")
 #define NGX_HTTP_WAF_COOKIE_FILE             ("cookie")
 #define NGX_HTTP_WAF_POST_FILE               ("post")
 #define NGX_HTTP_WAF_WHITE_IPV4_FILE         ("white-ipv4")

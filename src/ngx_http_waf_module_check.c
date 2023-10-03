@@ -561,6 +561,106 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r) {
 }
 
 
+ngx_int_t ngx_http_waf_handler_check_white_cookie(ngx_http_request_t* r) {
+    ngx_http_waf_dp_func_start(r);
+
+    ngx_http_waf_ctx_t* ctx = NULL;
+    ngx_http_waf_loc_conf_t* loc_conf = NULL;
+    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+
+    ngx_int_t ret_value = NGX_HTTP_WAF_NOT_MATCHED;
+    action_t* action = ngx_pcalloc(r->pool, sizeof(action_t));
+
+    ngx_http_waf_set_action_decline(action, ACTION_FLAG_FROM_WHITE_LIST);
+//    ngx_http_waf_copy_action_chain(r->pool, action, loc_conf->action_chain_blacklist);
+
+    if (!ngx_http_waf_check_flag(loc_conf->waf_mode, NGX_HTTP_WAF_MODE_INSPECT_COOKIE | r->method)) {
+        ngx_http_waf_dp(r, "nothing to do ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+#if (nginx_version >= 1023000)
+    if (r->headers_in.cookie == NULL) {
+        ngx_http_waf_dp(r, "empty cookies ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_table_elt_t* p = r->headers_in.cookie;
+
+    for (p = r->headers_in.cookie; p != NULL; p = p->next) {
+        size_t len = p->key.len + p->value.len + 1;
+        u_char* buf = ngx_pcalloc(r->pool, sizeof(u_char) * (len + 1));
+
+        size_t offset = 0;
+        ngx_memcpy(buf + offset, p->key.data, sizeof(u_char) * p->key.len);
+
+        offset += sizeof(u_char) * p->key.len;
+        buf[offset] = '=';
+
+        ++offset;
+        ngx_memcpy(buf + offset, p->value.data, sizeof(u_char) * p->value.len);
+
+        ngx_str_t cookie;
+        cookie.len = len;
+        cookie.data = buf;
+
+        ngx_array_t* regex_array = loc_conf->white_cookie;
+        lru_cache_t* cache = loc_conf->white_cookie_inspection_cache;
+        ret_value = ngx_http_waf_regex_exec_arrray(r, &cookie, regex_array, (u_char*)"WHITE-COOKIE", cache);
+
+        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 0;
+            ngx_http_waf_append_action(r, action);
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
+        }
+
+        if (ctx->blocked) {
+            ngx_http_waf_dp(r, "blocked ... break");
+            break;
+        }
+    }
+#else
+    if (r->headers_in.cookies.nelts == 0) {
+        ngx_http_waf_dp(r, "empty cookies ... return");
+        return NGX_HTTP_WAF_NOT_MATCHED;
+    }
+
+    ngx_table_elt_t** ppcookie = r->headers_in.cookies.elts;
+    size_t i;
+    for (i = 0; i < r->headers_in.cookies.nelts; i++, ppcookie++) {
+        ngx_str_t* native_cookies = &((**ppcookie).value);
+
+        ngx_http_waf_dpf(r, "matching cookie(%V)", native_cookies);
+
+        ngx_array_t* regex_array = loc_conf->white_cookie;
+        lru_cache_t* cache = loc_conf->white_cookie_inspection_cache;
+        ret_value = ngx_http_waf_regex_exec_arrray(r, native_cookies, regex_array, (u_char*)"WHITE-COOKIE", cache);
+
+        if (ret_value == NGX_HTTP_WAF_MATCHED) {
+            ngx_http_waf_dp(r, "matched");
+            ctx->gernal_logged = 1;
+            ctx->blocked = 0;
+            ngx_http_waf_append_action(r, action);
+
+        } else {
+            ngx_http_waf_dp(r, "not matched");
+        }
+
+        if (ctx->blocked) {
+            ngx_http_waf_dp(r, "blocked ... break");
+            break;
+        }
+    }
+#endif
+
+    ngx_http_waf_dp_func_end(r);
+    return ret_value;
+}
+
 ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r) {
     ngx_http_waf_dp_func_start(r);
 
