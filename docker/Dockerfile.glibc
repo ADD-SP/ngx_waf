@@ -1,6 +1,6 @@
 ARG NGX_VER=stable
 FROM nginx:${NGX_VER} as base
-ARG CHANGE_SOURCE=false
+ARG CN_MIRROR=false
 ARG NGX_VER=stable
 ARG LIB_SODIUM_VER=1.0.18-RELEASE
 
@@ -9,7 +9,7 @@ COPY . ./ngx_waf
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -xe \ 
-    &&  if [ ${CHANGE_SOURCE} == true ] ; then \
+    &&  if [ ${CN_MIRROR} == true ] ; then \
             cp ./ngx_waf/docker/sources.list /etc/apt/sources.list ; \
             apt-get clean all ; \
         fi \
@@ -30,7 +30,7 @@ RUN set -xe \
             libgd-dev \ 
             libperl-dev \
             libcurl4-openssl-dev \
-            python3 \
+            python3-full \
             python3-pip \
             libtool \
             autoconf \
@@ -41,10 +41,10 @@ RUN set -xe \
             libmodsecurity3 \
             flex \
             bison \
-    &&  if [ ${CHANGE_SOURCE} == true ] ; then \
+    &&  if [ ${CN_MIRROR} == true ] ; then \
             pip3 config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple ; \
         fi \
-    &&  pip3 install lastversion
+    &&  pip3 install lastversion || pip3 install lastversion --break-system-packages
 
 RUN set -xe \
     &&  git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git ngx_waf/lib/cjson

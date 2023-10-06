@@ -1,8 +1,13 @@
 name: test
 
-on: 
-  push:
+on:
+  push: 
     branches:
+      - master
+      - lts
+      - lts-dev
+      - current
+      - current-dev
   pull_request:
   schedule:
     - cron: '0 0 * * SUN'
@@ -12,6 +17,11 @@ on:
 defaults:
   run:
     shell: bash
+
+# cancel previous runs if new commits are pushed to the PR, but run for each commit on master
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   self-trigger:
@@ -43,7 +53,7 @@ jobs:
         run: |
           echo "CACHE_ROOT=$HOME/cache-root" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
 
@@ -69,6 +79,9 @@ jobs:
         if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           sudo apt-get --yes update
+          # https://github.com/actions/runner-images/issues/2139
+          sudo apt-get remove nginx-core nginx-full nginx-light nginx-extras
+          sudo apt-get remove libgd3
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
 
       - name: Download and install ModSecurity
@@ -115,7 +128,7 @@ jobs:
           python-version: '3.x'
           architecture: 'x64'
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
 
@@ -143,6 +156,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
+          # https://github.com/actions/runner-images/issues/2139
+          sudo apt-get remove nginx-core nginx-full nginx-light nginx-extras
+          sudo apt-get remove libgd3
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
 
       - name: Download nginx-${{ matrix.nginx-version }}
@@ -222,13 +238,13 @@ jobs:
         version: ['stable', 'mainline']
         target: ['glibc', 'musl']
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v3
       - name: Build module
         run: docker build --file docker/Dockerfile.${{ matrix.target }} --build-arg=NGX_VER=${{ matrix.version }} .
   triger:
@@ -236,7 +252,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}
     needs: ['native', 'docker']
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
       - uses: actions/setup-python@v2

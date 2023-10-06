@@ -1,10 +1,23 @@
 name: codecov
 
-on: [push]
+on:
+  push: 
+    branches:
+      - master
+      - lts
+      - lts-dev
+      - current
+      - current-dev
+  pull_request:
 
 defaults:
   run:
     shell: bash
+
+# cancel previous runs if new commits are pushed to the PR, but run for each commit on master
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   build_deps:
@@ -19,7 +32,7 @@ jobs:
         run: |
           echo "CACHE_ROOT=$HOME/cache-root" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
 
@@ -45,6 +58,9 @@ jobs:
         if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           sudo apt-get --yes update
+          # https://github.com/actions/runner-images/issues/2139
+          sudo apt-get remove nginx-core nginx-full nginx-light nginx-extras
+          sudo apt-get remove libgd3
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
 
       - name: Download and install ModSecurity
@@ -83,7 +99,7 @@ jobs:
           python-version: '3.x'
           architecture: 'x64'
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
 
@@ -111,6 +127,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
+          # https://github.com/actions/runner-images/issues/2139
+          sudo apt-get remove nginx-core nginx-full nginx-light nginx-extras
+          sudo apt-get remove libgd3
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev gcovr
       
       - name: Download nginx
