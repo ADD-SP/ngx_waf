@@ -24,19 +24,13 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_util.c \
     $ngx_addon_dir/src/ngx_http_waf_module_vm.c \
     $ngx_addon_dir/src/ngx_http_waf_module_lexer.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_parser.tab.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_html5.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_sqli.c \
-    $ngx_addon_dir/inc/libinjection/src/libinjection_xss.c"
+    $ngx_addon_dir/src/ngx_http_waf_module_parser.tab.c"
 
 
 ngx_http_waf_module_libs=""
 
 ngx_http_waf_module_inc_path="$ngx_addon_dir/inc "
 
-if [ -n "$LIB_UTHASH" ] ;  then
-    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
-fi
 
 which flex
 if [ $? -ne 0 ] ; then
@@ -120,31 +114,6 @@ END
 fi
 
 
-# Check if the uthash library is installed.
-ngx_feature="uthash library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs="#include <utstack.h>"
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-
-Please run:
-            cd /usr/local/src \\
-        &&  git clone https://github.com/troydhanson/uthash.git \\
-        &&  export LIB_UTHASH=/usr/local/src/uthash \\
-        &&  cd $PWD
-
-END
-    PWD=''
-    exit 1
-fi
-
 # Check if the C compiler supports the C99 standard.
 ngx_feature="C99 features"
 ngx_feature_name=
@@ -184,8 +153,40 @@ END
 fi
 
 
-ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${ngx_addon_dir}/inc/libinjection/src"
+if [ -n $LIB_UTHASH ] ; then
+    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
+fi
 
+# Check if uthash exists.
+ngx_feature="uthash library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs=$(cat << END
+
+#include <utarray.h>
+#include <uthash.h>
+#include <utlist.h>
+#include <utringbuffer.h>
+#include <utstack.h>
+#include <utstring.h>
+
+END
+)
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no  ] ; then 
+    echo "$0: error: the $ngx_addon_name module requires the $ngx_feature."
+    exit 1
+fi
+
+
+if [ -n $LIB_INJECTION ] ; then
+    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_INJECTION}/include"
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_INJECTION}/lib -l injection "
+else
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l injection "
+fi
 
 # Check if libinjection exists.
 ngx_feature="injection library"
@@ -205,20 +206,13 @@ ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-
-Please run cd $ngx_addon_dir && git clone https://github.com/libinjection/libinjection.git inc/libinjection && cd $PWD
-
-END
-    PWD=''
+    echo "$0: error: the $ngx_addon_name module requires the $ngx_feature."
     exit 1
 fi
 
 if [ -n "$LIB_SODIUM" ] ;  then
     ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_SODIUM}/include"
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -Wl,-Bstatic -l sodium -Wl,-Bdynamic "
+    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -l sodium "
 else
     ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium "
 fi
@@ -233,26 +227,7 @@ ngx_feature_libs=$ngx_http_waf_module_libs
 ngx_feature_test=
 . auto/feature
 if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-
-Please run:
-    On Ubuntu or Debian: 
-            apt-get update && apt-get install --yes libsodium23 libsodium-dev
-    On Alpine: 
-            apk update && apk add libsodium libsodium-dev
-    On other OS:
-            # You can remove directories libsodium-src and libsodium after installing the ngx_http_waf_module.
-            git clone https://github.com/jedisct1/libsodium.git --branch stable libsodium-src \\
-        &&  cd libsodium-src \\
-        &&  ./configure --prefix=$PWD/libsodium --with-pic \\
-        &&  make -j\$(nproc) && make check -j \$(nproc) && make install \\
-        &&  export LIB_SODIUM=$PWD/libsodium \\
-        &&  cd $PWD
-
-END
-    PWD=''
+    echo "$0: error: the $ngx_addon_name module requires the $ngx_feature."
     exit 1
 fi
 
@@ -284,7 +259,7 @@ if test -n "$ngx_module_link"; then
     . auto/module
 else
     HTTP_MODULES="$HTTP_MODULES ${ngx_addon_name}"
-    HTTP_DEPS-"$HTTP_DEPS $deps"
-    HTTP_INCS="$HTTP_INCS -I $ngx_addon_dir/inc $ngx_addon_dir/inc/libinjection/src"
+    HTTP_DEPS="$HTTP_DEPS $deps"
+    HTTP_INCS="$HTTP_INCS -I $ngx_addon_dir/inc $ngx_addon_dir/inc/libinjection/build/include"
     NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
 fi
