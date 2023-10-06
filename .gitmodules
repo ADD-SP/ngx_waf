@@ -1,0 +1,3 @@
+[submodule "ngx_waf_deps"]
+	path = ngx_waf_deps
+	url = https://github.com/ADD-SP/ngx_waf_deps.git
