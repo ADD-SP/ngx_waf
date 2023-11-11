@@ -223,7 +223,7 @@ waf_http_status bad;
 === TEST: Bad directive waf_priority
 
 --- config
-waf_priority "W-IP IP VERIFY-BOT CC CAPTCHA UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE POST"
+waf_priority "W-IP IP VERIFY-BOT CC CAPTCHA UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER W-COOKIE COOKIE POST"
 
 --- must_die
 
