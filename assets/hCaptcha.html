@@ -14,11 +14,11 @@
   </style>
   <script>
     function onSubmit(token) {
-      let reqBody = "h-captcha-response=" + token;
       let httpRequest = new XMLHttpRequest();
       httpRequest.open("POST", "/captcha");
       httpRequest.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-      httpRequest.send(reqBody);
+      httpRequest.setRequestHeader("h-captcha-response", token);
+      httpRequest.send(null);
       httpRequest.onreadystatechange = () => {
         if (httpRequest.readyState == 4 && httpRequest.status == 200) {
           let text = httpRequest.responseText;
@@ -43,7 +43,7 @@
 <body>
   <h1>Please complete the captcha.</h1>
   <h1>请完成验证码</h1>
-  <div class="h-captcha" data-sitekey="********your_site_key********" data-callback="onSubmit"></div>
+  <div class="h-captcha" data-sitekey="%V" data-callback="onSubmit"></div>
 </body>
 
 </html>
