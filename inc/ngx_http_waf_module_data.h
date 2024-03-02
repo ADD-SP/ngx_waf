@@ -4,7 +4,7 @@
 extern unsigned char ngx_http_waf_data_html_under_attack[555];
 
 
-extern unsigned char ngx_http_waf_data_html_template_hCaptcha[1548];
+extern unsigned char ngx_http_waf_data_html_template_hCaptcha[1635];
 
 
 extern unsigned char ngx_http_waf_data_html_template_reCAPTCHAv2_checkbox[1550];
