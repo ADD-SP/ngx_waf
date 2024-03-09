@@ -1,0 +1,12 @@
+# Enable Bzlmod for every Bazel command
+common --enable_bzlmod
+common --verbose_failures
+common --registry=https://bcr.bazel.build
+
+build --compilation_mode=dbg
+build --copt="-g3"
+build --strip=never
+
+build:release --compilation_mode=opt
+build:release --copt="-g3"
+build:release --strip=never
