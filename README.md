@@ -5,7 +5,7 @@
 </p>
 
 [![test](https://github.com/ADD-SP/ngx_waf/workflows/test/badge.svg)](https://github.com/ADD-SP/ngx_waf/actions?query=workflow%3Atest)
-[![docs](https://github.com/ADD-SP/ngx_waf-docs/actions/workflows/docs.yml/badge.svg)](https://docs.addesp.com/ngx_waf/)
+[![docs](https://github.com/ADD-SP/ngx_waf-docs/actions/workflows/docs.yml/badge.svg)](https://add-sp.github.io/ngx_waf-docs/)
 
 [![Notification](https://img.shields.io/badge/Notification-Telegram%20Channel-blue)](https://t.me/ngx_waf)
 [![Discussion EN](https://img.shields.io/badge/Discussion%20EN-Telegram%20Group-blue)](https://t.me/group_ngx_waf)
@@ -44,9 +44,8 @@ Handy, High performance Nginx firewall module.
 
 ## Docs
 
-* Recommended link: [https://docs.addesp.com/ngx_waf/](https://docs.addesp.com/ngx_waf/)
-* Alternate link 1: [https://add-sp.github.io/ngx_waf-docs/](https://add-sp.github.io/ngx_waf-docs/)
-* Alternate link 2: [https://ngx-waf-docs.pages.dev/](https://ngx-waf-docs.pages.dev/)
+* Recommended link: [https://add-sp.github.io/ngx_waf-docs/](https://add-sp.github.io/ngx_waf-docs/)
+* Alternate link: [https://ngx-waf-docs.pages.dev/](https://ngx-waf-docs.pages.dev/)
 
 ## Contact
 
