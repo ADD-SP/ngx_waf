@@ -1,0 +1,14 @@
+# Enable Bzlmod for every Bazel command
+common --enable_bzlmod
+common --verbose_failures
+common --registry=https://bcr.bazel.build
+common --registry=https://raw.githubusercontent.com/ADD-SP/ngx_waf_deps/60efa49539f3b508257cab89f4043ab36407ac86
+
+build --compilation_mode=fastbuild
+build --strip=never
+build --sandbox_debug
+
+build:release --compilation_mode=opt
+build:release --copt="-g3"
+build:release --strip=never
+build:release --sandbox_debug

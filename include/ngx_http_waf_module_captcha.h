@@ -6,7 +6,7 @@
 #include <ngx_http_waf_module_util.h>
 #include <ngx_http_waf_module_action.h>
 #include <ngx_http_waf_module_check.h>
-#include <cjson/cJSON.h>
+#include <cJSON.h>
 
 
 ngx_int_t ngx_http_waf_handler_captcha(ngx_http_request_t* r);

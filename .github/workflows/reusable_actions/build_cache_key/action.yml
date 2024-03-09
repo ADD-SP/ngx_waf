@@ -1,0 +1,30 @@
+name: Build Cache Key
+
+inputs:
+  extra_key:
+    description: 'Extra key to append to the cache key'
+    required: false
+    default: ''
+
+outputs:
+  cache_key:
+    description: 'The generated cache key'
+    value: ${{ steps.cache_key.outputs.cache_key }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Generate cache key
+      id: cache_key
+      shell: bash
+      run: |
+        important_files=${{ hashFiles('.bazelrc') }}
+        important_files=${important_files}-${{ hashFiles('.bazelversion') }}
+        important_files=${important_files}-${{ hashFiles('BUILD') }}
+        important_files=${important_files}-${{ hashFiles('MODULE.bazel') }}
+        important_files=${important_files}-${{ hashFiles('MODULE.bazel.lock') }}
+        important_files=${important_files}-${{ hashFiles('.github/workflows/reusable_actions/build_cache_key/action.yml') }}
+        important_files=${important_files}-${{ hashFiles('.github/workflows/test.yml') }}
+
+        echo "cache_key=$important_files-${{ inputs.extra_key }}" >> "$GITHUB_OUTPUT"

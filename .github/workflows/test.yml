@@ -9,8 +9,6 @@ on:
       - current
       - current-dev
   pull_request:
-  schedule:
-    - cron: '0 0 * * SUN'
   workflow_dispatch:
 
 
@@ -24,99 +22,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  self-trigger:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name	== 'schedule' }}
-    steps:
-      - name: Trigger
-        run: |
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
-            -d '{"ref":"refs/heads/lts"}'
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
-            -d '{"ref":"refs/heads/current"}'
-
-  build_deps:
+  buld_deps:
     name: Build dependencies
     runs-on: ubuntu-latest
 
-    env:
-      BUILD_CACHE_NONCE: 0
-
     steps:
-      - name: Set environment variables
-        run: |
-          echo "CACHE_ROOT=$HOME/cache-root" >> $GITHUB_ENV
-
       - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
+          submodules: true
 
-      - name: Checkout SpiderLabs/ModSecurity
-        uses: actions/checkout@v3
-        with:
-          repository: SpiderLabs/ModSecurity
-          path: ModSecurity
-
-      - name: Get ModSecurity commit hash
-        run: |
-          cd ModSecurity
-          echo "MODSECURITY_COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
+      - name: Generate cache key
+        id: cache_key
+        uses: ./.github/workflows/reusable_actions/build_cache_key
+      
       - name: Lookup build cache
-        uses: actions/cache@v3
-        id: cache-deps
+        id: cache
+        uses: actions/cache@v4
         with:
-          path: ${{ env.CACHE_ROOT }}
-          key: ${{ env.MODSECURITY_COMMIT_HASH }}-${{ env.BUILD_CACHE_NONCE }}
+          key: ${{ steps.cache_key.outputs.cache_key }}
+          path: |
+            ${{ github.workspace }}/deps.tar.gz
 
-      - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
+      - name: Install pre-requirements
         run: |
           sudo apt-get --yes update
           # https://github.com/actions/runner-images/issues/2139
-          sudo apt-get remove nginx-core nginx-full nginx-light nginx-extras
-          sudo apt-get remove libgd3
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
+          sudo apt-get remove nginx-core \
+            nginx-full \
+            nginx-light \
+            nginx-extras \
+            libgd3
+          sudo apt-get install --yes \
+            build-essential \
+            zlib1g-dev \
+            libpcre3 \
+            libpcre3-dev \
+            libssl-dev \
+            libxslt1-dev \
+            libxml2-dev \
+            libgeoip-dev \
+            libgd-dev \
+            libperl-dev \
+            libcurl4-openssl-dev
 
-      - name: Download and install ModSecurity
-        if: steps.cache-deps.outputs.cache-hit != 'true'
+      - name: Build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          cd ModSecurity
-          ./build.sh
-          git submodule init
-          git submodule update
-          ./configure --prefix=/usr/local/modsecurity
-          make -j$(nproc)
-          sudo make install
+          bazel build --registry=file://$(realpath ngx_waf_deps) //:deps
+          cp bazel-bin/deps.tar.gz .
 
-      - name: Package dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ${{ env.CACHE_ROOT }}
-          mkdir -p /tmp/cache/usr/local
-          sudo cp -r /usr/local/modsecurity /tmp/cache/usr/local
-          tar -C /tmp/cache/ -cvzf ${{ env.CACHE_ROOT }}/cache.tar.gz .
-
-
-  native:
+  build_test:
+    name: Build & Test
     runs-on: ubuntu-latest
-    if: ${{ github.event_name	!= 'schedule' }}
-    needs: build_deps
-
-    env:
-      BUILD_CACHE_NONCE: 0
+    needs: [buld_deps]
 
     strategy:
       matrix:
         nginx-version: ['stable', 'mainline']
         module-type:  ['static', 'dynamic']
-        pcre-version: ['pcre', 'pcre2']
 
     steps:
       - uses: actions/setup-python@v5
@@ -126,92 +90,82 @@ jobs:
       - uses: actions/checkout@v4
         with: 
           ref: ${{ github.ref }}
+          submodules: true
 
-      - name: Checkout SpiderLabs/ModSecurity
-        uses: actions/checkout@v3
-        with:
-          repository: SpiderLabs/ModSecurity
-          path: ModSecurity
-
-      - name: Get ModSecurity commit hash
-        run: |
-          cd ModSecurity
-          echo "MODSECURITY_COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
+      - name: Generate cache key
+        id: cache_key
+        uses: ./.github/workflows/reusable_actions/build_cache_key
+      
       - name: Lookup build cache
-        uses: actions/cache@v3
-        id: cache-deps
+        id: cache
+        uses: actions/cache@v4
         with:
-          path: ${{ env.CACHE_ROOT }}
-          key: ${{ env.MODSECURITY_COMMIT_HASH }}-${{ env.BUILD_CACHE_NONCE }}
+          key: ${{ steps.cache_key.outputs.cache_key }}
+          path: |
+            ${{ github.workspace }}/deps.tar.gz
 
-      - name: Extract the deps
-        run: sudo tar -C / -xzvf ${{ env.CACHE_ROOT }}/cache.tar.gz
+      - name: Assert build dependencies cache found
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Build dependencies cache not found, this step should be unreachable."
+          exit 1
 
-      - name: Install dependencies
+      - name: Install pre-requirements
         run: |
           sudo apt-get --yes update
           # https://github.com/actions/runner-images/issues/2139
-          sudo apt-get remove nginx-core nginx-full nginx-light nginx-extras
-          sudo apt-get remove libgd3
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev libcurl4-openssl-dev
+          sudo apt-get remove nginx-core \
+            nginx-full \
+            nginx-light \
+            nginx-extras \
+            libgd3
+          sudo apt-get install --yes \
+            build-essential \
+            zlib1g-dev \
+            libpcre3 \
+            libpcre3-dev \
+            libssl-dev \
+            libxslt1-dev \
+            libxml2-dev \
+            libgeoip-dev \
+            libgd-dev \
+            libperl-dev \
+            libcurl4-openssl-dev
 
-      - name: Download nginx-${{ matrix.nginx-version }}
+      - name: Apply dependencies
         run: |
-          sudo chmod 777 -R /usr/local/src
-          cd /usr/local/src
+          tar -zxf deps.tar.gz
+
+          echo "$(realpath deps/libmodsecurity/lib)" | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
+          echo "$(realpath deps/libsodium/lib)"      | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
+          echo "$(realpath deps/libcjson/lib)"       | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
+          sudo ldconfig
+
+          echo "LIB_MODSECURITY=$(realpath deps/libmodsecurity)" >> "$GITHUB_ENV"
+          echo "LIB_SODIUM=$(realpath deps/libsodium)" >> "$GITHUB_ENV"
+          echo "LIB_CJSON=$(realpath deps/libcjson)" >> "$GITHUB_ENV"
+          echo "LIB_UTHASH=$(realpath deps/uthash)" >> "$GITHUB_ENV"
+
+      - name: Download & Build & Install nginx-${{ matrix.nginx-version }}
+        run: |
           sudo pip install lastversion
           lastversion download nginx:${{ matrix.nginx-version }}
-          mkdir nginx
-          tar zxf nginx-*.tar.gz --directory nginx --strip-components=1
+          mkdir nginx-src
+          tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
 
-      - name: Download PCRE
-        if: ${{ matrix.pcre-version == 'pcre' || (matrix.pcre-version == 'pcre2' && matrix.nginx-version == 'stable') }}
-        run: |
-          sudo chmod 777 -R /usr/local/src
-          cd /usr/local/src
-          wget https://cfhcable.dl.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.gz -O pcre.tar.gz
-          mkdir pcre
-          tar zxf pcre.tar.gz --directory pcre --strip-components=1
-          sudo chmod 777 -R /usr/local/src
-
-      - name: Download PCRE2
-        if: ${{ matrix.pcre-version == 'pcre2' && matrix.nginx-version == 'mainline' }}
-        run: |
-          sudo chmod 777 -R /usr/local/src
-          cd /usr/local/src
-          wget https://github.com/PhilipHazel/pcre2/releases/download/pcre2-10.39/pcre2-10.39.tar.gz -O pcre.tar.gz
-          mkdir pcre
-          tar zxf pcre.tar.gz --directory pcre --strip-components=1
-          sudo chmod 777 -R /usr/local/src
-
-      - name: Download cjson
-        run: |
-          git clone -b v1.7.15 https://github.com/DaveGamble/cJSON.git lib/cjson
-
-      - name: Download uthash
-        run: |
-          git clone -b v2.3.0 https://github.com/troydhanson/uthash.git lib/uthash
-
-      - name: Configure ${{ matrix.module-type }}
-        run: |
-          cd /usr/local/src/nginx
+          cd nginx-src
           if [ ${{ matrix.module-type }} = 'static module' ] ; then \
             opt='--add-module' ;\
           else \
             opt='--add-dynamic-module' ;\
           fi
-          export LIB_MODSECURITY=/usr/local/modsecurity
-          ./configure ${opt}=${{ github.workspace }} --with-pcre=/usr/local/src/pcre --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong' 
 
-      - name: Install nginx-${{ matrix.nginx-version }}
-        run: |
-          cd /usr/local/src/nginx
+          ./configure ${opt}=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
           make -j$(nproc)
           sudo make install
           sudo useradd nginx -s /sbin/nologin -M
-          sudo chmod 777 -R /usr/local/nginx
           sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
+          nginx -V
 
       - name: Install Test::Nginx
         run: |
@@ -224,49 +178,3 @@ jobs:
           export MODULE_TEST_PATH=/tmp/module_test
           sh ./init.sh
           exec sudo sh start.sh t/*.t
-          
-  docker:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name	!= 'schedule' }}
-    strategy:
-      matrix:
-        version: ['stable', 'mainline']
-        target: ['glibc', 'musl']
-    steps:
-      - uses: actions/checkout@v4
-        with: 
-          ref: ${{ github.ref }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Build module
-        run: docker build --file docker/Dockerfile.${{ matrix.target }} --build-arg=NGX_VER=${{ matrix.version }} .
-  triger:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}
-    needs: ['native', 'docker']
-    steps:
-      - uses: actions/checkout@v4
-        with: 
-          ref: ${{ github.ref }}
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-      - name: Set up lastversion
-        run: pip3 install lastversion
-      - name: 'Trigger workflow: docker'
-        if: ${{ github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current' }}
-        run: |
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}"                                        \
-            -X POST                                                                                         \
-            -H "Accept: application/vnd.github.v3+json"                                                     \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/docker.yml/dispatches             \
-            -d "{                                                                                           \
-                  \"ref\":\"${{ github.ref }}\",                                                            \
-                  \"inputs\": {                                                                             \
-                    \"ngx_stable_version_number\": \"`lastversion https://nginx.org --major stable`\",      \
-                    \"ngx_mainline_version_number\": \"`lastversion https://nginx.org --major mainline`\",  \
-                    \"module_version_number\": \"`cat assets/version.txt`\"                                 \
-                  }                                                                                         \
-                }"
