@@ -1,23 +1,22 @@
 ngx_addon_name=ngx_http_waf_module
 
-deps="$ngx_addon_dir/inc/ngx_http_waf_module_check.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_action.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_config.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_data.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_var.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_core.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_macro.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_type.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_util.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_ip_trie.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_mem_pool.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_shm.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_lru_cache.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_under_attack.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_captcha.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_verify_bot.h \
-    $ngx_addon_dir/inc/ngx_http_waf_module_modsecurity.h \
-    $ngx_addon_dir/lib/cjson/cJSON.h"
+deps="$ngx_addon_dir/include/ngx_http_waf_module_check.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_action.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_config.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_data.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_var.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_core.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_macro.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_type.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_util.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_ip_trie.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_mem_pool.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_shm.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_lru_cache.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_under_attack.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_captcha.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_verify_bot.h \
+    $ngx_addon_dir/include/ngx_http_waf_module_modsecurity.h"
 
 srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
     $ngx_addon_dir/src/ngx_http_waf_module_var.c \
@@ -39,7 +38,7 @@ srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
 
 ngx_http_waf_module_libs=""
 
-ngx_http_waf_module_inc_path="$ngx_addon_dir/inc $ngx_addon_dir/lib"
+ngx_http_waf_module_inc_path="$ngx_addon_dir/include "
 
 
 # Check if the modsecurity library is installed.
