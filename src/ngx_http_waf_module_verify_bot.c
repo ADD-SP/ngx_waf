@@ -26,13 +26,11 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
         NULL, NULL
     };
 
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf_verify_bot)) {
-        ngx_http_waf_dp(r, "nothing to do ... return");
         return NGX_HTTP_WAF_NOT_MATCHED;
     }
 
@@ -47,12 +45,10 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
 
 
     for (int i = 0; _func[i] != NULL; i += 2) {
-        ngx_http_waf_dpf(r, "verfiying %s", _func[i + 1]);
         _handler handler = (_handler)_func[i];
         ngx_int_t rc = handler(r);
 
         if (rc == NGX_HTTP_WAF_FAKE_BOT) {
-            ngx_http_waf_dp(r, "fake bot ... return");
             if (loc_conf->waf_verify_bot == 2) {
                 ngx_http_waf_set_rule_info(r, "FAKE-BOT", _func[i + 1],
                     NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_TRUE);
@@ -66,7 +62,6 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
             }
 
         } else if (rc == NGX_HTTP_WAF_SUCCESS){
-            ngx_http_waf_dp(r, "real bot ... return");
             ngx_http_waf_append_action_chain(r, action_decline);
             ngx_http_waf_set_rule_info(r, "REAL-BOT", _func[i + 1],
                 NGX_HTTP_WAF_TRUE, NGX_HTTP_WAF_FALSE);
@@ -74,13 +69,11 @@ ngx_int_t ngx_http_waf_handler_verify_bot(ngx_http_request_t* r) {
         }   
     }
 
-    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_NOT_MATCHED;
 }
 
 
 static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -93,13 +86,11 @@ static ngx_int_t _verify_google_bot(ngx_http_request_t* r) {
         loc_conf->waf_verify_bot_google_ua_regexp, 
         loc_conf->waf_verify_bot_google_domain_regexp);
 
-    ngx_http_waf_dp_func_end(r);
     return rc;
 }
 
 
 static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -112,13 +103,11 @@ static ngx_int_t _verify_bing_bot(ngx_http_request_t* r) {
         loc_conf->waf_verify_bot_bing_ua_regexp, 
         loc_conf->waf_verify_bot_bing_domain_regexp);
 
-    ngx_http_waf_dp_func_end(r);
     return rc;
 }
 
 
 static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -131,12 +120,10 @@ static ngx_int_t _verify_baidu_spider(ngx_http_request_t* r) {
         loc_conf->waf_verify_bot_baidu_ua_regexp,
         loc_conf->waf_verify_bot_baidu_domain_regexp);
 
-    ngx_http_waf_dp_func_end(r);
     return rc;
 }
 
 static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -149,12 +136,10 @@ static ngx_int_t _verify_yandex_bot(ngx_http_request_t* r) {
         loc_conf->waf_verify_bot_yandex_ua_regexp,
         loc_conf->waf_verify_bot_yandex_domain_regexp);
 
-    ngx_http_waf_dp_func_end(r);
     return rc;
 }
 
 static ngx_int_t _verify_sogou_spider(ngx_http_request_t* r) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
@@ -167,37 +152,29 @@ static ngx_int_t _verify_sogou_spider(ngx_http_request_t* r) {
         loc_conf->waf_verify_bot_sogou_ua_regexp,
         loc_conf->waf_verify_bot_sogou_domain_regexp);
 
-    ngx_http_waf_dp_func_end(r);
     return rc;
 }
 
 
 static ngx_int_t _verify_by_rdns(ngx_http_request_t* r, ngx_array_t* ua_regex, ngx_array_t* domain_regex) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, NULL);
 
     if (r->headers_in.user_agent == NULL) {
-        ngx_http_waf_dp(r, "no user-agent");
         return NGX_HTTP_WAF_FAIL;
     }
 
     if (r->headers_in.user_agent->value.data == NULL || r->headers_in.user_agent->value.len == 0) {
-        ngx_http_waf_dp(r, "no user-agent");
         return NGX_HTTP_WAF_FAIL;
     }
 
-    ngx_http_waf_dpf(r, "verifying user-agent %V", &r->headers_in.user_agent->value);
     if (ngx_regex_exec_array(ua_regex,
                              &r->headers_in.user_agent->value,
                              r->connection->log) != NGX_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
         return NGX_HTTP_WAF_FAIL;
     }
-    ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "getting client's host");
     struct hostent* h = NULL;
     if (r->connection->sockaddr->sa_family == AF_INET) {
         struct sockaddr_in* sin = (struct sockaddr_in*)r->connection->sockaddr;
@@ -212,37 +189,27 @@ static ngx_int_t _verify_by_rdns(ngx_http_request_t* r, ngx_array_t* ua_regex, n
 
     if (h == NULL) {
         if (h_errno == HOST_NOT_FOUND) {
-            ngx_http_waf_dp(r, "host not found");
-            ngx_http_waf_dp(r, "fake bot ... return");
             return NGX_HTTP_WAF_FAKE_BOT;
         } else {
-            ngx_http_waf_dp(r, "failed ... return");
             return NGX_HTTP_WAF_FAIL;
         }
     }
 
-    ngx_http_waf_dp(r, "success");
 
     ngx_str_t host;
     host.data = (u_char*)h->h_name;
     host.len = ngx_strlen(h->h_name);
-    ngx_http_waf_dpf(r, "verifying host %V", &host);
     if (ngx_regex_exec_array(domain_regex, &host, r->connection->log) == NGX_OK) {
-        ngx_http_waf_dp(r, "success ... return");
         return NGX_HTTP_WAF_SUCCESS;
     }
 
     for (int i = 0; h->h_aliases[i] != NULL; i++) {
         host.data = (u_char*)h->h_aliases[i];
         host.len = ngx_strlen(h->h_aliases[i]);
-        ngx_http_waf_dpf(r, "verifying host %V", &host);
         if (ngx_regex_exec_array(domain_regex, &host, r->connection->log) == NGX_OK) {
-            ngx_http_waf_dp(r, "success ... return");
             return NGX_HTTP_WAF_SUCCESS;
         }
     }
 
-    ngx_http_waf_dp(r, "fake bot");
-    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_FAKE_BOT;
 }

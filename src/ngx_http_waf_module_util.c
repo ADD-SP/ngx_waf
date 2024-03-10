@@ -555,7 +555,6 @@ ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size
 
 
 void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx) {
-    ngx_http_waf_dp_func_start(r);
 
     if (ctx != NULL) {
         *ctx = NULL;
@@ -598,7 +597,6 @@ void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_
         }
     }
 
-    ngx_http_waf_dp_func_end(r);
 }
 
 
@@ -620,12 +618,10 @@ void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr) {
 
 
 void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details, ngx_int_t gernal_logged, ngx_int_t blocked) {
-    ngx_http_waf_dp_func_start(r);
 
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
 
-    ngx_http_waf_dpf(r, "type: %s, details: %s", type, details);
 
     size_t type_len = ngx_strlen(type);
     size_t details_len = ngx_strlen(details);
@@ -646,37 +642,29 @@ void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details
         ctx->blocked = 1;
     }
 
-    ngx_http_waf_dp_func_end(r);
 }
 
 
 ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* in, char** out) {
-    ngx_http_waf_dp_func_start(r);
 
 #define _error_without_msg() {                      \
-    ngx_http_waf_dp(r, "failed ... return");        \
     *out = NULL;                                    \
     return NGX_HTTP_WAF_FAIL;                       \
 }
 
 
 #define _set_opt(handler, option, value) {                                  \
-    ngx_http_waf_dpf(r, "Setting curl option %s", #option);  \
     CURLcode res = curl_easy_setopt((handler), (option), (value));          \
     if (res != CURLE_OK) {                                                  \
         _error_without_msg();                                               \
     }                                                                       \
-    ngx_http_waf_dp(r, "success");                                          \
 }
 
-    ngx_http_waf_dp(r, "initializing curl handle");
     CURL* curl_handle = curl_easy_init();
     if (curl_handle == NULL) {
         _error_without_msg();
     }
-    ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "initializing buf");
     struct {
         ngx_http_request_t* r;
         ngx_buf_t buf;
@@ -688,7 +676,6 @@ ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* i
     if (buf.buf.pos == NULL) {
         _error_without_msg();
     }
-    ngx_http_waf_dp(r, "success");
 
     _set_opt(curl_handle, CURLOPT_URL, url);
     _set_opt(curl_handle, CURLOPT_TIMEOUT, 5L);
@@ -706,11 +693,8 @@ ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* i
         _set_opt(curl_handle, CURLOPT_VERBOSE, 1L);
     }
 
-    ngx_http_waf_dpf(r, "request body is %s", in);
-    ngx_http_waf_dp(r, "performing request");
     CURLcode res = curl_easy_perform(curl_handle);
     if (res != CURLE_OK) {
-        ngx_http_waf_dp(r, "failed ... return");
         *out = malloc(1024);
         if (*out != NULL) {
             sprintf(*out, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
@@ -719,12 +703,9 @@ ngx_int_t ngx_http_waf_http_post(ngx_http_request_t* r, const char* url, char* i
         return NGX_HTTP_WAF_FAIL;
     }
     *out = (char*)buf.buf.pos;
-    ngx_http_waf_dp(r, "success");
-    ngx_http_waf_dpf(r, "response body is %s", *out);
 
     curl_easy_cleanup(curl_handle);
 
-    ngx_http_waf_dp_func_end(r);
     return NGX_HTTP_WAF_SUCCESS;
 
 #undef _error_without_msg
@@ -786,13 +767,11 @@ ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
 
 
 void ngx_http_waf_register_content_handler(ngx_http_request_t* r) {
-    ngx_http_waf_dp_func_start(r);
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
     
     ctx->register_content_handler = NGX_HTTP_WAF_TRUE;
     r->content_handler = ngx_http_waf_handler_precontent_phase;
-    ngx_http_waf_dp_func_end(r);
 }
 
 
@@ -811,43 +790,32 @@ char* ngx_http_waf_c_str(ngx_str_t* str, ngx_pool_t* pool) {
 }
 
 
-static size_t _curl_handler_write(void *contents, size_t size, size_t nmemb, void *userp)
-{
+static size_t _curl_handler_write(void *contents, size_t size, size_t nmemb, void *userp) {
     struct {
         ngx_http_request_t* r;
         ngx_buf_t buf;
     } *p = userp;
-    ngx_http_request_t* r = p->r;
+
     ngx_buf_t* buf = &p->buf;
     size_t realsize = size * nmemb;
     size_t offset = buf->last - buf->pos;
     
-    ngx_http_waf_dp_func_start(r);
 
-    ngx_http_waf_dp(r, "reallocing");
     char *ptr = realloc(buf->pos, buf->last - buf->pos + realsize + 1);
     assert(ptr != NULL);
-    ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dp(r, "copying response");
     buf->pos = (u_char*)ptr;
     buf->last = buf->pos + offset;
     ngx_memcpy(buf->last, contents, realsize);
     buf->last += realsize;
     *(buf->last) = 0;
-    ngx_http_waf_dp(r, "success");
 
-    ngx_http_waf_dpf(r, "current response is %s", buf->pos);
     
-    ngx_http_waf_dp_func_end(r);
     return realsize;
 }
 
 
 static int _curl_handler_debug(CURL* handle, curl_infotype type, char* data, size_t size, void* userp) {
-    ngx_http_request_t* r = userp;
-    ngx_http_waf_dp_func_start(r);
-
     char* type_str = "";
     int is_ssl = NGX_HTTP_WAF_FALSE;
     switch (type) {
@@ -883,13 +851,6 @@ static int _curl_handler_debug(CURL* handle, curl_infotype type, char* data, siz
     tmp.data = (u_char*)data;
     tmp.len = size / sizeof(u_char);
 
-    if (is_ssl == NGX_HTTP_WAF_TRUE) {
-        ngx_http_waf_dpf(r, "curl_debug - %s - Encrypted Data", type_str);
-    } else {
-        ngx_http_waf_dpf(r, "curl_debug - %s - %V", type_str, &tmp);
-    }
-
-    ngx_http_waf_dp_func_end(r);
     return CURLE_OK;
 }
 
