@@ -119,14 +119,9 @@ jobs:
         pcre-version: ['pcre', 'pcre2']
 
     steps:
-      - name: Set environment variables
-        run: |
-          echo "CACHE_ROOT=$HOME/cache-root" >> $GITHUB_ENV
-
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-          architecture: 'x64'
 
       - uses: actions/checkout@v4
         with: 
