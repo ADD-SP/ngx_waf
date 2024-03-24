@@ -333,6 +333,12 @@
 #define ngx_http_waf_check_bit(origin, bit_index) (ngx_http_waf_check_flag((origin), 1 << (bit_index)))
 
 
+#define ngx_http_waf_is_subrequest(r) ((r)->main != (r))
+
+
+#define ngx_http_waf_is_internal_request(r) ((r)->internal)
+
+
 #define ngx_http_waf_is_unset_or_disable_value(x) (((x) == NGX_CONF_UNSET) || ((x) == 0))
 
 

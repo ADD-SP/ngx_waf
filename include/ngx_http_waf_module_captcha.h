@@ -4,7 +4,6 @@
 #include <ngx_http_waf_module_macro.h>
 #include <ngx_http_waf_module_type.h>
 #include <ngx_http_waf_module_util.h>
-#include <ngx_http_waf_module_action.h>
 #include <ngx_http_waf_module_check.h>
 #include <cJSON.h>
 

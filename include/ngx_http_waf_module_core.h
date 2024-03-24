@@ -43,12 +43,6 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 
 /**
- * @brief NGX_HTTP_CONTENT_PHASE 阶段的处理函数
-*/
-ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
-
-
-/**
  * @brief NGX_HTTP_LOG_PHASE 阶段的处理函数
 */
 ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r);

@@ -36,10 +36,36 @@
 
 
 /**
+ * @typedef ngx_http_waf_check_result
+ * @brief 检查结果
+*/
+typedef struct ngx_http_waf_check_result_s {
+    ngx_int_t                       http_status;                /**< 返回的 HTTP 状态码 */
+    ngx_str_t                       response_body;              /**< 返回的内容 */
+
+    ngx_int_t                       log_level;                  /**< 日志级别 */
+    ngx_str_t                       log_message;                /**< 日志信息 */
+
+    ngx_str_t                       subrequest_uri;             /**< 子请求的 URI */
+    ngx_str_t                       subrequest_args;            /**< 子请求的参数 */
+    ngx_http_post_subrequest_pt     subrequest_handler;         /**< 子请求处理函数 */
+
+    ngx_uint_t                      is_matched:1;               /**< 是否匹配到规则 */
+    ngx_uint_t                      is_blacklist:1;             /**< 是否是黑名单 */
+    ngx_uint_t                      is_whitelist:1;             /**< 是否是白名单 */
+
+    ngx_uint_t                      need_do_sth:1;              /**< 是否需要执行某些操作 */
+    ngx_uint_t                      need_log:1;                 /**< 是否需要记录日志 */
+    ngx_uint_t                      need_response:1;            /**< 是否需要返回内容 */
+    ngx_uint_t                      need_subrequest:1;          /**< 是否需要发起子请求 */
+} ngx_http_waf_check_result_t;
+
+
+/**
  * @typedef ngx_http_waf_check
  * @brief 请求检查函数的函数指针
 */
-typedef ngx_int_t (*ngx_http_waf_check_pt)(ngx_http_request_t* r);
+typedef ngx_http_waf_check_result_t (*ngx_http_waf_check_pt)(ngx_http_request_t* r);
 
 
 /**
@@ -87,16 +113,6 @@ typedef struct ip_statis_s {
     time_t          record_time;        /**< 何时开始记录 */
     time_t          block_time;         /**< 何时开始拦截 */
 } ip_statis_t;
-
-
-/**
- * @struct check_result_t
- * @brief 规则减价结果
-*/
-typedef struct check_result_s {
-    ngx_int_t       is_matched;         /**< 是否被某条规则匹配到 */
-    u_char         *detail;             /**< 匹配到的规则的详情 */
-} check_result_t;
 
 
 /**
@@ -233,56 +249,14 @@ typedef struct ip_trie_s {
 
 
 typedef enum {
-    BOT_TYPE_NONE       = 0X0,
-    BOT_TYPE_UNSET      = 0X1,
-    BOT_TYPE_GOOGLE     = 0X2,
-    BOT_TYPE_BING       = 0X4,
-    BOT_TYPE_BAIDU      = 0X8,
-    BOT_TYPE_SOGOU      = 0X10,
-    BOT_TYPE_YANDEX     = 0X20
+    BOT_TYPE_NONE,
+    BOT_TYPE_UNSET,
+    BOT_TYPE_GOOGLE,
+    BOT_TYPE_BING,
+    BOT_TYPE_BAIDU,
+    BOT_TYPE_SOGOU,
+    BOT_TYPE_YANDEX,
 } bot_type_e;
-
-
-typedef enum {
-    ACTION_FLAG_NONE                = 0x0,
-    ACTION_FLAG_UNSET               = 0x1,
-    ACTION_FLAG_DECLINE             = 0x2,
-    ACTION_FLAG_FOLLOW              = 0x4,
-    ACTION_FLAG_RETURN              = 0x8,
-    ACTION_FLAG_REG_CONTENT         = 0x10,
-    ACTION_FLAG_STR                 = 0x20,
-    ACTION_FLAG_HTML                = 0x40,
-    ACTION_FLAG_FROM_WHITE_LIST     = 0x80,
-    ACTION_FLAG_FROM_BLACK_LIST     = 0x100,
-    ACTION_FLAG_FROM_CC_DENY        = 0x200,
-    ACTION_FLAG_FROM_MODSECURITY    = 0x400,
-    ACTION_FLAG_FROM_CAPTCHA        = 0x800,
-    ACTION_FLAG_FROM_UNDER_ATTACK   = 0x1000,
-    ACTION_FLAG_FROM_VERIFY_BOT     = 0x2000,
-    ACTION_FLAG_CAPTCHA             = 0x4000,
-    ACTION_FLAG_UNDER_ATTACK        = 0X8000
-} action_flag_e;
-
-
-typedef struct action_s {
-    action_flag_e flag;
-    struct action_s* next;
-    struct action_s* prev;
-    union {
-        ngx_uint_t http_status;
-
-        struct {
-            ngx_uint_t http_status;
-            ngx_str_t* str;
-        } extra_str;
-
-        struct {
-            ngx_uint_t http_status;
-            ngx_str_t* html;
-        } extra_html;
-
-    } extra;
-} action_t;
 
 
 /**
@@ -290,23 +264,15 @@ typedef struct action_s {
  * @brief 每个请求的上下文
 */
 typedef struct ngx_http_waf_ctx_s {
-    ngx_http_request_t*             r;
+    ngx_http_request_t             *r;
     Transaction                    *modsecurity_transaction;                    /**< ModSecurity 的事务 */
-    ngx_str_t                       rule_type;                                  /**< 触发的规则类型 */                         
-    ngx_str_t                       rule_deatils;                               /**< 触发的规则内容 */
-    ngx_buf_t                       req_body;                                   /**< 请求体 */
-    ngx_int_t                       rate;                                       /**< 对应变量 $waf_rate */
-    double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
-    char                           *response_str;                               /**< 如果不为 NULL 则返回所指的字符串和 200 状态码 */
-    action_t                       *action_chain;
-    ngx_int_t                       pre_content_run:1;                          /**< 是否已经执行过 pre_content handler */
-    ngx_int_t                       gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
-    ngx_int_t                       checked:1;                                  /**< 是否启动了检测流程 */
-    ngx_int_t                       blocked:1;                                  /**< 是否拦截了本次请求 */
-    ngx_int_t                       read_body_done:1;                           /**< 是否已经请求读取请求体 */
-    ngx_int_t                       waiting_more_body:1;                        /**< 是否等待读取更多请求体 */
-    ngx_int_t                       has_req_body:1;                             /**< 字段 req_body 是否以己经存储了请求体 */
-    ngx_int_t                       register_content_handler:1;                 /**< 是否已经注册或应该注册内容处理程序 */
+    ngx_uint_t                      next_chekcer_index;                         /**< 下一个检查器的索引 */
+    ngx_http_waf_check_result_t     result_for_content_phase;                   /**< 检查结果 */
+
+    ngx_str_t                       captcha_server_response;                     /**< 验证码服务器的响应 */
+
+    ngx_uint_t                      waiting_subrequest:1;                        /**< 是否正在等待子请求 */
+
 } ngx_http_waf_ctx_t;
 
 
@@ -316,7 +282,7 @@ typedef struct ngx_http_waf_ctx_s {
 */
 typedef struct ngx_http_waf_main_conf_s {
     ngx_array_t                    *shms;                                       /**< 共享内存列表 */
-    ngx_array_t                    *local_caches;                                /**< 未使用共享内存的缓存列表 */
+    ngx_array_t                    *local_caches;                               /**< 未使用共享内存的缓存列表 */
 } ngx_http_waf_main_conf_t;
 
 
@@ -371,11 +337,6 @@ typedef struct ngx_http_waf_loc_conf_s {
     ngx_str_t                       waf_modsecurity_rules_remote_url;
     ngx_http_complex_value_t*       waf_modsecurity_transaction_id;
     ngx_str_t                       waf_block_page;                             /**< 封禁页面的 HTML */
-    action_t                       *action_chain_blacklist;                     /**< 黑名单触发后的动作 */
-    action_t                       *action_chain_cc_deny;                       /**< CC 触发后的动作 */
-    action_t                       *action_chain_modsecurity;                   /**< ModSecurity 触发后的动作 */
-    action_t                       *action_chain_verify_bot;                    /**< verify_bot 触发后的动作 */
-    ngx_shm_zone_t                 *action_zone_captcha;                        /**< 验证码动作使用的 zone */
     lru_cache_t                    *action_cache_captcha;                       /**< 验证码动作使用的 cache */
     ModSecurity                    *modsecurity_instance;                       /**< ModSecurity 实例 */
     void                           *modsecurity_rules;                          /**< ModSecurity 规则容器 */
