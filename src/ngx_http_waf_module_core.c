@@ -150,6 +150,9 @@ ngx_module_t ngx_http_waf_module = {
 };
 
 
+static ngx_int_t _handler_content_phase(ngx_http_request_t* r);
+
+
 static ngx_int_t _read_request_body(ngx_http_request_t* r);
 
 
@@ -170,17 +173,6 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     return ngx_http_waf_check_all(r, NGX_HTTP_WAF_TRUE);
 }
 
-ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
-
-    ngx_http_waf_perform_action_at_content(r);
-    
-    return NGX_OK;
-}
-
 
 ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
 
@@ -198,10 +190,10 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
         return NGX_OK;
     }
 
-    if (ctx->gernal_logged) {
-        ctx->gernal_logged = 0;
-        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%V][%V]", &ctx->rule_type, &ctx->rule_deatils);
-    }
+    // if (ctx->gernal_logged) {
+    //     ctx->gernal_logged = 0;
+    //     ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "ngx_waf: [%V][%V]", &ctx->rule_type, &ctx->rule_deatils);
+    // }
 
     if (ctx->modsecurity_transaction != NULL) {
         int ret = msc_process_logging(ctx->modsecurity_transaction);
@@ -219,25 +211,28 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
 
 
 ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
-
     ngx_http_waf_ctx_t* ctx = NULL;
     ngx_http_waf_loc_conf_t* loc_conf = NULL;
     ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
     ngx_int_t is_matched = NGX_HTTP_WAF_NOT_MATCHED;
+    ngx_http_waf_check_result_t check_result;
+    ngx_http_request_t* sr;
+    ngx_http_post_subrequest_t* psr;
 
     if (ngx_http_waf_is_unset_or_disable_value(loc_conf->waf)) {
         return NGX_DECLINED;
     }
 
     if (ctx == NULL) {
-
         ngx_http_cleanup_t* cln = ngx_palloc(r->pool, sizeof(ngx_http_cleanup_t));
         if (cln == NULL) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to allocate memory for ngx_http_cleanup_t");
             return NGX_ERROR;
         }
 
         ctx = ngx_palloc(r->pool, sizeof(ngx_http_waf_ctx_t));
         if (ctx == NULL) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to allocate memory for ctx");
             return NGX_ERROR;
         }
 
@@ -246,34 +241,13 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         cln->next = NULL;
 
         ctx->r = r;
-        ctx->action_chain = NULL;
-        ctx->rate = 0;
-        ctx->response_str = NULL;
-        ctx->register_content_handler = 0;
-        ctx->gernal_logged = 0;
-        ctx->read_body_done = 0;
-        ctx->has_req_body = 0;
-        ctx->waiting_more_body = 0;
-        ctx->pre_content_run = 0;
-        ctx->checked = 0;
-        ctx->blocked = 0;
-        ctx->spend = (double)clock() / CLOCKS_PER_SEC * 1000;
-        ngx_str_null(&ctx->rule_type);
-        ngx_str_null(&ctx->rule_deatils);
-        ctx->req_body.pos = NULL;
-        ctx->req_body.last = NULL;
-        ctx->req_body.memory = 1;
-        ctx->req_body.temporary = 0;
-        ctx->req_body.mmap = 0;
         ctx->modsecurity_transaction = NULL;
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-        ctx->modsecurity_triggered = NGX_HTTP_WAF_FALSE;
-        ctx->start_from_thread = NGX_HTTP_WAF_FALSE;
-#endif
-        
+        ctx->next_chekcer_index = 0;
+        ctx->waiting_subrequest = 0;
 
         if (r->cleanup == NULL) {
             r->cleanup = cln;
+
         } else {
             for (ngx_http_cleanup_t* i = r->cleanup; i != NULL; i = i->next) {
                 if (i->next == NULL) {
@@ -290,73 +264,60 @@ ngx_int_t ngx_http_waf_check_all(ngx_http_request_t* r, ngx_int_t is_check_cc) {
         ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
     }
 
-    
-    if (ctx->register_content_handler && loc_conf->waf == 1) {
-        ngx_http_waf_register_content_handler(r);
-    }
-
-    if (ngx_http_waf_check_flag(!loc_conf->waf_mode, r->method)) {
+    if (ngx_http_waf_is_internal_request(r)) {
         return NGX_DECLINED;
     }
 
-
-    if (ctx->waiting_more_body) {
-        return NGX_DONE;
-    }
-
-    if (!ctx->read_body_done) {
-        r->request_body_in_single_buf = 1;
-        r->request_body_in_persistent_file = 1;
-        r->request_body_in_clean_file = 1;
-
-        ngx_int_t rc = ngx_http_read_client_request_body(r, _handler_read_request_body);
-        if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
-            return rc;
-        }
-        if (rc == NGX_AGAIN) {
-            ctx->waiting_more_body = 1;
-            return NGX_DONE;
-        }
-    }
-
-    if (!r->internal && ctx->checked) {
+    if (ctx->next_chekcer_index >= sizeof(loc_conf->check_proc) / sizeof(ngx_http_waf_check_pt*)) {
         return NGX_DECLINED;
     }
 
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    if (ctx->start_from_thread == NGX_HTTP_WAF_TRUE) {
-        if (ctx->modsecurity_triggered == NGX_HTTP_WAF_TRUE) {
-            return ctx->modsecurity_status;
-        } else {
-            return NGX_DECLINED;
-        }
+    if (ctx->waiting_subrequest) {
+        return NGX_AGAIN;
     }
-#endif
-
-    if (ctx->checked) {
-        return NGX_DECLINED;
-    }
-
-    if (_read_request_body(r) == NGX_HTTP_WAF_FAULT) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    ctx->checked = 1;
 
     ngx_http_waf_check_pt* funcs = loc_conf->check_proc;
-    for (size_t i = 0; funcs[i] != NULL; i++) {
-        is_matched = funcs[i](r);
-        if (is_matched == NGX_HTTP_WAF_MATCHED) {
-            break;
+    for (; ctx->next_chekcer_index < sizeof(loc_conf->check_proc) / sizeof(ngx_http_waf_check_pt*); ctx->next_chekcer_index++) {
+        check_result = funcs[ctx->next_chekcer_index](r);
+
+        if (!check_result.need_do_sth) {
+            continue;
         }
-        ctx->action_chain = NULL;
+
+        if (check_result.need_log) {
+            ngx_log_error(check_result.log_level, r->connection->log, 0, "[ngx_waf] %V", &check_result.log_message);
+        }
+
+        if (check_result.need_response) {
+            ctx->next_chekcer_index = sizeof(loc_conf->check_proc) / sizeof(ngx_http_waf_check_pt*);
+
+            if (ngx_http_waf_is_empty_str_value(&check_result.response_body)) {
+                return check_result.http_status;
+            }
+
+            ctx->result_for_content_phase = check_result;
+            r->content_handler = _handler_content_phase;
+        }
+
+        if (check_result.need_subrequest) {
+            if ((psr = ngx_palloc(r->pool, sizeof(ngx_http_post_subrequest_t))) == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to allocate memory for ngx_http_post_subrequest_t");
+                return NGX_ERROR;
+            }
+
+            psr->data = ctx;
+            psr->handler = check_result.subrequest_handler;
+
+            if (ngx_http_subrequest(r, &check_result.subrequest_uri, &check_result.subrequest_args, &sr, psr, NGX_HTTP_SUBREQUEST_IN_MEMORY) != NGX_OK) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to create subrequest");
+                return NGX_ERROR;
+            }
+
+            return NGX_AGAIN;
+        }
     }
 
-    ctx->spend = ((double)clock() / CLOCKS_PER_SEC * 1000) - ctx->spend;
-
-    ngx_int_t http_status = ngx_http_waf_perform_action_at_access_end(r);
-
-    return http_status;
+    return NGX_DECLINED;
 }
 
 
@@ -365,74 +326,61 @@ void ngx_http_waf_handler_cleanup(void *data) {
 }
 
 
-static ngx_int_t _read_request_body(ngx_http_request_t* r) {
-
+static ngx_int_t _handler_content_phase(ngx_http_request_t* r) {
     ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
+    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
+    ngx_http_waf_check_result_t result = ctx->result_for_content_phase;
+    ngx_buf_t* buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    ngx_chain_t* out;
+    ngx_int_t rc;
+    
+    r->headers_out.content_type.data = "text/html";
+    r->headers_out.content_type.len = sizeof("text/html") - 1;
 
+    r->headers_out.status = result.http_status;
 
-    if (r->request_body == NULL) {
-        return NGX_HTTP_WAF_FAIL;
+    r->headers_out.content_length_n = result.response_body.len;
+
+    if (ngx_http_waf_gen_no_cache_header(r) != NGX_HTTP_WAF_SUCCESS) {
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "[ngx_waf] failed to generate response header Cache-control");
     }
 
-    if (r->request_body->bufs == NULL) {
-        return NGX_HTTP_WAF_FAIL;
+    rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to send response header");
+        return rc;
     }
 
-    if (r->request_body->temp_file) {
-        return NGX_HTTP_WAF_FAIL;
+    if (r->header_only) {
+        return rc;
     }
 
-    if (ctx->has_req_body) {
-        return NGX_HTTP_WAF_SUCCESS;
+    if ((buf = ngx_pcalloc(r->pool, sizeof(ngx_buf_t))) == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to allocate memory for response body");
+        return NGX_ERROR; 
     }
 
-    ngx_chain_t* bufs = r->request_body->bufs;
-    size_t len = 0;
-
-    while (bufs != NULL) {
-        len += (bufs->buf->last - bufs->buf->pos) * (sizeof(u_char) / sizeof(uint8_t));
-        bufs = bufs->next;
+    if ((buf->pos = ngx_pcalloc(r->pool, result.response_body.len)) == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to allocate memory for response body");
+        return NGX_ERROR; 
     }
 
-    u_char* body = ngx_pnalloc(r->pool, len + sizeof(u_char));
-    if (body == NULL) {
-        return NGX_HTTP_WAF_FAULT;
+    ngx_memcpy(buf->pos, result.response_body.data, result.response_body.len);
+    buf->last = buf->pos + result.response_body.len;
+    buf->memory = 1;
+    buf->last_buf = 1;
+    buf->start = buf->pos;
+    buf->end = buf->last;
+
+    if ((out = ngx_pcalloc(r->pool, sizeof(ngx_chain_t))) == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[ngx_waf] failed to allocate memory for response body");
+        return NGX_ERROR; 
     }
 
-    ctx->has_req_body = 1;
-    ctx->req_body.pos = body;
-    ctx->req_body.last = (u_char*)((uint8_t*)body + len);
+    out->buf = buf;
+    out->next = NULL;
 
-    bufs = r->request_body->bufs;
-    size_t offset = 0;
-    while (bufs != NULL) {
-        size_t size = bufs->buf->last - bufs->buf->pos;
-        ngx_memcpy((uint8_t*)body + offset, bufs->buf->pos, size);
-        offset += size;
-        bufs = bufs->next;
-    }
-
-
-    return NGX_HTTP_WAF_SUCCESS;
-}
-
-
-static void _handler_read_request_body(ngx_http_request_t* r) {
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_loc_conf_t* loc_conf = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, &loc_conf, &ctx);
-
-    ctx->read_body_done = 1;
-    ngx_http_finalize_request(r, NGX_DONE);
-
-    if (ctx->waiting_more_body) {
-        ctx->waiting_more_body = 0;
-        ngx_http_core_run_phases(r);
-    }
-
+    return ngx_http_output_filter(r, out);
 }
 
 

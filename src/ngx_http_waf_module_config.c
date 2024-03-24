@@ -1608,25 +1608,10 @@ void* ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
 
 
 void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
-        static u_char s_rand_str[129] = { 0 };
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    static ngx_str_t s_thread_pool_name;
-    static ngx_thread_pool_t * s_thread_pool = NULL;
-#endif
+    static u_char s_rand_str[129] = { 0 };
     if (s_rand_str[0] == '\0') {
         ngx_http_waf_rand_str(s_rand_str, 128);
     }
-
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    ngx_str_set(&s_thread_pool_name, "ngx_waf");
-    s_thread_pool = ngx_thread_pool_get(cf->cycle, &s_thread_pool_name);
-    if (s_thread_pool == NULL) {
-        s_thread_pool = ngx_thread_pool_add(cf, &s_thread_pool_name);
-        if (s_thread_pool == NULL) {
-            return NULL;
-        }
-    }
-#endif
 
     ngx_http_waf_loc_conf_t* conf = NULL;
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_loc_conf_t));
@@ -1696,9 +1681,6 @@ void* ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
     ngx_str_null(&conf->waf_modsecurity_rules_remote_key);
     ngx_str_null(&conf->waf_modsecurity_rules_remote_url);
     conf->ip_access_statistics = NULL;
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    conf->thread_pool = s_thread_pool;
-#endif
     conf->is_custom_priority = NGX_HTTP_WAF_FALSE;
 
     conf->black_url = NGX_CONF_UNSET_PTR;

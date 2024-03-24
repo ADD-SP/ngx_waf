@@ -31,13 +31,9 @@
 #include <ngx_http_waf_module_shm.h>
 #include <ngx_http_waf_module_modsecurity.h>
 #include <ngx_http_waf_module_data.h>
-#include <ngx_http_waf_module_action.h>
 
 
 extern ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
-
-
-extern ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
 
 
 extern ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r);

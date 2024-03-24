@@ -42,7 +42,7 @@ void ngx_http_waf_handler_cleanup(void *data);
  * @retval MATCHED IP 地址在白名单中。
  * @retval NOT_MATCHED IP 地址不在白名单中。
 */
-ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r);
 
 
 /**
@@ -51,7 +51,7 @@ ngx_int_t ngx_http_waf_handler_check_white_ip(ngx_http_request_t* r);
  * @retval MATCHED IP 地址在黑名单中。
  * @retval NOT_MATCHED IP 地址不在黑名单中。
 */
-ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r);
 
 
 /**
@@ -60,7 +60,7 @@ ngx_int_t ngx_http_waf_handler_check_black_ip(ngx_http_request_t* r);
  * @retval MATCHED 超出限制。
  * @retval NOT_MATCHED 未超出限制。
 */
-ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r);
 
 
 /**
@@ -69,7 +69,7 @@ ngx_int_t ngx_http_waf_handler_check_cc(ngx_http_request_t* r);
  * @retval MATCHED 在白名单中。
  * @retval NOT_MATCHED 不在白名单中
 */
-ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r);
 
 
 /**
@@ -78,7 +78,7 @@ ngx_int_t ngx_http_waf_handler_check_white_url(ngx_http_request_t* r);
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r);
 
 
 /**
@@ -87,7 +87,7 @@ ngx_int_t ngx_http_waf_handler_check_black_url(ngx_http_request_t* r);
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r);
 
 
 /**
@@ -96,7 +96,7 @@ ngx_int_t ngx_http_waf_handler_check_black_args(ngx_http_request_t* r);
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r);
 
 
 /**
@@ -105,7 +105,7 @@ ngx_int_t ngx_http_waf_handler_check_black_user_agent(ngx_http_request_t* r);
  * @retval MATCHED 在白名单中。
  * @retval NOT_MATCHED 不在白黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r);
 
 
 /**
@@ -114,7 +114,7 @@ ngx_int_t ngx_http_waf_handler_check_white_referer(ngx_http_request_t* r);
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r);
 
 
 /**
@@ -123,13 +123,13 @@ ngx_int_t ngx_http_waf_handler_check_black_referer(ngx_http_request_t* r);
  * @retval MATCHED 在黑名单中。
  * @retval NOT_MATCHED 不在黑名单中
 */
-ngx_int_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_cookie(ngx_http_request_t* r);
 
 
 /**
  * @brief 检查请求体内容是否存在于黑名单中，存在则拦截，反之放行。
 */
-ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
+ngx_http_waf_check_result_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
 
 
 /**
@@ -140,7 +140,7 @@ ngx_int_t ngx_http_waf_handler_check_black_post(ngx_http_request_t* r);
  * @param[in] cache 检测时所使用的缓存管理器
  * @return 如果匹配到返回 NGX_HTTP_WAF_MATCHED，反之则为 NGX_HTTP_WAF_NOT_MATCHED。
 */
-ngx_int_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r, 
+ngx_http_waf_check_result_t ngx_http_waf_regex_exec_arrray(ngx_http_request_t* r, 
                                          ngx_str_t* str, 
                                          ngx_array_t* array, 
                                          const u_char* rule_type, 

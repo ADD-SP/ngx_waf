@@ -4,9 +4,6 @@
 extern ngx_module_t ngx_http_waf_module; /**< 模块详情 */
 
 
-extern ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
-
-
 extern void ngx_http_waf_handler_cleanup(void *data);
 
 
@@ -555,7 +552,6 @@ ngx_int_t ngx_http_waf_sha256(u_char* dst, size_t dst_len, const void* buf, size
 
 
 void ngx_http_waf_get_ctx_and_conf(ngx_http_request_t* r, ngx_http_waf_loc_conf_t** conf, ngx_http_waf_ctx_t** ctx) {
-
     if (ctx != NULL) {
         *ctx = NULL;
         *ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
@@ -614,34 +610,6 @@ void ngx_http_waf_make_inx_addr(ngx_http_request_t* r, inx_addr_t* inx_addr) {
         ngx_memcpy(&(inx_addr->ipv6), &(s_addr_in6->sin6_addr), sizeof(struct in6_addr));
     }
 #endif
-}
-
-
-void ngx_http_waf_set_rule_info(ngx_http_request_t* r, char* type, char* details, ngx_int_t gernal_logged, ngx_int_t blocked) {
-
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-
-
-    size_t type_len = ngx_strlen(type);
-    size_t details_len = ngx_strlen(details);
-
-    ctx->rule_type.data = ngx_pcalloc(r->pool, type_len);
-    ctx->rule_type.len = type_len;
-    ngx_memcpy(ctx->rule_type.data, type, type_len);
-
-    ctx->rule_deatils.data = ngx_pcalloc(r->pool, details_len);
-    ctx->rule_deatils.len = details_len;
-    ngx_memcpy(ctx->rule_deatils.data, details, details_len);
-
-    if (gernal_logged == NGX_HTTP_WAF_TRUE) {
-        ctx->gernal_logged = 1;
-    }
-
-    if (blocked == NGX_HTTP_WAF_TRUE) {
-        ctx->blocked = 1;
-    }
-
 }
 
 
@@ -760,18 +728,9 @@ ngx_int_t ngx_http_waf_gen_no_cache_header(ngx_http_request_t* r) {
     }
     header->hash = 1;
     header->lowcase_key = (u_char*)"cache-control";
-    ngx_str_set(&header->key, "Cache-control");
+    ngx_str_set(&header->key, "Cache-Control");
     ngx_str_set(&header->value, "no-store");
     return NGX_HTTP_WAF_SUCCESS;
-}
-
-
-void ngx_http_waf_register_content_handler(ngx_http_request_t* r) {
-    ngx_http_waf_ctx_t* ctx = NULL;
-    ngx_http_waf_get_ctx_and_conf(r, NULL, &ctx);
-    
-    ctx->register_content_handler = NGX_HTTP_WAF_TRUE;
-    r->content_handler = ngx_http_waf_handler_precontent_phase;
 }
 
 

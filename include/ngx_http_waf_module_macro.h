@@ -8,8 +8,6 @@
 
 #define NGX_HTTP_WAF_VERSION "v10.1.1"
 
-#define NGX_HTTP_WAF_ASYNC_MODSECURITY       (0)
-
 /* 对应配置文件的文件名 */
 #define NGX_HTTP_WAF_IPV4_FILE               ("ipv4")
 #define NGX_HTTP_WAF_IPV6_FILE               ("ipv6")
@@ -333,6 +331,12 @@
  * @note bit_index 从 0 开始计数，其中 0 代表最低位。
 */
 #define ngx_http_waf_check_bit(origin, bit_index) (ngx_http_waf_check_flag((origin), 1 << (bit_index)))
+
+
+#define ngx_http_waf_is_subrequest(r) ((r)->main != (r))
+
+
+#define ngx_http_waf_is_internal_request(r) ((r)->internal)
 
 
 #define ngx_http_waf_is_unset_or_disable_value(x) (((x) == NGX_CONF_UNSET) || ((x) == 0))
