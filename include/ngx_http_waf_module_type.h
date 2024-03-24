@@ -299,11 +299,6 @@ typedef struct ngx_http_waf_ctx_s {
     double                          spend;                                      /**< 本次检查花费的时间（毫秒） */
     char                           *response_str;                               /**< 如果不为 NULL 则返回所指的字符串和 200 状态码 */
     action_t                       *action_chain;
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    ngx_int_t                       modsecurity_status;                         /**< ModSecurity 规则所返回的 HTTP 状态码 */
-    ngx_int_t                       modsecurity_triggered;                      /**< 是否触发了 ModSecurity 的规则 */
-    ngx_int_t                       start_from_thread;                          /**< 是否是从 ModSecurity 的线程中被启动 */
-#endif
     ngx_int_t                       pre_content_run:1;                          /**< 是否已经执行过 pre_content handler */
     ngx_int_t                       gernal_logged:1;                            /**< 是否需要记录除 ModSecurity 以外的记录日志 */
     ngx_int_t                       checked:1;                                  /**< 是否启动了检测流程 */
@@ -409,9 +404,6 @@ typedef struct ngx_http_waf_loc_conf_s {
     lru_cache_t                    *black_cookie_inspection_cache;              /**< Cookie 黑名单检查缓存 */
     lru_cache_t                    *white_url_inspection_cache;                 /**< URL 白名单检查缓存 */
     lru_cache_t                    *white_referer_inspection_cache;             /**< Referer 白名单检查缓存 */
-#if (NGX_THREADS) && (NGX_HTTP_WAF_ASYNC_MODSECURITY)
-    ngx_thread_pool_t              *thread_pool;
-#endif
     ngx_int_t                       is_custom_priority;                         /**< 用户是否自定义了优先级 */
     ngx_http_waf_check_pt           check_proc[20];                             /**< 各种检测流程的启动函数 */
 } ngx_http_waf_loc_conf_t;

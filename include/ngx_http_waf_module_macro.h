@@ -8,8 +8,6 @@
 
 #define NGX_HTTP_WAF_VERSION "v10.1.1"
 
-#define NGX_HTTP_WAF_ASYNC_MODSECURITY       (0)
-
 /* 对应配置文件的文件名 */
 #define NGX_HTTP_WAF_IPV4_FILE               ("ipv4")
 #define NGX_HTTP_WAF_IPV6_FILE               ("ipv6")
