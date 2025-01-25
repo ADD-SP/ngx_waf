@@ -1,6 +1,6 @@
 name: test
 
-on: 
+on:
   push:
     branches:
   pull_request:
@@ -16,57 +16,81 @@ defaults:
 jobs:
   native:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name	!= 'schedule' }}
+
     strategy:
       matrix:
-        nginx-version: ['stable nginx', 'mainline nginx']
+        nginx-version:
+          - '1.18.0'
+          - '1.20.2'
+          - '1.22.1'
+          - '1.24.0'
+          - '1.26.2'
+          - '1.27.3'
         install-type:  ['static module', 'dynamic module']
+
+    env:
+      LIB_INJECTION: ${{ github.workspace }}/libinjection
+
     steps:
-      - uses: actions/checkout@v2
-        with: 
-          ref: ${{ github.ref }}
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Checkout libinjection sources
+        uses: actions/checkout@v2
+        with:
+          repository: 'libinjection/libinjection'
+          path: 'libinjection-src'
+
       - uses: actions/setup-python@v2
         with:
           python-version: '3.x'
           architecture: 'x64'
+
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
           sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison
+          sudo apt-get remove --yes python3-urllib3
           sudo pip install lastversion
-      - name: Download ${{ matrix.nginx-version }}
+
+      - name: Install libinjection
         run: |
-          chmod 777 -R ${{ github.workspace }}
-          sudo make parser
-          sudo git clone https://github.com/libinjection/libinjection.git inc/libinjection
-          if [ ${{ matrix.nginx-version }} = 'stable nginx' ] ; then  \
-            version='stable' ;\
-          else  \
-            version='mainline' ;\
-          fi
-          lastversion download nginx:${version}
+          cd libinjection-src
+          ./autogen.sh
+          ./configure --prefix=${{ env.LIB_INJECTION }}
+          make -j$(nproc)
+          sudo make install
+
+      - name: Download nginx-${{ matrix.nginx-version }}
+        run: |
+          wget https://nginx.org/download/nginx-${{ matrix.nginx-version }}.tar.gz
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
-      - name: Configure ${{ matrix.install-type }}
+
+      - name: Configure nginx-${{ matrix.install-type }}
         run: |
+          make parser
           cd nginx-src
           if [ ${{ matrix.install-type }} = 'static module' ] ; then \
             opt='--add-module' ;\
           else \
             opt='--add-dynamic-module' ;\
           fi
-          ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong -Wno-sign-compare' --with-http_realip_module
+          LIB_INJECTION=${{ env.LIB_INJECTION }} ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong -Wno-sign-compare' --with-http_realip_module
+
       - name: Install ${{ matrix.nginx-version }}
         run: |
           cd nginx-src
-          make
+          make -j$(nproc)
           sudo make install
           sudo useradd nginx -s /sbin/nologin -M
           sudo chmod 777 -R /usr/local/nginx
           sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
+
       - name: Install Test::Nginx
         run: |
           sudo cpan Test::Nginx
+
       - name: Test
         run: |
           sudo chmod 777 -R /tmp
