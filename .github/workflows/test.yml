@@ -14,22 +14,6 @@ defaults:
     shell: bash
 
 jobs:
-  self-trigger:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name	== 'schedule' }}
-    steps:
-      - name: Trigger
-        run: |
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
-            -d '{"ref":"refs/heads/lts"}'
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}" \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/${{ github.workflow }}.yml/dispatches \
-            -d '{"ref":"refs/heads/current"}'
   native:
     runs-on: ubuntu-latest
     if: ${{ github.event_name	!= 'schedule' }}
@@ -90,49 +74,3 @@ jobs:
           export MODULE_TEST_PATH=/tmp/module_test
           sh ./init.sh
           exec sudo sh start.sh t/*.t
-      
-  docker:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name	!= 'schedule' }}
-    strategy:
-      matrix:
-        version: ['stable', 'mainline']
-        target: ['glibc', 'musl']
-    steps:
-      - uses: actions/checkout@v2
-        with: 
-          ref: ${{ github.ref }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      - name: Build module
-        run: docker build --file docker/Dockerfile.${{ matrix.target }} --build-arg=VERSION=${{ matrix.version }} .
-  triger:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current')) }}
-    needs: ['native', 'docker']
-    steps:
-      - uses: actions/checkout@v2
-        with: 
-          ref: ${{ github.ref }}
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-      - name: Set up lastversion
-        run: pip3 install lastversion
-      - name: 'Trigger workflow: docker'
-        if: ${{ github.ref == 'refs/heads/lts' || github.ref == 'refs/heads/current' }}
-        run: |
-          curl -H "Authorization: token ${{ secrets.ACCESS_TOKEN }}"                                        \
-            -X POST                                                                                         \
-            -H "Accept: application/vnd.github.v3+json"                                                     \
-            https://api.github.com/repos/ADD-SP/ngx_waf/actions/workflows/docker.yml/dispatches             \
-            -d "{                                                                                           \
-                  \"ref\":\"${{ github.ref }}\",                                                            \
-                  \"inputs\": {                                                                             \
-                    \"ngx_stable_version_number\": \"`lastversion https://nginx.org --major stable`\",      \
-                    \"ngx_mainline_version_number\": \"`lastversion https://nginx.org --major mainline`\",  \
-                    \"module_version_number\": \"`cat assets/version.txt`\"                                 \
-                  }                                                                                         \
-                }"
