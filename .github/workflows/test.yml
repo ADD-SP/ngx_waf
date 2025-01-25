@@ -3,6 +3,9 @@ name: test
 on:
   push:
     branches:
+      - master
+      - lts*
+      - current*
   pull_request:
   schedule:
     - cron: '0 0 * * SUN'
