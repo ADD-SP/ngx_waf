@@ -4,6 +4,7 @@
 use crate::cache::CachedResult;
 use crate::cc;
 use crate::config::{BotId, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, BOTS};
+use crate::modsec;
 use crate::rules::RuleKind;
 use crate::types::*;
 use crate::util;
@@ -11,11 +12,21 @@ use std::rc::Rc;
 use std::time::Instant;
 
 /// A borrowed byte range that crosses a suspension: the C side owns the memory
-/// and keeps it alive until the request is finished.
+/// and keeps it alive until the request is finished.  nginx declares the length
+/// first, the field order matters (see the layout assertion in the C glue).
 #[derive(Clone, Copy)]
 pub struct RawStr {
-    pub data: *const u8,
     pub len: usize,
+    pub data: *const u8,
+}
+
+impl RawStr {
+    /// An empty view, for the fields a request does not carry.
+    #[cfg(test)]
+    const EMPTY: RawStr = RawStr {
+        data: std::ptr::null(),
+        len: 0,
+    };
 }
 
 impl RawStr {
@@ -43,6 +54,23 @@ pub struct RawReq {
     pub has_body: bool,
     pub internal: bool,
     pub now: i64,
+    /// The request headers, only `waf_modsecurity` reads them.
+    pub headers: *const crate::ffi::NgxWafHeader,
+    pub header_count: usize,
+    /// The evaluated `waf_modsecurity_transaction_id`; `data` is NULL when the
+    /// directive is not configured.
+    pub trans_id: RawStr,
+    /// The rest of what ModSecurity reads: the URI as it was sent, the method
+    /// and protocol, and the endpoints of the connection.
+    pub unparsed_uri: RawStr,
+    pub method_name: RawStr,
+    pub http_version: RawStr,
+    pub client_addr: RawStr,
+    pub client_port: u32,
+    pub server_addr: RawStr,
+    pub server_port: u32,
+    /// `r->connection->log`, the data of the ModSecurity log callback.
+    pub log: *mut std::os::raw::c_void,
     pub cc_zone: *mut cc::ZoneHandle,
     /// The shared memory zone of the captcha action table (`waf_action ... zone=`).
     pub action_zone: *mut cc::ZoneHandle,
@@ -72,6 +100,24 @@ impl RawReq {
             has_body: self.has_body,
             internal: self.internal,
             now: self.now,
+            headers: if self.headers.is_null() || self.header_count == 0 {
+                &[]
+            } else {
+                unsafe { std::slice::from_raw_parts(self.headers, self.header_count) }
+            },
+            trans_id: if self.trans_id.data.is_null() {
+                None
+            } else {
+                Some(self.trans_id.view())
+            },
+            unparsed_uri: self.unparsed_uri.view(),
+            method_name: self.method_name.view(),
+            http_version: self.http_version.view(),
+            client_addr: self.client_addr.view(),
+            client_port: self.client_port,
+            server_addr: self.server_addr.view(),
+            server_port: self.server_port,
+            log: self.log,
             cc_zone: self.cc_zone,
             action_zone: self.action_zone,
             captcha_zone: self.captcha_zone,
@@ -97,6 +143,22 @@ pub struct Req<'a> {
     #[allow(dead_code)]
     pub internal: bool,
     pub now: i64,
+    /// The request headers, in the order nginx parsed them.
+    pub headers: &'a [crate::ffi::NgxWafHeader],
+    /// The `waf_modsecurity_transaction_id` of this request, `None` when the
+    /// directive is not configured.
+    pub trans_id: Option<&'a [u8]>,
+    /// `r->unparsed_uri`, the URI ModSecurity inspects (the other inspections
+    /// use the decoded `uri`).
+    pub unparsed_uri: &'a [u8],
+    pub method_name: &'a [u8],
+    pub http_version: &'a [u8],
+    pub client_addr: &'a [u8],
+    pub client_port: u32,
+    pub server_addr: &'a [u8],
+    pub server_port: u32,
+    /// `r->connection->log`.
+    pub log: *mut std::os::raw::c_void,
     /// The handle of the CC zone, NULL when the configuration does not use one.
     pub cc_zone: *mut cc::ZoneHandle,
     /// The handle of the captcha action table (`waf_action ... zone=...`).
@@ -123,6 +185,9 @@ pub struct Outcome {
     pub rule_details: Vec<u8>,
     pub rate: i64,
     pub spend: f64,
+    /// A `Location` header the decision adds to its response (the redirect of
+    /// `waf_modsecurity`), empty when there is none.
+    pub location: Vec<u8>,
     /// `Set-Cookie` values the decision wants to add to its response.
     pub cookies: Vec<(String, String)>,
     /// The `ngx_waf: [rule][detail]` line of the log phase, built on demand.
@@ -146,6 +211,7 @@ impl Outcome {
             rule_details: Vec::new(),
             rate: 0,
             spend,
+            location: Vec::new(),
             cookies: Vec::new(),
             log: Vec::new(),
         }
@@ -183,6 +249,10 @@ struct State<'a, 'r> {
     /// inspection matched.
     decision: &'a mut Option<Decision>,
     meta: &'a mut Meta,
+    /// The ModSecurity transaction of this request, created by the
+    /// `waf_modsecurity` inspection and kept until nginx destroys the request
+    /// pool.
+    modsec: &'a mut Option<modsec::Transaction>,
     /// Whether the C side can perform the captcha provider request.  Until it
     /// can, a `waf_captcha on` configuration behaves like it did before the
     /// captcha support landed: accepted by the parser, warned about, and
@@ -196,6 +266,8 @@ struct Decision {
     content_type: u32,
     /// `Some` means the body is written by the content handler.
     body: Option<Rc<Vec<u8>>>,
+    /// The `Location` header of a redirect, `None` when there is none.
+    location: Option<Vec<u8>>,
     cookies: Vec<(String, String)>,
 }
 
@@ -206,6 +278,7 @@ impl Decision {
             status: 0,
             content_type: CT_HTML,
             body: None,
+            location: None,
             cookies: Vec::new(),
         }
     }
@@ -216,6 +289,7 @@ impl Decision {
             status,
             content_type: CT_HTML,
             body: None,
+            location: None,
             cookies: Vec::new(),
         }
     }
@@ -225,6 +299,7 @@ impl Decision {
             status,
             content_type: CT_HTML,
             body: Some(body),
+            location: None,
             cookies: Vec::new(),
         }
     }
@@ -234,6 +309,7 @@ impl Decision {
             status,
             content_type: CT_TEXT,
             body: Some(text),
+            location: None,
             cookies: Vec::new(),
         }
     }
@@ -268,8 +344,8 @@ impl State<'_, '_> {
             Policy::Return { status } => Decision::status(status),
             Policy::Page { status, body } => Decision::page(status, body),
             Policy::Text { status, text } => Decision::text(status, text),
-            // The status of a `FOLLOW` policy comes from the inspection
-            // itself; no ported inspection produces one yet.
+            // The status of a `FOLLOW` policy comes from the inspection that
+            // asked for it, it is resolved there (see `check_modsecurity()`).
             Policy::Follow => Decision::allow(),
             Policy::Captcha { source } => self.captcha_policy(source),
         });
@@ -415,10 +491,18 @@ enum CaptchaVerdict {
 }
 
 /// The cookies a visitor has to present, `_info_t` of the C implementation.
-const CAPTCHA_TIME_FIELD: usize = 21;
-const CAPTCHA_UID_FIELD: usize = 65;
-const CAPTCHA_HMAC_FIELD: usize = 65;
-const CAPTCHA_SALT_FIELD: usize = 129;
+/// The captcha cookies and the cookies of the "under attack" page have the
+/// same field sizes.
+const COOKIE_TIME_FIELD: usize = 21;
+const COOKIE_UID_FIELD: usize = 65;
+const COOKIE_HMAC_FIELD: usize = 65;
+const COOKIE_SALT_FIELD: usize = 129;
+
+/// `difftime(time(NULL), client_time) > 60 * 30`: the cookies of the "under
+/// attack" page expire after half an hour.
+const UNDER_ATTACK_EXPIRE: i64 = 60 * 30;
+/// The visitor is held back for five seconds.
+const UNDER_ATTACK_WAIT: i64 = 5;
 
 /// One step of the machine.
 pub enum Step {
@@ -460,6 +544,10 @@ pub struct Machine {
     /// The request the C side has to perform when the machine parks on an HTTP
     /// step.
     fetch: Option<(String, Vec<u8>)>,
+    /// The ModSecurity transaction of this request.  It is created when the
+    /// `waf_modsecurity` inspection runs and stays alive until the machine is
+    /// released, which is after the log phase of nginx.
+    modsec: Option<modsec::Transaction>,
     /// Whether the C side is able to perform that request.
     http_transport: bool,
 }
@@ -485,6 +573,7 @@ impl Machine {
             meta: Meta::new(),
             continuation: None,
             fetch: None,
+            modsec: None,
             http_transport,
         }
     }
@@ -510,6 +599,7 @@ impl Machine {
             &self.priority,
             &mut self.decision,
             &mut self.meta,
+            &mut self.modsec,
             self.http_transport,
         );
 
@@ -560,6 +650,14 @@ impl Machine {
             .map(|(url, body)| (url.as_str(), body.as_slice()))
     }
 
+    /// The log phase of nginx: let ModSecurity write the audit log of the
+    /// transaction of this request, if it started one.
+    pub fn log_phase(&mut self) {
+        if let Some(transaction) = self.modsec.as_mut() {
+            transaction.process_logging();
+        }
+    }
+
     /// Feed the result of the asynchronous operation back into the machine.
     pub fn resume(&mut self, event: Event<'_>) -> Step {
         let Some(continuation) = self.continuation.take() else {
@@ -608,6 +706,7 @@ impl Machine {
                 req: &req,
                 decision: &mut decision,
                 meta: &mut self.meta,
+                modsec: &mut self.modsec,
                 http_transport: self.http_transport,
             };
             let result = captcha_apply(&mut state, path, verdict);
@@ -665,6 +764,7 @@ impl Machine {
                 req: &self.req.view(&self.cookies),
                 decision: &mut decision,
                 meta: &mut self.meta,
+                modsec: &mut self.modsec,
                 http_transport: self.http_transport,
             };
             state.apply_policy(policy);
@@ -707,6 +807,7 @@ fn run_checks(
     priority: &[CheckId],
     decision: &mut Option<Decision>,
     meta: &mut Meta,
+    modsec: &mut Option<modsec::Transaction>,
     http_transport: bool,
 ) -> RunResult {
     // The captcha session check runs before every other inspection, it is not
@@ -717,6 +818,7 @@ fn run_checks(
             req,
             decision,
             meta,
+            modsec,
             http_transport,
         };
         match check_captcha_session(&mut state) {
@@ -749,6 +851,7 @@ fn run_checks(
             req,
             decision,
             meta,
+            modsec,
             http_transport,
         };
         match run_check(&mut state, *id) {
@@ -828,6 +931,17 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
             has_body: req.has_body,
             internal: req.internal,
             now: req.now,
+            headers: std::ptr::null(),
+            header_count: 0,
+            trans_id: RawStr::EMPTY,
+            unparsed_uri: RawStr::EMPTY,
+            method_name: RawStr::EMPTY,
+            http_version: RawStr::EMPTY,
+            client_addr: RawStr::EMPTY,
+            client_port: 0,
+            server_addr: RawStr::EMPTY,
+            server_port: 0,
+            log: std::ptr::null_mut(),
             cc_zone: req.cc_zone,
             action_zone: req.action_zone,
             captcha_zone: req.captcha_zone,
@@ -864,10 +978,119 @@ fn run_check(state: &mut State, id: CheckId) -> CheckResult {
         CheckId::Post => check_post(state).into(),
         CheckId::VerifyBot => check_verify_bot(state),
         CheckId::Captcha => check_captcha(state),
-        // Not ported yet: the inspections keep their place in the priority
-        // order, but they cannot match a request (see rust/README.md).
-        CheckId::UnderAttack | CheckId::Modsecurity => CheckResult::NotMatched,
+        CheckId::UnderAttack => check_under_attack(state),
+        CheckId::Modsecurity => check_modsecurity(state),
     }
+}
+
+/// `waf_modsecurity`: run the request phases of one transaction of the library
+/// and turn its intervention into a decision.  This is the port of
+/// `ngx_http_waf_handler_modsecurity()` and the `_process_*()` helpers of the
+/// C implementation, without the thread pool path
+/// (`NGX_HTTP_WAF_ASYNC_MODSECURITY`).
+fn check_modsecurity(state: &mut State) -> CheckResult {
+    if state.conf.modsecurity != 1 {
+        return CheckResult::NotMatched;
+    }
+    // `ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)`
+    if !state.mode_enabled(state.req.method) {
+        return CheckResult::NotMatched;
+    }
+
+    let Some(instance) = state.conf.modsecurity_instance.clone() else {
+        // The directive loads the rules while nginx reads the configuration, so
+        // an enabled `waf_modsecurity` always has an instance.  A missing one
+        // means the configuration was built by hand; inspect nothing rather
+        // than crash on a null pointer.
+        return CheckResult::NotMatched;
+    };
+
+    let Some(mut transaction) = instance.transaction(state.req.trans_id, state.req.log) else {
+        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        return CheckResult::Matched;
+    };
+
+    // Every failed phase answers 500 in the C implementation, whatever the
+    // request looked like.
+    let failed = run_modsecurity_request(&mut transaction, state.req).is_err();
+    *state.modsec = Some(transaction);
+    if failed {
+        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        return CheckResult::Matched;
+    }
+
+    let Some(verdict) = state.modsec.as_mut().expect("just stored").intervention() else {
+        return CheckResult::NotMatched;
+    };
+
+    if let Some(log) = verdict.log {
+        state.set_rule_info(b"ModSecurity", &log, true, true);
+    }
+    if verdict.disruptive {
+        state.meta.blocked = true;
+    }
+
+    if let Some(url) = verdict.url {
+        // A redirection ignores the configured policy, the C implementation
+        // answered with the status of the intervention whatever it was.
+        let mut decision = Decision::status(verdict.status);
+        decision.location = Some(url);
+        *state.decision = Some(decision);
+        return CheckResult::Matched;
+    }
+
+    if verdict.status == HTTP_OK {
+        return CheckResult::NotMatched;
+    }
+
+    if state
+        .modsec
+        .as_mut()
+        .expect("the transaction is alive")
+        .update_status_code(verdict.status)
+        .is_err()
+    {
+        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        return CheckResult::Matched;
+    }
+
+    if (400..600).contains(&verdict.status) {
+        // `waf_action modsecurity=FOLLOW` (the built-in default of the trigger)
+        // answers with the status of the intervention, every other policy is
+        // the response the configuration asked for.
+        let policy = state.conf.policy(TriggerKind::Modsecurity);
+        if policy == Policy::Follow {
+            *state.decision = Some(Decision::status(verdict.status));
+        } else {
+            state.apply_policy(policy);
+        }
+    } else {
+        *state.decision = Some(Decision::status(verdict.status));
+    }
+    CheckResult::Matched
+}
+
+/// The request phases of one transaction, in the order the C implementation
+/// ran them.
+fn run_modsecurity_request(transaction: &mut modsec::Transaction, req: &Req<'_>) -> Result<(), ()> {
+    transaction.process_connection(
+        req.client_addr,
+        req.client_port,
+        req.server_addr,
+        req.server_port,
+    )?;
+    transaction.process_uri(req.unparsed_uri, req.method_name, req.http_version)?;
+    for header in req.headers {
+        // The C glue owns the header values and keeps them alive for the whole
+        // request, `NgxWafStr::as_slice()` explains the safety.
+        let (key, value) = unsafe { (header.key.as_slice(), header.value.as_slice()) };
+        transaction.add_request_header(key, value)?;
+    }
+    transaction.process_request_headers()?;
+    if req.has_body {
+        transaction.append_request_body(req.body)?;
+    }
+    transaction.process_request_body()
 }
 
 /// The `waf_captcha` inspection: a visitor that passed the challenge carries a
@@ -1055,16 +1278,16 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
         return Ok(false);
     };
 
-    if time.len() >= CAPTCHA_TIME_FIELD
-        || uid.len() >= CAPTCHA_UID_FIELD
-        || hmac.len() >= CAPTCHA_HMAC_FIELD
+    if time.len() >= COOKIE_TIME_FIELD
+        || uid.len() >= COOKIE_UID_FIELD
+        || hmac.len() >= COOKIE_HMAC_FIELD
     {
         // The C implementation copies into fixed size fields, a longer value is
         // not a cookie it could have minted.
         return Ok(false);
     }
 
-    let expected = captcha_hmac(state, time, uid);
+    let expected = cookie_hmac(state, time, uid);
     if expected.as_bytes() != hmac {
         return Ok(false);
     }
@@ -1083,27 +1306,29 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
 fn captcha_mint(state: &State) -> Option<(String, String, String)> {
     let time = state.req.now.to_string();
     let uid = String::from_utf8(util::rand_letters(64)).ok()?;
-    let hmac = captcha_hmac(state, time.as_bytes(), uid.as_bytes());
+    let hmac = cookie_hmac(state, time.as_bytes(), uid.as_bytes());
     Some((time, uid, hmac))
 }
 
 /// The HMAC of the C implementation: SHA-256 over the zero padded
-/// `{address, time, uid, salt}` buffer, hex encoded.
-fn captcha_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
-    let mut buffer = vec![0u8; 16 + CAPTCHA_TIME_FIELD + CAPTCHA_UID_FIELD + CAPTCHA_SALT_FIELD];
+/// `{address, time, uid, salt}` buffer, hex encoded.  The captcha cookies and
+/// the cookies of the "under attack" page use the same field sizes, so both
+/// flows share this function.
+fn cookie_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
+    let mut buffer = vec![0u8; 16 + COOKIE_TIME_FIELD + COOKIE_UID_FIELD + COOKIE_SALT_FIELD];
     let ip_len = std::cmp::min(state.req.ip.len(), 16);
     buffer[..ip_len].copy_from_slice(&state.req.ip[..ip_len]);
 
     let time_offset = 16;
-    let time_len = std::cmp::min(time.len(), CAPTCHA_TIME_FIELD - 1);
+    let time_len = std::cmp::min(time.len(), COOKIE_TIME_FIELD - 1);
     buffer[time_offset..time_offset + time_len].copy_from_slice(&time[..time_len]);
 
-    let uid_offset = time_offset + CAPTCHA_TIME_FIELD;
-    let uid_len = std::cmp::min(uid.len(), CAPTCHA_UID_FIELD - 1);
+    let uid_offset = time_offset + COOKIE_TIME_FIELD;
+    let uid_len = std::cmp::min(uid.len(), COOKIE_UID_FIELD - 1);
     buffer[uid_offset..uid_offset + uid_len].copy_from_slice(&uid[..uid_len]);
 
-    let salt_offset = uid_offset + CAPTCHA_UID_FIELD;
-    let salt_len = std::cmp::min(state.conf.random_str.len(), CAPTCHA_SALT_FIELD - 1);
+    let salt_offset = uid_offset + COOKIE_UID_FIELD;
+    let salt_len = std::cmp::min(state.conf.random_str.len(), COOKIE_SALT_FIELD - 1);
     buffer[salt_offset..salt_offset + salt_len].copy_from_slice(&state.conf.random_str[..salt_len]);
 
     util::sha256_hex(&buffer)
@@ -1179,6 +1404,79 @@ fn provider_verdict(body: &[u8], is_v3: bool, threshold: f64) -> bool {
         .and_then(|value| value.as_f64())
         .map(|score| score >= threshold)
         .unwrap_or(false)
+}
+
+/// `waf_under_attack`: hold every visitor back for five seconds before letting
+/// it reach the server.  A visitor that already waited carries a cookie trio,
+/// which is what makes the second request go through.
+fn check_under_attack(state: &mut State) -> CheckResult {
+    if state.conf.under_attack != 1 {
+        return CheckResult::NotMatched;
+    }
+
+    let time = cookie_value(state.req.cookies, "__waf_under_attack_time");
+    let uid = cookie_value(state.req.cookies, "__waf_under_attack_uid");
+    let hmac = cookie_value(state.req.cookies, "__waf_under_attack_hmac");
+
+    // The C implementation copies the three cookies into a zeroed `_info_t`,
+    // recomputes the HMAC of the copy and memcmp()s both structs: only the HMAC
+    // field can differ, and a cookie longer than its field could not have been
+    // minted by this module.
+    let mut client_time = None;
+    let valid = match (time, uid, hmac) {
+        (Some(time), Some(uid), Some(hmac)) => {
+            if time.len() >= COOKIE_TIME_FIELD
+                || uid.len() >= COOKIE_UID_FIELD
+                || hmac.len() >= COOKIE_HMAC_FIELD
+            {
+                false
+            } else if cookie_hmac(state, time, uid).as_bytes() == hmac {
+                client_time = util::atoi(time);
+                true
+            } else {
+                false
+            }
+        }
+        _ => false,
+    };
+
+    let expired = client_time
+        .map(|client_time| state.req.now - client_time > UNDER_ATTACK_EXPIRE)
+        .unwrap_or(true);
+    if !valid || expired {
+        // No trio, a forged one or an expired one: mint a fresh trio and hold
+        // the visitor back.
+        return under_attack_hold(state, true);
+    }
+
+    if state.req.now - client_time.expect("checked above") <= UNDER_ATTACK_WAIT {
+        // The visitor is waiting, it keeps the cookies it already has.
+        return under_attack_hold(state, false);
+    }
+
+    CheckResult::NotMatched
+}
+
+/// Answer 503 with the "under attack" page, minting a new cookie trio unless
+/// the visitor is simply still waiting.
+fn under_attack_hold(state: &mut State, mint: bool) -> CheckResult {
+    let mut decision = Decision::page(
+        HTTP_SERVICE_UNAVAILABLE,
+        Rc::clone(&state.conf.under_attack_html),
+    );
+    if mint {
+        let time = state.req.now.to_string();
+        let uid = String::from_utf8_lossy(&util::rand_letters(64)).into_owned();
+        let hmac = cookie_hmac(state, time.as_bytes(), uid.as_bytes());
+        decision.cookies = vec![
+            ("__waf_under_attack_time".to_string(), time),
+            ("__waf_under_attack_uid".to_string(), uid),
+            ("__waf_under_attack_hmac".to_string(), hmac),
+        ];
+    }
+    state.set_rule_info(b"UNDER-ATTACK", b"", true, true);
+    *state.decision = Some(decision);
+    CheckResult::Matched
 }
 
 /// `waf_verify_bot`: a user agent that claims to be a friendly crawler is
@@ -1480,6 +1778,7 @@ fn resolve(
         return outcome;
     };
 
+    outcome.location = decision.location.clone().unwrap_or_default();
     match decision.body {
         Some(body) => {
             outcome.kind = STEP_RESPONSE;
@@ -1568,6 +1867,16 @@ mod tests {
             has_body: false,
             internal: false,
             now: 1_000,
+            headers: &[],
+            trans_id: None,
+            unparsed_uri: b"",
+            method_name: b"GET",
+            http_version: b"1.1",
+            client_addr: b"127.0.0.1",
+            client_port: 1234,
+            server_addr: b"127.0.0.1",
+            server_port: 80,
+            log: std::ptr::null_mut(),
             cc_zone: std::ptr::null_mut(),
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
@@ -1837,6 +2146,17 @@ mod tests {
             has_body: false,
             internal: false,
             now: 1_000,
+            headers: std::ptr::null(),
+            header_count: 0,
+            trans_id: RawStr::EMPTY,
+            unparsed_uri: RawStr::EMPTY,
+            method_name: RawStr::EMPTY,
+            http_version: RawStr::EMPTY,
+            client_addr: RawStr::EMPTY,
+            client_port: 0,
+            server_addr: RawStr::EMPTY,
+            server_port: 0,
+            log: std::ptr::null_mut(),
             cc_zone: std::ptr::null_mut(),
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
@@ -1997,6 +2317,17 @@ mod tests {
             has_body: false,
             internal: false,
             now: 1_000,
+            headers: std::ptr::null(),
+            header_count: 0,
+            trans_id: RawStr::EMPTY,
+            unparsed_uri: RawStr::EMPTY,
+            method_name: RawStr::EMPTY,
+            http_version: RawStr::EMPTY,
+            client_addr: RawStr::EMPTY,
+            client_port: 0,
+            server_addr: RawStr::EMPTY,
+            server_port: 0,
+            log: std::ptr::null_mut(),
             cc_zone: std::ptr::null_mut(),
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
@@ -2075,6 +2406,17 @@ mod tests {
             has_body: body_len != 0,
             internal: false,
             now: 1_000,
+            headers: std::ptr::null(),
+            header_count: 0,
+            trans_id: RawStr::EMPTY,
+            unparsed_uri: RawStr::EMPTY,
+            method_name: RawStr::EMPTY,
+            http_version: RawStr::EMPTY,
+            client_addr: RawStr::EMPTY,
+            client_port: 0,
+            server_addr: RawStr::EMPTY,
+            server_port: 0,
+            log: std::ptr::null_mut(),
             cc_zone: std::ptr::null_mut(),
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
@@ -2355,5 +2697,302 @@ mod tests {
         }
 
         unsafe { cc::zone_free(zone) };
+    }
+
+    /// A configuration with `waf_under_attack on`.
+    fn under_attack_conf() -> LocConf {
+        let mut main = crate::config::MainConf::default();
+        let mut conf = LocConf {
+            waf: WAF_ON,
+            waf_mode: M_FULL,
+            ..LocConf::new()
+        };
+        crate::config::directive(&mut main, &mut conf, b"waf_under_attack", &[b"on".to_vec()])
+            .unwrap();
+        conf
+    }
+
+    fn under_attack_machine(conf: &mut LocConf, now: i64, cookies: Vec<Vec<u8>>) -> Machine {
+        let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
+        let (uri, uri_len) = leaked(b"/");
+        let raw = RawReq {
+            ip,
+            ip_len,
+            method: M_INSPECT_GET,
+            uri: RawStr {
+                data: uri,
+                len: uri_len,
+            },
+            args: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            user_agent: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            referer: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            body: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            has_body: false,
+            internal: false,
+            now,
+            headers: std::ptr::null(),
+            header_count: 0,
+            trans_id: RawStr::EMPTY,
+            unparsed_uri: RawStr::EMPTY,
+            method_name: RawStr::EMPTY,
+            http_version: RawStr::EMPTY,
+            client_addr: RawStr::EMPTY,
+            client_port: 0,
+            server_addr: RawStr::EMPTY,
+            server_port: 0,
+            log: std::ptr::null_mut(),
+            cc_zone: std::ptr::null_mut(),
+            action_zone: std::ptr::null_mut(),
+            captcha_zone: std::ptr::null_mut(),
+        };
+        Machine::new(conf as *mut LocConf, raw, cookies, true)
+    }
+
+    /// The `Cookie` header of a trio minted by the shield, the way the C glue
+    /// hands it over (`Cookie=a=1; b=2`).
+    fn cookie_header(cookies: &[(String, String)]) -> Vec<u8> {
+        let mut header = b"Cookie=".to_vec();
+        for (index, (name, value)) in cookies.iter().enumerate() {
+            if index != 0 {
+                header.extend_from_slice(b"; ");
+            }
+            header.extend_from_slice(format!("{name}={value}").as_bytes());
+        }
+        header
+    }
+
+    fn decide(machine: &mut Machine) -> Outcome {
+        match machine.step() {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("the shield never needs the event loop"),
+        }
+    }
+
+    #[test]
+    fn under_attack_holds_the_visitor_for_five_seconds() {
+        let mut conf = under_attack_conf();
+
+        // A first visit gets the page and a fresh cookie trio.
+        let mut machine = under_attack_machine(&mut conf, 1_000, Vec::new());
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert!(outcome.register_content_handler);
+        assert_eq!(outcome.body, *conf.under_attack_html);
+        assert_eq!(outcome.rule_type, b"UNDER-ATTACK");
+        assert!(outcome.blocked);
+        assert!(outcome.general_log);
+        assert_eq!(outcome.cookies.len(), 3);
+        assert_eq!(outcome.cookies[0].0, "__waf_under_attack_time");
+        assert_eq!(outcome.cookies[0].1, "1000");
+        let cookie = cookie_header(&outcome.cookies);
+
+        // Four seconds later the visitor is still waiting: the page comes back
+        // without minting another trio.
+        let mut machine = under_attack_machine(&mut conf, 1_004, vec![cookie.clone()]);
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert!(outcome.cookies.is_empty());
+
+        // Six seconds after the first visit the visitor goes through.
+        let mut machine = under_attack_machine(&mut conf, 1_006, vec![cookie.clone()]);
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(outcome.checked);
+        assert!(outcome.cookies.is_empty());
+
+        // A trio older than half an hour is replaced.
+        let mut machine = under_attack_machine(&mut conf, 1_000 + 60 * 31, vec![cookie.clone()]);
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.cookies[0].1, (1_000 + 60 * 31).to_string());
+
+        // So is a forged one.
+        let forged = b"Cookie=__waf_under_attack_time=1000; \
+            __waf_under_attack_uid=deadbeef; __waf_under_attack_hmac=deadbeef"
+            .to_vec();
+        let mut machine = under_attack_machine(&mut conf, 1_007, vec![forged]);
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.cookies[0].1, "1007");
+        assert_eq!(outcome.cookies[1].0, "__waf_under_attack_uid");
+        assert_eq!(outcome.cookies[1].1.len(), 64);
+    }
+
+    /// Write a rule file for the libmodsecurity tests below and return its
+    /// path.  The name is unique per call, and therefore per test.
+    fn modsecurity_rules() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "ngx-waf-test-{}-{}.conf",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::write(
+            &path,
+            b"SecRuleEngine On\n\
+              SecRequestBodyAccess On\n\
+              SecRule REQUEST_URI \"@streq /blocked\" \
+                \"id:1001,phase:2,deny,status:403,log,msg:'blocked'\"\n\
+              SecRule REQUEST_URI \"@streq /moved\" \
+                \"id:1002,phase:2,redirect:/,status:302,log\"\n",
+        )
+        .unwrap();
+        path
+    }
+
+    /// A configuration with `waf_modsecurity on` and the rules above.
+    fn modsecurity_conf(rules: &std::path::Path) -> LocConf {
+        let instance = modsec::Instance::create(Some(rules.to_str().unwrap().as_bytes()), None)
+            .expect("the rules load");
+        LocConf {
+            waf: WAF_ON,
+            waf_mode: M_FULL,
+            modsecurity: 1,
+            modsecurity_instance: Some(Rc::new(instance)),
+            ..LocConf::new()
+        }
+    }
+
+    /// A machine whose request is complete enough for the request phases of
+    /// libmodsecurity.
+    fn modsecurity_machine(conf: &mut LocConf, uri: &[u8]) -> Machine {
+        let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
+        let (uri, uri_len) = leaked(uri);
+        let (method, method_len) = leaked(b"GET");
+        let (version, version_len) = leaked(b"1.1");
+        let (client, client_len) = leaked(b"127.0.0.1");
+        let (server, server_len) = leaked(b"127.0.0.1");
+        let raw = RawReq {
+            ip,
+            ip_len,
+            method: M_INSPECT_GET,
+            uri: RawStr {
+                data: uri,
+                len: uri_len,
+            },
+            args: RawStr::EMPTY,
+            user_agent: RawStr::EMPTY,
+            referer: RawStr::EMPTY,
+            body: RawStr::EMPTY,
+            has_body: false,
+            internal: false,
+            now: 1_000,
+            headers: std::ptr::null(),
+            header_count: 0,
+            trans_id: RawStr::EMPTY,
+            unparsed_uri: RawStr {
+                data: uri,
+                len: uri_len,
+            },
+            method_name: RawStr {
+                data: method,
+                len: method_len,
+            },
+            http_version: RawStr {
+                data: version,
+                len: version_len,
+            },
+            client_addr: RawStr {
+                data: client,
+                len: client_len,
+            },
+            client_port: 12_345,
+            server_addr: RawStr {
+                data: server,
+                len: server_len,
+            },
+            server_port: 80,
+            log: std::ptr::null_mut(),
+            cc_zone: std::ptr::null_mut(),
+            action_zone: std::ptr::null_mut(),
+            captcha_zone: std::ptr::null_mut(),
+        };
+        Machine::new(conf as *mut LocConf, raw, Vec::new(), true)
+    }
+
+    #[test]
+    fn modsecurity_answers_with_the_status_of_the_intervention() {
+        let _guard = modsec::test_lock();
+        let rules = modsecurity_rules();
+        let mut conf = modsecurity_conf(&rules);
+
+        // The default policy of the trigger is `FOLLOW`: the status comes from
+        // the rule that matched.
+        let mut machine = modsecurity_machine(&mut conf, b"/blocked");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.rule_type, b"ModSecurity");
+        assert!(outcome.blocked);
+        assert!(outcome.general_log);
+        assert!(String::from_utf8_lossy(&outcome.rule_details).contains("blocked"));
+
+        // The log phase writes the audit log of the transaction, it must not
+        // crash and must not change the decision.
+        machine.log_phase();
+
+        // A request no rule matches is inspected and let through.
+        let mut machine = modsecurity_machine(&mut conf, b"/");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(outcome.rule_type.is_empty());
+        machine.log_phase();
+
+        std::fs::remove_file(&rules).unwrap();
+    }
+
+    #[test]
+    fn modsecurity_applies_the_configured_policy() {
+        let _guard = modsec::test_lock();
+        let rules = modsecurity_rules();
+        let mut conf = modsecurity_conf(&rules);
+        set_policy(
+            &mut conf,
+            TriggerKind::Modsecurity,
+            Policy::Return { status: 400 },
+        );
+
+        let mut machine = modsecurity_machine(&mut conf, b"/blocked");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, 400);
+        assert_eq!(outcome.rule_type, b"ModSecurity");
+
+        std::fs::remove_file(&rules).unwrap();
+    }
+
+    #[test]
+    fn modsecurity_redirects_whatever_the_policy_says() {
+        let _guard = modsec::test_lock();
+        let rules = modsecurity_rules();
+        let mut conf = modsecurity_conf(&rules);
+        set_policy(
+            &mut conf,
+            TriggerKind::Modsecurity,
+            Policy::Return { status: 400 },
+        );
+
+        let mut machine = modsecurity_machine(&mut conf, b"/moved");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, 302);
+        assert_eq!(outcome.location, b"/");
+
+        std::fs::remove_file(&rules).unwrap();
     }
 }

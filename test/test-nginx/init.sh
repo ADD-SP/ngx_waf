@@ -8,6 +8,10 @@ if [ -z "$MODULE_TEST_PATH" ] ; then
 fi
 
 base_dir="$MODULE_TEST_PATH"
+# The two upstream repositories the ModSecurity cases need are large and are
+# only fetched once: they live outside `$base_dir`, which is wiped on every
+# run, so a re-run on a machine without network access still works.
+deps_dir="${MODULE_TEST_DEPS:-$(dirname "$base_dir")/ngx-waf-test-deps}"
 origin_dir=$(pwd)
 
 rm -rf "$base_dir"
@@ -27,16 +31,22 @@ done
 cd "$base_dir/waf"
 
 # The ModSecurity/CRS cases need two upstream repositories.  They are only
-# fetched when they are not available yet so that the rest of the suite can run
-# without network access (those cases fail then).
-if [ ! -d ModSecurity ]; then
-    git clone https://github.com/SpiderLabs/ModSecurity.git || true
+# fetched when the cache is empty, the rest of the suite runs without them
+# (those cases fail then).
+mkdir -p "$deps_dir"
+if [ ! -d "$deps_dir/ModSecurity/.git" ]; then
+    rm -rf "$deps_dir/ModSecurity"
+    git clone https://github.com/SpiderLabs/ModSecurity.git "$deps_dir/ModSecurity" || true
 fi
-if [ ! -d coreruleset ]; then
-    git clone https://github.com/coreruleset/coreruleset.git || true
+if [ ! -d "$deps_dir/coreruleset/.git" ]; then
+    rm -rf "$deps_dir/coreruleset"
+    git clone https://github.com/coreruleset/coreruleset.git "$deps_dir/coreruleset" || true
 fi
 
-if [ -d ModSecurity ] && [ -d coreruleset ]; then
+if [ -d "$deps_dir/ModSecurity" ] && [ -d "$deps_dir/coreruleset" ]; then
+    ln -sfn "$deps_dir/ModSecurity" ModSecurity
+    ln -sfn "$deps_dir/coreruleset" coreruleset
+
     mkdir -p modsec
     cp coreruleset/crs-setup.conf.example ./modsec/crs-setup.conf
     cp ModSecurity/modsecurity.conf-recommended ./modsec/modsecurity.conf
@@ -48,7 +58,7 @@ if [ -d ModSecurity ] && [ -d coreruleset ]; then
     echo "SecRule ARGS:test \"@streq deny\" \"id:1234567,phase:2,log,auditlog,deny,status:403\"" >> ./modsec/modsecurity.conf
     echo "SecRule ARGS:test \"@streq redirect\" \"id:123456,phase:2,log,auditlog,redirect:/,status:302\"" >> ./modsec/modsecurity.conf
 else
-    echo "WARNING: ModSecurity/coreruleset are missing, the modsecurity cases will fail."
+    echo "WARNING: ModSecurity/coreruleset are missing from [$deps_dir], the modsecurity cases will fail."
 fi
 
 

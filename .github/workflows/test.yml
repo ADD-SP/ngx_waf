@@ -43,6 +43,13 @@ jobs:
             rust/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
 
+      # The crate is linked against libmodsecurity, `cargo test` therefore needs
+      # the library even when no inspection runs.
+      - name: Install libmodsecurity
+        run: |
+          sudo apt-get --yes update
+          sudo apt-get install --yes libmodsecurity-dev
+
       - name: Format
         run: cargo fmt --manifest-path rust/Cargo.toml --check
 
@@ -93,6 +100,7 @@ jobs:
             zlib1g-dev \
             libpcre2-dev \
             libssl-dev \
+            libmodsecurity-dev \
             libperl-dev \
             cpanminus
           sudo cpanm --notest Test::Nginx
@@ -128,11 +136,12 @@ jobs:
           export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
           sh ./init.sh
 
-          # The templates of the inspections that are already ported.  The
-          # under_attack and modsecurity ones are still missing (and the
-          # ModSecurity cases of action.t), see rust/README.md.
+          # Every template.  modsecurity.t and the ModSecurity cases of
+          # action.t need the ModSecurity/coreruleset repositories, init.sh
+          # clones them (once, into $MODULE_TEST_DEPS).
           sh ./start.sh \
             t/DATA_EXPUNGED.t \
+            t/action.t \
             t/args.t \
             t/bad_config.t \
             t/block_page.t \
@@ -146,8 +155,10 @@ jobs:
             t/ipv4.t \
             t/ipv6.t \
             t/mode.t \
+            t/modsecurity.t \
             t/post.t \
             t/referer.t \
+            t/under_attack.t \
             t/uri.t \
             t/user_agent.t \
             t/var.t \

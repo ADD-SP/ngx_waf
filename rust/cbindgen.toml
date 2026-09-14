@@ -32,8 +32,35 @@ header = """
 
 [export]
 prefix = ""
+# cbindgen exports every function of an `extern "C"` block, whatever the
+# `include` list says, so the raw bindings of libmodsecurity (see
+# rust/src/modsec.rs) are excluded by name here.
+exclude = [
+    "msc_init",
+    "msc_set_log_cb",
+    "msc_cleanup",
+    "msc_create_rules_set",
+    "msc_rules_add_file",
+    "msc_rules_add_remote",
+    "msc_rules_cleanup",
+    "msc_new_transaction",
+    "msc_new_transaction_with_id",
+    "msc_transaction_cleanup",
+    "msc_process_connection",
+    "msc_process_uri",
+    "msc_add_n_request_header",
+    "msc_process_request_headers",
+    "msc_append_request_body",
+    "msc_process_request_body",
+    "msc_update_status_code",
+    "msc_intervention",
+    "msc_process_logging",
+    "ngx_http_waf_modsecurity_log",
+    "free",
+]
 include = [
     "NgxWafStr",
+    "NgxWafHeader",
     "NgxWafReq",
     "NgxWafStep",
     "NgxWafEvent",
@@ -46,12 +73,13 @@ include = [
     "ngx_waf_conf_free",
     "ngx_waf_conf_cc_zone",
     "ngx_waf_conf_waf",
-    "ngx_waf_conf_unsupported",
+    "ngx_waf_conf_modsecurity",
     "ngx_waf_directive",
     "ngx_waf_zone_directive",
     "ngx_waf_conf_merge",
     "ngx_waf_check_begin",
     "ngx_waf_check_resume",
+    "ngx_waf_check_log",
     "ngx_waf_step_free",
     "ngx_waf_shm_zone_init",
     "ngx_waf_shm_zone_free",
@@ -62,6 +90,7 @@ include = [
 
 [export.rename]
 "NgxWafStr" = "ngx_waf_str_t"
+"NgxWafHeader" = "ngx_waf_header_t"
 "NgxWafReq" = "ngx_waf_req_t"
 "NgxWafStep" = "ngx_waf_step_t"
 "NgxWafEvent" = "ngx_waf_event_t"

@@ -58,10 +58,11 @@ make build    # build nginx with the static module in test/nginx-<version>
 make test     # the Rust unit tests and the nginx integration tests
 ```
 
-A stable Rust toolchain (with cargo) is required.  `NGINX_SRC` selects the nginx
-source tree to copy and `NGINX_VERSION` the version to download when it is
-missing.  The inspections that are not ported yet are listed in
-[`rust/README.md`](rust/README.md).
+A stable Rust toolchain (with cargo) and the development files of
+libmodsecurity 3 (for example the `libmodsecurity-dev` package, or `LIB_MODSECURITY`
+pointing at a prefix) are required.  `NGINX_SRC` selects the nginx source tree to
+copy and `NGINX_VERSION` the version to download when it is missing.  The known
+differences to the C implementation are listed in [`rust/README.md`](rust/README.md).
 
 ## Contact
 

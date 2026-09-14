@@ -80,7 +80,7 @@ build-dynamic: rust-core $(NGINX_CONFIGURE)
 
 ## Regenerate the C header from the Rust FFI definitions.
 header:
-	$(CBINDGEN) --config rust/cbindgen.toml --crate rust --output include/ngx_http_waf_ffi.h
+	$(CBINDGEN) --config rust/cbindgen.toml --output include/ngx_http_waf_ffi.h rust
 
 test: test-rust test-nginx
 

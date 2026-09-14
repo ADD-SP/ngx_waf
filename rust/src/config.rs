@@ -3,6 +3,7 @@
 //! through `ngx_conf_log_error()`.
 
 use crate::cache::LruCache;
+use crate::modsec;
 use crate::rules::{self, RuleSet};
 use crate::types::*;
 use crate::util;
@@ -442,9 +443,11 @@ pub struct LocConf {
     pub captcha_zone: i64,
     pub captcha_tag: Vec<u8>,
     pub modsecurity: i64,
-    pub modsecurity_rules_file: Vec<u8>,
-    pub modsecurity_remote_key: Vec<u8>,
-    pub modsecurity_remote_url: Vec<u8>,
+    /// The libmodsecurity instance and its rule set, built while nginx reads
+    /// the configuration by `waf_modsecurity on` and inherited by the contexts
+    /// below it.  `None` means "no instance yet", which is what the merge
+    /// resolves.
+    pub modsecurity_instance: Option<Rc<modsec::Instance>>,
     pub block_page: Rc<Vec<u8>>,
     /// The policy of each trigger, indexed by `TriggerKind::index()`.  `None`
     /// means "nothing configured here", which the merge resolves by inheriting
@@ -461,9 +464,6 @@ pub struct LocConf {
     pub is_custom_priority: bool,
     pub rules: Option<Rc<RuleSet>>,
     pub caches: Caches,
-    /// Features that are configured but not implemented yet, reported once at
-    /// startup so nobody silently loses protection.
-    pub unsupported: Vec<&'static str>,
 }
 
 impl LocConf {
@@ -508,9 +508,7 @@ impl Default for LocConf {
             captcha_zone: -1,
             captcha_tag: Vec::new(),
             modsecurity: -1,
-            modsecurity_rules_file: Vec::new(),
-            modsecurity_remote_key: Vec::new(),
-            modsecurity_remote_url: Vec::new(),
+            modsecurity_instance: None,
             block_page: Rc::new(Vec::new()),
             policies: [None, None, None, None],
             random_str: Vec::new(),
@@ -520,7 +518,6 @@ impl Default for LocConf {
             is_custom_priority: false,
             rules: None,
             caches: Caches::default(),
-            unsupported: Vec::new(),
         }
     }
 }
@@ -597,12 +594,6 @@ impl LocConf {
             from: kind.flag(),
             policy,
         });
-    }
-
-    fn unsupported(&mut self, feature: &'static str) {
-        if !self.unsupported.contains(&feature) {
-            self.unsupported.push(feature);
-        }
     }
 }
 
@@ -937,7 +928,6 @@ fn directive_under_attack(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), St
     if conf.under_attack_html.is_empty() {
         conf.under_attack_html = Rc::new(HTML_UNDER_ATTACK.to_vec());
     }
-    conf.unsupported("waf_under_attack");
     Ok(())
 }
 
@@ -1256,6 +1246,10 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
         return Ok(());
     }
 
+    let mut file: Option<Vec<u8>> = None;
+    let mut remote_key: Option<Vec<u8>> = None;
+    let mut remote_url: Option<Vec<u8>> = None;
+
     for arg in &args[1..] {
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         match key.as_slice() {
@@ -1264,14 +1258,25 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
                 if !std::path::Path::new(&text).is_file() {
                     return Err(format!("ngx_waf: {text}: No such file or directory"));
                 }
-                conf.modsecurity_rules_file = value;
+                file = Some(value);
             }
-            b"remote_key" => conf.modsecurity_remote_key = value,
-            b"remote_url" => conf.modsecurity_remote_url = value,
+            b"remote_key" => remote_key = Some(value),
+            b"remote_url" => remote_url = Some(value),
             _ => return Err(INVALID.to_string()),
         }
     }
-    conf.unsupported("waf_modsecurity");
+
+    // The rules are loaded here, while nginx reads the configuration: a rule
+    // file the library cannot parse aborts the start up, exactly like the C
+    // implementation.  A second `waf_modsecurity` directive in the same
+    // context replaces the instance of the first one.
+    let remote = match (remote_key.as_deref(), remote_url.as_deref()) {
+        (Some(key), Some(url)) => Some((key, url)),
+        _ => None,
+    };
+    let instance = modsec::Instance::create(file.as_deref(), remote)?;
+    conf.modsecurity_instance = Some(Rc::new(instance));
+
     Ok(())
 }
 
@@ -1351,22 +1356,17 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
         (&mut child.captcha_secret, &parent.captcha_secret),
         (&mut child.captcha_api, &parent.captcha_api),
         (&mut child.captcha_verify_url, &parent.captcha_verify_url),
-        (
-            &mut child.modsecurity_rules_file,
-            &parent.modsecurity_rules_file,
-        ),
-        (
-            &mut child.modsecurity_remote_key,
-            &parent.modsecurity_remote_key,
-        ),
-        (
-            &mut child.modsecurity_remote_url,
-            &parent.modsecurity_remote_url,
-        ),
     ] {
         if child_value.is_empty() {
             *child_value = parent_value.clone();
         }
+    }
+
+    // `ngx_conf_merge_ptr_value(child->modsecurity_instance,
+    // parent->modsecurity_instance, NULL)`: a context that does not configure
+    // `waf_modsecurity` shares the instance of its parent.
+    if child.modsecurity_instance.is_none() {
+        child.modsecurity_instance = parent.modsecurity_instance.clone();
     }
 
     if parent.is_custom_priority && !child.is_custom_priority {
@@ -1638,6 +1638,84 @@ mod tests {
         dir(&mut conf, "waf_under_attack", &["on"]).unwrap();
         assert_eq!(conf.under_attack, 1);
         assert_eq!(conf.under_attack_html.as_slice(), HTML_UNDER_ATTACK);
+    }
+
+    /// A rule file the tests can load, the name is unique per call.
+    fn rule_file(text: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "ngx-waf-rule-test-{}-{}.conf",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    #[test]
+    fn modsecurity_validation() {
+        let _guard = modsec::test_lock();
+        let mut conf = LocConf::default();
+        assert!(dir(&mut conf, "waf_modsecurity", &["bad"]).is_err());
+        assert!(dir(&mut conf, "waf_modsecurity", &["on", "bad"]).is_err());
+        assert!(dir(
+            &mut conf,
+            "waf_modsecurity",
+            &["on", "file=/does/not/exist"]
+        )
+        .is_err());
+
+        dir(&mut conf, "waf_modsecurity", &["off"]).unwrap();
+        assert_eq!(conf.modsecurity, 0);
+        assert!(conf.modsecurity_instance.is_none());
+
+        // The rules are loaded while the directive is handled.
+        let rules = rule_file("SecRuleEngine On\n");
+        dir(
+            &mut conf,
+            "waf_modsecurity",
+            &["on", &format!("file={}", rules.display())],
+        )
+        .unwrap();
+        assert_eq!(conf.modsecurity, 1);
+        assert!(conf.modsecurity_instance.is_some());
+
+        // A rule file the library cannot parse reports what it said.
+        let broken = rule_file("SecRule nonsense\n");
+        let error = dir(
+            &mut conf,
+            "waf_modsecurity",
+            &["on", &format!("file={}", broken.display())],
+        )
+        .unwrap_err();
+        assert!(error.starts_with("ngx_waf: "), "{error}");
+
+        std::fs::remove_file(&rules).unwrap();
+        std::fs::remove_file(&broken).unwrap();
+    }
+
+    #[test]
+    fn modsecurity_instance_is_inherited() {
+        let _guard = modsec::test_lock();
+        let rules = rule_file("SecRuleEngine On\n");
+        let mut parent = LocConf::default();
+        dir(
+            &mut parent,
+            "waf_modsecurity",
+            &["on", &format!("file={}", rules.display())],
+        )
+        .unwrap();
+
+        let mut child = LocConf::default();
+        merge(&mut child, &mut parent).unwrap();
+        assert!(child.modsecurity_instance.is_some());
+        assert_eq!(child.modsecurity, 1);
+
+        std::fs::remove_file(&rules).unwrap();
     }
 
     #[test]

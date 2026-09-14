@@ -59,6 +59,44 @@ fi
 ngx_http_waf_module_libs=" -L $ngx_http_waf_lib_dir -l ngx_waf_core -l pthread -l dl -l m "
 ngx_http_waf_module_inc_path=" $ngx_http_waf_include "
 
+#
+# The Rust core talks to libmodsecurity through its C API, so nginx has to
+# link against the library.
+#
+if [ -n "$LIB_MODSECURITY" ]; then
+    ngx_http_waf_module_libs="$ngx_http_waf_module_libs -L $LIB_MODSECURITY/lib -l modsecurity "
+    ngx_http_waf_module_inc_path="$ngx_http_waf_module_inc_path $LIB_MODSECURITY/include "
+else
+    ngx_http_waf_module_libs="$ngx_http_waf_module_libs -l modsecurity "
+fi
+
+ngx_feature="modsecurity library"
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_path=$ngx_http_waf_module_inc_path
+ngx_feature_incs=$(cat << END
+#include <modsecurity/modsecurity.h>
+#include <modsecurity/transaction.h>
+END
+)
+ngx_feature_libs=$ngx_http_waf_module_libs
+ngx_feature_test=
+. auto/feature
+if [ $ngx_found = no ] ; then
+    cat << END
+$0: error: the $ngx_addon_name module requires the $ngx_feature.
+END
+    exit 1
+fi
+
+ngx_feature=
+ngx_feature_name=
+ngx_feature_run=
+ngx_feature_path=
+ngx_feature_incs=
+ngx_feature_libs=
+ngx_feature_test=
+
 
 if test -n "$ngx_module_link"; then
     ngx_module_type=HTTP_AUX_FILTER

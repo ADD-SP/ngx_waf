@@ -24,6 +24,7 @@ not up to date.
 | `src/cc.rs` | shared memory CC counters |
 | `src/config.rs` | directive parsing/validation, conf creation and merging |
 | `src/check.rs` | the detection chain and the action chain |
+| `src/modsec.rs` | the raw bindings and the thin wrapper around libmodsecurity |
 | `src/ffi.rs` | the C ABI |
 | `data/` | pages/templates extracted from the C implementation, see `tools/extract_data.py` |
 
@@ -31,7 +32,13 @@ not up to date.
 
 The nginx `config` script drives cargo; `make build` at the repository root is
 the supported entry point.  The crate builds offline as long as the cargo
-registry cache already contains `regex` and `getrandom`.
+registry cache already contains `regex`, `serde_json` and `getrandom`.  nginx
+links the crate against libmodsecurity, whose C API the `waf_modsecurity`
+inspection calls: the development files (headers and the shared library) have to
+be installed, `LIB_MODSECURITY` can point at a prefix when they are not in the
+system directories.  The bindings are the raw declarations of the C API in
+`src/modsec.rs` (libmodsecurity 3.0.x, tested with 3.0.12), not a separate
+`-sys` crate.
 
 ## Status
 
@@ -44,16 +51,15 @@ registry cache already contains `regex` and `getrandom`.
 | the `$waf_*` variables and the `ngx_waf: [rule][detail]` audit line | done |
 | `waf_verify_bot` (crawler user agent + reverse DNS) | done |
 | `waf_captcha` (cookies/HMAC, `verify_url`, provider verdict, fail counters, `waf_action X=CAPTCHA`, CC reset) | done |
-| `waf_under_attack`, `waf_modsecurity` | the directives are parsed and validated, the inspections are **not ported yet** |
+| `waf_under_attack` (the five second shield, cookie trio + HMAC) | done |
+| `waf_modsecurity` (rules, request phases, intervention, transaction id, audit log) | done, the response phases are not ported |
 
-The directives of the last row are accepted, so an existing configuration keeps
-loading, but they are reported with a warning at configuration time and they do
-not inspect anything yet.  Of the easter eggs, `waf_mode NICO` is accepted and
+Every directive of the C implementation is implemented and the full
+`test/test-nginx` suite passes (`modsecurity.t` needs the two upstream
+repositories, `test/test-nginx/init.sh` fetches them once into
+`$MODULE_TEST_DEPS`, `ngx-waf-test-deps` next to `$MODULE_TEST_PATH` by
+default).  Of the easter eggs, `waf_mode NICO` is accepted and
 `waf_block_page SpongeBob` works.
-
-What is left is visible in `test/test-nginx/template/`: `modsecurity.t`, and
-the ModSecurity cases of `action.t`, still fail; `under_attack.t` is not ported
-either.
 
 ## Known differences
 
@@ -100,6 +106,20 @@ either.
   that cannot find its zone is discarded by the "a check that did not match
   resets the action chain" rule, and a tag is always the user supplied text with
   a suffix (`zone=test:cc` gives the tag `cccc_deny`).
+* ModSecurity: the C implementation installed nginx header/body filters and ran
+  the response phases of the library (and the rules of CRS phase 3/4) with them.
+  This port only runs the request phases — connection, URI, request headers and
+  request body — so a rule that reacts to a response does not fire.  The
+  transaction is created when the inspection runs, kept in the request machine
+  and released with the request pool.
+* ModSecurity: the port calls `msc_process_logging()` in the log phase, so the
+  audit log the library configures (`SecAuditLog`) is written; the C
+  implementation leaked the transaction and never wrote it.  The transaction id
+  of `waf_modsecurity_transaction_id` is passed the same way, including when the
+  value it evaluates to is empty.
+* ModSecurity: with PCRE1 the C implementation pointed the allocator globals of
+  libpcre at the nginx pool while the rules were parsed; the glue does the same,
+  the rule loading itself happens in the Rust core.
 
 ## Verifying
 
@@ -114,3 +134,9 @@ block page, the variables, the CC protection and the `waf off` / `waf bypass` /
 `waf_mode` handling; `MODULE_PATH=.../ngx_http_waf_module.so` checks the
 dynamic module instead.  The upstream `Test::Nginx` templates remain the
 acceptance baseline, see `test/test-nginx/run.sh`.
+
+```sh
+cd test/test-nginx
+MODULE_TEST_PATH=/tmp/waf-test-path sh ./run.sh           # every template
+MODULE_TEST_PATH=/tmp/waf-test-path sh ./run.sh t/modsecurity.t
+```

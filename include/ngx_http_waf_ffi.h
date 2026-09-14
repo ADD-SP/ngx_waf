@@ -252,6 +252,10 @@ typedef struct ngx_waf_step_t {
     const struct ngx_waf_str_t *set_cookies;
     size_t set_cookie_count;
     /**
+     * The `Location` header of a decision (the redirect of ModSecurity).
+     */
+    struct ngx_waf_str_t location;
+    /**
      * `RESOLVE_ADDR`: the address to reverse resolve.
      */
     const uint8_t *ip;
@@ -263,6 +267,14 @@ typedef struct ngx_waf_step_t {
     struct ngx_waf_str_t http_body;
     int64_t timeout_ms;
 } ngx_waf_step_t;
+
+/**
+ * One request header, the `ngx_table_elt_t` list of nginx.
+ */
+typedef struct ngx_waf_header_t {
+    struct ngx_waf_str_t key;
+    struct ngx_waf_str_t value;
+} ngx_waf_header_t;
 
 /**
  * The request view the C glue fills in.
@@ -281,6 +293,30 @@ typedef struct ngx_waf_req_t {
     uint8_t has_body;
     uint8_t internal;
     int64_t now;
+    /**
+     * The request headers, only `waf_modsecurity` reads them.
+     */
+    const struct ngx_waf_header_t *headers;
+    size_t header_count;
+    /**
+     * The evaluated `waf_modsecurity_transaction_id`, its `data` is NULL when
+     * the directive is not configured.
+     */
+    struct ngx_waf_str_t trans_id;
+    /**
+     * The rest of what ModSecurity reads.
+     */
+    struct ngx_waf_str_t unparsed_uri;
+    struct ngx_waf_str_t method_name;
+    struct ngx_waf_str_t http_version;
+    struct ngx_waf_str_t client_addr;
+    uint32_t client_port;
+    struct ngx_waf_str_t server_addr;
+    uint32_t server_port;
+    /**
+     * `r->connection->log`, the data of the ModSecurity log callback.
+     */
+    void *log;
 } ngx_waf_req_t;
 
 /**
@@ -361,10 +397,10 @@ int64_t ngx_waf_conf_captcha_zone(void *conf);
 int64_t ngx_waf_conf_waf(void *conf);
 
 /**
- * A comma separated list of the configured but not implemented features, or
- * NULL.  Free the result with [`ngx_waf_string_free`].
+ * The `waf_modsecurity` value of the configuration: `-1` unset, 0 off, 1 on.
+ * The C glue only packs the request headers when the inspection can run.
  */
-char *ngx_waf_conf_unsupported(void *conf);
+int64_t ngx_waf_conf_modsecurity(void *conf);
 
 /**
  * Apply one directive, returns NULL on success or an error message.
@@ -408,6 +444,13 @@ struct ngx_waf_step_t *ngx_waf_check_begin(void *conf,
  * report the next step in the same handle.  Returns 0 on success.
  */
 int32_t ngx_waf_check_resume(struct ngx_waf_step_t *step, const struct ngx_waf_event_t *event);
+
+/**
+ * Run the log phase of one request: the audit log of the ModSecurity
+ * transaction, when the inspection created one.  nginx runs the log phase
+ * before the request pool (and with it the machine) is released.
+ */
+void ngx_waf_check_log(struct ngx_waf_step_t *step);
 
 void ngx_waf_step_free(struct ngx_waf_step_t *step);
 

@@ -1,0 +1,399 @@
+//! A thin wrapper over the C API of libmodsecurity.
+//!
+//! The C implementation of this module used the C++ API of libmodsecurity
+//! (`ModSecurity`, `RulesSet`, `Transaction`).  The same library is reachable
+//! through the C API (`msc_*` functions) of `<modsecurity/modsecurity.h>`,
+//! which is what a server connector needs: create an instance with a rule set,
+//! run the request phases of a transaction, look at the intervention and let
+//! the library write its own logs.
+//!
+//! The declarations below are written by hand instead of pulling a `-sys`
+//! crate: the module only calls a dozen functions and none of them ever
+//! changed since libmodsecurity 3.0.0, so the raw binding is smaller than the
+//! dependency would be.  The library itself is linked by nginx, see
+//! `ngx_http_waf_module_libs` in `config`.
+//!
+//! There is no response phase wrapper: the C implementation inspected the
+//! response headers and body through nginx output filters, which this port
+//! does not do yet (see `rust/README.md`).
+
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int, c_void};
+
+#[link(name = "modsecurity")]
+extern "C" {
+    fn msc_init() -> *mut c_void;
+    fn msc_set_log_cb(instance: *mut c_void, callback: ModSecLogCb);
+    fn msc_cleanup(instance: *mut c_void);
+
+    fn msc_create_rules_set() -> *mut c_void;
+    fn msc_rules_add_file(
+        rules: *mut c_void,
+        file: *const c_char,
+        error: *mut *const c_char,
+    ) -> c_int;
+    fn msc_rules_add_remote(
+        rules: *mut c_void,
+        key: *const c_char,
+        uri: *const c_char,
+        error: *mut *const c_char,
+    ) -> c_int;
+    fn msc_rules_cleanup(rules: *mut c_void) -> c_int;
+
+    fn msc_new_transaction(
+        instance: *mut c_void,
+        rules: *mut c_void,
+        log_data: *mut c_void,
+    ) -> *mut c_void;
+    fn msc_new_transaction_with_id(
+        instance: *mut c_void,
+        rules: *mut c_void,
+        id: *const c_char,
+        log_data: *mut c_void,
+    ) -> *mut c_void;
+    fn msc_transaction_cleanup(transaction: *mut c_void);
+
+    fn msc_process_connection(
+        transaction: *mut c_void,
+        client: *const c_char,
+        client_port: c_int,
+        server: *const c_char,
+        server_port: c_int,
+    ) -> c_int;
+    fn msc_process_uri(
+        transaction: *mut c_void,
+        uri: *const c_char,
+        method: *const c_char,
+        http_version: *const c_char,
+    ) -> c_int;
+    fn msc_add_n_request_header(
+        transaction: *mut c_void,
+        key: *const u8,
+        key_len: usize,
+        value: *const u8,
+        value_len: usize,
+    ) -> c_int;
+    fn msc_process_request_headers(transaction: *mut c_void) -> c_int;
+    fn msc_append_request_body(transaction: *mut c_void, body: *const u8, size: usize) -> c_int;
+    fn msc_process_request_body(transaction: *mut c_void) -> c_int;
+    fn msc_update_status_code(transaction: *mut c_void, status: c_int) -> c_int;
+    fn msc_intervention(transaction: *mut c_void, intervention: *mut Intervention) -> c_int;
+    fn msc_process_logging(transaction: *mut c_void) -> c_int;
+}
+
+extern "C" {
+    /// `src/ngx_http_waf_module.c`: writes one message of the library to the
+    /// error log of the connection, the log callback of the C implementation.
+    fn ngx_http_waf_modsecurity_log(log: *mut c_void, message: *const c_char);
+
+    /// The library hands the `url` and `log` of an intervention to the caller,
+    /// it does not own them anymore (the C implementation called `free()`).
+    fn free(pointer: *mut c_void);
+}
+
+/// `ModSecLogCb` of `<modsecurity/modsecurity.h>`.
+type ModSecLogCb = Option<unsafe extern "C" fn(log: *mut c_void, data: *const c_char)>;
+
+/// `ModSecurityIntervention` of `<modsecurity/intervention.h>`.
+#[repr(C)]
+struct Intervention {
+    status: c_int,
+    pause: c_int,
+    url: *mut c_char,
+    log: *mut c_char,
+    disruptive: c_int,
+}
+
+impl Intervention {
+    fn empty() -> Intervention {
+        Intervention {
+            status: 200,
+            pause: 0,
+            url: std::ptr::null_mut(),
+            log: std::ptr::null_mut(),
+            disruptive: 0,
+        }
+    }
+}
+
+/// What the library asks the server to do.
+pub struct Verdict {
+    pub status: u32,
+    /// A redirection target, when the rule asked for one.
+    pub url: Option<Vec<u8>>,
+    /// The message of the rule that matched.
+    pub log: Option<Vec<u8>>,
+    pub disruptive: bool,
+}
+
+/// A `ModSecurity` instance and its rule set, the pair the C implementation
+/// kept in the location configuration (`modsecurity_instance` and
+/// `modsecurity_rules`).
+pub struct Instance {
+    instance: *mut c_void,
+    rules: *mut c_void,
+}
+
+impl Instance {
+    /// Create the instance and load the rules of one `waf_modsecurity`
+    /// directive.  `file` is its `file=` argument, the optional pair is the
+    /// `remote_key=`/`remote_url=` one.
+    pub fn create(file: Option<&[u8]>, remote: Option<(&[u8], &[u8])>) -> Result<Instance, String> {
+        let instance = unsafe { msc_init() };
+        if instance.is_null() {
+            return Err("ngx_waf: msc_init() failed".to_string());
+        }
+
+        let rules = unsafe { msc_create_rules_set() };
+        if rules.is_null() {
+            unsafe { msc_cleanup(instance) };
+            return Err("ngx_waf: msc_create_rules_set() failed".to_string());
+        }
+
+        let loaded = Instance { instance, rules };
+        unsafe { msc_set_log_cb(loaded.instance, Some(modsecurity_log)) };
+
+        if let Some(file) = file {
+            let file = CString::new(file)
+                .map_err(|_| "ngx_waf: the path of the rule file is invalid".to_string())?;
+            let mut error: *const c_char = std::ptr::null();
+            let result = unsafe { msc_rules_add_file(loaded.rules, file.as_ptr(), &mut error) };
+            if result < 0 {
+                return Err(format!("ngx_waf: {}", take_error(error)));
+            }
+        }
+
+        if let Some((key, url)) = remote {
+            let key =
+                CString::new(key).map_err(|_| "ngx_waf: remote_key is invalid".to_string())?;
+            let url =
+                CString::new(url).map_err(|_| "ngx_waf: remote_url is invalid".to_string())?;
+            let mut error: *const c_char = std::ptr::null();
+            let result = unsafe {
+                msc_rules_add_remote(loaded.rules, key.as_ptr(), url.as_ptr(), &mut error)
+            };
+            if result < 0 {
+                return Err(format!("ngx_waf: {}", take_error(error)));
+            }
+        }
+
+        Ok(loaded)
+    }
+
+    /// Start one transaction.  `id` is the value of
+    /// `waf_modsecurity_transaction_id`, `None` when the directive is not
+    /// configured (the library then generates one); `log` is
+    /// `r->connection->log`, the data of the log callback.
+    pub fn transaction(&self, id: Option<&[u8]>, log: *mut c_void) -> Option<Transaction> {
+        let transaction = match id {
+            Some(id) => {
+                let id = CString::new(id).ok()?;
+                unsafe { msc_new_transaction_with_id(self.instance, self.rules, id.as_ptr(), log) }
+            }
+            None => unsafe { msc_new_transaction(self.instance, self.rules, log) },
+        };
+
+        if transaction.is_null() {
+            None
+        } else {
+            Some(Transaction { transaction })
+        }
+    }
+}
+
+impl Drop for Instance {
+    fn drop(&mut self) {
+        unsafe {
+            msc_rules_cleanup(self.rules);
+            msc_cleanup(self.instance);
+        }
+    }
+}
+
+/// One `ModSecurity` transaction, alive from the access phase until nginx
+/// destroys the request pool (which is after the log phase).
+pub struct Transaction {
+    transaction: *mut c_void,
+}
+
+impl Transaction {
+    /// `msc_process_connection()`: the client and server endpoints, the
+    /// arguments are the ones `_process_connection()` of the C implementation
+    /// passed.
+    pub fn process_connection(
+        &mut self,
+        client: &[u8],
+        client_port: u32,
+        server: &[u8],
+        server_port: u32,
+    ) -> Result<(), ()> {
+        let client = CString::new(client).map_err(|_| ())?;
+        let server = CString::new(server).map_err(|_| ())?;
+        let result = unsafe {
+            msc_process_connection(
+                self.transaction,
+                client.as_ptr(),
+                client_port as c_int,
+                server.as_ptr(),
+                server_port as c_int,
+            )
+        };
+        same_as_c(result)
+    }
+
+    /// `msc_process_uri()`.
+    pub fn process_uri(
+        &mut self,
+        uri: &[u8],
+        method: &[u8],
+        http_version: &[u8],
+    ) -> Result<(), ()> {
+        let uri = CString::new(uri).map_err(|_| ())?;
+        let method = CString::new(method).map_err(|_| ())?;
+        let http_version = CString::new(http_version).map_err(|_| ())?;
+        let result = unsafe {
+            msc_process_uri(
+                self.transaction,
+                uri.as_ptr(),
+                method.as_ptr(),
+                http_version.as_ptr(),
+            )
+        };
+        same_as_c(result)
+    }
+
+    /// `msc_add_n_request_header()`, called once per header of the request.
+    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+        if key.is_empty() {
+            return Ok(());
+        }
+        let result = unsafe {
+            msc_add_n_request_header(
+                self.transaction,
+                key.as_ptr(),
+                key.len(),
+                value.as_ptr(),
+                value.len(),
+            )
+        };
+        same_as_c(result)
+    }
+
+    /// `msc_process_request_headers()`.
+    pub fn process_request_headers(&mut self) -> Result<(), ()> {
+        same_as_c(unsafe { msc_process_request_headers(self.transaction) })
+    }
+
+    /// `msc_append_request_body()`.
+    pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), ()> {
+        same_as_c(unsafe { msc_append_request_body(self.transaction, body.as_ptr(), body.len()) })
+    }
+
+    /// `msc_process_request_body()`.
+    pub fn process_request_body(&mut self) -> Result<(), ()> {
+        same_as_c(unsafe { msc_process_request_body(self.transaction) })
+    }
+
+    /// `msc_update_status_code()`.
+    pub fn update_status_code(&mut self, status: u32) -> Result<(), ()> {
+        same_as_c(unsafe { msc_update_status_code(self.transaction, status as c_int) })
+    }
+
+    /// `msc_intervention()`, `None` when the library has nothing to ask for.
+    pub fn intervention(&mut self) -> Option<Verdict> {
+        let mut intervention = Intervention::empty();
+        if unsafe { msc_intervention(self.transaction, &mut intervention) } <= 0 {
+            return None;
+        }
+
+        let url = copy_and_free(intervention.url);
+        let log = copy_and_free(intervention.log);
+
+        Some(Verdict {
+            status: intervention.status as u32,
+            url,
+            log,
+            disruptive: intervention.disruptive != 0,
+        })
+    }
+
+    /// `msc_process_logging()`: let the library write its audit log.  Called
+    /// from the log phase of nginx.
+    pub fn process_logging(&mut self) {
+        unsafe {
+            msc_process_logging(self.transaction);
+        }
+    }
+}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        unsafe { msc_transaction_cleanup(self.transaction) };
+    }
+}
+
+/// The library and the C implementation both treat `1` as success.
+fn same_as_c(result: c_int) -> Result<(), ()> {
+    if result == 1 {
+        Ok(())
+    } else {
+        Err(())
+    }
+}
+
+/// The messages of the library go to the error log of the connection, the way
+/// `ngx_http_waf_modsecurity_handler_log()` of the C implementation did.
+unsafe extern "C" fn modsecurity_log(log: *mut c_void, message: *const c_char) {
+    if log.is_null() || message.is_null() {
+        return;
+    }
+    ngx_http_waf_modsecurity_log(log, message);
+}
+
+/// Take the message of a failed `msc_rules_add_*()` call: it is allocated with
+/// `strdup()` by the library, the caller frees it.
+fn take_error(error: *const c_char) -> String {
+    if error.is_null() {
+        return "(no error message)".to_string();
+    }
+    let message = unsafe { CStr::from_ptr(error) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { free(error as *mut c_void) };
+    message
+}
+
+/// Copy the string of an intervention, then release it (the caller owns it).
+fn copy_and_free(pointer: *mut c_char) -> Option<Vec<u8>> {
+    if pointer.is_null() {
+        return None;
+    }
+    let text = unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec();
+    unsafe { free(pointer as *mut c_void) };
+    Some(text)
+}
+
+/// Serialise the tests that use libmodsecurity.
+///
+/// The library must not be entered by two threads while instances come and go:
+/// its constructor and its destructor call `curl_global_init()` and
+/// `curl_global_cleanup()`, which libcurl documents as not thread safe.  nginx
+/// never does that (one instance per configuration, built while the
+/// configuration is read, one transaction per request in one worker process),
+/// the tests take this lock instead of running in parallel.
+#[cfg(test)]
+pub fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// `ngx_http_waf_modsecurity_log()` is provided by `src/ngx_http_waf_module.c`
+/// when nginx links the module.  `cargo test` links the crate on its own, so
+/// the tests bring a no-op of the symbol along.
+#[cfg(test)]
+mod test_glue {
+    use std::os::raw::{c_char, c_void};
+
+    #[no_mangle]
+    pub extern "C" fn ngx_http_waf_modsecurity_log(_log: *mut c_void, _message: *const c_char) {}
+}

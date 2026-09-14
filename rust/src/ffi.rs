@@ -24,13 +24,21 @@ pub struct NgxWafStr {
 impl NgxWafStr {
     /// # Safety
     /// `data` must point to `len` readable bytes.
-    unsafe fn as_slice(&self) -> &[u8] {
+    pub unsafe fn as_slice(&self) -> &[u8] {
         if self.data.is_null() || self.len == 0 {
             &[]
         } else {
             slice::from_raw_parts(self.data, self.len)
         }
     }
+}
+
+/// One request header, the `ngx_table_elt_t` list of nginx.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NgxWafHeader {
+    pub key: NgxWafStr,
+    pub value: NgxWafStr,
 }
 
 /// The request view the C glue fills in.
@@ -49,6 +57,22 @@ pub struct NgxWafReq {
     pub has_body: u8,
     pub internal: u8,
     pub now: i64,
+    /// The request headers, only `waf_modsecurity` reads them.
+    pub headers: *const NgxWafHeader,
+    pub header_count: usize,
+    /// The evaluated `waf_modsecurity_transaction_id`, its `data` is NULL when
+    /// the directive is not configured.
+    pub trans_id: NgxWafStr,
+    /// The rest of what ModSecurity reads.
+    pub unparsed_uri: NgxWafStr,
+    pub method_name: NgxWafStr,
+    pub http_version: NgxWafStr,
+    pub client_addr: NgxWafStr,
+    pub client_port: u32,
+    pub server_addr: NgxWafStr,
+    pub server_port: u32,
+    /// `r->connection->log`, the data of the ModSecurity log callback.
+    pub log: *mut c_void,
 }
 
 /// The result of one inspection.
@@ -75,6 +99,8 @@ pub struct NgxWafStep {
     /// `Set-Cookie` values for a decision that mints them (captcha).
     pub set_cookies: *const NgxWafStr,
     pub set_cookie_count: usize,
+    /// The `Location` header of a decision (the redirect of ModSecurity).
+    pub location: NgxWafStr,
     /// `RESOLVE_ADDR`: the address to reverse resolve.
     pub ip: *const u8,
     pub ip_len: usize,
@@ -107,6 +133,10 @@ impl NgxWafStep {
             spend: 0.0,
             set_cookies: std::ptr::null(),
             set_cookie_count: 0,
+            location: NgxWafStr {
+                len: 0,
+                data: std::ptr::null(),
+            },
             ip: std::ptr::null(),
             ip_len: 0,
             url: NgxWafStr {
@@ -280,26 +310,17 @@ pub extern "C" fn ngx_waf_conf_waf(conf: *mut c_void) -> i64 {
     .unwrap_or(-1)
 }
 
-/// A comma separated list of the configured but not implemented features, or
-/// NULL.  Free the result with [`ngx_waf_string_free`].
+/// The `waf_modsecurity` value of the configuration: `-1` unset, 0 off, 1 on.
+/// The C glue only packs the request headers when the inspection can run.
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_unsupported(conf: *mut c_void) -> *mut c_char {
+pub extern "C" fn ngx_waf_conf_modsecurity(conf: *mut c_void) -> i64 {
     if conf.is_null() {
-        return std::ptr::null_mut();
+        return -1;
     }
-    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-        let conf = &*(conf as *const LocConf);
-        if conf.unsupported.is_empty() {
-            None
-        } else {
-            Some(conf.unsupported.join(", "))
-        }
-    }));
-    match result {
-        Ok(Some(text)) => error_string(&text),
-        Ok(None) => std::ptr::null_mut(),
-        Err(_) => std::ptr::null_mut(),
-    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        (*(conf as *const LocConf)).modsecurity
+    }))
+    .unwrap_or(-1)
 }
 
 /// Apply one directive, returns NULL on success or an error message.
@@ -447,6 +468,35 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
             has_body: req.has_body != 0,
             internal: req.internal != 0,
             now: req.now,
+            headers: req.headers,
+            header_count: req.header_count,
+            trans_id: check::RawStr {
+                data: req.trans_id.data,
+                len: req.trans_id.len,
+            },
+            unparsed_uri: check::RawStr {
+                data: req.unparsed_uri.data,
+                len: req.unparsed_uri.len,
+            },
+            method_name: check::RawStr {
+                data: req.method_name.data,
+                len: req.method_name.len,
+            },
+            http_version: check::RawStr {
+                data: req.http_version.data,
+                len: req.http_version.len,
+            },
+            client_addr: check::RawStr {
+                data: req.client_addr.data,
+                len: req.client_addr.len,
+            },
+            client_port: req.client_port,
+            server_addr: check::RawStr {
+                data: req.server_addr.data,
+                len: req.server_addr.len,
+            },
+            server_port: req.server_port,
+            log: req.log,
             cc_zone: cc_zone as *mut cc::ZoneHandle,
             action_zone: action_zone as *mut cc::ZoneHandle,
             captcha_zone: captcha_zone as *mut cc::ZoneHandle,
@@ -500,6 +550,22 @@ pub unsafe extern "C" fn ngx_waf_check_resume(
     }
 }
 
+/// Run the log phase of one request: the audit log of the ModSecurity
+/// transaction, when the inspection created one.  nginx runs the log phase
+/// before the request pool (and with it the machine) is released.
+#[no_mangle]
+pub unsafe extern "C" fn ngx_waf_check_log(step: *mut NgxWafStep) {
+    if step.is_null() {
+        return;
+    }
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        let handle = &mut *(step as *mut StepHandle);
+        if let Some(machine) = handle.machine.as_mut() {
+            machine.log_phase();
+        }
+    }));
+}
+
 impl StepHandle {
     /// Run the machine once and publish the result into the C visible step.
     fn advance(&mut self) {
@@ -530,6 +596,10 @@ impl StepHandle {
             drop(take_string(
                 previous.rule_details,
                 previous.rule_details_len,
+            ));
+            drop(take_string(
+                previous.location.data as *mut u8,
+                previous.location.len,
             ));
         }
         self.cookie_text.clear();
@@ -609,6 +679,12 @@ fn step_from(outcome: check::Outcome) -> NgxWafStep {
     step.rule_type_len = outcome.rule_type.len();
     step.rule_details = leak_string(&outcome.rule_details);
     step.rule_details_len = outcome.rule_details.len();
+    if !outcome.location.is_empty() {
+        step.location = NgxWafStr {
+            len: outcome.location.len(),
+            data: leak_string(&outcome.location),
+        };
+    }
     step.blocked = outcome.blocked as u8;
     step.checked = outcome.checked as u8;
     step.general_log = outcome.general_log as u8;
@@ -636,6 +712,10 @@ pub unsafe extern "C" fn ngx_waf_step_free(step: *mut NgxWafStep) {
         drop(take_string(
             handle.step.rule_details,
             handle.step.rule_details_len,
+        ));
+        drop(take_string(
+            handle.step.location.data as *mut u8,
+            handle.step.location.len,
         ));
         drop(handle);
     }));

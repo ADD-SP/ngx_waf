@@ -57,9 +57,10 @@ make build    # 在 test/nginx-<version> 中构建带静态模块的 nginx
 make test     # Rust 单元测试与 nginx 集成测试
 ```
 
-需要 stable Rust 工具链（含 cargo）。`NGINX_SRC` 指定要复制的 nginx 源码目录，
-`NGINX_VERSION` 指定缺失时下载的版本。尚未移植的检测项见
-[`rust/README.md`](rust/README.md)。
+需要 stable Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如
+`libmodsecurity-dev` 软件包，或用 `LIB_MODSECURITY` 指定安装前缀）。`NGINX_SRC`
+指定要复制的 nginx 源码目录，`NGINX_VERSION` 指定缺失时下载的版本。与 C 实现的
+已知差异见 [`rust/README.md`](rust/README.md)。
 
 ## 联系方式
 

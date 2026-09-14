@@ -110,6 +110,41 @@ typedef char ngx_http_waf_method_bits_must_match[
      && NGX_HTTP_TRACE == 0x8000) ? 1 : -1];
 
 
+#if !(NGX_PCRE2)
+/*
+ * nginx and libmodsecurity share the same libpcre when nginx is built with
+ * PCRE1, and the library allocates through the global `pcre_malloc`/
+ * `pcre_free` while it parses rules.  The C implementation routed those
+ * allocations to the nginx pool of the configuration being read; the rule
+ * loading happened inside the Rust core, this glue switches the callbacks
+ * around the `waf_modsecurity` directive.
+ */
+extern void *(*pcre_malloc)(size_t);
+extern void  (*pcre_free)(void *);
+
+static ngx_pool_t  *ngx_http_waf_modsecurity_pcre_pool;
+static void        *ngx_http_waf_modsecurity_pcre_malloc_old;
+static void        *ngx_http_waf_modsecurity_pcre_free_old;
+#endif
+
+
+/*
+ * The log callback of libmodsecurity.  The Rust core installs it on every
+ * instance it creates, the symbol has to be visible (see `rust/src/modsec.rs`).
+ */
+void ngx_http_waf_modsecurity_log(void* log, const void* data);
+
+
+void ngx_http_waf_modsecurity_log(void* log, const void* data) {
+    if (log == NULL || data == NULL) {
+        return;
+    }
+
+    ngx_log_error(NGX_LOG_INFO, (ngx_log_t*) log, 0,
+        "ngx_waf: [ModSecurity][%s]", (const char*) data);
+}
+
+
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
 
 
@@ -277,6 +312,35 @@ static ngx_int_t ngx_http_waf_var_spend(ngx_http_request_t* r, ngx_http_variable
 
 
 static ngx_int_t ngx_http_waf_var_rate(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/*
+ * The `Location` header of a ModSecurity redirect.  `hash` stays 0: nginx
+ * turns `r->headers_out.location` into the header and the body of a 3xx
+ * response itself (see `ngx_http_special_response_handler()`), which is what
+ * the C implementation relied on as well.
+ */
+static void ngx_http_waf_add_location(ngx_http_request_t* r, ngx_waf_step_t* step) {
+    ngx_table_elt_t* location;
+
+    if (step->location.len == 0 || step->location.data == NULL) {
+        return;
+    }
+
+    ngx_http_clear_location(r);
+
+    location = ngx_list_push(&r->headers_out.headers);
+    if (location == NULL) {
+        return;
+    }
+
+    r->headers_out.location = location;
+    ngx_str_set(&location->key, "Location");
+    location->lowcase_key = (u_char*)"location";
+    location->value.data = (u_char*) step->location.data;
+    location->value.len = step->location.len;
+    location->hash = 0;
+}
 
 
 /**
@@ -1103,6 +1167,55 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
 
 
 
+#if !(NGX_PCRE2)
+static void* ngx_http_waf_modsecurity_pcre_malloc(size_t size) {
+    return ngx_palloc(ngx_http_waf_modsecurity_pcre_pool, size);
+}
+
+
+static void ngx_http_waf_modsecurity_pcre_free(void* ptr) {
+    ngx_pfree(ngx_http_waf_modsecurity_pcre_pool, ptr);
+}
+
+
+/*
+ * Point the allocator globals of libpcre at `pool` and return the pool they
+ * were pointed at before, NULL when the callbacks were installed by this call
+ * (and therefore have to be restored when the directive is done).
+ */
+static ngx_pool_t* ngx_http_waf_modsecurity_pcre_acquire(ngx_pool_t* pool) {
+    ngx_pool_t* old_pool;
+
+    if (pcre_malloc != ngx_http_waf_modsecurity_pcre_malloc) {
+        ngx_http_waf_modsecurity_pcre_pool = pool;
+
+        ngx_http_waf_modsecurity_pcre_malloc_old = (void*) pcre_malloc;
+        ngx_http_waf_modsecurity_pcre_free_old = (void*) pcre_free;
+
+        pcre_malloc = ngx_http_waf_modsecurity_pcre_malloc;
+        pcre_free = ngx_http_waf_modsecurity_pcre_free;
+
+        return NULL;
+    }
+
+    old_pool = ngx_http_waf_modsecurity_pcre_pool;
+    ngx_http_waf_modsecurity_pcre_pool = pool;
+
+    return old_pool;
+}
+
+
+static void ngx_http_waf_modsecurity_pcre_release(ngx_pool_t* old_pool) {
+    ngx_http_waf_modsecurity_pcre_pool = old_pool;
+
+    if (old_pool == NULL) {
+        pcre_malloc = (void* (*)(size_t)) ngx_http_waf_modsecurity_pcre_malloc_old;
+        pcre_free = (void (*)(void*)) ngx_http_waf_modsecurity_pcre_free_old;
+    }
+}
+#endif
+
+
 static char *ngx_http_waf_report(ngx_conf_t* cf, char* message) {
 
     if (message == NULL) {
@@ -1188,12 +1301,33 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
         args = (const ngx_waf_str_t*) &expanded;
     }
 
+#if !(NGX_PCRE2)
+    ngx_pool_t* old_pcre_pool = NULL;
+    unsigned pcre_hooked = 0;
+
+    /*
+     * libmodsecurity parses the rules while this directive is handled and it
+     * allocates through the globals of libpcre: with PCRE1 let those come from
+     * the configuration pool, like the C implementation did.
+     */
+    if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
+        old_pcre_pool = ngx_http_waf_modsecurity_pcre_acquire(cf->pool);
+        pcre_hooked = 1;
+    }
+#endif
+
     char* error = ngx_waf_directive(
         mcf->core,
         loc_conf->core,
         *(const ngx_waf_str_t*)(elts),
         args,
         nargs);
+
+#if !(NGX_PCRE2)
+    if (pcre_hooked) {
+        ngx_http_waf_modsecurity_pcre_release(old_pcre_pool);
+    }
+#endif
 
     if (error != NULL) {
         return ngx_http_waf_report(cf, error);
@@ -1211,15 +1345,6 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
                 }
             }
         }
-    }
-
-    if (ngx_strcmp(cmd->name.data, "waf_under_attack") == 0
-        || ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0)
-    {
-        ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
-            "ngx_waf: the directive [%V] is accepted but its feature is not "
-            "available in this build; the inspection is disabled",
-            &cmd->name);
     }
 
     return NGX_CONF_OK;
@@ -1597,6 +1722,43 @@ static void ngx_http_waf_free_step(void* data) {
 }
 
 
+/*
+ * The request headers libmodsecurity inspects, as the `ngx_table_elt_t` list
+ * nginx parsed them.  Only `waf_modsecurity` needs them, the other inspections
+ * read the few headers they care about from the request view.
+ */
+static ngx_int_t ngx_http_waf_make_headers(ngx_http_request_t* r, ngx_array_t** headers) {
+    ngx_list_part_t* part;
+    ngx_table_elt_t* header;
+    ngx_uint_t i;
+    ngx_waf_header_t* item;
+
+    *headers = ngx_array_create(r->pool, r->headers_in.headers.nalloc,
+        sizeof(ngx_waf_header_t));
+    if (*headers == NULL) {
+        return NGX_ERROR;
+    }
+
+    for (part = &r->headers_in.headers.part; part != NULL; part = part->next) {
+        header = part->elts;
+
+        for (i = 0; i < part->nelts; i++) {
+            item = ngx_array_push(*headers);
+            if (item == NULL) {
+                return NGX_ERROR;
+            }
+
+            item->key.data = header[i].key.data;
+            item->key.len = header[i].key.len;
+            item->value.data = header[i].value.data;
+            item->value.len = header[i].value.len;
+        }
+    }
+
+    return NGX_OK;
+}
+
+
 static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_str_t* body) {
     ngx_chain_t* bufs;
     size_t len = 0;
@@ -1698,9 +1860,11 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     ngx_waf_req_t req;
     ngx_waf_step_t* step;
     ngx_array_t* cookies = NULL;
+    ngx_array_t* headers = NULL;
     ngx_waf_str_t body;
     void* cc_zone = NULL;
     int64_t cc_index;
+    int modsecurity;
 
     ngx_memzero(&req, sizeof(ngx_waf_req_t));
 
@@ -1743,6 +1907,91 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     req.has_body = body.data != NULL ? 1 : 0;
     req.internal = r->internal ? 1 : 0;
     req.now = ngx_time();
+
+    /*
+     * Everything libmodsecurity reads beyond the common request view.  It is
+     * packed only when the inspection can run, a configuration without
+     * `waf_modsecurity` must not pay for it.
+     */
+    modsecurity = ngx_waf_conf_modsecurity(conf->core) == 1;
+
+    if (modsecurity) {
+        if (ngx_http_waf_make_headers(r, &headers) != NGX_OK) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        req.headers = (const ngx_waf_header_t*) headers->elts;
+        req.header_count = headers->nelts;
+
+        if (conf->modsecurity_transaction_id != NULL) {
+            ngx_str_t transaction_id;
+
+            ngx_str_null(&transaction_id);
+            if (ngx_http_complex_value(r, conf->modsecurity_transaction_id,
+                                       &transaction_id) != NGX_OK)
+            {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+
+            req.trans_id.data = transaction_id.data;
+            req.trans_id.len = transaction_id.len;
+        }
+
+        req.unparsed_uri.data = r->unparsed_uri.data;
+        req.unparsed_uri.len = r->unparsed_uri.len;
+        req.method_name.data = r->method_name.data;
+        req.method_name.len = r->method_name.len;
+        req.client_addr.data = r->connection->addr_text.data;
+        req.client_addr.len = r->connection->addr_text.len;
+        req.client_port = ngx_inet_get_port(r->connection->sockaddr);
+        req.log = r->connection->log;
+
+        switch (r->http_version) {
+        case NGX_HTTP_VERSION_9:
+            ngx_str_set(&req.http_version, "0.9");
+            break;
+        case NGX_HTTP_VERSION_10:
+            ngx_str_set(&req.http_version, "1.0");
+            break;
+#if (defined(nginx_version) && nginx_version >= 1009005)
+        case NGX_HTTP_VERSION_11:
+            ngx_str_set(&req.http_version, "1.1");
+            break;
+#endif
+        case NGX_HTTP_VERSION_20:
+            ngx_str_set(&req.http_version, "2.0");
+            break;
+        default:
+            ngx_str_set(&req.http_version, "1.0");
+            break;
+        }
+
+        {
+            /*
+             * The address the local end of the connection was bound to.  The
+             * buffer belongs to the request pool: the Rust side may read it
+             * again after an asynchronous step.
+             */
+            u_char* server_addr = ngx_pnalloc(r->pool, NGX_SOCKADDR_STRLEN);
+            ngx_str_t server_addr_str;
+
+            if (server_addr == NULL) {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+
+            server_addr_str.len = NGX_SOCKADDR_STRLEN;
+            server_addr_str.data = server_addr;
+            if (ngx_connection_local_sockaddr(r->connection, &server_addr_str, 0)
+                != NGX_OK)
+            {
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+
+            req.server_addr.data = server_addr_str.data;
+            req.server_addr.len = server_addr_str.len;
+            req.server_port = ngx_inet_get_port(r->connection->local_sockaddr);
+        }
+    }
 
     cc_index = ngx_waf_conf_cc_zone(conf->core);
     if (cc_index >= 0 && mcf != NULL && mcf->zones != NULL
@@ -1827,6 +2076,7 @@ static ngx_int_t ngx_http_waf_apply(ngx_http_request_t* r, ngx_http_waf_ctx_t* c
             ngx_http_waf_add_retry_after_header(r, step->retry_after);
         }
         ngx_http_waf_add_set_cookies(r, step);
+        ngx_http_waf_add_location(r, step);
         ctx->applied = 1;
     }
 
@@ -2093,6 +2343,9 @@ static ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
     if (ctx == NULL || ctx->step == NULL) {
         return NGX_OK;
     }
+
+    /* The audit log of the ModSecurity transaction, when the inspection ran. */
+    ngx_waf_check_log(ctx->step);
 
     if (ctx->step->general_log && ctx->step->log != NULL) {
         ngx_str_t message;
