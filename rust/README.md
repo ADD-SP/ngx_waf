@@ -43,7 +43,8 @@ registry cache already contains `regex` and `getrandom`.
 | `waf_cache`, `waf_cc_deny` (shared memory counters, `$waf_rate`, `Retry-After`) | done |
 | the `$waf_*` variables and the `ngx_waf: [rule][detail]` audit line | done |
 | `waf_verify_bot` (crawler user agent + reverse DNS) | done |
-| `waf_captcha`, `waf_under_attack`, `waf_modsecurity` | the directives are parsed and validated, the inspections are **not ported yet** |
+| `waf_captcha` | the flow is ported (cookies/HMAC, `verify_url`, provider verdict, fail counters, `waf_action X=CAPTCHA`, CC reset); it stays **inert** until the C side can perform the provider request — `ngx_waf_check_begin()` reports `http_transport = 0` until the `@ngx_waf_captcha` subrequest fetch lands |
+| `waf_under_attack`, `waf_modsecurity` | the directives are parsed and validated, the inspections are **not ported yet** |
 
 The directives of the last row are accepted, so an existing configuration keeps
 loading, but they are reported with a warning at configuration time and they do
@@ -72,6 +73,11 @@ What is left is visible in `test/test-nginx/template/`: `captcha.t`,
   addresses keeps counting instead of losing protection.
 * `waf_zone size=` accepts everything `ngx_parse_size()` accepts (a bare byte
   count, `k`/`K`, `m`/`M`).
+* The captcha provider is reached with a subrequest to a module-owned internal
+  location that drives nginx' upstream framework, and the answer is collected
+  in memory.  A provider that cannot be reached counts as a failed attempt
+  ("bad"/429), the C implementation leaked its `success` flag and let the
+  visitor through.
 * The friendly crawler check only looks at the host name nginx' asynchronous
   resolver returns, the C implementation also walked the aliases `gethostbyaddr`
   reports.  A crawler whose lookup needs a `resolver` (see the `resolver`

@@ -9,6 +9,15 @@ use crate::util;
 use regex::Regex;
 use std::rc::Rc;
 
+/// The salt of the captcha cookie HMAC.  The C implementation keeps it in a
+/// function static of `create_loc_conf`, so every configuration of a worker
+/// shares it and it survives a fork; the same value has to reach every worker
+/// or the cookies minted by one would not validate on another.
+fn captcha_salt() -> Vec<u8> {
+    static SALT: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    SALT.get_or_init(|| util::rand_letters(128)).clone()
+}
+
 /// The `http` level configuration: the zone registry and the used tags.
 #[derive(Default)]
 pub struct MainConf {
@@ -455,6 +464,16 @@ pub struct LocConf {
     /// Features that are configured but not implemented yet, reported once at
     /// startup so nobody silently loses protection.
     pub unsupported: Vec<&'static str>,
+}
+
+impl LocConf {
+    /// A fresh configuration, with the process wide captcha salt.
+    pub fn new() -> Self {
+        LocConf {
+            random_str: captcha_salt(),
+            ..LocConf::default()
+        }
+    }
 }
 
 impl Default for LocConf {

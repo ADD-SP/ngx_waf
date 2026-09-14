@@ -133,6 +133,13 @@ static void *ngx_http_waf_shm_alloc_locked(void* ctx, size_t size);
 static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
 
 
+/**
+ * Resolve the zone a configuration refers to into the handle of this worker.
+ */
+static void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, void* core,
+    int64_t (*index_of)(void* core));
+
+
 static ngx_int_t ngx_http_waf_drive(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
 
 
@@ -700,6 +707,21 @@ static ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data) {
 }
 
 
+static void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, void* core,
+    int64_t (*index_of)(void* core))
+{
+    int64_t index = index_of(core);
+
+    if (mcf == NULL || mcf->zones == NULL || index < 0
+        || (ngx_uint_t) index >= mcf->zones->nelts)
+    {
+        return NULL;
+    }
+
+    return ((ngx_http_waf_zone_t *) mcf->zones->elts)[index].handle;
+}
+
+
 static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
     ngx_http_waf_ctx_t* ctx;
@@ -1006,7 +1028,16 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         cc_zone = zones[cc_index].handle;
     }
 
-    step = ngx_waf_check_begin(conf->core, &req, cc_zone);
+    step = ngx_waf_check_begin(
+        conf->core,
+        &req,
+        cc_zone,
+        ngx_http_waf_zone_handle(mcf, conf->core, ngx_waf_conf_action_zone),
+        ngx_http_waf_zone_handle(mcf, conf->core, ngx_waf_conf_captcha_zone),
+        /* The captcha provider request (the subrequest fetch) is not wired
+         * yet, so the captcha checks stay inert and `waf_captcha` keeps
+         * warning about being unavailable. */
+        0);
     if (step == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }

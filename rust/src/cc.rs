@@ -85,6 +85,9 @@ struct Slot {
     addr: [u8; 16],
     count: i64,
     expire: i64,
+    /// Extra per entry state; the captcha action table stores its `error_page`
+    /// flag here.
+    flags: u32,
 }
 
 const SLOT_EMPTY: u8 = 0;
@@ -342,6 +345,55 @@ fn increment_locked(
     duration: i64,
     now: i64,
 ) -> Option<CcResult> {
+    let (_, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
+    let table = handle.table(tag)?;
+    let table_ref = unsafe { &mut *table };
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(table_ref.slots.as_mut_ptr(), table_ref.capacity as usize)
+    };
+    let slot = &mut slots[index];
+
+    if fresh {
+        reset_slot(slot, addr, ipv6, now + cycle);
+    }
+
+    slot.count = slot.count.saturating_add(1);
+    let rate = slot.count;
+
+    if rate > limit {
+        if rate - 1 <= limit {
+            // The first request over the limit turns the counting window into
+            // the blocking window.
+            slot.expire = now + duration;
+            return Some(CcResult {
+                rate,
+                blocked: true,
+                remain: duration,
+            });
+        }
+        return Some(CcResult {
+            rate,
+            blocked: true,
+            remain: std::cmp::max(slot.expire - now, 0),
+        });
+    }
+
+    Some(CcResult {
+        rate,
+        blocked: false,
+        remain: 0,
+    })
+}
+
+/// Find the slot of `addr`, creating (or evicting) one when asked for.
+/// Returns the index and whether the slot has to be treated as new.
+fn slot_for(
+    handle: &ZoneHandle,
+    tag: &[u8],
+    addr: &[u8],
+    ipv6: bool,
+    now: i64,
+) -> Option<(*mut TableHeader, usize, bool)> {
     let table = handle.table(tag)?;
     let table_ref = unsafe { &mut *table };
     let slots = unsafe {
@@ -382,43 +434,202 @@ fn increment_locked(
         probe = (probe + 1) % slots.len();
     }
 
-    let slot = &mut slots[index];
-    let fresh =
-        evicted || slot.kind == SLOT_EMPTY || slot.kind == SLOT_DELETED || slot.expire <= now;
-    if fresh {
-        slot.kind = kind;
-        slot.addr = [0u8; 16];
-        slot.addr[..addr.len()].copy_from_slice(addr);
-        slot.count = 0;
-        slot.expire = now + cycle;
-    }
+    let fresh = {
+        let slot = &slots[index];
+        evicted || slot.kind == SLOT_EMPTY || slot.kind == SLOT_DELETED || slot.expire <= now
+    };
 
-    slot.count = slot.count.saturating_add(1);
-    let rate = slot.count;
+    Some((table, index, fresh))
+}
 
-    if rate > limit {
-        if rate - 1 <= limit {
-            // The first request over the limit turns the counting window into
-            // the blocking window.
-            slot.expire = now + duration;
-            return Some(CcResult {
-                rate,
-                blocked: true,
-                remain: duration,
-            });
+fn reset_slot(slot: &mut Slot, addr: &[u8], ipv6: bool, expire: i64) {
+    slot.kind = if ipv6 { SLOT_USED_V6 } else { SLOT_USED_V4 };
+    slot.addr = [0u8; 16];
+    slot.addr[..addr.len()].copy_from_slice(addr);
+    slot.count = 0;
+    slot.expire = expire;
+    slot.flags = 0;
+}
+
+/// Look up the extra state of `addr`, if it has an entry.
+pub fn entry_flags(handle: *mut ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<u32> {
+    let handle = unsafe { handle_ref(handle)? };
+    handle.lock();
+    let result = entry_flags_locked(handle, tag, addr, ipv6);
+    handle.unlock();
+    result
+}
+
+fn entry_flags_locked(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<u32> {
+    let table = handle.table(tag)?;
+    let table_ref = unsafe { &mut *table };
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(table_ref.slots.as_mut_ptr(), table_ref.capacity as usize)
+    };
+    let kind = if ipv6 { SLOT_USED_V6 } else { SLOT_USED_V4 };
+
+    let mut probe = slot_index(addr) % slots.len();
+    for _ in 0..=slots.len() {
+        let slot = &slots[probe];
+        if slot.kind == SLOT_EMPTY {
+            return None;
         }
-        return Some(CcResult {
-            rate,
-            blocked: true,
-            remain: std::cmp::max(slot.expire - now, 0),
-        });
+        if slot.kind == kind && same_addr(slot, addr, ipv6) {
+            return Some(slot.flags);
+        }
+        probe = (probe + 1) % slots.len();
+    }
+    None
+}
+
+/// The state of one captcha action entry, created on demand.
+pub struct ActionEntry {
+    /// Whether the entry did not exist before this call.
+    pub created: bool,
+}
+
+/// Create (or find) the per client entry of the captcha action table.
+pub fn action_entry(
+    handle: *mut ZoneHandle,
+    tag: &[u8],
+    addr: &[u8],
+    ipv6: bool,
+    now: i64,
+    expire: i64,
+    initial_flags: u32,
+) -> Option<ActionEntry> {
+    let handle = unsafe { handle_ref(handle)? };
+    handle.lock();
+    let result = action_entry_locked(handle, tag, addr, ipv6, now, expire, initial_flags);
+    handle.unlock();
+    result
+}
+
+fn action_entry_locked(
+    handle: &ZoneHandle,
+    tag: &[u8],
+    addr: &[u8],
+    ipv6: bool,
+    now: i64,
+    expire: i64,
+    initial_flags: u32,
+) -> Option<ActionEntry> {
+    let (table, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
+    let table_ref = unsafe { &mut *table };
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(table_ref.slots.as_mut_ptr(), table_ref.capacity as usize)
+    };
+    let slot = &mut slots[index];
+
+    if fresh {
+        reset_slot(slot, addr, ipv6, now + expire);
+        slot.flags = initial_flags;
+        return Some(ActionEntry { created: true });
     }
 
-    Some(CcResult {
-        rate,
-        blocked: false,
-        remain: 0,
-    })
+    Some(ActionEntry { created: false })
+}
+
+/// Update the flags of an existing entry.
+pub fn set_entry_flags(
+    handle: *mut ZoneHandle,
+    tag: &[u8],
+    addr: &[u8],
+    ipv6: bool,
+    flags: u32,
+) -> Option<()> {
+    let handle = unsafe { handle_ref(handle)? };
+    handle.lock();
+    let result = {
+        let table = handle.table(tag)?;
+        let table_ref = unsafe { &mut *table };
+        let slots = unsafe {
+            std::slice::from_raw_parts_mut(
+                table_ref.slots.as_mut_ptr(),
+                table_ref.capacity as usize,
+            )
+        };
+        let kind = if ipv6 { SLOT_USED_V6 } else { SLOT_USED_V4 };
+        let mut probe = slot_index(addr) % slots.len();
+        let mut found = None;
+        for _ in 0..=slots.len() {
+            let slot = &slots[probe];
+            if slot.kind == SLOT_EMPTY {
+                break;
+            }
+            if slot.kind == kind && same_addr(slot, addr, ipv6) {
+                found = Some(probe);
+                break;
+            }
+            probe = (probe + 1) % slots.len();
+        }
+        found.map(|index| slots[index].flags = flags)
+    };
+    handle.unlock();
+    result
+}
+
+/// Forget the entry of one client (the captcha flow does this once a visitor
+/// passed the challenge).
+pub fn remove_entry(handle: *mut ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<()> {
+    let handle = unsafe { handle_ref(handle)? };
+    handle.lock();
+    let result = {
+        let table = handle.table(tag)?;
+        let table_ref = unsafe { &mut *table };
+        let slots = unsafe {
+            std::slice::from_raw_parts_mut(
+                table_ref.slots.as_mut_ptr(),
+                table_ref.capacity as usize,
+            )
+        };
+        let kind = if ipv6 { SLOT_USED_V6 } else { SLOT_USED_V4 };
+        let mut probe = slot_index(addr) % slots.len();
+        let mut found = None;
+        for _ in 0..=slots.len() {
+            let slot = &slots[probe];
+            if slot.kind == SLOT_EMPTY {
+                break;
+            }
+            if slot.kind == kind && same_addr(slot, addr, ipv6) {
+                found = Some(probe);
+                break;
+            }
+            probe = (probe + 1) % slots.len();
+        }
+        found.map(|index| slots[index].kind = SLOT_DELETED)
+    };
+    handle.unlock();
+    result
+}
+
+/// Reset the counter of one client (the captcha flow clears the CC counter of
+/// an address it challenges).
+pub fn reset_counter(
+    handle: *mut ZoneHandle,
+    tag: &[u8],
+    addr: &[u8],
+    ipv6: bool,
+    now: i64,
+    cycle: i64,
+) -> Option<()> {
+    let handle = unsafe { handle_ref(handle)? };
+    handle.lock();
+    let result = {
+        let (_, index, _) = slot_for(handle, tag, addr, ipv6, now)?;
+        let table = handle.table(tag)?;
+        let table_ref = unsafe { &mut *table };
+        let slots = unsafe {
+            std::slice::from_raw_parts_mut(
+                table_ref.slots.as_mut_ptr(),
+                table_ref.capacity as usize,
+            )
+        };
+        reset_slot(&mut slots[index], addr, ipv6, now + cycle);
+        Some(())
+    };
+    handle.unlock();
+    result
 }
 
 fn same_addr(slot: &Slot, addr: &[u8], ipv6: bool) -> bool {

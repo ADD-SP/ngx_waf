@@ -216,7 +216,7 @@ pub extern "C" fn ngx_waf_main_free(main: *mut c_void) {
 
 #[no_mangle]
 pub extern "C" fn ngx_waf_conf_create() -> *mut c_void {
-    match catch_unwind(|| Box::into_raw(Box::new(LocConf::default())) as *mut c_void) {
+    match catch_unwind(|| Box::into_raw(Box::new(LocConf::new())) as *mut c_void) {
         Ok(ptr) => ptr,
         Err(_) => std::ptr::null_mut(),
     }
@@ -240,6 +240,30 @@ pub extern "C" fn ngx_waf_conf_cc_zone(conf: *mut c_void) -> i64 {
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
         (*(conf as *const LocConf)).cc_zone
+    }))
+    .unwrap_or(-1)
+}
+
+/// The zone index of the captcha action table, `-1` when there is none.
+#[no_mangle]
+pub extern "C" fn ngx_waf_conf_action_zone(conf: *mut c_void) -> i64 {
+    if conf.is_null() {
+        return -1;
+    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        (*(conf as *const LocConf)).action_captcha_zone
+    }))
+    .unwrap_or(-1)
+}
+
+/// The zone index of the captcha fail counters, `-1` when there is none.
+#[no_mangle]
+pub extern "C" fn ngx_waf_conf_captcha_zone(conf: *mut c_void) -> i64 {
+    if conf.is_null() {
+        return -1;
+    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        (*(conf as *const LocConf)).captcha_zone
     }))
     .unwrap_or(-1)
 }
@@ -378,6 +402,9 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
     conf: *mut c_void,
     req: *const NgxWafReq,
     cc_zone: *mut c_void,
+    action_zone: *mut c_void,
+    captcha_zone: *mut c_void,
+    http_transport: i32,
 ) -> *mut NgxWafStep {
     if conf.is_null() || req.is_null() {
         return std::ptr::null_mut();
@@ -421,8 +448,12 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
             internal: req.internal != 0,
             now: req.now,
             cc_zone: cc_zone as *mut cc::ZoneHandle,
+            action_zone: action_zone as *mut cc::ZoneHandle,
+            captcha_zone: captcha_zone as *mut cc::ZoneHandle,
         };
-        let machine = check::Machine::new(conf as *mut LocConf, raw, cookies);
+        // The C side passes whether it can perform the captcha provider request
+        // (the subrequest fetch); until it can, the captcha checks stay inert.
+        let machine = check::Machine::new(conf as *mut LocConf, raw, cookies, http_transport != 0);
         let mut handle = StepHandle {
             step: NgxWafStep::empty(),
             machine: Some(machine),
@@ -531,6 +562,18 @@ impl StepHandle {
                         let raw = machine.raw();
                         self.step.ip = raw.ip;
                         self.step.ip_len = raw.ip_len;
+                    }
+                }
+                check::Pending::HttpRequest => {
+                    self.step.kind = STEP_HTTP_REQUEST;
+                    self.step.timeout_ms = DEFAULT_HTTP_TIMEOUT_MS;
+                    if let Some(machine) = self.machine.as_ref() {
+                        if let Some((url, body)) = machine.fetch() {
+                            self.step.url.len = url.len();
+                            self.step.url.data = url.as_ptr();
+                            self.step.http_body.len = body.len();
+                            self.step.http_body.data = body.as_ptr();
+                        }
                     }
                 }
             },

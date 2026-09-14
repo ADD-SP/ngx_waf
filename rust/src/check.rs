@@ -3,7 +3,7 @@
 
 use crate::cache::CachedResult;
 use crate::cc;
-use crate::config::{BotId, CheckId, LocConf, Policy, TriggerKind, BOTS};
+use crate::config::{BotId, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, BOTS};
 use crate::rules::RuleKind;
 use crate::types::*;
 use crate::util;
@@ -44,6 +44,10 @@ pub struct RawReq {
     pub internal: bool,
     pub now: i64,
     pub cc_zone: *mut cc::ZoneHandle,
+    /// The shared memory zone of the captcha action table (`waf_action ... zone=`).
+    pub action_zone: *mut cc::ZoneHandle,
+    /// The shared memory zone of the captcha fail counters (`waf_captcha ... zone=`).
+    pub captcha_zone: *mut cc::ZoneHandle,
 }
 
 impl RawReq {
@@ -69,6 +73,8 @@ impl RawReq {
             internal: self.internal,
             now: self.now,
             cc_zone: self.cc_zone,
+            action_zone: self.action_zone,
+            captcha_zone: self.captcha_zone,
         }
     }
 }
@@ -91,9 +97,12 @@ pub struct Req<'a> {
     #[allow(dead_code)]
     pub internal: bool,
     pub now: i64,
-    /// The `ngx_slab_pool_t` of the CC zone, NULL when the configuration does
-    /// not use a zone.
+    /// The handle of the CC zone, NULL when the configuration does not use one.
     pub cc_zone: *mut cc::ZoneHandle,
+    /// The handle of the captcha action table (`waf_action ... zone=...`).
+    pub action_zone: *mut cc::ZoneHandle,
+    /// The handle of the captcha fail counters (`waf_captcha ... zone=...`).
+    pub captcha_zone: *mut cc::ZoneHandle,
 }
 
 /// The outcome of one request inspection, everything the C side needs to
@@ -174,6 +183,11 @@ struct State<'a, 'r> {
     /// inspection matched.
     decision: &'a mut Option<Decision>,
     meta: &'a mut Meta,
+    /// Whether the C side can perform the captcha provider request.  Until it
+    /// can, a `waf_captcha on` configuration behaves like it did before the
+    /// captcha support landed: accepted by the parser, warned about, and
+    /// nothing inspected.
+    http_transport: bool,
 }
 
 /// The response one matched inspection asks for.
@@ -257,12 +271,59 @@ impl State<'_, '_> {
             // The status of a `FOLLOW` policy comes from the inspection
             // itself; no ported inspection produces one yet.
             Policy::Follow => Decision::allow(),
-            // Until the captcha flow is ported this is what the C action chain
-            // did: register the content handler and serve the captcha page.
-            Policy::Captcha { .. } => {
-                Decision::page(HTTP_SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha_html))
-            }
+            Policy::Captcha { source } => self.captcha_policy(source),
         });
+    }
+
+    /// The response of a `waf_action X=CAPTCHA` policy: the first challenge of
+    /// an address answers with the block page (403), the following ones with
+    /// the captcha page (503); a challenge caused by the CC protection also
+    /// resets the counter of that address.
+    fn captcha_policy(&mut self, source: CaptchaSource) -> Decision {
+        let mut error_page = false;
+
+        {
+            let zone = self.req.action_zone;
+            if !zone.is_null() && !self.conf.action_captcha_tag.is_empty() {
+                let expire = 60 * 45 + util::random_uniform(60 * 15) as i64;
+                let tag = self.conf.action_captcha_tag.clone();
+                if let Some(entry) = cc::action_entry(
+                    zone,
+                    &tag,
+                    self.req.ip,
+                    self.req.ipv6,
+                    self.req.now,
+                    expire,
+                    0,
+                ) {
+                    if source != CaptchaSource::CcDeny {
+                        let flags = u32::from(entry.created);
+                        cc::set_entry_flags(zone, &tag, self.req.ip, self.req.ipv6, flags);
+                        error_page = flags == 1;
+                    }
+                }
+            }
+        }
+
+        if source == CaptchaSource::CcDeny {
+            {
+                let zone = self.req.cc_zone;
+                if !zone.is_null() && !self.conf.cc_tag.is_empty() {
+                    let tag = self.conf.cc_tag.clone();
+                    let cycle = std::cmp::max(self.conf.cc_deny_cycle, 1);
+                    cc::reset_counter(zone, &tag, self.req.ip, self.req.ipv6, self.req.now, cycle);
+                }
+            }
+        }
+
+        if error_page {
+            return match self.conf.block_page.is_empty() {
+                true => Decision::status(HTTP_FORBIDDEN),
+                false => Decision::page(HTTP_FORBIDDEN, Rc::clone(&self.conf.block_page)),
+            };
+        }
+
+        Decision::page(HTTP_SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha_html))
     }
 
     /// Let the request through, used by the white lists.
@@ -288,6 +349,12 @@ enum CheckResult {
     Matched,
     /// The inspection needs data only nginx can produce.
     Suspend(Continuation),
+    /// The inspection needs an HTTP request to be performed.
+    Fetch {
+        continuation: Continuation,
+        url: String,
+        body: Vec<u8>,
+    },
 }
 
 impl From<bool> for CheckResult {
@@ -306,6 +373,8 @@ impl From<bool> for CheckResult {
 pub enum Pending {
     /// Reverse resolve the client address (the friendly crawler check).
     ResolveAddr,
+    /// POST to the captcha provider; the request is in `Machine::fetch`.
+    HttpRequest,
 }
 
 /// The state kept while the request is parked.
@@ -314,15 +383,42 @@ enum Continuation {
     /// Waiting for the PTR of the client address; `bot` is the crawler whose
     /// user agent matched.
     VerifyBot { bot: BotId },
+    /// Waiting for the captcha provider.
+    Captcha { path: CaptchaPath },
 }
 
 impl Continuation {
     fn pending(self) -> Pending {
         match self {
             Continuation::VerifyBot { .. } => Pending::ResolveAddr,
+            Continuation::Captcha { .. } => Pending::HttpRequest,
         }
     }
 }
+
+/// Which entry point of the captcha flow is running: the `waf_captcha`
+/// inspection, or the "this address is already challenged" check that runs
+/// before the priority list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CaptchaPath {
+    Inspection,
+    Session,
+}
+
+/// The verdict of one captcha attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CaptchaVerdict {
+    Pass,
+    Bad,
+    Challenge,
+    Fault,
+}
+
+/// The cookies a visitor has to present, `_info_t` of the C implementation.
+const CAPTCHA_TIME_FIELD: usize = 21;
+const CAPTCHA_UID_FIELD: usize = 65;
+const CAPTCHA_HMAC_FIELD: usize = 65;
+const CAPTCHA_SALT_FIELD: usize = 129;
 
 /// One step of the machine.
 pub enum Step {
@@ -361,11 +457,21 @@ pub struct Machine {
     decision: Option<Decision>,
     meta: Meta,
     continuation: Option<Continuation>,
+    /// The request the C side has to perform when the machine parks on an HTTP
+    /// step.
+    fetch: Option<(String, Vec<u8>)>,
+    /// Whether the C side is able to perform that request.
+    http_transport: bool,
 }
 
 impl Machine {
     /// Start the inspection of one request.
-    pub fn new(conf: *mut LocConf, req: RawReq, cookies: Vec<Vec<u8>>) -> Machine {
+    pub fn new(
+        conf: *mut LocConf,
+        req: RawReq,
+        cookies: Vec<Vec<u8>>,
+        http_transport: bool,
+    ) -> Machine {
         let priority = unsafe { (*conf).priority.clone() };
         Machine {
             conf,
@@ -378,6 +484,8 @@ impl Machine {
             decision: None,
             meta: Meta::new(),
             continuation: None,
+            fetch: None,
+            http_transport,
         }
     }
 
@@ -402,6 +510,7 @@ impl Machine {
             &self.priority,
             &mut self.decision,
             &mut self.meta,
+            self.http_transport,
         );
 
         match result {
@@ -411,7 +520,19 @@ impl Machine {
             } => {
                 self.index = index;
                 self.continuation = Some(continuation);
+                self.fetch = None;
                 Step::Pending(continuation.pending())
+            }
+            RunResult::Fetch {
+                index,
+                continuation,
+                url,
+                body,
+            } => {
+                self.index = index;
+                self.continuation = Some(continuation);
+                self.fetch = Some((url, body));
+                Step::Pending(Pending::HttpRequest)
             }
             RunResult::Finished => {
                 self.checked = true;
@@ -426,6 +547,19 @@ impl Machine {
         &self.req
     }
 
+    /// Let a test inject the shared memory handle of the fail counters.
+    #[cfg(test)]
+    pub fn set_captcha_zone(&mut self, zone: *mut cc::ZoneHandle) {
+        self.req.captcha_zone = zone;
+    }
+
+    /// The HTTP request of a parked step, `(url, body)`.
+    pub fn fetch(&self) -> Option<(&str, &[u8])> {
+        self.fetch
+            .as_ref()
+            .map(|(url, body)| (url.as_str(), body.as_slice()))
+    }
+
     /// Feed the result of the asynchronous operation back into the machine.
     pub fn resume(&mut self, event: Event<'_>) -> Step {
         let Some(continuation) = self.continuation.take() else {
@@ -434,7 +568,54 @@ impl Machine {
 
         match continuation {
             Continuation::VerifyBot { bot } => self.resume_verify_bot(bot, event),
+            Continuation::Captcha { path } => self.resume_captcha(path, event),
         }
+    }
+
+    /// The captcha provider answered, or could not be reached.
+    fn resume_captcha(&mut self, path: CaptchaPath, event: Event<'_>) -> Step {
+        let conf = unsafe { &*self.conf };
+        let is_v3 = conf.captcha_type == 4;
+        let threshold = conf.captcha_v3_score;
+
+        let verdict = match event {
+            Event::HttpResponse { status, body } => {
+                if status == 0 || status >= 400 {
+                    CaptchaVerdict::Bad
+                } else if provider_verdict(body, is_v3, threshold) {
+                    CaptchaVerdict::Pass
+                } else {
+                    CaptchaVerdict::Bad
+                }
+            }
+            // The provider cannot be reached: the visitor is challenged again
+            // instead of being let through, see the known differences.
+            _ => CaptchaVerdict::Bad,
+        };
+
+        self.finish_captcha(path, verdict)
+    }
+
+    /// Apply the verdict of one captcha attempt, the equivalent of the
+    /// `NGX_HTTP_WAF_CAPTCHA_*` branches of the C implementation.
+    fn finish_captcha(&mut self, path: CaptchaPath, verdict: CaptchaVerdict) -> Step {
+        let conf = unsafe { &mut *self.conf };
+        let req = self.req.view(&self.cookies);
+        let mut decision = None;
+        {
+            let mut state = State {
+                conf,
+                req: &req,
+                decision: &mut decision,
+                meta: &mut self.meta,
+                http_transport: self.http_transport,
+            };
+            let result = captcha_apply(&mut state, path, verdict);
+            debug_assert!(matches!(result, CheckResult::Matched));
+        }
+        self.decision = decision;
+        self.checked = true;
+        Step::Decision(self.finish())
     }
 
     fn resume_verify_bot(&mut self, bot: BotId, event: Event<'_>) -> Step {
@@ -484,6 +665,7 @@ impl Machine {
                 req: &self.req.view(&self.cookies),
                 decision: &mut decision,
                 meta: &mut self.meta,
+                http_transport: self.http_transport,
             };
             state.apply_policy(policy);
             self.decision = decision;
@@ -517,6 +699,7 @@ impl Machine {
 }
 
 /// Run the inspections from `index`, in the configured order.
+#[allow(clippy::too_many_arguments)]
 fn run_checks(
     conf: &mut LocConf,
     req: &Req<'_>,
@@ -524,13 +707,49 @@ fn run_checks(
     priority: &[CheckId],
     decision: &mut Option<Decision>,
     meta: &mut Meta,
+    http_transport: bool,
 ) -> RunResult {
+    // The captcha session check runs before every other inspection, it is not
+    // part of `waf_priority`.
+    if index == 0 {
+        let mut state = State {
+            conf,
+            req,
+            decision,
+            meta,
+            http_transport,
+        };
+        match check_captcha_session(&mut state) {
+            CheckResult::Matched => return RunResult::Finished,
+            CheckResult::Suspend(continuation) => {
+                return RunResult::Suspend {
+                    index,
+                    continuation,
+                }
+            }
+            CheckResult::Fetch {
+                continuation,
+                url,
+                body,
+            } => {
+                return RunResult::Fetch {
+                    index,
+                    continuation,
+                    url,
+                    body,
+                }
+            }
+            CheckResult::NotMatched => *state.decision = None,
+        }
+    }
+
     for (offset, id) in priority[index..].iter().enumerate() {
         let mut state = State {
             conf,
             req,
             decision,
             meta,
+            http_transport,
         };
         match run_check(&mut state, *id) {
             CheckResult::Matched => return RunResult::Finished,
@@ -538,6 +757,18 @@ fn run_checks(
                 return RunResult::Suspend {
                     index: index + offset + 1,
                     continuation,
+                }
+            }
+            CheckResult::Fetch {
+                continuation,
+                url,
+                body,
+            } => {
+                return RunResult::Fetch {
+                    index: index + offset + 1,
+                    continuation,
+                    url,
+                    body,
                 }
             }
             CheckResult::NotMatched => {
@@ -555,6 +786,12 @@ enum RunResult {
     Suspend {
         index: usize,
         continuation: Continuation,
+    },
+    Fetch {
+        index: usize,
+        continuation: Continuation,
+        url: String,
+        body: Vec<u8>,
     },
 }
 
@@ -592,8 +829,11 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
             internal: req.internal,
             now: req.now,
             cc_zone: req.cc_zone,
+            action_zone: req.action_zone,
+            captcha_zone: req.captcha_zone,
         },
         req.cookies.to_vec(),
+        true,
     );
     match machine.step() {
         Step::Decision(outcome) => outcome,
@@ -623,10 +863,320 @@ fn run_check(state: &mut State, id: CheckId) -> CheckResult {
         CheckId::Cookie => check_cookie(state).into(),
         CheckId::Post => check_post(state).into(),
         CheckId::VerifyBot => check_verify_bot(state),
+        CheckId::Captcha => check_captcha(state),
         // Not ported yet: the inspections keep their place in the priority
         // order, but they cannot match a request (see rust/README.md).
-        CheckId::UnderAttack | CheckId::Captcha | CheckId::Modsecurity => CheckResult::NotMatched,
+        CheckId::UnderAttack | CheckId::Modsecurity => CheckResult::NotMatched,
     }
+}
+
+/// The `waf_captcha` inspection: a visitor that passed the challenge carries a
+/// valid cookie, everybody else is challenged.
+fn check_captcha(state: &mut State) -> CheckResult {
+    if !state.http_transport || state.conf.captcha != 1 {
+        return CheckResult::NotMatched;
+    }
+
+    match captcha_cookie_valid(state) {
+        Err(()) => {
+            // The C implementation answers 500 when it cannot compute the HMAC.
+            *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+            CheckResult::Matched
+        }
+        Ok(true) => {
+            if captcha_is_verify_url(state) {
+                *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"good".to_vec())));
+                CheckResult::Matched
+            } else {
+                CheckResult::NotMatched
+            }
+        }
+        Ok(false) => captcha_dispatch(state, CaptchaPath::Inspection),
+    }
+}
+
+/// The entry point the C implementation runs before the priority list: an
+/// address that was challenged before has to pass the captcha first.
+fn check_captcha_session(state: &mut State) -> CheckResult {
+    if !state.http_transport {
+        return CheckResult::NotMatched;
+    }
+    if state.conf.waf == WAF_BYPASS || state.conf.captcha_zone < 0 {
+        return CheckResult::NotMatched;
+    }
+    let action_zone = state.req.action_zone;
+    if action_zone.is_null() || state.conf.action_captcha_tag.is_empty() {
+        return CheckResult::NotMatched;
+    }
+
+    let tag = state.conf.action_captcha_tag.clone();
+    let flags = cc::entry_flags(action_zone, &tag, state.req.ip, state.req.ipv6);
+    if flags.is_none() {
+        // This address is not in the middle of a captcha challenge.
+        return CheckResult::NotMatched;
+    }
+
+    captcha_dispatch(state, CaptchaPath::Session)
+}
+
+/// Run the provider (or the "not a verify request" path) for one captcha
+/// attempt.
+fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
+    let response_key = match state.conf.captcha_type {
+        1 => "h-captcha-response",
+        2..=4 => "g-recaptcha-response",
+        _ => return captcha_apply(state, path, CaptchaVerdict::Fault),
+    };
+
+    if !captcha_is_verify_url(state) || state.req.method & M_INSPECT_POST == 0 {
+        return captcha_apply(state, path, CaptchaVerdict::Challenge);
+    }
+
+    let Some(token) = form_value(state.req.body, response_key) else {
+        return captcha_apply(state, path, CaptchaVerdict::Bad);
+    };
+
+    let mut body = b"response=".to_vec();
+    body.extend_from_slice(token);
+    body.extend_from_slice(b"&secret=");
+    body.extend_from_slice(&state.conf.captcha_secret);
+
+    CheckResult::Fetch {
+        continuation: Continuation::Captcha { path },
+        url: String::from_utf8_lossy(&state.conf.captcha_api).into_owned(),
+        body,
+    }
+}
+
+/// Apply the verdict of one attempt: count the failure, mint the cookies or
+/// challenge the visitor again.
+fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) -> CheckResult {
+    if verdict == CaptchaVerdict::Fault {
+        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        return CheckResult::Matched;
+    }
+
+    if captcha_inc_fails(state) {
+        state.set_rule_info(b"CAPTCHA", b"TO MANY FAILS", true, true);
+        *state.decision = Some(match state.conf.block_page.is_empty() {
+            true => Decision::status(HTTP_TOO_MANY_REQUESTS),
+            false => Decision::page(HTTP_TOO_MANY_REQUESTS, Rc::clone(&state.conf.block_page)),
+        });
+        return CheckResult::Matched;
+    }
+
+    match verdict {
+        CaptchaVerdict::Pass => {
+            state.set_rule_info(b"CAPTCHA", b"PASS", true, true);
+            let minted = captcha_mint(state);
+            *state.decision = Some(match minted {
+                Some((time, uid, hmac)) => {
+                    let mut decision = Decision::text(HTTP_OK, Rc::new(b"good".to_vec()));
+                    decision.cookies = vec![
+                        ("__waf_captcha_time".to_string(), time),
+                        ("__waf_captcha_uid".to_string(), uid),
+                        ("__waf_captcha_hmac".to_string(), hmac),
+                    ];
+                    decision
+                }
+                None => Decision::status(HTTP_INTERNAL_SERVER_ERROR),
+            });
+            if path == CaptchaPath::Session {
+                let zone = state.req.action_zone;
+                if !zone.is_null() && !state.conf.action_captcha_tag.is_empty() {
+                    let tag = state.conf.action_captcha_tag.clone();
+                    cc::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
+                }
+            }
+        }
+        CaptchaVerdict::Bad => {
+            state.set_rule_info(b"CAPTCHA", b"bad", true, true);
+            *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"bad".to_vec())));
+        }
+        CaptchaVerdict::Challenge => {
+            state.set_rule_info(b"CAPTCHA", b"CHALLENGE", true, true);
+            *state.decision = Some(Decision::page(
+                HTTP_SERVICE_UNAVAILABLE,
+                Rc::clone(&state.conf.captcha_html),
+            ));
+        }
+        CaptchaVerdict::Fault => unreachable!(),
+    }
+
+    CheckResult::Matched
+}
+
+/// Count one captcha failure, `true` when the visitor is over the limit.
+fn captcha_inc_fails(state: &mut State) -> bool {
+    if state.conf.captcha_max_fails <= 0 || state.conf.captcha_duration <= 0 {
+        // Without `max_fails` the C implementation does not count at all.
+        return false;
+    }
+    let zone = state.req.captcha_zone;
+    if zone.is_null() || state.conf.captcha_tag.is_empty() {
+        return false;
+    }
+
+    let limit = std::cmp::max(state.conf.captcha_max_fails, 20);
+    let cycle = 60 * 45 + util::random_uniform(60 * 15) as i64;
+    let tag = state.conf.captcha_tag.clone();
+    match cc::increment(
+        zone,
+        &tag,
+        state.req.ip,
+        state.req.ipv6,
+        limit,
+        cycle,
+        state.conf.captcha_duration,
+        state.req.now,
+    ) {
+        Some(result) => result.blocked,
+        None => true,
+    }
+}
+
+/// True when the request targets the configured verification URL.
+fn captcha_is_verify_url(state: &State) -> bool {
+    !state.conf.captcha_verify_url.is_empty() && state.req.uri == state.conf.captcha_verify_url
+}
+
+/// Verify the three cookies of a visitor.  `Err(())` is the internal fault of
+/// the C implementation, `Ok(false)` a visitor that has to be challenged.
+fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
+    let Some(time) = cookie_value(state.req.cookies, "__waf_captcha_time") else {
+        return Ok(false);
+    };
+    let Some(uid) = cookie_value(state.req.cookies, "__waf_captcha_uid") else {
+        return Ok(false);
+    };
+    let Some(hmac) = cookie_value(state.req.cookies, "__waf_captcha_hmac") else {
+        return Ok(false);
+    };
+
+    if time.len() >= CAPTCHA_TIME_FIELD
+        || uid.len() >= CAPTCHA_UID_FIELD
+        || hmac.len() >= CAPTCHA_HMAC_FIELD
+    {
+        // The C implementation copies into fixed size fields, a longer value is
+        // not a cookie it could have minted.
+        return Ok(false);
+    }
+
+    let expected = captcha_hmac(state, time, uid);
+    if expected.as_bytes() != hmac {
+        return Ok(false);
+    }
+
+    let Some(client_time) = util::atoi(time) else {
+        return Ok(false);
+    };
+    if state.req.now - client_time > state.conf.captcha_expire {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+/// Mint a fresh cookie trio for a visitor that passed.
+fn captcha_mint(state: &State) -> Option<(String, String, String)> {
+    let time = state.req.now.to_string();
+    let uid = String::from_utf8(util::rand_letters(64)).ok()?;
+    let hmac = captcha_hmac(state, time.as_bytes(), uid.as_bytes());
+    Some((time, uid, hmac))
+}
+
+/// The HMAC of the C implementation: SHA-256 over the zero padded
+/// `{address, time, uid, salt}` buffer, hex encoded.
+fn captcha_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
+    let mut buffer = vec![0u8; 16 + CAPTCHA_TIME_FIELD + CAPTCHA_UID_FIELD + CAPTCHA_SALT_FIELD];
+    let ip_len = std::cmp::min(state.req.ip.len(), 16);
+    buffer[..ip_len].copy_from_slice(&state.req.ip[..ip_len]);
+
+    let time_offset = 16;
+    let time_len = std::cmp::min(time.len(), CAPTCHA_TIME_FIELD - 1);
+    buffer[time_offset..time_offset + time_len].copy_from_slice(&time[..time_len]);
+
+    let uid_offset = time_offset + CAPTCHA_TIME_FIELD;
+    let uid_len = std::cmp::min(uid.len(), CAPTCHA_UID_FIELD - 1);
+    buffer[uid_offset..uid_offset + uid_len].copy_from_slice(&uid[..uid_len]);
+
+    let salt_offset = uid_offset + CAPTCHA_UID_FIELD;
+    let salt_len = std::cmp::min(state.conf.random_str.len(), CAPTCHA_SALT_FIELD - 1);
+    buffer[salt_offset..salt_offset + salt_len].copy_from_slice(&state.conf.random_str[..salt_len]);
+
+    util::sha256_hex(&buffer)
+}
+
+/// The value of one cookie, the cookies the C glue hands over are the header
+/// values prefixed with the header name (`Cookie=a=1; b=2`).
+fn cookie_value<'a>(cookies: &'a [Vec<u8>], name: &str) -> Option<&'a [u8]> {
+    for cookie in cookies {
+        let value = match cookie.iter().position(|&byte| byte == b'=') {
+            Some(index) => &cookie[index + 1..],
+            None => continue,
+        };
+        for pair in value.split(|&byte| byte == b';') {
+            let pair = trim(pair);
+            if let Some(index) = pair.iter().position(|&byte| byte == b'=') {
+                if pair[..index] == *name.as_bytes() {
+                    return Some(trim(&pair[index + 1..]));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn trim(mut value: &[u8]) -> &[u8] {
+    while let Some((first, rest)) = value.split_first() {
+        if first.is_ascii_whitespace() {
+            value = rest;
+        } else {
+            break;
+        }
+    }
+    while let Some((last, rest)) = value.split_last() {
+        if last.is_ascii_whitespace() {
+            value = rest;
+        } else {
+            break;
+        }
+    }
+    value
+}
+
+/// The value of one `application/x-www-form-urlencoded` field.  The C
+/// implementation splits on `&` and `=` without decoding anything.
+fn form_value<'a>(body: &'a [u8], key: &str) -> Option<&'a [u8]> {
+    for field in body.split(|&byte| byte == b'&') {
+        let mut parts = field.split(|&byte| byte == b'=');
+        let name = parts.next().unwrap_or(&[]);
+        if name == key.as_bytes() {
+            return Some(parts.next().unwrap_or(&[]));
+        }
+    }
+    None
+}
+
+/// Decide whether the provider accepted the token.
+fn provider_verdict(body: &[u8], is_v3: bool, threshold: f64) -> bool {
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return false;
+    };
+    let success = json
+        .get("success")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    if !success {
+        return false;
+    }
+    if !is_v3 {
+        return true;
+    }
+    json.get("score")
+        .and_then(|value| value.as_f64())
+        .map(|score| score >= threshold)
+        .unwrap_or(false)
 }
 
 /// `waf_verify_bot`: a user agent that claims to be a friendly crawler is
@@ -1017,6 +1567,8 @@ mod tests {
             internal: false,
             now: 1_000,
             cc_zone: std::ptr::null_mut(),
+            action_zone: std::ptr::null_mut(),
+            captcha_zone: std::ptr::null_mut(),
         }
     }
 
@@ -1241,25 +1793,36 @@ mod tests {
         assert!(!outcome.blocked);
     }
 
+    /// The raw request buffers have to outlive the machine, exactly like the
+    /// connection address and the request pool do in nginx.
+    fn leaked(bytes: &[u8]) -> (*const u8, usize) {
+        let boxed = bytes.to_vec().into_boxed_slice();
+        let pointer = boxed.as_ptr();
+        let len = boxed.len();
+        std::mem::forget(boxed);
+        (pointer, len)
+    }
+
     /// Build a machine for a request that only carries a user agent.
     fn machine_for_user_agent(conf: &mut LocConf, user_agent: &[u8]) -> Machine {
-        let ip = [1u8, 2, 3, 4];
-        let uri = b"/";
+        let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
+        let (uri, uri_len) = leaked(b"/");
+        let (user_agent, user_agent_len) = leaked(user_agent);
         let raw = RawReq {
-            ip: ip.as_ptr(),
-            ip_len: ip.len(),
+            ip,
+            ip_len,
             method: M_INSPECT_GET,
             uri: RawStr {
-                data: uri.as_ptr(),
-                len: uri.len(),
+                data: uri,
+                len: uri_len,
             },
             args: RawStr {
                 data: std::ptr::null(),
                 len: 0,
             },
             user_agent: RawStr {
-                data: user_agent.as_ptr(),
-                len: user_agent.len(),
+                data: user_agent,
+                len: user_agent_len,
             },
             referer: RawStr {
                 data: std::ptr::null(),
@@ -1273,8 +1836,10 @@ mod tests {
             internal: false,
             now: 1_000,
             cc_zone: std::ptr::null_mut(),
+            action_zone: std::ptr::null_mut(),
+            captcha_zone: std::ptr::null_mut(),
         };
-        Machine::new(conf as *mut LocConf, raw, Vec::new())
+        Machine::new(conf as *mut LocConf, raw, Vec::new(), true)
     }
 
     fn verify_bot_conf(mode: &str) -> LocConf {
@@ -1431,8 +1996,10 @@ mod tests {
             internal: false,
             now: 1_000,
             cc_zone: std::ptr::null_mut(),
+            action_zone: std::ptr::null_mut(),
+            captcha_zone: std::ptr::null_mut(),
         };
-        let mut machine = Machine::new(&mut conf as *mut LocConf, raw, Vec::new());
+        let mut machine = Machine::new(&mut conf as *mut LocConf, raw, Vec::new(), true);
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::ResolveAddr)
@@ -1444,5 +2011,347 @@ mod tests {
         assert_eq!(outcome.kind, STEP_RESPONSE);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert_eq!(outcome.rule_type, b"BLACK-URL");
+    }
+
+    /// A configuration with `waf_captcha on` (and a bogus provider URL, the
+    /// tests drive the provider answer themselves).
+    fn captcha_conf(provider: &str, extra: &[&str]) -> LocConf {
+        let mut main = crate::config::MainConf::default();
+        crate::config::zone_directive(&mut main, &[b"name=any".to_vec(), b"size=10m".to_vec()])
+            .unwrap();
+        let mut conf = LocConf {
+            waf: WAF_ON,
+            waf_mode: M_INSPECT_GET | M_INSPECT_POST,
+            ..LocConf::new()
+        };
+        let mut args = vec![
+            b"on".to_vec(),
+            format!("prov={provider}").into_bytes(),
+            b"secret=secret".to_vec(),
+            b"sitekey=key".to_vec(),
+            b"api=http://127.0.0.1:1/verify".to_vec(),
+        ];
+        args.extend(extra.iter().map(|value| value.as_bytes().to_vec()));
+        crate::config::directive(&mut main, &mut conf, b"waf_captcha", &args).unwrap();
+        conf
+    }
+
+    fn captcha_machine(
+        conf: &mut LocConf,
+        method: u64,
+        uri: &[u8],
+        body: &[u8],
+        cookies: Vec<Vec<u8>>,
+    ) -> Machine {
+        let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
+        let (uri, uri_len) = leaked(uri);
+        let (body, body_len) = leaked(body);
+        let raw = RawReq {
+            ip,
+            ip_len,
+            method,
+            uri: RawStr {
+                data: uri,
+                len: uri_len,
+            },
+            args: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            user_agent: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            referer: RawStr {
+                data: std::ptr::null(),
+                len: 0,
+            },
+            body: RawStr {
+                data: body,
+                len: body_len,
+            },
+            has_body: body_len != 0,
+            internal: false,
+            now: 1_000,
+            cc_zone: std::ptr::null_mut(),
+            action_zone: std::ptr::null_mut(),
+            captcha_zone: std::ptr::null_mut(),
+        };
+        Machine::new(conf as *mut LocConf, raw, cookies, true)
+    }
+
+    fn good_cookie(name: &str, value: &[u8]) -> Vec<u8> {
+        let mut cookie = format!("Cookie={name}=").into_bytes();
+        cookie.extend_from_slice(value);
+        cookie
+    }
+
+    #[test]
+    fn captcha_challenges_a_visitor_without_cookies() {
+        let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
+        let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", Vec::new());
+        let outcome = match machine.step() {
+            Step::Decision(outcome) => outcome,
+            other => panic!(
+                "the challenge does not need an event: {:?}",
+                matches!(other, Step::Pending(_))
+            ),
+        };
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert!(outcome.register_content_handler);
+        assert_eq!(outcome.body, *conf.captcha_html);
+        assert_eq!(outcome.rule_type, b"CAPTCHA");
+        assert!(outcome.blocked);
+    }
+
+    #[test]
+    fn captcha_posts_the_token_to_the_provider_and_mints_cookies() {
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        let body = b"g-recaptcha-response=token";
+        let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let (url, fetch_body) = machine.fetch().expect("the provider request");
+        assert_eq!(url, "http://127.0.0.1:1/verify");
+        assert_eq!(fetch_body, b"response=token&secret=secret");
+
+        let outcome = match machine.resume(Event::HttpResponse {
+            status: 200,
+            body: br#"{"success":true}"#,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("the provider answer decides the request"),
+        };
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.body, b"good");
+        assert_eq!(outcome.cookies.len(), 3);
+        assert_eq!(outcome.cookies[0].0, "__waf_captcha_time");
+        assert_eq!(outcome.cookies[1].0, "__waf_captcha_uid");
+        assert_eq!(outcome.cookies[2].0, "__waf_captcha_hmac");
+
+        // The visitor comes back with those cookies and is let through.
+        let (time, uid, hmac) = (
+            outcome.cookies[0].1.clone(),
+            outcome.cookies[1].1.clone(),
+            outcome.cookies[2].1.clone(),
+        );
+        assert_eq!(time, "1000");
+        assert_eq!(uid.len(), 64);
+        assert_eq!(hmac.len(), 64);
+        assert!(hmac.chars().all(|c| c.is_ascii_hexdigit()));
+
+        let cookies = vec![
+            good_cookie("__waf_captcha_time", time.as_bytes()),
+            good_cookie("__waf_captcha_uid", uid.as_bytes()),
+            good_cookie("__waf_captcha_hmac", hmac.as_bytes()),
+        ];
+        let mut conf2 = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        let mut machine = captcha_machine(&mut conf2, M_INSPECT_GET, b"/", b"", cookies.clone());
+        let outcome = match machine.step() {
+            Step::Decision(outcome) => outcome,
+            other => panic!(
+                "a valid cookie decides the request: {:?}",
+                matches!(other, Step::Pending(_))
+            ),
+        };
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(!outcome.blocked);
+
+        // ... but not with a cookie the server did not mint.
+        let mut broken = cookies;
+        broken[2] = good_cookie("__waf_captcha_hmac", b"deadbeef");
+        let mut machine = captcha_machine(&mut conf2, M_INSPECT_GET, b"/", b"", broken);
+        let outcome = match machine.step() {
+            Step::Decision(outcome) => outcome,
+            other => panic!(
+                "a forged cookie is challenged: {:?}",
+                matches!(other, Step::Pending(_))
+            ),
+        };
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn captcha_bad_and_transport_failure_are_reported() {
+        for event in [
+            Event::HttpResponse {
+                status: 200,
+                body: br#"{"success":false}"#,
+            },
+            Event::HttpFailed,
+            Event::HttpResponse {
+                status: 500,
+                body: b"oops",
+            },
+            Event::HttpResponse {
+                status: 200,
+                body: b"not json",
+            },
+        ] {
+            let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+            let body = b"g-recaptcha-response=token";
+            let mut machine =
+                captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+            assert!(matches!(
+                machine.step(),
+                Step::Pending(Pending::HttpRequest)
+            ));
+            let outcome = match machine.resume(event) {
+                Step::Decision(outcome) => outcome,
+                _ => panic!("the provider answer decides the request"),
+            };
+            assert_eq!(outcome.status, HTTP_OK);
+            assert_eq!(outcome.body, b"bad");
+            assert_eq!(outcome.rule_type, b"CAPTCHA");
+        }
+    }
+
+    #[test]
+    fn captcha_v3_requires_the_configured_score() {
+        for (score, expected_body) in [(0.1f64, &b"bad"[..]), (0.9f64, &b"good"[..])] {
+            let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
+            let body = b"g-recaptcha-response=token";
+            let mut machine =
+                captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+            assert!(matches!(
+                machine.step(),
+                Step::Pending(Pending::HttpRequest)
+            ));
+            let payload = format!(r#"{{"success":true,"score":{score}}}"#);
+            let outcome = match machine.resume(Event::HttpResponse {
+                status: 200,
+                body: payload.as_bytes(),
+            }) {
+                Step::Decision(outcome) => outcome,
+                _ => panic!("the provider answer decides the request"),
+            };
+            assert_eq!(outcome.status, HTTP_OK);
+            assert_eq!(outcome.body, expected_body, "score {score}");
+        }
+    }
+
+    #[test]
+    fn captcha_verify_url_answers_good_for_a_verified_visitor() {
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        // A visitor with a valid cookie that asks the verification URL is told
+        // that it may continue.
+        let mut machine = captcha_machine(
+            &mut conf,
+            M_INSPECT_POST,
+            b"/captcha",
+            b"g-recaptcha-response=t",
+            Vec::new(),
+        );
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let outcome = match machine.resume(Event::HttpResponse {
+            status: 200,
+            body: br#"{"success":true}"#,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("decided"),
+        };
+        let cookies: Vec<Vec<u8>> = outcome
+            .cookies
+            .iter()
+            .map(|(name, value)| good_cookie(name, value.as_bytes()))
+            .collect();
+
+        let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/captcha", b"", cookies);
+        let outcome = match machine.step() {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("decided"),
+        };
+        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.body, b"good");
+    }
+
+    #[test]
+    fn captcha_fail_counter_blocks_after_the_threshold() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+
+        unsafe extern "C" fn directory_alloc(
+            _ctx: *mut core::ffi::c_void,
+            size: usize,
+        ) -> *mut core::ffi::c_void {
+            if size > 4096 {
+                return std::ptr::null_mut();
+            }
+            match DIRECTORY.swap(0, Ordering::SeqCst) {
+                0 => std::ptr::null_mut(),
+                addr => addr as *mut core::ffi::c_void,
+            }
+        }
+
+        unsafe extern "C" fn arena_alloc(
+            ctx: *mut core::ffi::c_void,
+            size: usize,
+        ) -> *mut core::ffi::c_void {
+            // A tiny bump allocator over a static arena, enough for two
+            // tables.  It has to be properly aligned, the shared structures
+            // hold 64 bit counters.
+            static mut ARENA: [u64; 8192] = [0; 8192];
+            static mut OFFSET: usize = 0;
+            unsafe {
+                let arena = &mut *std::ptr::addr_of_mut!(ARENA);
+                let offset = &mut *std::ptr::addr_of_mut!(OFFSET);
+                let _ = ctx;
+                let bytes = std::mem::size_of_val(arena);
+                if *offset + size > bytes {
+                    return std::ptr::null_mut();
+                }
+                let pointer = (arena.as_mut_ptr() as *mut u8).add(*offset);
+                *offset += (size + 15) & !15;
+                pointer as *mut core::ffi::c_void
+            }
+        }
+
+        let directory = Box::leak(vec![0u8; 4096].into_boxed_slice());
+        DIRECTORY.store(directory.as_mut_ptr() as usize, Ordering::SeqCst);
+        let ops = cc::ShmOps {
+            lock: None,
+            unlock: None,
+            alloc: Some(directory_alloc),
+            alloc_locked: Some(arena_alloc),
+            ctx: std::ptr::null_mut(),
+        };
+        let zone = unsafe { cc::zone_init(0x2000, 1024 * 1024, std::ptr::null_mut(), ops) };
+        assert!(!zone.is_null());
+
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &["max_fails=1:1m", "zone=any:tag"]);
+        // The zone lookup needs a zone in the main configuration; patch the two
+        // fields the checks read.
+        conf.captcha_zone = 0;
+        conf.captcha_tag = b"captchatag".to_vec();
+
+        // 20 failures are allowed (`max(max_fails, 20)`), the 21st blocks.
+        for attempt in 1..=21 {
+            let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", Vec::new());
+            machine.set_captcha_zone(zone);
+            let outcome = match machine.step() {
+                Step::Decision(outcome) => outcome,
+                _ => panic!("the challenge is decided at once"),
+            };
+            if attempt <= 20 {
+                assert_eq!(
+                    outcome.status, HTTP_SERVICE_UNAVAILABLE,
+                    "attempt {attempt}"
+                );
+            } else {
+                assert_eq!(outcome.status, HTTP_TOO_MANY_REQUESTS, "attempt {attempt}");
+                assert_eq!(outcome.rule_details, b"TO MANY FAILS");
+            }
+        }
+
+        unsafe { cc::zone_free(zone) };
     }
 }

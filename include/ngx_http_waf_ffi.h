@@ -346,6 +346,16 @@ void ngx_waf_conf_free(void *conf);
 int64_t ngx_waf_conf_cc_zone(void *conf);
 
 /**
+ * The zone index of the captcha action table, `-1` when there is none.
+ */
+int64_t ngx_waf_conf_action_zone(void *conf);
+
+/**
+ * The zone index of the captcha fail counters, `-1` when there is none.
+ */
+int64_t ngx_waf_conf_captcha_zone(void *conf);
+
+/**
  * The `waf` value of the configuration: `-1` unset, 0 off, 1 on, 2 bypass.
  */
 int64_t ngx_waf_conf_waf(void *conf);
@@ -388,7 +398,10 @@ char *ngx_waf_conf_merge(void *child, void *parent);
  */
 struct ngx_waf_step_t *ngx_waf_check_begin(void *conf,
                                            const struct ngx_waf_req_t *req,
-                                           void *cc_zone);
+                                           void *cc_zone,
+                                           void *action_zone,
+                                           void *captcha_zone,
+                                           int32_t http_transport);
 
 /**
  * Feed the result of an asynchronous operation back into the machine, then
