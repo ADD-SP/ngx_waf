@@ -1,7 +1,7 @@
 name: test
 
 on:
-  push: 
+  push:
     branches:
       - master
       - lts
@@ -21,94 +21,63 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+
 jobs:
-  buld_deps:
-    name: Build dependencies
+  rust:
+    name: Rust core
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-        with: 
-          ref: ${{ github.ref }}
-          submodules: true
 
-      - name: Generate cache key
-        id: cache_key
-        uses: ./.github/workflows/reusable_actions/build_cache_key
-      
-      - name: Lookup build cache
-        id: cache
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache the cargo artefacts
         uses: actions/cache@v4
         with:
-          key: ${{ steps.cache_key.outputs.cache_key }}
           path: |
-            ${{ github.workspace }}/deps.tar.gz
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
 
-      - name: Install pre-requirements
-        run: |
-          sudo apt-get --yes update
-          # https://github.com/actions/runner-images/issues/2139
-          sudo apt-get remove nginx-core \
-            nginx-full \
-            nginx-light \
-            nginx-extras \
-            libgd3
-          sudo apt-get install --yes \
-            build-essential \
-            zlib1g-dev \
-            libpcre3 \
-            libpcre3-dev \
-            libssl-dev \
-            libxslt1-dev \
-            libxml2-dev \
-            libgeoip-dev \
-            libgd-dev \
-            libperl-dev \
-            libcurl4-openssl-dev
+      - name: Format
+        run: cargo fmt --manifest-path rust/Cargo.toml --check
 
-      - name: Build dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Lint
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      - name: Install cbindgen
+        run: cargo install cbindgen --version 0.29.4 --locked
+
+      # The header is generated from rust/src/ffi.rs, a stale one would be a
+      # trap for everyone building the module.
+      - name: Check the FFI header is up to date
         run: |
-          bazel build --registry=file://$(realpath ngx_waf_deps) //:deps
-          cp bazel-bin/deps.tar.gz .
+          make header
+          git diff --exit-code -- include/ngx_http_waf_ffi.h
+
 
   build_test:
-    name: Build & Test
+    name: nginx ${{ matrix.nginx-version }} (${{ matrix.module-type }})
     runs-on: ubuntu-latest
-    needs: [buld_deps]
+    needs: [rust]
 
     strategy:
+      fail-fast: false
       matrix:
         nginx-version: ['stable', 'mainline']
         module-type:  ['static', 'dynamic']
 
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - uses: actions/checkout@v4
-        with: 
-          ref: ${{ github.ref }}
-          submodules: true
 
-      - name: Generate cache key
-        id: cache_key
-        uses: ./.github/workflows/reusable_actions/build_cache_key
-      
-      - name: Lookup build cache
-        id: cache
-        uses: actions/cache@v4
-        with:
-          key: ${{ steps.cache_key.outputs.cache_key }}
-          path: |
-            ${{ github.workspace }}/deps.tar.gz
-
-      - name: Assert build dependencies cache found
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Build dependencies cache not found, this step should be unreachable."
-          exit 1
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install pre-requirements
         run: |
@@ -122,59 +91,61 @@ jobs:
           sudo apt-get install --yes \
             build-essential \
             zlib1g-dev \
-            libpcre3 \
-            libpcre3-dev \
+            libpcre2-dev \
             libssl-dev \
-            libxslt1-dev \
-            libxml2-dev \
-            libgeoip-dev \
-            libgd-dev \
             libperl-dev \
-            libcurl4-openssl-dev
+            cpanminus
+          sudo cpanm --notest Test::Nginx
 
-      - name: Apply dependencies
-        run: |
-          tar -zxf deps.tar.gz
-
-          echo "$(realpath deps/libmodsecurity/lib)" | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
-          echo "$(realpath deps/libsodium/lib)"      | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
-          echo "$(realpath deps/libcjson/lib)"       | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
-          sudo ldconfig
-
-          echo "LIB_MODSECURITY=$(realpath deps/libmodsecurity)" >> "$GITHUB_ENV"
-          echo "LIB_SODIUM=$(realpath deps/libsodium)" >> "$GITHUB_ENV"
-          echo "LIB_CJSON=$(realpath deps/libcjson)" >> "$GITHUB_ENV"
-          echo "LIB_UTHASH=$(realpath deps/uthash)" >> "$GITHUB_ENV"
-
-      - name: Download & Build & Install nginx-${{ matrix.nginx-version }}
+      - name: Download the nginx sources
         run: |
           sudo pip install lastversion
           lastversion download nginx:${{ matrix.nginx-version }}
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
 
+      - name: Configure & build nginx
+        run: |
           cd nginx-src
-          if [ ${{ matrix.module-type }} = 'static module' ] ; then \
-            opt='--add-module' ;\
-          else \
-            opt='--add-dynamic-module' ;\
+          if [ "${{ matrix.module-type }}" = 'static' ]; then
+            opt='--add-module'
+          else
+            opt='--add-dynamic-module'
           fi
 
-          ./configure ${opt}=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
-          make -j$(nproc)
-          sudo make install
-          sudo useradd nginx -s /sbin/nologin -M
-          sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
-          nginx -V
+          ./configure ${opt}=${{ github.workspace }} \
+            --with-http_realip_module \
+            --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
+          make -j"$(nproc)"
 
-      - name: Install Test::Nginx
+      - name: Run the integration tests
         run: |
-          sudo cpan Test::Nginx
-
-      - name: Test
-        run: |
-          sudo chmod 777 -R /tmp
           cd test/test-nginx
           export MODULE_TEST_PATH=/tmp/module_test
+          if [ "${{ matrix.module-type }}" = 'dynamic' ]; then
+            export MODULE_PATH="${{ github.workspace }}/nginx-src/objs/ngx_http_waf_module.so"
+          fi
+          export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
           sh ./init.sh
-          exec sudo sh start.sh t/*.t
+
+          # The templates of the inspections that are already ported.  The
+          # captcha, verify_bot, under_attack and modsecurity ones are still
+          # missing, see rust/README.md.
+          sh ./start.sh \
+            t/DATA_EXPUNGED.t \
+            t/args.t \
+            t/bad_config.t \
+            t/block_page.t \
+            t/bypass.t \
+            t/cache.t \
+            t/cc.t \
+            t/cookie.t \
+            t/disable.t \
+            t/ipv4.t \
+            t/ipv6.t \
+            t/mode.t \
+            t/post.t \
+            t/referer.t \
+            t/uri.t \
+            t/user_agent.t \
+            t/var.t

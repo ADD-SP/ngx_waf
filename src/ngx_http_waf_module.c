@@ -1,0 +1,1317 @@
+/**
+ * @file ngx_http_waf_module.c
+ * @brief The nginx glue of ngx_waf.
+ *
+ * This file only registers the module and its directives, forwards the raw
+ * configuration arguments to the Rust core, packs the request data, drives the
+ * nginx asynchronous machinery and applies the decision the core returns.
+ * Every rule, action and configuration semantic lives in `rust/`.
+ */
+
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+
+#include <stdio.h>
+
+#include <ngx_http_waf_ffi.h>
+
+
+/**
+ * @brief The shared memory zones declared with `waf_zone`.
+ *
+ * The order is the order of the directives, which is also the order the Rust
+ * core stores them in, so the index of a zone is the same on both sides.
+ */
+typedef struct {
+    ngx_str_t      name;
+    size_t         size;
+    ngx_shm_zone_t *zone;
+    void           *handle;
+} ngx_http_waf_zone_t;
+
+
+typedef struct {
+    void                      *core;
+    ngx_http_complex_value_t  *modsecurity_transaction_id;
+} ngx_http_waf_loc_conf_t;
+
+
+typedef struct {
+    void         *core;
+    ngx_array_t  *zones;
+} ngx_http_waf_main_conf_t;
+
+
+typedef struct {
+    ngx_waf_step_t  *step;
+    ngx_uint_t       waiting_more_body:1;
+    ngx_uint_t       read_body_done:1;
+} ngx_http_waf_ctx_t;
+
+
+/* compile time guarantees for the values shared with the Rust core */
+typedef char ngx_http_waf_method_bits_must_match[
+    (NGX_HTTP_GET == 0x0002
+     && NGX_HTTP_HEAD == 0x0004
+     && NGX_HTTP_POST == 0x0008
+     && NGX_HTTP_PUT == 0x0010
+     && NGX_HTTP_DELETE == 0x0020
+     && NGX_HTTP_MKCOL == 0x0040
+     && NGX_HTTP_COPY == 0x0080
+     && NGX_HTTP_MOVE == 0x0100
+     && NGX_HTTP_OPTIONS == 0x0200
+     && NGX_HTTP_PROPFIND == 0x0400
+     && NGX_HTTP_PROPPATCH == 0x0800
+     && NGX_HTTP_LOCK == 0x1000
+     && NGX_HTTP_UNLOCK == 0x2000
+     && NGX_HTTP_PATCH == 0x4000
+     && NGX_HTTP_TRACE == 0x8000) ? 1 : -1];
+
+
+static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r);
+
+
+static ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r);
+
+
+static ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r);
+
+
+static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+static char *ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);
+
+
+static void *ngx_http_waf_create_main_conf(ngx_conf_t* cf);
+
+
+static void *ngx_http_waf_create_loc_conf(ngx_conf_t* cf);
+
+
+static char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf);
+
+
+static ngx_int_t ngx_http_waf_postconfiguration(ngx_conf_t* cf);
+
+
+static ngx_int_t ngx_http_waf_install_variables(ngx_conf_t* cf);
+
+
+static char *ngx_http_waf_report(ngx_conf_t* cf, char* message);
+
+
+static void ngx_http_waf_cleanup(void* data);
+
+
+static void ngx_http_waf_conf_cleanup(void* data);
+
+
+static void ngx_http_waf_request_cleanup(void* data);
+
+
+static ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data);
+
+
+static void ngx_http_waf_shm_lock(void* ctx);
+
+
+static void ngx_http_waf_shm_unlock(void* ctx);
+
+
+static void *ngx_http_waf_shm_alloc(void* ctx, size_t size);
+
+
+static void *ngx_http_waf_shm_alloc_locked(void* ctx, size_t size);
+
+
+static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static ngx_int_t ngx_http_waf_read_body(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static void ngx_http_waf_read_body_handler(ngx_http_request_t* r);
+
+
+static ngx_int_t ngx_http_waf_gen_response(ngx_http_request_t* r, uint8_t* body, size_t body_len,
+    uint32_t content_type, uint32_t status);
+
+
+static void ngx_http_waf_add_no_cache_header(ngx_http_request_t* r);
+
+
+static void ngx_http_waf_add_retry_after_header(ngx_http_request_t* r, int64_t seconds);
+
+
+static ngx_int_t ngx_http_waf_var_log(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_int_t ngx_http_waf_var_blocking_log(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_int_t ngx_http_waf_var_blocked(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_int_t ngx_http_waf_var_rule_type(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_int_t ngx_http_waf_var_rule_details(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_int_t ngx_http_waf_var_spend(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_int_t ngx_http_waf_var_rate(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+static ngx_http_waf_ctx_t *ngx_http_waf_get_ctx(ngx_http_request_t* r);
+
+
+static void ngx_http_waf_free_step(void* data);
+
+
+static ngx_command_t ngx_http_waf_commands[] = {
+
+    { ngx_string("waf_zone"),
+      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
+      ngx_http_waf_zone_conf,
+      NGX_HTTP_MAIN_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_rule_path"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_mode"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_cc_deny"),
+      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_cache"),
+      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_under_attack"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_captcha"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234|NGX_CONF_TAKE5|NGX_CONF_TAKE6|NGX_CONF_TAKE7,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_verify_bot"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234|NGX_CONF_TAKE5|NGX_CONF_TAKE6|NGX_CONF_TAKE7,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_priority"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_action"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234|NGX_CONF_TAKE5|NGX_CONF_TAKE6|NGX_CONF_TAKE7,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_block_page"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_modsecurity"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE123,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_modsecurity_transaction_id"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE123,
+      ngx_http_waf_modsecurity_transaction_id_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+      ngx_null_command
+};
+
+
+static ngx_http_module_t ngx_http_waf_module_ctx = {
+    NULL,                                   /* preconfiguration */
+    ngx_http_waf_postconfiguration,         /* postconfiguration */
+
+    ngx_http_waf_create_main_conf,          /* create main configuration */
+    NULL,                                   /* init main configuration */
+
+    NULL,                                   /* create server configuration */
+    NULL,                                   /* merge server configuration */
+
+    ngx_http_waf_create_loc_conf,           /* create location configuration */
+    ngx_http_waf_merge_loc_conf             /* merge location configuration */
+};
+
+
+ngx_module_t ngx_http_waf_module = {
+    NGX_MODULE_V1,
+    &ngx_http_waf_module_ctx,               /* module context */
+    ngx_http_waf_commands,                  /* module directives */
+    NGX_HTTP_MODULE,                        /* module type */
+    NULL,                                   /* init master */
+    NULL,                                   /* init module */
+    NULL,                                   /* init process */
+    NULL,                                   /* init thread */
+    NULL,                                   /* exit thread */
+    NULL,                                   /* exit process */
+    NULL,                                   /* exit master */
+    NGX_MODULE_V1_PADDING
+};
+
+
+static ngx_http_variable_t ngx_http_waf_variables[] = {
+
+    { ngx_string("waf_log"), NULL, ngx_http_waf_var_log, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("waf_blocking_log"), NULL, ngx_http_waf_var_blocking_log, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("waf_blocked"), NULL, ngx_http_waf_var_blocked, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("waf_rule_type"), NULL, ngx_http_waf_var_rule_type, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("waf_rule_details"), NULL, ngx_http_waf_var_rule_details, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("waf_spend"), NULL, ngx_http_waf_var_spend, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("waf_rate"), NULL, ngx_http_waf_var_rate, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+      ngx_http_null_variable
+};
+
+
+static char *ngx_http_waf_report(ngx_conf_t* cf, char* message) {
+
+    if (message == NULL) {
+        message = "ngx_waf: unexpected error";
+    } else {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%s", message);
+        ngx_waf_string_free(message);
+        return NGX_CONF_ERROR;
+    }
+
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%s", message);
+
+    return NGX_CONF_ERROR;
+}
+
+
+static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_main_conf_t* mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
+    ngx_str_t* elts = cf->args->elts;
+    const uint8_t* name_data = NULL;
+    size_t name_len = 0;
+    size_t size = 0;
+    ngx_http_waf_zone_t* zone = NULL;
+
+    char* error = ngx_waf_zone_directive(
+        mcf->core,
+        (const ngx_waf_str_t*)(elts + 1),
+        cf->args->nelts - 1,
+        &name_data,
+        &name_len,
+        &size);
+
+    if (error != NULL) {
+        return ngx_http_waf_report(cf, error);
+    }
+
+    zone = ngx_array_push(mcf->zones);
+    if (zone == NULL) {
+        return ngx_http_waf_report(cf, NULL);
+    }
+
+    zone->name.data = ngx_pnalloc(cf->pool, name_len);
+    if (zone->name.data == NULL) {
+        return ngx_http_waf_report(cf, NULL);
+    }
+    ngx_memcpy(zone->name.data, name_data, name_len);
+    zone->name.len = name_len;
+    zone->size = size;
+    zone->handle = NULL;
+    zone->zone = NULL;
+
+    zone->zone = ngx_shared_memory_add(cf, &zone->name, size, &ngx_http_waf_module);
+    if (zone->zone == NULL) {
+        return ngx_http_waf_report(cf, NULL);
+    }
+
+    zone->zone->init = ngx_http_waf_shm_zone_init;
+    zone->zone->data = zone;
+
+    return NGX_CONF_OK;
+}
+
+
+static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_main_conf_t* mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_str_t* elts = cf->args->elts;
+    ngx_str_t expanded;
+    const ngx_waf_str_t* args = (const ngx_waf_str_t*)(elts + 1);
+    ngx_uint_t nargs = cf->args->nelts - 1;
+
+    /*
+     * A relative `waf_rule_path` is resolved against the nginx prefix, like
+     * every other file path of a nginx configuration.
+     */
+    if (ngx_strcmp(cmd->name.data, "waf_rule_path") == 0 && elts[1].len != 0
+        && elts[1].data[0] != '/')
+    {
+        expanded = elts[1];
+        if (ngx_conf_full_name(cf->cycle, &expanded, 0) != NGX_OK) {
+            return NGX_CONF_ERROR;
+        }
+        args = (const ngx_waf_str_t*) &expanded;
+    }
+
+    char* error = ngx_waf_directive(
+        mcf->core,
+        loc_conf->core,
+        *(const ngx_waf_str_t*)(elts),
+        args,
+        nargs);
+
+    if (error != NULL) {
+        return ngx_http_waf_report(cf, error);
+    }
+
+    if (ngx_strcmp(cmd->name.data, "waf_captcha") == 0
+        || ngx_strcmp(cmd->name.data, "waf_under_attack") == 0
+        || ngx_strcmp(cmd->name.data, "waf_verify_bot") == 0
+        || ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0)
+    {
+        ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
+            "ngx_waf: the directive [%V] is accepted but its feature is not "
+            "available in this build; the inspection is disabled",
+            &cmd->name);
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static char *ngx_http_waf_modsecurity_transaction_id_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
+    ngx_http_waf_loc_conf_t* loc_conf = conf;
+    ngx_http_compile_complex_value_t ccv;
+    ngx_str_t* value = cf->args->elts;
+
+    loc_conf->modsecurity_transaction_id = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+    if (loc_conf->modsecurity_transaction_id == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+    ccv.cf = cf;
+    ccv.value = &value[1];
+    ccv.complex_value = loc_conf->modsecurity_transaction_id;
+    ccv.zero = 1;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static void *ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
+    ngx_http_waf_main_conf_t* mcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_main_conf_t));
+
+    if (mcf == NULL) {
+        return NULL;
+    }
+
+    mcf->core = ngx_waf_main_create();
+    if (mcf->core == NULL) {
+        return NULL;
+    }
+
+    mcf->zones = ngx_array_create(cf->pool, 4, sizeof(ngx_http_waf_zone_t));
+    if (mcf->zones == NULL) {
+        return NULL;
+    }
+
+    ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        return NULL;
+    }
+    cln->handler = ngx_http_waf_cleanup;
+    cln->data = mcf->core;
+
+    return mcf;
+}
+
+
+static void *ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
+    ngx_http_waf_loc_conf_t* conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_loc_conf_t));
+
+    if (conf == NULL) {
+        return NULL;
+    }
+
+    conf->core = ngx_waf_conf_create();
+    if (conf->core == NULL) {
+        return NULL;
+    }
+
+    /* freed by the pool cleanup registered in create_main_conf */
+    ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        return NULL;
+    }
+    cln->handler = ngx_http_waf_conf_cleanup;
+    cln->data = conf->core;
+
+    conf->modsecurity_transaction_id = NULL;
+
+    return conf;
+}
+
+
+static char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
+    ngx_http_waf_loc_conf_t* parent = prev;
+    ngx_http_waf_loc_conf_t* child = conf;
+
+    if (parent == NULL || child == NULL || parent->core == NULL || child->core == NULL) {
+        return NGX_CONF_OK;
+    }
+
+    char* error = ngx_waf_conf_merge(child->core, parent->core);
+    if (error != NULL) {
+        return ngx_http_waf_report(cf, error);
+    }
+
+    if (child->modsecurity_transaction_id == NULL) {
+        child->modsecurity_transaction_id = parent->modsecurity_transaction_id;
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_postconfiguration(ngx_conf_t* cf) {
+    ngx_http_handler_pt* h;
+    ngx_http_core_main_conf_t* cmcf;
+
+    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+    *h = ngx_http_waf_handler_access_phase;
+
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+    *h = ngx_http_waf_handler_log_phase;
+
+    return ngx_http_waf_install_variables(cf);
+}
+
+
+static ngx_int_t ngx_http_waf_install_variables(ngx_conf_t* cf) {
+    ngx_http_variable_t* v;
+
+    for (v = ngx_http_waf_variables; v->name.len; v++) {
+        ngx_http_variable_t* var = ngx_http_add_variable(cf, &v->name,
+            NGX_HTTP_VAR_NOCACHEABLE);
+        if (var == NULL) {
+            return NGX_ERROR;
+        }
+        var->get_handler = v->get_handler;
+        var->data = v->data;
+    }
+
+    return NGX_OK;
+}
+
+
+static void ngx_http_waf_cleanup(void* data) {
+    ngx_waf_main_free(data);
+}
+
+
+static void ngx_http_waf_conf_cleanup(void* data) {
+    ngx_waf_conf_free(data);
+}
+
+
+static void ngx_http_waf_shm_lock(void* ctx) {
+    ngx_shmtx_lock(&((ngx_slab_pool_t *) ctx)->mutex);
+}
+
+
+static void ngx_http_waf_shm_unlock(void* ctx) {
+    ngx_shmtx_unlock(&((ngx_slab_pool_t *) ctx)->mutex);
+}
+
+
+static void *ngx_http_waf_shm_alloc(void* ctx, size_t size) {
+    ngx_slab_pool_t* pool = ctx;
+    void* p;
+
+    ngx_shmtx_lock(&pool->mutex);
+    p = ngx_slab_alloc_locked(pool, size);
+    ngx_shmtx_unlock(&pool->mutex);
+
+    return p;
+}
+
+
+static void *ngx_http_waf_shm_alloc_locked(void* ctx, size_t size) {
+    /* the caller already holds the zone lock */
+    return ngx_slab_alloc_locked((ngx_slab_pool_t *) ctx, size);
+}
+
+
+static ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data) {
+    ngx_http_waf_zone_t* z = zone->data;
+    ngx_http_waf_zone_t* old = data;
+    ngx_slab_pool_t* pool = (ngx_slab_pool_t *) zone->shm.addr;
+    ngx_waf_shm_ops_t ops;
+
+    ops.lock = ngx_http_waf_shm_lock;
+    ops.unlock = ngx_http_waf_shm_unlock;
+    ops.alloc = ngx_http_waf_shm_alloc;
+    ops.alloc_locked = ngx_http_waf_shm_alloc_locked;
+    ops.ctx = pool;
+
+    z->handle = ngx_waf_shm_zone_init(
+        zone->shm.addr,
+        zone->shm.size,
+        old != NULL ? old->handle : NULL,
+        &ops);
+
+    if (z->handle == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, zone->shm.log, 0,
+            "ngx_waf: failed to initialize the shared memory zone \"%V\"",
+            &z->name);
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
+    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_waf_ctx_t* ctx;
+    ngx_int_t rc;
+
+    if (conf == NULL || conf->core == NULL) {
+        return NGX_DECLINED;
+    }
+
+    int64_t waf = ngx_waf_conf_waf(conf->core);
+    if (waf == -1 || waf == 0) {
+        return NGX_DECLINED;
+    }
+
+    ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL) {
+        ngx_http_cleanup_t* cln;
+
+        ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_waf_ctx_t));
+        if (ctx == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        cln = ngx_pcalloc(r->pool, sizeof(ngx_http_cleanup_t));
+        if (cln == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        cln->handler = ngx_http_waf_request_cleanup;
+        cln->data = ctx;
+        cln->next = NULL;
+
+        /*
+         * The request cleanup chain (not the pool one) so the context can be
+         * found again after an `error_page` internal redirect, like the C
+         * implementation does.
+         */
+        if (r->cleanup == NULL) {
+            r->cleanup = cln;
+        } else {
+            ngx_http_cleanup_t* item;
+            for (item = r->cleanup; item != NULL; item = item->next) {
+                if (item->next == NULL) {
+                    item->next = cln;
+                    break;
+                }
+            }
+        }
+
+        ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+
+        ngx_pool_cleanup_t* pool_cln = ngx_pool_cleanup_add(r->pool, 0);
+        if (pool_cln == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        pool_cln->handler = ngx_http_waf_free_step;
+        pool_cln->data = ctx;
+    }
+
+    /*
+     * `error_page` internally redirects the request and nginx drops every
+     * module context on the way; be sure the context is reachable again for
+     * the rest of this request.
+     */
+    ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
+
+    if (ctx->step != NULL) {
+        return NGX_DECLINED;
+    }
+
+    if (ctx->waiting_more_body) {
+        return NGX_DONE;
+    }
+
+    if (!ctx->read_body_done) {
+        rc = ngx_http_waf_read_body(r, ctx);
+        if (rc == NGX_DONE) {
+            return NGX_DONE;
+        }
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE || rc == NGX_ERROR) {
+            return rc;
+        }
+    }
+
+    return ngx_http_waf_run(r, ctx);
+}
+
+
+static ngx_int_t ngx_http_waf_read_body(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    ngx_int_t rc;
+
+    r->request_body_in_single_buf = 1;
+    r->request_body_in_persistent_file = 1;
+    r->request_body_in_clean_file = 1;
+
+    rc = ngx_http_read_client_request_body(r, ngx_http_waf_read_body_handler);
+    if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        return rc;
+    }
+    if (rc == NGX_AGAIN) {
+        ctx->waiting_more_body = 1;
+        return NGX_DONE;
+    }
+
+    ctx->read_body_done = 1;
+
+    return NGX_OK;
+}
+
+
+static void ngx_http_waf_read_body_handler(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL) {
+        ngx_http_finalize_request(r, NGX_DONE);
+        return;
+    }
+
+    ctx->read_body_done = 1;
+    ngx_http_finalize_request(r, NGX_DONE);
+
+    if (ctx->waiting_more_body) {
+        ctx->waiting_more_body = 0;
+        ngx_http_core_run_phases(r);
+    }
+}
+
+
+/*
+ * A no-op handler: it only marks the context in the request cleanup chain so
+ * that `ngx_http_waf_get_ctx()` can still find it after an internal redirect.
+ * nginx runs this chain *before* the log phase, so the decision must stay
+ * readable until then; the step is released by the pool cleanup below.
+ */
+static void ngx_http_waf_request_cleanup(void* data) {
+    (void) data;
+}
+
+
+static void ngx_http_waf_free_step(void* data) {
+    ngx_http_waf_ctx_t* ctx = data;
+
+    if (ctx->step != NULL) {
+        ngx_waf_step_free(ctx->step);
+        ctx->step = NULL;
+    }
+}
+
+
+static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_str_t* body) {
+    ngx_chain_t* bufs;
+    size_t len = 0;
+    u_char* data;
+    size_t offset = 0;
+
+    body->data = NULL;
+    body->len = 0;
+
+    if (r->request_body == NULL || r->request_body->bufs == NULL) {
+        return NGX_OK;
+    }
+
+    for (bufs = r->request_body->bufs; bufs != NULL; bufs = bufs->next) {
+        len += bufs->buf->last - bufs->buf->pos;
+    }
+
+    if (len == 0) {
+        return NGX_OK;
+    }
+
+    data = ngx_pnalloc(r->pool, len);
+    if (data == NULL) {
+        return NGX_ERROR;
+    }
+
+    for (bufs = r->request_body->bufs; bufs != NULL; bufs = bufs->next) {
+        size_t size = bufs->buf->last - bufs->buf->pos;
+        ngx_memcpy(data + offset, bufs->buf->pos, size);
+        offset += size;
+    }
+
+    body->data = data;
+    body->len = len;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_make_cookies(ngx_http_request_t* r, ngx_array_t** cookies) {
+    ngx_table_elt_t* p;
+
+    *cookies = ngx_array_create(r->pool, 4, sizeof(ngx_waf_str_t));
+    if (*cookies == NULL) {
+        return NGX_ERROR;
+    }
+
+    if (r->headers_in.cookie == NULL) {
+        return NGX_OK;
+    }
+
+#if (nginx_version >= 1023000)
+    for (p = r->headers_in.cookie; p != NULL; p = p->next) {
+        size_t len = p->key.len + p->value.len + 1;
+        u_char* buf = ngx_pnalloc(r->pool, len);
+        ngx_waf_str_t* item;
+
+        if (buf == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_memcpy(buf, p->key.data, p->key.len);
+        buf[p->key.len] = '=';
+        ngx_memcpy(buf + p->key.len + 1, p->value.data, p->value.len);
+
+        item = ngx_array_push(*cookies);
+        if (item == NULL) {
+            return NGX_ERROR;
+        }
+        item->data = buf;
+        item->len = len;
+    }
+#else
+    if (r->headers_in.cookies.nelts == 0) {
+        return NGX_OK;
+    }
+
+    {
+        ngx_table_elt_t** pp = r->headers_in.cookies.elts;
+        ngx_uint_t i;
+
+        for (i = 0; i < r->headers_in.cookies.nelts; i++, pp++) {
+            ngx_waf_str_t* item = ngx_array_push(*cookies);
+            if (item == NULL) {
+                return NGX_ERROR;
+            }
+            item->data = (*pp)->value.data;
+            item->len = (*pp)->value.len;
+        }
+    }
+#endif
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_waf_req_t req;
+    ngx_waf_step_t* step;
+    ngx_array_t* cookies = NULL;
+    ngx_waf_str_t body;
+    void* cc_zone = NULL;
+    int64_t cc_index;
+
+    ngx_memzero(&req, sizeof(ngx_waf_req_t));
+
+    if (ngx_http_waf_make_body(r, &body) != NGX_OK) {
+        body.data = NULL;
+        body.len = 0;
+    }
+    if (ngx_http_waf_make_cookies(r, &cookies) != NGX_OK) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    req.ip = (const uint8_t *) &((struct sockaddr_in *) r->connection->sockaddr)->sin_addr;
+    req.ip_len = 4;
+
+#if (NGX_HAVE_INET6)
+    if (r->connection->sockaddr->sa_family == AF_INET6) {
+        req.ip = (const uint8_t *) &((struct sockaddr_in6 *) r->connection->sockaddr)->sin6_addr;
+        req.ip_len = 16;
+    }
+#endif
+
+    req.method = r->method;
+    req.uri.data = r->uri.data;
+    req.uri.len = r->uri.len;
+    req.args.data = r->args.data;
+    req.args.len = r->args.len;
+
+    if (r->headers_in.user_agent != NULL) {
+        req.user_agent.data = r->headers_in.user_agent->value.data;
+        req.user_agent.len = r->headers_in.user_agent->value.len;
+    }
+    if (r->headers_in.referer != NULL) {
+        req.referer.data = r->headers_in.referer->value.data;
+        req.referer.len = r->headers_in.referer->value.len;
+    }
+
+    req.cookies = (const ngx_waf_str_t *) cookies->elts;
+    req.cookie_count = cookies->nelts;
+    req.body = body;
+    req.has_body = body.data != NULL ? 1 : 0;
+    req.internal = r->internal ? 1 : 0;
+    req.now = ngx_time();
+
+    cc_index = ngx_waf_conf_cc_zone(conf->core);
+    if (cc_index >= 0 && mcf != NULL && mcf->zones != NULL
+        && (ngx_uint_t) cc_index < mcf->zones->nelts)
+    {
+        ngx_http_waf_zone_t* zones = mcf->zones->elts;
+        cc_zone = zones[cc_index].handle;
+    }
+
+    step = ngx_waf_check(conf->core, &req, cc_zone);
+    if (step == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    ctx->step = step;
+
+    if (step->retry_after >= 0 && step->status != NGX_HTTP_CLOSE) {
+        ngx_http_waf_add_retry_after_header(r, step->retry_after);
+    }
+
+    if (step->register_content_handler) {
+        r->content_handler = ngx_http_waf_handler_precontent_phase;
+        return NGX_DECLINED;
+    }
+
+    switch (step->kind) {
+    case NGX_WAF_STEP_ALLOW:
+        return NGX_DECLINED;
+
+    case NGX_WAF_STEP_RESPONSE:
+        return (ngx_int_t) step->status;
+
+    default:
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+}
+
+
+static ngx_int_t ngx_http_waf_handler_precontent_phase(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_waf_step_t* step;
+
+    if (ctx == NULL || ctx->step == NULL) {
+        return NGX_DECLINED;
+    }
+
+    step = ctx->step;
+
+    if (step->kind != NGX_WAF_STEP_RESPONSE) {
+        return NGX_DECLINED;
+    }
+
+    if (step->body == NULL || step->body_len == 0) {
+        return ngx_http_waf_gen_response(r, NULL, 0, step->content_type, step->status);
+    }
+
+    return ngx_http_waf_gen_response(r, step->body, step->body_len, step->content_type, step->status);
+}
+
+
+static ngx_int_t ngx_http_waf_gen_response(ngx_http_request_t* r, uint8_t* body, size_t body_len,
+    uint32_t content_type, uint32_t status)
+{
+    ngx_int_t rc;
+    ngx_buf_t* buf;
+    ngx_chain_t* out;
+    ngx_str_t type;
+
+    if (content_type == NGX_WAF_CT_TEXT) {
+        ngx_str_set(&type, "text/plain");
+    } else {
+        ngx_str_set(&type, "text/html");
+    }
+
+    rc = ngx_http_discard_request_body(r);
+    if (rc != NGX_OK) {
+        return rc;
+    }
+
+    r->headers_out.content_type.data = ngx_pstrdup(r->pool, &type);
+    if (r->headers_out.content_type.data == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    r->headers_out.content_type.len = type.len;
+    r->headers_out.status = status;
+    r->headers_out.content_length_n = body_len;
+
+    ngx_http_waf_add_no_cache_header(r);
+
+    rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK) {
+        return rc;
+    }
+
+    if (r->header_only) {
+        return rc;
+    }
+
+    buf = ngx_calloc_buf(r->pool);
+    if (buf == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    if (body_len != 0) {
+        buf->pos = ngx_pnalloc(r->pool, body_len);
+        if (buf->pos == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        ngx_memcpy(buf->pos, body, body_len);
+    }
+    buf->last = buf->pos + body_len;
+    buf->memory = 1;
+    buf->last_buf = (r == r->main) ? 1 : 0;
+    buf->last_in_chain = 1;
+
+    out = ngx_alloc_chain_link(r->pool);
+    if (out == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    out->buf = buf;
+    out->next = NULL;
+
+    return ngx_http_output_filter(r, out);
+}
+
+
+static void ngx_http_waf_add_no_cache_header(ngx_http_request_t* r) {
+    ngx_table_elt_t* header = ngx_list_push(&r->headers_out.headers);
+
+    if (header == NULL) {
+        return;
+    }
+
+    header->hash = 1;
+    header->lowcase_key = (u_char*)"cache-control";
+    ngx_str_set(&header->key, "Cache-control");
+    ngx_str_set(&header->value, "no-store");
+}
+
+
+static void ngx_http_waf_add_retry_after_header(ngx_http_request_t* r, int64_t seconds) {
+    ngx_table_elt_t* header = ngx_list_push(&r->headers_out.headers);
+
+    if (header == NULL) {
+        return;
+    }
+
+    header->hash = 1;
+    header->lowcase_key = (u_char*)"retry-after";
+    ngx_str_set(&header->key, "Retry-After");
+    header->value.data = ngx_pnalloc(r->pool, NGX_INT64_LEN + 1);
+    if (header->value.data == NULL) {
+        header->hash = 0;
+        return;
+    }
+    header->value.len = ngx_sprintf(header->value.data, "%L", seconds) - header->value.data;
+}
+
+
+static ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
+    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_core_conf_t* ccf = (ngx_core_conf_t *) ngx_get_conf(ngx_cycle->conf_ctx, ngx_core_module);
+
+    if (conf == NULL || conf->core == NULL) {
+        return NGX_DECLINED;
+    }
+
+    int64_t waf = ngx_waf_conf_waf(conf->core);
+    if (waf == -1 || waf == 0) {
+        return NGX_DECLINED;
+    }
+
+    if (ngx_waf_should_gc(ccf != NULL ? (int64_t) ccf->worker_processes : 1)) {
+        ngx_waf_gc(conf->core);
+
+        if (mcf != NULL && mcf->zones != NULL) {
+            ngx_http_waf_zone_t* zones = mcf->zones->elts;
+            ngx_uint_t i;
+
+            for (i = 0; i < mcf->zones->nelts; i++) {
+                if (zones[i].handle != NULL) {
+                    ngx_waf_shm_zone_gc(zones[i].handle);
+                }
+            }
+        }
+    }
+
+    if (ctx == NULL || ctx->step == NULL) {
+        return NGX_OK;
+    }
+
+    if (ctx->step->general_log && ctx->step->log != NULL) {
+        ngx_str_t message;
+        message.data = ctx->step->log;
+        message.len = ctx->step->log_len;
+        ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0, "%V", &message);
+        /* an internal redirect must not log the same decision twice */
+        ctx->step->general_log = 0;
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_http_waf_ctx_t *ngx_http_waf_get_ctx(ngx_http_request_t* r) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    if (ctx != NULL) {
+        return ctx;
+    }
+
+    /*
+     * The context of the original request is kept in the cleanup chain of the
+     * pool, which survives an internal redirect (`ngx_http_internal_redirect()`
+     * clears `r->ctx`), so `$waf_*` keep reporting the original decision.
+     */
+    for (ngx_http_cleanup_t* cln = r->cleanup; cln != NULL; cln = cln->next) {
+        if (cln->handler == ngx_http_waf_request_cleanup) {
+            ngx_http_set_ctx(r, cln->data, ngx_http_waf_module);
+            return cln->data;
+        }
+    }
+
+    return NULL;
+}
+
+
+static ngx_int_t ngx_http_waf_var_log(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL || ctx->step == NULL || !ctx->step->checked) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->len = 4;
+    v->data = (u_char*)"true";
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_var_blocking_log(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL || ctx->step == NULL || !ctx->step->blocked) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = (u_char*)"true";
+    v->len = 4;
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_var_blocked(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL || ctx->step == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    if (ctx->step->blocked) {
+        v->data = (u_char*)"true";
+        v->len = 4;
+    } else {
+        v->data = (u_char*)"false";
+        v->len = 5;
+    }
+
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_var_rule_type(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL || ctx->step == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = ctx->step->rule_type != NULL ? ctx->step->rule_type : (u_char*)"";
+    v->len = ctx->step->rule_type_len;
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_var_rule_details(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL || ctx->step == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = ctx->step->rule_details != NULL ? ctx->step->rule_details : (u_char*)"";
+    v->len = ctx->step->rule_details_len;
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_var_spend(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+    u_char text[64];
+
+    if (ctx == NULL || ctx->step == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->len = snprintf((char*) text, sizeof(text), "%.5lf", ctx->step->spend);
+    v->data = ngx_pnalloc(r->pool, v->len);
+    if (v->data == NULL) {
+        return NGX_ERROR;
+    }
+    ngx_memcpy(v->data, text, v->len);
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_var_rate(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+
+    if (ctx == NULL || ctx->step == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = ngx_pnalloc(r->pool, NGX_INT64_LEN + 1);
+    if (v->data == NULL) {
+        return NGX_ERROR;
+    }
+    v->len = ngx_sprintf(v->data, "%L", ctx->step->rate) - v->data;
+    v->not_found = 0;
+    v->valid = 1;
+    v->no_cacheable = 1;
+
+    return NGX_OK;
+}

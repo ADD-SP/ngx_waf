@@ -46,6 +46,21 @@
 * 推荐链接：[https://add-sp.github.io/ngx_waf-docs/zh-cn/](https://add-sp.github.io/ngx_waf-docs/zh-cn/)
 * 备用链接：[https://ngx-waf-docs.pages.dev/zh-cn/](https://ngx-waf-docs.pages.dev/zh-cn/)
 
+## 从源码构建
+
+模块由一层很薄的 C 胶水代码和一个承载全部逻辑的 Rust 核心组成（见
+[`rust/README.md`](rust/README.md)），不再使用 Bazel。
+
+```sh
+make deps     # 安装固定版本的 cbindgen，另一个依赖是 cargo
+make build    # 在 test/nginx-<version> 中构建带静态模块的 nginx
+make test     # Rust 单元测试与 nginx 集成测试
+```
+
+需要 stable Rust 工具链（含 cargo）。`NGINX_SRC` 指定要复制的 nginx 源码目录，
+`NGINX_VERSION` 指定缺失时下载的版本。尚未移植的检测项见
+[`rust/README.md`](rust/README.md)。
+
 ## 联系方式
 
 * Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)

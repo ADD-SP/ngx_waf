@@ -47,6 +47,22 @@ Handy, High performance Nginx firewall module.
 * Recommended link: [https://add-sp.github.io/ngx_waf-docs/](https://add-sp.github.io/ngx_waf-docs/)
 * Alternate link: [https://ngx-waf-docs.pages.dev/](https://ngx-waf-docs.pages.dev/)
 
+## Building from source
+
+The module is a small nginx glue written in C plus a Rust core that holds the
+logic (see [`rust/README.md`](rust/README.md)); Bazel is not used anymore.
+
+```sh
+make deps     # install the pinned cbindgen, the other dependency is cargo
+make build    # build nginx with the static module in test/nginx-<version>
+make test     # the Rust unit tests and the nginx integration tests
+```
+
+A stable Rust toolchain (with cargo) is required.  `NGINX_SRC` selects the nginx
+source tree to copy and `NGINX_VERSION` the version to download when it is
+missing.  The inspections that are not ported yet are listed in
+[`rust/README.md`](rust/README.md).
+
 ## Contact
 
 * Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)

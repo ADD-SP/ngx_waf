@@ -1,0 +1,68 @@
+# Configuration of the header generator (`make header`).
+#
+# cbindgen is pinned to 0.29.4 by the Makefile; CI regenerates the header and
+# fails when `include/ngx_http_waf_ffi.h` is out of date.
+
+language = "C"
+include_guard = "NGX_HTTP_WAF_FFI_H"
+tab_width = 4
+line_length = 100
+style = "both"
+documentation = true
+usize_is_size_t = true
+
+header = """
+/* The `kind` values of `ngx_waf_step_t`, mirrored from rust/src/types.rs. */
+#define NGX_WAF_STEP_ALLOW          0
+#define NGX_WAF_STEP_RESPONSE       1
+#define NGX_WAF_STEP_INTERNAL_ERROR 2
+
+/* The `content_type` values of `ngx_waf_step_t`. */
+#define NGX_WAF_CT_HTML 0
+#define NGX_WAF_CT_TEXT 1
+"""
+
+[export]
+prefix = ""
+include = [
+    "NgxWafStr",
+    "NgxWafReq",
+    "NgxWafStep",
+    "ShmOps",
+    "ngx_waf_version",
+    "ngx_waf_string_free",
+    "ngx_waf_main_create",
+    "ngx_waf_main_free",
+    "ngx_waf_conf_create",
+    "ngx_waf_conf_free",
+    "ngx_waf_conf_cc_zone",
+    "ngx_waf_conf_waf",
+    "ngx_waf_conf_unsupported",
+    "ngx_waf_directive",
+    "ngx_waf_zone_directive",
+    "ngx_waf_conf_merge",
+    "ngx_waf_check",
+    "ngx_waf_step_free",
+    "ngx_waf_shm_zone_init",
+    "ngx_waf_shm_zone_free",
+    "ngx_waf_shm_zone_gc",
+    "ngx_waf_should_gc",
+    "ngx_waf_gc",
+]
+
+[export.rename]
+"NgxWafStr" = "ngx_waf_str_t"
+"NgxWafReq" = "ngx_waf_req_t"
+"NgxWafStep" = "ngx_waf_step_t"
+"ShmOps" = "ngx_waf_shm_ops_t"
+
+[fn]
+args = "auto"
+rename_args = "none"
+
+[parse]
+parse_deps = false
+
+[parse.expand]
+crates = []
+all_features = false

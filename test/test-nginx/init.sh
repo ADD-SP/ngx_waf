@@ -25,19 +25,31 @@ EOF
 done
 
 cd "$base_dir/waf"
-git clone https://github.com/SpiderLabs/ModSecurity.git
-git clone https://github.com/coreruleset/coreruleset.git
 
-mkdir -p modsec
-cp coreruleset/crs-setup.conf.example ./modsec/crs-setup.conf
-cp ModSecurity/modsecurity.conf-recommended ./modsec/modsecurity.conf
-cp ModSecurity/unicode.mapping ./modsec/unicode.mapping
+# The ModSecurity/CRS cases need two upstream repositories.  They are only
+# fetched when they are not available yet so that the rest of the suite can run
+# without network access (those cases fail then).
+if [ ! -d ModSecurity ]; then
+    git clone https://github.com/SpiderLabs/ModSecurity.git || true
+fi
+if [ ! -d coreruleset ]; then
+    git clone https://github.com/coreruleset/coreruleset.git || true
+fi
 
-sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' ./modsec/modsecurity.conf
-echo "Include ${base_dir}/waf/modsec/crs-setup.conf" >> ./modsec/modsecurity.conf
-echo "Include ${base_dir}/waf/coreruleset/rules/*.conf" >> ./modsec/modsecurity.conf
-echo "SecRule ARGS:test \"@streq deny\" \"id:1234567,phase:2,log,auditlog,deny,status:403\"" >> ./modsec/modsecurity.conf
-echo "SecRule ARGS:test \"@streq redirect\" \"id:123456,phase:2,log,auditlog,redirect:/,status:302\"" >> ./modsec/modsecurity.conf
+if [ -d ModSecurity ] && [ -d coreruleset ]; then
+    mkdir -p modsec
+    cp coreruleset/crs-setup.conf.example ./modsec/crs-setup.conf
+    cp ModSecurity/modsecurity.conf-recommended ./modsec/modsecurity.conf
+    cp ModSecurity/unicode.mapping ./modsec/unicode.mapping
+
+    sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' ./modsec/modsecurity.conf
+    echo "Include ${base_dir}/waf/modsec/crs-setup.conf" >> ./modsec/modsecurity.conf
+    echo "Include ${base_dir}/waf/coreruleset/rules/*.conf" >> ./modsec/modsecurity.conf
+    echo "SecRule ARGS:test \"@streq deny\" \"id:1234567,phase:2,log,auditlog,deny,status:403\"" >> ./modsec/modsecurity.conf
+    echo "SecRule ARGS:test \"@streq redirect\" \"id:123456,phase:2,log,auditlog,redirect:/,status:302\"" >> ./modsec/modsecurity.conf
+else
+    echo "WARNING: ModSecurity/coreruleset are missing, the modsecurity cases will fail."
+fi
 
 
 echo "1.1.1.1" >> ./rules/ipv4

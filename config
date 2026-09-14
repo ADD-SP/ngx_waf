@@ -1,258 +1,78 @@
 ngx_addon_name=ngx_http_waf_module
 
-deps="$ngx_addon_dir/include/ngx_http_waf_module_check.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_action.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_config.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_data.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_var.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_core.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_macro.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_type.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_util.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_ip_trie.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_mem_pool.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_shm.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_lru_cache.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_under_attack.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_captcha.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_verify_bot.h \
-    $ngx_addon_dir/include/ngx_http_waf_module_modsecurity.h"
+ngx_http_waf_rust_dir="$ngx_addon_dir/rust"
+ngx_http_waf_include="$ngx_addon_dir/include"
+ngx_http_waf_srcs="$ngx_addon_dir/src/ngx_http_waf_module.c"
+ngx_http_waf_deps="$ngx_addon_dir/include/ngx_http_waf_ffi.h"
 
-srcs="$ngx_addon_dir/src/ngx_http_waf_module_core.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_var.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_action.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_data.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_check.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_config.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_ip_trie.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_lru_cache.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_mem_pool.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_shm.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_under_attack.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_captcha.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_verify_bot.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_modsecurity.c \
-    $ngx_addon_dir/src/ngx_http_waf_module_util.c"
+#
+# The business logic lives in the Rust crate, the C file above is only glue.
+# Build the static library here, at configure time, so that `make` and the
+# dynamic module link step can just pick it up.
+#
 
-
-ngx_http_waf_module_libs=""
-
-ngx_http_waf_module_inc_path="$ngx_addon_dir/include "
-
-
-# Check if the modsecurity library is installed.
-if [ -n "$LIB_MODSECURITY" ] ; then
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_MODSECURITY}/lib -l modsecurity "
-    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_MODSECURITY}/include"
-else
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l modsecurity "
+if [ -z "$ngx_http_waf_cargo" ]; then
+    ngx_http_waf_cargo="${CARGO:-cargo}"
 fi
 
-ngx_feature="modsecurity library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs=$(cat << END
-#include <modsecurity/modsecurity.h>
-#include <modsecurity/transaction.h>
-#if defined(MSC_USE_RULES_SET)
-#include <modsecurity/rules_set.h>
-#else
-#include <modsecurity/rules.h>
-#endif
-END
-)
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
+if ! command -v "$ngx_http_waf_cargo" > /dev/null 2>&1 ; then
     cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-END
-    PWD=''
-    exit 1
-fi
-
-
-if [ -n "$LIB_CURL" ] ; then
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CURL}/lib -l curl "
-    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_CURL}/include"
-else
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l curl "
-fi
-
-# Check if the curl library is installed.
-ngx_feature="curl library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs="#include <curl/curl.h>"
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-END
-    PWD=''
-    exit 1
-fi
-
-
-if [ -n "$LIB_CJSON" ] ; then
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_CJSON}/lib -l cjson "
-    ngx_http_waf_module_inc_path=" ${ngx_http_waf_module_inc_path} ${LIB_CJSON}/include"
-else
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -l cjson "
-fi
-
-# Check if the cJSON library is installed.
-ngx_feature="cJSON library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs="#include <cJSON.h>"
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
-    PWD=$(pwd)
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
-END
-    PWD=''
-    exit 1
-fi
-
-
-if [ -n $LIB_UTHASH ] ; then
-    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_UTHASH}/include"
-fi
-
-# Check if the uthash library is installed.
-ngx_feature="uthash library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs=$(cat << END
-#include <utarray.h>
-#include <uthash.h>
-#include <utlist.h>
-#include <utringbuffer.h>
-#include <utstack.h>
-#include <utstring.h>
-END
-)
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
-    cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
+$0: error: the $ngx_addon_name module needs the Rust toolchain, but the
+command [$ngx_http_waf_cargo] was not found.  Install it from
+https://rustup.rs/ or set CARGO to its path.
 END
     exit 1
 fi
 
-# Check if the C compiler supports the C99 standard.
-ngx_feature="C99 features"
-ngx_feature_name=
-ngx_feature_run=yes
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs=$(cat << END
-#include <stdio.h>
-#include <string.h>
-END
-)
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=$(cat << END
+ngx_http_waf_profile="${NGX_WAF_CARGO_PROFILE:-release}"
+ngx_http_waf_target_dir="${NGX_WAF_TARGET_DIR:-$ngx_http_waf_rust_dir/target}"
 
-/* Declare variables in loops. */
-for(int i = 0; i < 10; i++) {}
+ngx_http_waf_cargo_args="--manifest-path $ngx_http_waf_rust_dir/Cargo.toml
+    --profile $ngx_http_waf_profile
+    --target-dir $ngx_http_waf_target_dir
+    $NGX_WAF_CARGO_FLAGS"
 
-int i = 0, j = 0;
+# A dynamic module must be position independent, including the Rust objects.
+if [ "$ngx_module_link" = "DYNAMIC" ]; then
+    RUSTFLAGS="$RUSTFLAGS -C relocation-model=pic"
+    export RUSTFLAGS
+fi
 
-/* Short-circuit operation for logical expressions. */
-if (i == 0 || !(j = 1)) {}
-
-if (j == 1) { return 1; }
-
-j = 0;
-
-if (i != 0 && !(j = 1)) {}
-
-if (j == 1) { return 1; }
-
-#define my_sprintf(...) sprintf(__VA_ARGS__)
-
-char buf[1024];
-my_sprintf(buf, "%s/%s", "ADD-SP", "ngx_waf");
-if (strcmp(buf, "ADD-SP/ngx_waf") != 0) {
-    return 1;
-}
-END
-)
-. auto/feature
-if [ $ngx_found = no  ] ; then 
+echo " + building the Rust core ($ngx_http_waf_profile)"
+if ! $ngx_http_waf_cargo build $ngx_http_waf_cargo_args ; then
     cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature, make sure your C compiler supports and enables the C99 standard.
-
-For gcc, you can enable the C99 standard by appending the parameter --with-cc-opt='-std=gnu99'.
-
+$0: error: the Rust core of the $ngx_addon_name module failed to build.
 END
     exit 1
 fi
 
+ngx_http_waf_lib_dir="$ngx_http_waf_target_dir/$ngx_http_waf_profile"
 
-
-if [ -n "$LIB_SODIUM" ] ;  then
-    ngx_http_waf_module_inc_path="${ngx_http_waf_module_inc_path} ${LIB_SODIUM}/include"
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs} -L ${LIB_SODIUM}/lib -l sodium "
-else
-    ngx_http_waf_module_libs=" ${ngx_http_waf_module_libs}  -l sodium "
-fi
-
-
-# Check if libsodium exists.
-ngx_feature="sodium library"
-ngx_feature_name=
-ngx_feature_run=no
-ngx_feature_path=$ngx_http_waf_module_inc_path
-ngx_feature_incs='#include <sodium.h>'
-ngx_feature_libs=$ngx_http_waf_module_libs
-ngx_feature_test=
-. auto/feature
-if [ $ngx_found = no  ] ; then 
+if [ ! -f "$ngx_http_waf_lib_dir/libngx_waf_core.a" ]; then
     cat << END
-$0: error: the $ngx_addon_name module requires the $ngx_feature.
+$0: error: [$ngx_http_waf_lib_dir/libngx_waf_core.a] is missing after the
+cargo build, check the configuration of the Rust crate.
 END
     exit 1
 fi
 
-
-# Clear these variables to avoid affecting the installation of other modules.
-ngx_feature=
-ngx_feature_name=
-ngx_feature_run=
-ngx_feature_path=
-ngx_feature_incs=
-ngx_feature_libs=
-ngx_feature_test=
+ngx_http_waf_module_libs=" -L $ngx_http_waf_lib_dir -l ngx_waf_core -l pthread -l dl -l m "
+ngx_http_waf_module_inc_path=" $ngx_http_waf_include "
 
 
 if test -n "$ngx_module_link"; then
     ngx_module_type=HTTP_AUX_FILTER
     ngx_module_name=$ngx_addon_name
-    ngx_module_deps=$deps
-    ngx_module_incs=$ngx_http_waf_module_inc_path
-    ngx_module_srcs=$srcs
-    ngx_module_libs=$ngx_http_waf_module_libs
+    ngx_module_deps="$ngx_http_waf_deps"
+    ngx_module_incs="$ngx_http_waf_module_inc_path"
+    ngx_module_srcs="$ngx_http_waf_srcs"
+    ngx_module_libs="$ngx_http_waf_module_libs"
 
     . auto/module
 else
     HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ${ngx_addon_name}"
-    NGX_ADDON_DEPS-"$NGX_ADDON_DEPS $deps"
-    HTTP_INCS="$HTTP_INCS -I $ngx_addon_dir/inc $ngx_addon_dir/inc/libinjection/src"
-    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $srcs"
+    NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_http_waf_deps"
+    HTTP_INCS="$HTTP_INCS -I $ngx_http_waf_include"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_http_waf_srcs"
+    ngx_module_libs="$ngx_http_waf_module_libs"
 fi
