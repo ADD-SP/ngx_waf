@@ -13,6 +13,7 @@
 #include <ngx_http.h>
 
 #include <stdio.h>
+#include <stddef.h>
 
 #include <ngx_http_waf_ffi.h>
 
@@ -109,6 +110,33 @@ typedef char ngx_http_waf_method_bits_must_match[
      && NGX_HTTP_PATCH == 0x4000
      && NGX_HTTP_TRACE == 0x8000) ? 1 : -1];
 
+/*
+ * The glue hands nginx strings to the core with a cast (`ngx_str_t *` to
+ * `ngx_waf_str_t *`), the two types have to stay layout compatible.
+ */
+typedef char ngx_http_waf_str_layout_must_match[
+    (sizeof(ngx_str_t) == sizeof(ngx_waf_str_t)
+     && offsetof(ngx_str_t, len) == offsetof(ngx_waf_str_t, len)
+     && offsetof(ngx_str_t, data) == offsetof(ngx_waf_str_t, data)) ? 1 : -1];
+
+/*
+ * The kinds are declared twice: as `NGX_WAF_*` by the template of the generated
+ * header (mirrored from rust/src/types.rs) and as `STEP_*`/`EVENT_*`/`CT_*` by
+ * cbindgen from the same constants.  They must not drift apart.
+ */
+typedef char ngx_http_waf_kinds_must_match[
+    (NGX_WAF_STEP_ALLOW == STEP_ALLOW
+     && NGX_WAF_STEP_RESPONSE == STEP_RESPONSE
+     && NGX_WAF_STEP_INTERNAL_ERROR == STEP_INTERNAL_ERROR
+     && NGX_WAF_STEP_RESOLVE_ADDR == STEP_RESOLVE_ADDR
+     && NGX_WAF_STEP_HTTP_REQUEST == STEP_HTTP_REQUEST
+     && NGX_WAF_EVENT_RESOLVED_NAME == EVENT_RESOLVED_NAME
+     && NGX_WAF_EVENT_RESOLVE_FAILED == EVENT_RESOLVE_FAILED
+     && NGX_WAF_EVENT_HTTP_RESPONSE == EVENT_HTTP_RESPONSE
+     && NGX_WAF_EVENT_HTTP_FAILED == EVENT_HTTP_FAILED
+     && NGX_WAF_CT_HTML == CT_HTML
+     && NGX_WAF_CT_TEXT == CT_TEXT) ? 1 : -1];
+
 
 #if !(NGX_PCRE2)
 /*
@@ -142,6 +170,23 @@ void ngx_http_waf_modsecurity_log(void* log, const void* data) {
 
     ngx_log_error(NGX_LOG_INFO, (ngx_log_t*) log, 0,
         "ngx_waf: [ModSecurity][%s]", (const char*) data);
+}
+
+
+/*
+ * Where the Rust core reports a panic it caught at the FFI boundary: without
+ * this the request only answers 500 and the error log stays empty.  See
+ * `rust/src/ffi.rs`.
+ */
+void ngx_http_waf_log_error(void* log, const char* message);
+
+
+void ngx_http_waf_log_error(void* log, const char* message) {
+    if (log == NULL || message == NULL) {
+        return;
+    }
+
+    ngx_log_error(NGX_LOG_ERR, (ngx_log_t*) log, 0, "%s", message);
 }
 
 
@@ -1772,6 +1817,37 @@ static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_str_t* bo
         return NGX_OK;
     }
 
+    /*
+     * A body above `client_body_buffer_size` is written to a temporary file by
+     * nginx: the chain holds one buffer whose bytes are in the file instead of
+     * in memory.  Reading it back is what keeps the inspections that look at
+     * the body (the POST list, ModSecurity) effective for larger requests; the
+     * size is bounded by `client_max_body_size`, which nginx enforces before
+     * the access phase runs.
+     */
+    if (r->request_body->bufs->buf->in_file) {
+        ngx_buf_t* b = r->request_body->bufs->buf;
+        off_t size = b->file_last - b->file_pos;
+
+        if (size <= 0) {
+            return NGX_OK;
+        }
+
+        data = ngx_pnalloc(r->pool, size);
+        if (data == NULL) {
+            return NGX_ERROR;
+        }
+
+        if (ngx_read_file(b->file, data, size, b->file_pos) != (ssize_t) size) {
+            return NGX_ERROR;
+        }
+
+        body->data = data;
+        body->len = size;
+
+        return NGX_OK;
+    }
+
     for (bufs = r->request_body->bufs; bufs != NULL; bufs = bufs->next) {
         len += bufs->buf->last - bufs->buf->pos;
     }
@@ -1868,9 +1944,11 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
 
     ngx_memzero(&req, sizeof(ngx_waf_req_t));
 
+    /* A body this module cannot read (or could not allocate) is not a body it
+     * may skip: the POST list and ModSecurity have to see it, so the request
+     * is refused instead of being served uninspected. */
     if (ngx_http_waf_make_body(r, &body) != NGX_OK) {
-        body.data = NULL;
-        body.len = 0;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
     if (ngx_http_waf_make_cookies(r, &cookies) != NGX_OK) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -1907,6 +1985,8 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     req.has_body = body.data != NULL ? 1 : 0;
     req.internal = r->internal ? 1 : 0;
     req.now = ngx_time();
+    /* where the core reports an internal error, and where ModSecurity logs */
+    req.log = r->connection->log;
 
     /*
      * Everything libmodsecurity reads beyond the common request view.  It is
@@ -1944,7 +2024,6 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         req.client_addr.data = r->connection->addr_text.data;
         req.client_addr.len = r->connection->addr_text.len;
         req.client_port = ngx_inet_get_port(r->connection->sockaddr);
-        req.log = r->connection->log;
 
         switch (r->http_version) {
         case NGX_HTTP_VERSION_9:

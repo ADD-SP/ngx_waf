@@ -314,7 +314,8 @@ typedef struct ngx_waf_req_t {
     struct ngx_waf_str_t server_addr;
     uint32_t server_port;
     /**
-     * `r->connection->log`, the data of the ModSecurity log callback.
+     * `r->connection->log`: the data of the ModSecurity log callback, and
+     * where a panic caught at this boundary is reported.
      */
     void *log;
 } ngx_waf_req_t;

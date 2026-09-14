@@ -56,6 +56,7 @@ exclude = [
     "msc_intervention",
     "msc_process_logging",
     "ngx_http_waf_modsecurity_log",
+    "ngx_http_waf_log_error",
     "free",
 ]
 include = [

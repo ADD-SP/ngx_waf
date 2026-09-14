@@ -1,0 +1,6 @@
+# The toolchain the module is built with.  The file lives at the repository
+# root because `make` runs cargo from there (a toolchain file below `rust/`
+# would only apply to commands that run inside that directory).
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

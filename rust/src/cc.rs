@@ -873,4 +873,23 @@ mod tests {
         let fresh = increment(ctx, b"cc", &[12, 0, 0, 1], false, 1, 60, 60, 0).unwrap();
         assert_eq!(fresh.rate, 1);
     }
+
+    /// A single worker collects on every request, several workers spread the
+    /// work out: `_gc()` runs with a probability of one in `worker_processes`.
+    #[test]
+    fn should_gc_is_shared_between_the_workers() {
+        assert!(should_gc(0));
+        assert!(should_gc(1));
+
+        let workers = 8usize;
+        let samples = 20_000usize;
+        let hits = (0..samples).filter(|_| should_gc(workers as i64)).count();
+        let expected = samples / workers;
+
+        // ±25% of 1/8 over 20k samples is more than twenty standard deviations.
+        assert!(
+            hits >= expected * 3 / 4 && hits <= expected * 5 / 4,
+            "{hits} of {samples} requests collected, expected around {expected}"
+        );
+    }
 }

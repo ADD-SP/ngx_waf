@@ -13,8 +13,14 @@ root=$(cd "$here/../.." && pwd)
 prefix=${E2E_PREFIX:-$(mktemp -d)}
 nginx_bin=${NGINX_BIN:-$root/test/nginx-1.27.2/objs/nginx}
 port=18080
+# The provider stub that accepts a connection and never answers.
+hang_port=18092
+hang_pid=""
 
 cleanup() {
+    if [ -n "$hang_pid" ]; then
+        kill "$hang_pid" 2>/dev/null || true
+    fi
     if [ -f "$prefix/logs/nginx.pid" ]; then
         kill "$(cat "$prefix/logs/nginx.pid")" 2>/dev/null || true
     fi
@@ -50,7 +56,34 @@ if [ -n "${MODULE_PATH:-}" ]; then
 else
     cp "$here/nginx.conf" "$prefix/conf/nginx.conf"
 fi
+
+# Every check runs against one worker by default; `E2E_WORKERS=4` makes the
+# counters and the action table of the shared memory matter.
+workers=${E2E_WORKERS:-1}
+sed "s/^worker_processes .*/worker_processes  $workers;/" \
+    "$prefix/conf/nginx.conf" > "$prefix/conf/nginx.conf.tmp"
+mv "$prefix/conf/nginx.conf.tmp" "$prefix/conf/nginx.conf"
+
 printf 'backend\n' > "$prefix/html/index.html"
+
+# A provider that accepts the connection and never answers: the module has to
+# give up on its own timeout.  Without python3 the case is skipped.
+if command -v python3 > /dev/null 2>&1; then
+    python3 - "$hang_port" <<'PY' &
+import socket
+import sys
+
+# Accept the connections and hold them open, never write a byte back.
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("127.0.0.1", int(sys.argv[1])))
+server.listen(16)
+held = []
+while True:
+    held.append(server.accept()[0])
+PY
+    hang_pid=$!
+fi
 
 "$nginx_bin" -p "$prefix" -c conf/nginx.conf -t > /dev/null || exit 1
 "$nginx_bin" -p "$prefix" -c conf/nginx.conf > "$prefix/logs/stdout.log" 2>&1 &
@@ -110,6 +143,33 @@ check_body() {
     fi
 }
 
+# check_body_slow <expected status> <pattern> <min seconds> <description> <curl args...>
+#
+# Like `check_body`, but the request is expected to take at least <min> seconds
+# (the module gives up on its own timeout), so curl has to wait longer than its
+# default here.
+check_body_slow() {
+    expected=$1
+    pattern=$2
+    minimum=$3
+    description=$4
+    shift 4
+    started=$(date +%s)
+    body=$(curl -s --max-time 20 -w '\n%{http_code}' "$@")
+    took=$(( $(date +%s) - started ))
+    status=$(printf '%s' "$body" | tail -n 1)
+    text=$(printf '%s' "$body" | sed '$d')
+    if [ "$status" = "$expected" ] && printf '%s' "$text" | grep -q "$pattern" \
+        && [ "$took" -ge "$minimum" ]; then
+        pass=$((pass + 1))
+        printf 'ok   %-52s %s after %ss\n' "$description" "$status" "$took"
+    else
+        fail=$((fail + 1))
+        printf 'FAIL %-52s %s after %ss (want %s, body: %s)\n' \
+            "$description" "$status" "$took" "$expected" "$text"
+    fi
+}
+
 base="http://127.0.0.1:$port"
 
 check 200 "allowed request"                  "$base/"
@@ -126,6 +186,18 @@ check 404 "white url"                        "$base/white/www.bak"
 check 403 "black cookie"                     -H 'Cookie: s=../' "$base/"
 check 403 "black post body"                  -d 'onload=' "$base/"
 check 405 "harmless post body"               -d 's=test' "$base/"
+# Long values are inspected as they are, nothing is truncated on the way to the
+# checks (the caches of the C implementation were keyed on the whole value).
+long_ua=$(head -c 4096 /dev/zero | tr '\0' a)
+check 403 "4k user agent with a rule"        -H "User-Agent: $long_ua/ SF/" "$base/"
+check 200 "4k user agent without a rule"     -H "User-Agent: $long_ua" "$base/"
+# The body comes from a file: a single command line argument cannot be that
+# big (the kernel limits one to 128k), `curl -d @file` reads it instead.
+head -c 262144 /dev/zero | tr '\0' a > "$prefix/big.body"
+cat "$prefix/big.body" > "$prefix/big.with-rule"
+printf 'onload=' >> "$prefix/big.with-rule"
+check 403 "256k body with a rule"            -d "@$prefix/big.with-rule" "$base/"
+check 405 "256k body without a rule"         -d "@$prefix/big.body" "$base/"
 check 403 "black ipv4"                       -H 'X-Real-IP: 1.1.1.1' "$base/"
 check 403 "black ipv4 block"                 -H 'X-Real-IP: 2.1.0.0' "$base/"
 check 403 "black ipv4 host bit"              -H 'X-Real-IP: 2.0.0.1' "$base/"
@@ -215,6 +287,14 @@ check_body 200 'bad' "captcha v3 rejects a low score" \
 if [ -s "$prefix/conf/ssl/cert.pem" ]; then
     check_body 200 'good' "captcha reaches an https provider" \
         -X POST -d 'g-recaptcha-response=token' "$cap/tls/captcha"
+fi
+
+# The stub of this script accepts the connection and never answers: the module
+# has to give up on its own timeout (5s), fail closed and keep serving.
+if [ -n "$hang_pid" ]; then
+    check_body_slow 200 'bad' 5 "captcha provider timeout fails closed" \
+        -X POST -d 'g-recaptcha-response=token' "$cap/hang/captcha"
+    check 200 "the worker survives a provider timeout" "$base/"
 fi
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"

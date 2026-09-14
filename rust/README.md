@@ -41,7 +41,9 @@ is where a byte level comparison can still be made.
 ## Building
 
 The nginx `config` script drives cargo; `make build` at the repository root is
-the supported entry point.  The crate builds offline as long as the cargo
+the supported entry point.  `rust-toolchain.toml` in the repository root pins
+the stable toolchain (with rustfmt and clippy) for every cargo invocation of the
+repository.  The crate builds offline as long as the cargo
 registry cache already contains `regex`, `serde_json` and `getrandom`.  nginx
 links the crate against libmodsecurity, whose C API the `waf_modsecurity`
 inspection calls: the development files (headers and the shared library) have to
@@ -127,6 +129,11 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   implementation leaked the transaction and never wrote it.  The transaction id
   of `waf_modsecurity_transaction_id` is passed the same way, including when the
   value it evaluates to is empty.
+* A request body above `client_body_buffer_size` is written to a temporary file
+  by nginx; the module reads it back so the POST list and ModSecurity still see
+  it.  The C implementation gave up on those requests (`_read_request_body()`
+  returned `NGX_HTTP_WAF_FAIL` for `r->request_body->temp_file`), so a POST
+  larger than that buffer was never inspected.
 * ModSecurity: with PCRE1 the C implementation pointed the allocator globals of
   libpcre at the nginx pool while the rules were parsed; the glue does the same,
   the rule loading itself happens in the Rust core.
@@ -136,13 +143,16 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
 ```sh
 make build              # nginx with the static module
 make test-rust          # the unit tests
-NGINX_BIN=$PWD/test/nginx-1.27.2/objs/nginx test/e2e/run.sh
+make test-e2e           # the end to end checks, one worker and four
 ```
 
 `test/e2e/run.sh` starts a real nginx and checks the black/white lists, the
 block page, the variables, the CC protection and the `waf off` / `waf bypass` /
-`waf_mode` handling; `MODULE_PATH=.../ngx_http_waf_module.so` checks the
-dynamic module instead.  The upstream `Test::Nginx` templates remain the
+`waf_mode` handling, the captcha provider answers (including a provider that
+never answers) and the tables that live in shared memory; `E2E_WORKERS=4`
+repeats the run with four worker processes and
+`MODULE_PATH=.../ngx_http_waf_module.so` checks the dynamic module instead.  The
+upstream `Test::Nginx` templates remain the
 acceptance baseline, see `test/test-nginx/run.sh`.
 
 ```sh

@@ -55,6 +55,7 @@
 make deps     # 安装固定版本的 cbindgen，另一个依赖是 cargo
 make build    # 在 test/nginx-<version> 中构建带静态模块的 nginx
 make test     # Rust 单元测试与 nginx 集成测试
+make test-e2e # 自研端到端检查，单 worker 与四 worker 各跑一轮
 ```
 
 需要 stable Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如

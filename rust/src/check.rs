@@ -637,6 +637,11 @@ impl Machine {
         &self.req
     }
 
+    /// `r->connection->log` of the request, where an internal error belongs.
+    pub fn log(&self) -> *mut std::os::raw::c_void {
+        self.req.log
+    }
+
     /// Let a test inject the shared memory handle of the fail counters.
     #[cfg(test)]
     pub fn set_captcha_zone(&mut self, zone: *mut cc::ZoneHandle) {

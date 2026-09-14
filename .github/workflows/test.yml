@@ -163,3 +163,9 @@ jobs:
             t/user_agent.t \
             t/var.t \
             t/verify_bot.t
+
+          # The end to end checks of the module itself, with one worker and
+          # with four (the counters and the action table live in shared memory
+          # and have to hold across workers).
+          cd "${{ github.workspace }}"
+          NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" make test-e2e

@@ -4,6 +4,7 @@
 #   make build     build nginx with the static module
 #   make build-dynamic  build the dynamic module as well
 #   make test      run the Rust tests and the nginx integration tests
+#   make test-e2e  run the end to end checks (one and four workers)
 #   make install   install the built module
 #   make header    regenerate include/ngx_http_waf_ffi.h with cbindgen
 #   make clean     remove the build artefacts
@@ -17,12 +18,12 @@ CBINDGEN        ?= cbindgen
 
 NGINX_SRC_DIR   := $(CURDIR)/test/nginx-$(NGINX_VERSION)
 NGINX_CONFIGURE := $(NGINX_SRC_DIR)/auto/configure
-NGINX_BIN       := $(NGINX_SRC_DIR)/objs/nginx
+NGINX_BIN       ?= $(NGINX_SRC_DIR)/objs/nginx
 MODULE_SO       := $(NGINX_SRC_DIR)/objs/ngx_http_waf_module.so
 RUST_LIB        := $(CURDIR)/rust/target/release/libngx_waf_core.a
 
 .PHONY: all deps rust-core build build-static build-dynamic test test-rust test-nginx \
-	install header clean fmt clippy
+	test-e2e install header clean fmt clippy
 
 all: build
 
@@ -90,6 +91,13 @@ test-rust:
 ## Run the nginx integration suite (see test/test-nginx).
 test-nginx:
 	cd test/test-nginx && ./run.sh
+
+## Run the end to end checks of the module (see test/e2e).  The second pass
+## uses four workers, which is what makes the shared memory of the counters and
+## the actions matter.
+test-e2e:
+	NGINX_BIN=$(NGINX_BIN) ./test/e2e/run.sh
+	E2E_WORKERS=4 NGINX_BIN=$(NGINX_BIN) ./test/e2e/run.sh
 
 install: build-dynamic
 	@mkdir -p $(NGINX_PREFIX)/modules

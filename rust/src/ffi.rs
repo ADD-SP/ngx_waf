@@ -12,6 +12,13 @@ use std::os::raw::{c_char, c_void};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::slice;
 
+extern "C" {
+    /// `src/ngx_http_waf_module.c`: writes one message to the error log of the
+    /// connection (`log` is the `r->connection->log` of the request view).
+    /// The core calls it for the panics it caught at this boundary.
+    fn ngx_http_waf_log_error(log: *mut c_void, message: *const c_char);
+}
+
 /// `ngx_str_t` compatible string view: nginx declares the length first, so the
 /// field order matters (see the layout assertion in the C glue).
 #[repr(C)]
@@ -71,7 +78,8 @@ pub struct NgxWafReq {
     pub client_port: u32,
     pub server_addr: NgxWafStr,
     pub server_port: u32,
-    /// `r->connection->log`, the data of the ModSecurity log callback.
+    /// `r->connection->log`: the data of the ModSecurity log callback, and
+    /// where a panic caught at this boundary is reported.
     pub log: *mut c_void,
 }
 
@@ -211,6 +219,25 @@ fn panic_message(payload: Box<dyn std::any::Any>) -> String {
         format!("ngx_waf: internal error: {text}")
     } else {
         "ngx_waf: internal error".to_string()
+    }
+}
+
+/// Report a panic that was caught at the C ABI to the error log of the
+/// connection.  Without it a panic only shows up as a 500 with nothing to look
+/// at; a request without a log (no request context) keeps the message silent,
+/// the C side still answers 500.
+///
+/// # Safety
+/// `log` must be the `ngx_log_t` the C side put in the request view, or NULL.
+unsafe fn log_internal_error(log: *mut c_void, message: &str) {
+    if log.is_null() {
+        return;
+    }
+
+    // The message is written with `ngx_log_error("%s")`, which stops at a NUL.
+    let text: Vec<u8> = message.bytes().filter(|byte| *byte != 0).collect();
+    if let Ok(text) = CString::new(text) {
+        ngx_http_waf_log_error(log, text.as_ptr());
     }
 }
 
@@ -431,6 +458,10 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
         return std::ptr::null_mut();
     }
 
+    // For the error log of a caught panic; the request view stays borrowed by
+    // the closure below.
+    let log = unsafe { (*req).log };
+
     let result = catch_unwind(AssertUnwindSafe(|| {
         let req = &*req;
         let cookies: Vec<Vec<u8>> = if req.cookies.is_null() || req.cookie_count == 0 {
@@ -516,7 +547,11 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
 
     match result {
         Ok(step) => step,
-        Err(_) => std::ptr::null_mut(),
+        Err(payload) => {
+            let message = panic_message(payload);
+            unsafe { log_internal_error(log, &message) };
+            std::ptr::null_mut()
+        }
     }
 }
 
@@ -546,7 +581,18 @@ pub unsafe extern "C" fn ngx_waf_check_resume(
     }));
     match result {
         Ok(()) => 0,
-        Err(_) => -1,
+        Err(payload) => {
+            let message = panic_message(payload);
+            let log = unsafe {
+                (*(step as *mut StepHandle))
+                    .machine
+                    .as_ref()
+                    .map(|machine| machine.log())
+                    .unwrap_or(std::ptr::null_mut())
+            };
+            unsafe { log_internal_error(log, &message) };
+            -1
+        }
     }
 }
 
@@ -558,12 +604,21 @@ pub unsafe extern "C" fn ngx_waf_check_log(step: *mut NgxWafStep) {
     if step.is_null() {
         return;
     }
-    let _ = catch_unwind(AssertUnwindSafe(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| {
         let handle = &mut *(step as *mut StepHandle);
         if let Some(machine) = handle.machine.as_mut() {
             machine.log_phase();
         }
     }));
+    if let Err(payload) = result {
+        let message = panic_message(payload);
+        let log = (*(step as *mut StepHandle))
+            .machine
+            .as_ref()
+            .map(|machine| machine.log())
+            .unwrap_or(std::ptr::null_mut());
+        log_internal_error(log, &message);
+    }
 }
 
 impl StepHandle {
@@ -792,4 +847,134 @@ pub unsafe extern "C" fn ngx_waf_gc(conf: *mut c_void) {
             }
         }
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::{offset_of, size_of};
+    use std::sync::Mutex;
+
+    /// The real `ngx_http_waf_log_error()` lives in `src/ngx_http_waf_module.c`
+    /// (nginx links it into the module); the unit tests link this crate on its
+    /// own and record what the core reported instead.
+    static MESSAGES: Mutex<Vec<(usize, String)>> = Mutex::new(Vec::new());
+
+    /// `MESSAGES` is process wide, the tests that read it must not overlap.
+    static LOG_LOCK: Mutex<()> = Mutex::new(());
+
+    #[no_mangle]
+    pub extern "C" fn ngx_http_waf_log_error(log: *mut c_void, message: *const c_char) {
+        let text = if message.is_null() {
+            String::new()
+        } else {
+            unsafe { std::ffi::CStr::from_ptr(message) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        MESSAGES.lock().unwrap().push((log as usize, text));
+    }
+
+    fn recorded() -> Vec<(usize, String)> {
+        std::mem::take(&mut *MESSAGES.lock().unwrap())
+    }
+
+    fn log_lock() -> std::sync::MutexGuard<'static, ()> {
+        LOG_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    /// `ngx_str_t` of nginx: the length first, then the data.  The C glue casts
+    /// between the two types, the layouts have to agree on every target.
+    #[test]
+    fn the_string_view_matches_ngx_str_t() {
+        assert_eq!(size_of::<NgxWafStr>(), 2 * size_of::<usize>());
+        assert_eq!(offset_of!(NgxWafStr, len), 0);
+        assert_eq!(offset_of!(NgxWafStr, data), size_of::<usize>());
+    }
+
+    /// The C side holds a `struct ngx_waf_step_t *` and hands it back, the step
+    /// has to stay the first field of the handle it points at.
+    #[test]
+    fn the_step_is_the_first_field_of_the_handle() {
+        assert_eq!(offset_of!(NgxWafStep, kind), 0);
+        assert_eq!(offset_of!(StepHandle, step), 0);
+    }
+
+    /// The header the C side compiles against declares the same kinds twice:
+    /// the `NGX_WAF_*` macros of the cbindgen template and the names cbindgen
+    /// generates from these constants.  The C glue asserts that they agree (see
+    /// `ngx_http_waf_kinds_must_match`); this test freezes their values.
+    #[test]
+    fn the_step_kinds_are_stable() {
+        assert_eq!(
+            [
+                STEP_ALLOW,
+                STEP_RESPONSE,
+                STEP_INTERNAL_ERROR,
+                STEP_RESOLVE_ADDR,
+                STEP_HTTP_REQUEST
+            ],
+            [0, 1, 2, 3, 4]
+        );
+        assert_eq!(
+            [
+                EVENT_RESOLVED_NAME,
+                EVENT_RESOLVE_FAILED,
+                EVENT_HTTP_RESPONSE,
+                EVENT_HTTP_FAILED
+            ],
+            [0, 1, 2, 3]
+        );
+        assert_eq!([CT_HTML, CT_TEXT], [0, 1]);
+    }
+
+    #[test]
+    fn a_caught_panic_reaches_the_error_log() {
+        let _guard = log_lock();
+        let _ = recorded();
+        let log = 0x1234 as *mut c_void;
+
+        unsafe { log_internal_error(log, "ngx_waf: internal error: boom") };
+
+        assert_eq!(
+            recorded(),
+            vec![(0x1234, "ngx_waf: internal error: boom".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_message_without_a_log_stays_silent() {
+        let _guard = log_lock();
+        let _ = recorded();
+
+        unsafe { log_internal_error(std::ptr::null_mut(), "ngx_waf: internal error: boom") };
+
+        assert!(recorded().is_empty());
+    }
+
+    /// `ngx_log_error("%s")` stops at the first NUL, a payload with one must not
+    /// truncate the rest of the message or reach the C side at all.
+    #[test]
+    fn an_interior_nul_is_dropped() {
+        let _guard = log_lock();
+        let _ = recorded();
+        let log = std::ptr::dangling_mut::<c_void>();
+
+        unsafe { log_internal_error(log, "a\0b") };
+
+        assert_eq!(recorded(), vec![(log as usize, "ab".to_string())]);
+    }
+
+    #[test]
+    fn the_panic_message_names_the_payload() {
+        assert_eq!(
+            panic_message(Box::new("boom")),
+            "ngx_waf: internal error: boom"
+        );
+        assert_eq!(
+            panic_message(Box::new(String::from("boom"))),
+            "ngx_waf: internal error: boom"
+        );
+        assert_eq!(panic_message(Box::new(42u32)), "ngx_waf: internal error");
+    }
 }

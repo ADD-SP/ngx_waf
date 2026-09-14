@@ -56,6 +56,7 @@ logic (see [`rust/README.md`](rust/README.md)); Bazel is not used anymore.
 make deps     # install the pinned cbindgen, the other dependency is cargo
 make build    # build nginx with the static module in test/nginx-<version>
 make test     # the Rust unit tests and the nginx integration tests
+make test-e2e # the end to end checks, with one worker and with four
 ```
 
 A stable Rust toolchain (with cargo) and the development files of
