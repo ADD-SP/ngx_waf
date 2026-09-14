@@ -1093,9 +1093,6 @@ fn directive_captcha(
         };
     }
 
-    if conf.captcha == 1 {
-        conf.unsupported("waf_captcha");
-    }
     Ok(())
 }
 
@@ -1298,6 +1295,7 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
         (&mut child.cache_capacity, parent.cache_capacity),
         (&mut child.under_attack, parent.under_attack),
         (&mut child.captcha, parent.captcha),
+        (&mut child.captcha_type, parent.captcha_type),
         (&mut child.captcha_expire, parent.captcha_expire),
         (&mut child.captcha_max_fails, parent.captcha_max_fails),
         (&mut child.captcha_duration, parent.captcha_duration),

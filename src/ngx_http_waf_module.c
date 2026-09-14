@@ -31,9 +31,47 @@ typedef struct {
 } ngx_http_waf_zone_t;
 
 
+/**
+ * The captcha provider endpoint, parsed at configuration time so that a request
+ * never has to resolve anything.
+ */
+typedef struct {
+    ngx_str_t                  host;
+    ngx_str_t                  uri;
+    struct sockaddr           *sockaddr;
+    socklen_t                  socklen;
+    in_port_t                  port;
+    ngx_ssl_t                  ssl;
+    unsigned                   use_ssl:1;
+    unsigned                   configured:1;
+    /** Set when the host was resolved while the configuration was read. */
+    unsigned                   resolved:1;
+} ngx_http_waf_captcha_api_t;
+
+
+/**
+ * One provider request in flight.
+ */
+typedef struct {
+    ngx_connection_t          *connection;
+    ngx_buf_t                 *request;
+    ngx_buf_t                 *response;
+    struct sockaddr           *sockaddr;
+    socklen_t                  socklen;
+    ngx_str_t                  host;
+    unsigned                   use_ssl:1;
+    unsigned                   handshake_done:1;
+    /** Set once the machine was given the answer. */
+    unsigned                   finished:1;
+    /** Set while `start_http` runs, i.e. inside the drive loop. */
+    unsigned                   in_drive:1;
+} ngx_http_waf_fetch_t;
+
+
 typedef struct {
     void                      *core;
     ngx_http_complex_value_t  *modsecurity_transaction_id;
+    ngx_http_waf_captcha_api_t captcha_api;
 } ngx_http_waf_loc_conf_t;
 
 
@@ -45,6 +83,8 @@ typedef struct {
 
 typedef struct {
     ngx_waf_step_t  *step;
+    /** The provider request in flight, when the machine parked on one. */
+    ngx_http_waf_fetch_t fetch;
     ngx_uint_t       applied:1;
     ngx_uint_t       waiting_more_body:1;
     ngx_uint_t       read_body_done:1;
@@ -133,6 +173,7 @@ static void *ngx_http_waf_shm_alloc_locked(void* ctx, size_t size);
 static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
 
 
+
 /**
  * Resolve the zone a configuration refers to into the handle of this worker.
  */
@@ -153,6 +194,49 @@ static void ngx_http_waf_resolve_handler(ngx_resolver_ctx_t* rc);
 
 
 static void ngx_http_waf_resume(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx, ngx_waf_event_t* event);
+
+
+static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    struct sockaddr* sockaddr, socklen_t socklen);
+
+
+static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc);
+
+
+static void ngx_http_waf_fetch_write(ngx_event_t* wev);
+
+
+static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c);
+
+
+static void ngx_http_waf_fetch_read(ngx_event_t* rev);
+
+
+static ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    ngx_uint_t status, u_char* body, size_t len, ngx_uint_t failed);
+
+
+static void ngx_http_waf_fetch_finish(ngx_http_request_t* r, ngx_uint_t status, u_char* body,
+    size_t len, ngx_uint_t failed);
+
+
+static void ngx_http_waf_fetch_cleanup(void* data);
+
+
+static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_connection_t* c);
+
+
+static ngx_int_t ngx_http_waf_get_peer(ngx_peer_connection_t* pc, void* data);
+
+
+static void ngx_http_waf_fetch_noop(ngx_event_t* ev);
+
+
+static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
+    ngx_str_t value);
 
 
 static ngx_int_t ngx_http_waf_read_body(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
@@ -391,6 +475,634 @@ static ngx_http_variable_t ngx_http_waf_variables[] = {
 };
 
 
+/* -------------------------------------------------------------------------
+ * The captcha provider request.
+ *
+ * The request is parked and the provider is reached with a small non blocking
+ * client of our own: connect, send the POST, read until the provider closes the
+ * connection (the request is HTTP/1.0 with `Connection: close`), then hand the
+ * answer back to the machine.
+ * ---------------------------------------------------------------------- */
+
+/** Timeout of one provider request, in milliseconds. */
+#define NGX_HTTP_WAF_FETCH_TIMEOUT 5000
+
+/** The answer of a provider has to be much smaller than this. */
+#define NGX_HTTP_WAF_FETCH_BUFFER 8192
+
+
+static void ngx_http_waf_fetch_noop(ngx_event_t* ev) {
+    (void) ev;
+}
+
+
+/**
+ * The peer the provider request is sent to.  `ngx_event_connect_peer()`
+ * requires this callback, it hands back the address that was resolved when the
+ * configuration was read.
+ */
+static ngx_int_t ngx_http_waf_get_peer(ngx_peer_connection_t* pc, void* data) {
+    ngx_http_waf_ctx_t* ctx = data;
+
+    pc->sockaddr = ctx->fetch.sockaddr;
+    pc->socklen = ctx->fetch.socklen;
+    pc->name = &ctx->fetch.host;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_connection_t* c) {
+    int       err;
+    socklen_t len = sizeof(int);
+
+    if (c->write->timer_set) {
+        ngx_del_timer(c->write);
+    }
+
+    if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (void*) &err, &len) == -1) {
+        err = ngx_socket_errno;
+    }
+
+    if (err) {
+        ngx_log_error(NGX_LOG_ERR, c->log, err, "ngx_waf: connect() failed");
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
+/**
+ * Close the provider connection; it is also registered as a pool cleanup so a
+ * client that gives up does not leak it.
+ */
+static void ngx_http_waf_fetch_cleanup(void* data) {
+    ngx_connection_t* c = data;
+
+    if (c->fd != -1) {
+        ngx_close_connection(c);
+    }
+}
+
+
+/**
+ * Hand the answer to the machine.  Returns 1 when this happened synchronously,
+ * i.e. while the drive loop is still on the stack: in that case the caller must
+ * not finalize the request, the decision is applied by the phase handler that
+ * is already running.
+ */
+static ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    ngx_uint_t status, u_char* body, size_t len, ngx_uint_t failed)
+{
+    ngx_connection_t* c = NULL;
+    ngx_waf_event_t event;
+
+    ngx_memzero(&event, sizeof(ngx_waf_event_t));
+
+    if (ctx->fetch.connection != NULL) {
+        c = ctx->fetch.connection;
+        ctx->fetch.connection = NULL;
+        if (c->read->timer_set) {
+            ngx_del_timer(c->read);
+        }
+        if (c->write->timer_set) {
+            ngx_del_timer(c->write);
+        }
+    }
+
+    if (failed) {
+        event.kind = NGX_WAF_EVENT_HTTP_FAILED;
+
+    } else {
+        event.kind = NGX_WAF_EVENT_HTTP_RESPONSE;
+        event.status = status;
+        event.body.data = body;
+        event.body.len = len;
+    }
+
+    ngx_http_waf_resume(r, ctx, &event);
+    ctx->fetch.finished = 1;
+
+    if (c != NULL) {
+        ngx_close_connection(c);
+    }
+
+    return ctx->fetch.in_drive;
+}
+
+
+/**
+ * Wake the parked request up from an event: the machine is resumed and, when
+ * this is an asynchronous wake up, the phases are re-entered so that the phase
+ * handler applies the new decision.
+ */
+static void ngx_http_waf_fetch_finish(ngx_http_request_t* r, ngx_uint_t status, u_char* body,
+    size_t len, ngx_uint_t failed)
+{
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    if (ngx_http_waf_fetch_settle(r, ctx, status, body, len, failed)) {
+        /* the drive loop is still running, it will apply the decision */
+        return;
+    }
+
+    ngx_http_finalize_request(r, NGX_DONE);
+    ngx_http_core_run_phases(r);
+}
+
+
+/**
+ * The TLS handshake of a provider request is finished: send the request.
+ * nginx calls this through `c->ssl->handler`.
+ */
+static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
+    ngx_http_request_t* r = c->data;
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    if (ctx == NULL || ctx->fetch.request == NULL || ctx->fetch.finished) {
+        return;
+    }
+
+    ctx->fetch.handshake_done = 1;
+
+    if (c->read->timer_set) {
+        ngx_del_timer(c->read);
+    }
+
+    c->read->handler = ngx_http_waf_fetch_read;
+    c->write->handler = ngx_http_waf_fetch_write;
+
+    ngx_http_waf_fetch_write(c->write);
+}
+
+
+static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
+    ngx_connection_t* c = rev->data;
+    ngx_http_request_t* r = c->data;
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_buf_t* b;
+    ssize_t n;
+
+    if (ctx == NULL || ctx->step == NULL || ctx->fetch.response == NULL || ctx->fetch.finished) {
+        return;
+    }
+
+    if (rev->timedout) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return;
+    }
+
+    b = ctx->fetch.response;
+
+    for ( ;; ) {
+        n = c->recv(c, b->last, b->end - b->last);
+
+        if (n > 0) {
+            b->last += n;
+
+            if (b->last == b->end) {
+                /* a provider answer bigger than the buffer is not one we can use */
+                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                return;
+            }
+
+            continue;
+        }
+
+        if (n == 0) {
+            /* the provider is done (the request asked to close) */
+            u_char* p;
+            u_char* last = b->last;
+            ngx_uint_t status = 0;
+
+            p = ngx_strlchr(b->pos, last, ' ');
+            if (p != NULL) {
+                status = ngx_atoi(p + 1, 3);
+            }
+
+            if (p == NULL || (ngx_int_t) status == NGX_ERROR) {
+                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                return;
+            }
+
+            p = ngx_strlcasestrn(b->pos, last, (u_char*) CRLF CRLF, 4 - 1);
+            if (p == NULL) {
+                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                return;
+            }
+            p += 4;
+
+            ngx_http_waf_fetch_finish(r, status, p, last - p, 0);
+            return;
+        }
+
+        if (n == NGX_AGAIN) {
+            if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
+                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            }
+            return;
+        }
+
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return;
+    }
+}
+
+
+static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
+    ngx_connection_t* c = wev->data;
+    ngx_http_request_t* r = c->data;
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_buf_t* b;
+    ssize_t n;
+    ngx_int_t rc;
+
+    if (ctx == NULL || ctx->step == NULL || ctx->fetch.request == NULL || ctx->fetch.finished) {
+        return;
+    }
+
+    if (wev->timedout) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return;
+    }
+
+    if (ngx_http_waf_fetch_connect_test(c) != NGX_OK) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return;
+    }
+
+    if (ctx->fetch.use_ssl && !ctx->fetch.handshake_done) {
+        rc = ngx_ssl_handshake(c);
+
+        if (rc == NGX_AGAIN) {
+            ngx_add_timer(c->write, NGX_HTTP_WAF_FETCH_TIMEOUT);
+
+            if (ngx_handle_read_event(c->read, 0) != NGX_OK
+                || ngx_handle_write_event(c->write, 0) != NGX_OK)
+            {
+                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            }
+            return;
+        }
+
+        if (rc != NGX_OK) {
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            return;
+        }
+
+        ctx->fetch.handshake_done = 1;
+    }
+
+    b = ctx->fetch.request;
+
+    while (b->pos < b->last) {
+        n = c->send(c, b->pos, b->last - b->pos);
+
+        if (n > 0) {
+            b->pos += n;
+            continue;
+        }
+
+        if (n == NGX_AGAIN) {
+            ngx_add_timer(c->write, NGX_HTTP_WAF_FETCH_TIMEOUT);
+
+            if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
+                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            }
+            return;
+        }
+
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return;
+    }
+
+    if (c->write->timer_set) {
+        ngx_del_timer(c->write);
+    }
+
+    /* stop writing, wait for the answer */
+    c->write->handler = ngx_http_waf_fetch_noop;
+    ngx_add_timer(c->read, NGX_HTTP_WAF_FETCH_TIMEOUT);
+
+    ngx_http_waf_fetch_read(c->read);
+}
+
+
+/**
+ * Park the request and start the provider request.
+ */
+static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_http_core_loc_conf_t* clcf;
+    ngx_waf_step_t* step = ctx->step;
+    ngx_resolver_ctx_t* rc;
+    ngx_buf_t* b;
+    u_char* p;
+    size_t len;
+
+    ctx->fetch.in_drive = 1;
+
+    if (conf == NULL || !conf->captcha_api.configured) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    /* the request: POST <uri> HTTP/1.0 with the form body */
+    len = conf->captcha_api.uri.len + conf->captcha_api.host.len + step->http_body.len + 512;
+    b = ngx_create_temp_buf(r->pool, len);
+    if (b == NULL) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    p = b->last;
+    p = ngx_sprintf(p, "POST %V HTTP/1.0" CRLF, &conf->captcha_api.uri);
+    p = ngx_sprintf(p, "Host: %V" CRLF, &conf->captcha_api.host);
+    p = ngx_sprintf(p, "Content-Type: application/x-www-form-urlencoded" CRLF);
+    p = ngx_sprintf(p, "Content-Length: %uz" CRLF, step->http_body.len);
+    p = ngx_sprintf(p, "Connection: close" CRLF CRLF);
+    if (step->http_body.len != 0) {
+        p = ngx_cpymem(p, step->http_body.data, step->http_body.len);
+    }
+    b->last = p;
+
+    ctx->fetch.request = b;
+    ctx->fetch.use_ssl = conf->captcha_api.use_ssl;
+    ctx->fetch.host = conf->captcha_api.host;
+
+    ctx->fetch.response = ngx_create_temp_buf(r->pool, NGX_HTTP_WAF_FETCH_BUFFER);
+    if (ctx->fetch.response == NULL) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    if (conf->captcha_api.resolved) {
+        return ngx_http_waf_fetch_connect(r, ctx, conf->captcha_api.sockaddr,
+                                          conf->captcha_api.socklen);
+    }
+
+    /* the host was not resolvable while the configuration was read */
+    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+
+    if (clcf->resolver == NULL) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    rc = ngx_resolve_start(clcf->resolver, NULL);
+
+    if (rc == NULL || rc == NGX_NO_RESOLVER) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    rc->name = conf->captcha_api.host;
+    rc->handler = ngx_http_waf_fetch_resolved;
+    rc->data = r;
+    rc->timeout = clcf->resolver_timeout;
+
+    if (ngx_resolve_name(rc) != NGX_OK) {
+        ngx_resolve_name_done(rc);
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    /* the resolver may have answered already */
+    if (ctx->fetch.finished) {
+        ctx->fetch.in_drive = 0;
+        return NGX_OK;
+    }
+
+    /* the request stays alive until the provider answered */
+    r->main->count++;
+    ctx->fetch.in_drive = 0;
+
+    return NGX_DONE;
+}
+
+
+static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc) {
+    ngx_http_request_t* r = rc->data;
+    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+
+    if (ctx == NULL) {
+        ngx_resolve_name_done(rc);
+        return;
+    }
+
+    if (rc->state == NGX_OK && rc->naddrs != 0) {
+        struct sockaddr* sockaddr = rc->addrs[0].sockaddr;
+        socklen_t socklen = rc->addrs[0].socklen;
+
+        ngx_resolve_name_done(rc);
+        ngx_http_waf_fetch_connect(r, ctx, sockaddr, socklen);
+        return;
+    }
+
+    ngx_resolve_name_done(rc);
+    ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+}
+
+
+static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    struct sockaddr* sockaddr, socklen_t socklen)
+{
+    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_peer_connection_t peer;
+    ngx_connection_t* c;
+    ngx_pool_cleanup_t* cln;
+    ngx_int_t rc;
+
+    ctx->fetch.sockaddr = sockaddr;
+    ctx->fetch.socklen = socklen;
+
+    ngx_memzero(&peer, sizeof(ngx_peer_connection_t));
+    peer.get = ngx_http_waf_get_peer;
+    peer.data = ctx;
+    peer.log = r->connection->log;
+    peer.log_error = NGX_ERROR_ERR;
+
+    rc = ngx_event_connect_peer(&peer);
+
+    if (rc == NGX_ERROR || rc == NGX_BUSY || rc == NGX_DECLINED
+        || peer.connection == NULL || peer.connection->fd == -1)
+    {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return NGX_OK;
+    }
+
+    c = peer.connection;
+    ctx->fetch.connection = c;
+
+    /* the connection comes from the free list, give it the request's pool and
+     * log like the upstream module does */
+    c->pool = r->pool;
+    c->log = r->connection->log;
+    c->read->log = c->log;
+    c->write->log = c->log;
+
+    c->data = r;
+    c->read->handler = ngx_http_waf_fetch_read;
+    c->write->handler = ngx_http_waf_fetch_write;
+
+    if (ctx->fetch.use_ssl) {
+        if (ngx_ssl_create_connection(&conf->captcha_api.ssl, c,
+                                      NGX_SSL_BUFFER|NGX_SSL_CLIENT) != NGX_OK)
+        {
+            ctx->fetch.connection = c;
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            return NGX_OK;
+        }
+        c->sendfile = 0;
+        if (SSL_set_tlsext_host_name(c->ssl->connection, (char*) conf->captcha_api.host.data)
+            == 0)
+        {
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            return NGX_OK;
+        }
+
+        c->ssl->handler = ngx_http_waf_fetch_ssl_done;
+
+        rc = ngx_ssl_handshake(c);
+
+        if (rc == NGX_ERROR) {
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            return NGX_OK;
+        }
+
+        if (ctx->fetch.finished) {
+            /* the whole request finished within the handshake */
+            ctx->fetch.in_drive = 0;
+            return NGX_OK;
+        }
+
+        if (!c->read->timer_set) {
+            ngx_add_timer(c->read, NGX_HTTP_WAF_FETCH_TIMEOUT);
+        }
+
+        r->main->count++;
+        ctx->fetch.in_drive = 0;
+
+        return NGX_DONE;
+    }
+
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (cln == NULL) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return NGX_OK;
+    }
+    cln->handler = ngx_http_waf_fetch_cleanup;
+    cln->data = c;
+
+    if (rc == NGX_OK || c->write->ready) {
+        /* the first send may already carry the whole request */
+        ngx_http_waf_fetch_write(c->write);
+        ctx->fetch.in_drive = 0;
+
+        if (ctx->fetch.finished) {
+            /* the provider answered before we parked, the drive loop applies */
+            return NGX_OK;
+        }
+
+        r->main->count++;
+
+        return NGX_DONE;
+    }
+
+    ngx_add_timer(c->write, NGX_HTTP_WAF_FETCH_TIMEOUT);
+    ctx->fetch.in_drive = 0;
+    r->main->count++;
+
+    return NGX_DONE;
+}
+
+
+/**
+ * Parse `api=<url>` of the `waf_captcha` directive.  The host is resolved once,
+ * here, so that a request never has to block on DNS.
+ */
+static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
+    ngx_str_t value)
+{
+    ngx_url_t url;
+    ngx_str_t rest = value;
+    ngx_str_t ciphers;
+    ngx_uint_t ssl = 0;
+
+    if (rest.len >= 8 && ngx_strncasecmp(rest.data, (u_char*) "https://", 8) == 0) {
+        ssl = 1;
+        rest.data += 8;
+        rest.len -= 8;
+
+    } else if (rest.len >= 7 && ngx_strncasecmp(rest.data, (u_char*) "http://", 7) == 0) {
+        rest.data += 7;
+        rest.len -= 7;
+    }
+
+    ngx_memzero(&url, sizeof(ngx_url_t));
+    url.url = rest;
+    url.no_resolve = 1;
+    url.uri_part = 1;
+    url.default_port = ssl ? 443 : 80;
+
+    if (ngx_parse_url(cf->pool, &url) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "ngx_waf: invalid value [%V]", &value);
+        return NGX_ERROR;
+    }
+
+    /*
+     * Resolve the host here when possible; a host that cannot be resolved now
+     * (no DNS at configuration time) is resolved per request with the resolver
+     * of the enclosing context, like the C implementation left it to curl.
+     */
+    if (!url.naddrs) {
+        (void) ngx_inet_resolve_host(cf->pool, &url);
+    }
+
+    if (ssl) {
+        ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
+        conf->captcha_api.ssl.log = cf->log;
+        if (ngx_ssl_create(&conf->captcha_api.ssl, NGX_SSL_TLSv1_2, NULL) != NGX_OK) {
+            return NGX_ERROR;
+        }
+        ciphers.data = (u_char*) "HIGH:!aNULL:!MD5";
+        ciphers.len = sizeof("HIGH:!aNULL:!MD5") - 1;
+        if (ngx_ssl_ciphers(cf, &conf->captcha_api.ssl, &ciphers, 0) != NGX_OK) {
+            return NGX_ERROR;
+        }
+        /* the provider certificate cannot be verified without a CA bundle */
+        SSL_CTX_set_verify(conf->captcha_api.ssl.ctx, SSL_VERIFY_NONE, NULL);
+    }
+
+    conf->captcha_api.use_ssl = ssl;
+    conf->captcha_api.port = url.port != 0 ? url.port : (in_port_t) (ssl ? 443 : 80);
+    conf->captcha_api.host = url.host;
+    conf->captcha_api.uri = url.uri.len != 0 ? url.uri : (ngx_str_t) ngx_string("/");
+
+    if (url.naddrs) {
+        conf->captcha_api.sockaddr = url.addrs[0].sockaddr;
+        conf->captcha_api.socklen = url.addrs[0].socklen;
+        conf->captcha_api.resolved = 1;
+    }
+
+    conf->captcha_api.configured = 1;
+
+    return NGX_OK;
+}
+
+
+
 static char *ngx_http_waf_report(ngx_conf_t* cf, char* message) {
 
     if (message == NULL) {
@@ -487,9 +1199,21 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
         return ngx_http_waf_report(cf, error);
     }
 
-    if (ngx_strcmp(cmd->name.data, "waf_captcha") == 0
-        || ngx_strcmp(cmd->name.data, "waf_under_attack") == 0
-        || ngx_strcmp(cmd->name.data, "waf_verify_bot") == 0
+    if (ngx_strcmp(cmd->name.data, "waf_captcha") == 0) {
+        ngx_uint_t i;
+        for (i = 1; i < cf->args->nelts; i++) {
+            if (elts[i].len > 4 && ngx_strncmp(elts[i].data, "api=", 4) == 0) {
+                ngx_str_t api;
+                api.data = elts[i].data + 4;
+                api.len = elts[i].len - 4;
+                if (ngx_http_waf_captcha_api(cf, loc_conf, api) != NGX_OK) {
+                    return NGX_CONF_ERROR;
+                }
+            }
+        }
+    }
+
+    if (ngx_strcmp(cmd->name.data, "waf_under_attack") == 0
         || ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0)
     {
         ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
@@ -1034,10 +1758,8 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         cc_zone,
         ngx_http_waf_zone_handle(mcf, conf->core, ngx_waf_conf_action_zone),
         ngx_http_waf_zone_handle(mcf, conf->core, ngx_waf_conf_captcha_zone),
-        /* The captcha provider request (the subrequest fetch) is not wired
-         * yet, so the captcha checks stay inert and `waf_captcha` keeps
-         * warning about being unavailable. */
-        0);
+        /* The captcha provider request is performed by this module. */
+        1);
     if (step == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -1064,6 +1786,17 @@ static ngx_int_t ngx_http_waf_drive(ngx_http_request_t* r, ngx_http_waf_ctx_t* c
         switch (step->kind) {
         case NGX_WAF_STEP_RESOLVE_ADDR:
             return ngx_http_waf_start_resolve(r, ctx);
+
+        case NGX_WAF_STEP_HTTP_REQUEST: {
+            ngx_int_t rc = ngx_http_waf_start_http(r, ctx);
+
+            if (rc == NGX_DONE) {
+                return rc;
+            }
+
+            /* the provider request failed at once, the machine decided */
+            continue;
+        }
 
         case NGX_WAF_STEP_ALLOW:
         case NGX_WAF_STEP_RESPONSE:

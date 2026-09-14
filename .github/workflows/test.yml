@@ -129,15 +129,17 @@ jobs:
           sh ./init.sh
 
           # The templates of the inspections that are already ported.  The
-          # captcha, verify_bot, under_attack and modsecurity ones are still
-          # missing, see rust/README.md.
+          # under_attack and modsecurity ones are still missing (and the
+          # ModSecurity cases of action.t), see rust/README.md.
           sh ./start.sh \
             t/DATA_EXPUNGED.t \
             t/args.t \
             t/bad_config.t \
             t/block_page.t \
+            t/bug.t \
             t/bypass.t \
             t/cache.t \
+            t/captcha.t \
             t/cc.t \
             t/cookie.t \
             t/disable.t \
@@ -148,4 +150,5 @@ jobs:
             t/referer.t \
             t/uri.t \
             t/user_agent.t \
-            t/var.t
+            t/var.t \
+            t/verify_bot.t

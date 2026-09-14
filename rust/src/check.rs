@@ -901,7 +901,9 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
     if !state.http_transport {
         return CheckResult::NotMatched;
     }
-    if state.conf.waf == WAF_BYPASS || state.conf.captcha_zone < 0 {
+    // The session entry point needs the *action* table (the one
+    // `waf_action X=CAPTCHA zone=...` created), not the fail counter.
+    if state.conf.waf == WAF_BYPASS {
         return CheckResult::NotMatched;
     }
     let action_zone = state.req.action_zone;

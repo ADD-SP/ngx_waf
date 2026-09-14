@@ -31,6 +31,16 @@ printf 'AAAA::\nBBBB::/16\n'             >> "$prefix/rules/ipv6"
 printf 'CCCC::\nDDDD::/16\n'             >> "$prefix/rules/white-ipv6"
 printf '/white/\n'                       >> "$prefix/rules/white-url"
 printf '/white/\n'                       >> "$prefix/rules/white-referer"
+# A certificate for the TLS provider stub; without openssl the TLS case is
+# skipped.
+# nginx resolves a relative certificate path against the configuration
+# directory.
+mkdir -p "$prefix/conf/ssl"
+if command -v openssl > /dev/null 2>&1; then
+    openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=127.0.0.1' \
+        -keyout "$prefix/conf/ssl/key.pem" -out "$prefix/conf/ssl/cert.pem" > /dev/null 2>&1
+fi
+
 if [ -n "${MODULE_PATH:-}" ]; then
     # Load the module dynamically instead of using a static build.
     {
@@ -168,6 +178,44 @@ check 200 "verify_bot on allows a fake bot" \
     -H 'User-Agent: Googlebot' "http://127.0.0.1:18089/"
 check 200 "verify_bot on allows a normal client" \
     -H 'User-Agent: curl/8.0' "http://127.0.0.1:18089/"
+
+# Captcha: a visitor without cookies is challenged, a token the provider
+# accepts mints the cookies, and a visitor that presents them is let through.
+cap="http://127.0.0.1:18091"
+check 503 "captcha challenges a visitor without cookies" "$cap/"
+
+headers=$(curl -s -D - -o /dev/null --max-time 5 -X POST \
+    -d 'g-recaptcha-response=token' "$cap/captcha")
+body=$(printf '%s' "$headers" | tail -n 1)
+cookies=$(printf '%s' "$headers" \
+    | awk '/^Set-Cookie:/ { gsub(/\r/, ""); n = split($2, kv, "="); printf "%s=%s; ", kv[1], kv[2] }' \
+    | sed 's/; $//')
+if printf '%s' "$headers" | grep -qi '^Set-Cookie: __waf_captcha_hmac=' && [ -n "$cookies" ]; then
+    pass=$((pass + 1))
+    printf 'ok   %-52s %s\n' "captcha mints the cookie trio" "3 cookies"
+else
+    fail=$((fail + 1))
+    printf 'FAIL %-52s (headers: %s)\n' "captcha mints the cookie trio" "$(printf '%s' "$headers" | head -3 | tr '\n' ' ')"
+fi
+check_body 200 'good' "captcha accepts the token" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/captcha"
+check 200 "captcha lets a verified visitor through" -H "Cookie: $cookies" "$cap/"
+check 200 "captcha lets a verified visitor reach the verify url" \
+    -H "Cookie: $cookies" "$cap/captcha"
+
+# The other provider answers: refused, unreachable, invalid and a low v3 score.
+check_body 200 'bad' "captcha rejects a refused token" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/bad/captcha"
+check_body 200 'bad' "captcha survives an unreachable provider" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/err/captcha"
+check_body 200 'bad' "captcha survives an invalid answer" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/junk/captcha"
+check_body 200 'bad' "captcha v3 rejects a low score" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/v3/captcha"
+if [ -s "$prefix/conf/ssl/cert.pem" ]; then
+    check_body 200 'good' "captcha reaches an https provider" \
+        -X POST -d 'g-recaptcha-response=token' "$cap/tls/captcha"
+fi
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

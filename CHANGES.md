@@ -6,8 +6,9 @@
 * Bazel has been replaced by the nginx `config` script, cargo and a `Makefile`.
 * The FFI header `include/ngx_http_waf_ffi.h` is generated with cbindgen and
   checked in.
-* The inspections that are not ported yet (captcha, friendly crawler
-  verification, the five seconds shield and ModSecurity) are accepted by the
-  configuration, reported with a warning and do nothing for now.
+* The captcha and the friendly crawler verification are ported, including the
+  asynchronous parts: reverse DNS through the nginx resolver and a non blocking
+  provider request.  The five seconds shield and ModSecurity are still accepted
+  by the configuration, reported with a warning and do nothing for now.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).
