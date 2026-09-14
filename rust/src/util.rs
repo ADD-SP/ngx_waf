@@ -60,6 +60,24 @@ pub fn parse_size(text: &[u8]) -> Option<i64> {
     }
 }
 
+/// nginx' `ngx_parse_size()`: a bare number is a byte count, `K`/`k` and
+/// `M`/`m` suffixes are binary multiples (nginx has no `G` suffix).
+pub fn parse_ngx_size(text: &[u8]) -> Option<usize> {
+    if text.is_empty() {
+        return None;
+    }
+    let (digits, scale): (&[u8], usize) = match text[text.len() - 1] {
+        b'K' | b'k' => (&text[..text.len() - 1], 1024),
+        b'M' | b'm' => (&text[..text.len() - 1], 1024 * 1024),
+        _ => (text, 1),
+    };
+    let value = atoi(digits)?;
+    if value < 0 {
+        return None;
+    }
+    usize::try_from(value).ok()?.checked_mul(scale)
+}
+
 /// `ngx_atoi()`: parses a non negative decimal number, rejecting a leading zero
 /// (unless the number is exactly "0") and overflow.
 pub fn atoi(text: &[u8]) -> Option<i64> {
@@ -492,6 +510,22 @@ mod tests {
         assert_eq!(parse_size(b"10g"), Some(10 * 1024 * 1024 * 1024));
         assert_eq!(parse_size(b"10"), None);
         assert_eq!(parse_size(b"10z"), None);
+    }
+
+    #[test]
+    fn nginx_size_parsing() {
+        // `ngx_parse_size()`: bare bytes and both cases of the units.
+        assert_eq!(parse_ngx_size(b"10485760"), Some(10485760));
+        assert_eq!(parse_ngx_size(b"10k"), Some(10240));
+        assert_eq!(parse_ngx_size(b"10K"), Some(10240));
+        assert_eq!(parse_ngx_size(b"10m"), Some(10 * 1024 * 1024));
+        assert_eq!(parse_ngx_size(b"10M"), Some(10 * 1024 * 1024));
+        assert_eq!(parse_ngx_size(b"20m"), Some(20 * 1024 * 1024));
+        // nginx has no gigabyte suffix, and neither does this port.
+        assert_eq!(parse_ngx_size(b"10g"), None);
+        assert_eq!(parse_ngx_size(b"10z"), None);
+        assert_eq!(parse_ngx_size(b""), None);
+        assert_eq!(parse_ngx_size(b"k"), None);
     }
 
     #[test]

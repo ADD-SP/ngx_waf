@@ -92,94 +92,106 @@ pub const DEFAULT_PRIORITY: [CheckId; 15] = [
     CheckId::Modsecurity,
 ];
 
-/// One entry of an action chain.
+/// What an inspection does once it matched.
+///
+/// A policy is always concrete: a configuration that does not set one inherits
+/// it, and a configuration nothing is inherited from gets the built in default
+/// of the trigger.  "Matched, do nothing" cannot be expressed, which is what
+/// used to make `waf_action cc_deny=400;` serve blacklisted requests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Action {
-    /// `ACTION_FLAG_RETURN`
-    Return { status: u32, from: u32 },
-    /// `ACTION_FLAG_FOLLOW`
-    Follow { from: u32 },
-    /// `ACTION_FLAG_DECLINE`
-    Decline { from: u32 },
-    /// `ACTION_FLAG_REG_CONTENT`
-    RegContent { from: u32 },
-    /// `ACTION_FLAG_HTML`
-    Html {
-        status: u32,
-        html: Rc<Vec<u8>>,
-        from: u32,
-    },
-    /// `ACTION_FLAG_STR`, used by the captcha support which is not ported yet.
-    #[allow(dead_code)]
-    Str {
-        status: u32,
-        text: Rc<Vec<u8>>,
-        from: u32,
-    },
+pub enum Policy {
+    /// Answer with this status, without a body.
+    Return { status: u32 },
+    /// Answer with this status and an HTML body, written by the content handler.
+    Page { status: u32, body: Rc<Vec<u8>> },
+    /// Answer with this status and a `text/plain` body.
+    #[allow(dead_code)] // used by the captcha flow, the next step of the port
+    Text { status: u32, text: Rc<Vec<u8>> },
+    /// Let the inspection decide the status (`waf_action modsecurity=FOLLOW`).
+    Follow,
+    /// Show the captcha page and hand the request to the captcha flow.
+    Captcha { source: CaptchaSource },
 }
 
-impl Action {
-    pub fn return_status(&self) -> Option<u32> {
-        match self {
-            Action::Return { status, .. } => Some(*status),
-            Action::Html { status, .. } | Action::Str { status, .. } => Some(*status),
-            _ => None,
-        }
-    }
-
-    pub fn is_return(&self) -> bool {
-        matches!(self, Action::Return { .. })
-    }
-
-    pub fn from(&self) -> u32 {
-        match self {
-            Action::Return { from, .. }
-            | Action::Follow { from }
-            | Action::Decline { from }
-            | Action::RegContent { from }
-            | Action::Html { from, .. }
-            | Action::Str { from, .. } => *from,
-        }
-    }
-}
-
-/// Which action chain a configuration uses.
+/// Which trigger asked for a captcha, the C implementation distinguishes the CC
+/// one (the page is a 503 and the CC counter is reset) from the others (403
+/// with the block page).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ChainKind {
+pub enum CaptchaSource {
+    Blacklist,
+    CcDeny,
+    VerifyBot,
+}
+
+/// The four sources that can be configured with `waf_action`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TriggerKind {
     Blacklist,
     CcDeny,
     Modsecurity,
     VerifyBot,
 }
 
-impl ChainKind {
-    fn flag(self) -> u32 {
+pub const TRIGGER_KINDS: [TriggerKind; 4] = [
+    TriggerKind::Blacklist,
+    TriggerKind::CcDeny,
+    TriggerKind::Modsecurity,
+    TriggerKind::VerifyBot,
+];
+
+impl TriggerKind {
+    pub fn index(self) -> usize {
         match self {
-            ChainKind::Blacklist => ACTION_FLAG_FROM_BLACK_LIST,
-            ChainKind::CcDeny => ACTION_FLAG_FROM_CC_DENY,
-            ChainKind::Modsecurity => ACTION_FLAG_FROM_MODSECURITY,
-            ChainKind::VerifyBot => ACTION_FLAG_FROM_VERIFY_BOT,
+            TriggerKind::Blacklist => 0,
+            TriggerKind::CcDeny => 1,
+            TriggerKind::Modsecurity => 2,
+            TriggerKind::VerifyBot => 3,
         }
     }
 
-    fn default_chain(&self) -> Vec<Action> {
-        let from = self.flag();
+    /// The `ACTION_FLAG_FROM_*` value, kept for the audit log and for the FFI
+    /// field the C side still reads.
+    pub fn flag(self) -> u32 {
         match self {
-            ChainKind::Blacklist => vec![Action::Return {
-                status: HTTP_FORBIDDEN,
-                from,
-            }],
-            ChainKind::CcDeny => vec![Action::Return {
-                status: HTTP_SERVICE_UNAVAILABLE,
-                from,
-            }],
-            ChainKind::Modsecurity => vec![Action::Follow { from }],
-            ChainKind::VerifyBot => vec![Action::Return {
-                status: HTTP_FORBIDDEN,
-                from,
-            }],
+            TriggerKind::Blacklist => ACTION_FLAG_FROM_BLACK_LIST,
+            TriggerKind::CcDeny => ACTION_FLAG_FROM_CC_DENY,
+            TriggerKind::Modsecurity => ACTION_FLAG_FROM_MODSECURITY,
+            TriggerKind::VerifyBot => ACTION_FLAG_FROM_VERIFY_BOT,
         }
     }
+
+    /// The built in policy, the equivalent of the `ACTION_FLAG_UNSET` defaults
+    /// of the C implementation.
+    pub fn default_policy(self) -> Policy {
+        match self {
+            TriggerKind::Blacklist => Policy::Return {
+                status: HTTP_FORBIDDEN,
+            },
+            TriggerKind::CcDeny => Policy::Return {
+                status: HTTP_SERVICE_UNAVAILABLE,
+            },
+            TriggerKind::Modsecurity => Policy::Follow,
+            TriggerKind::VerifyBot => Policy::Return {
+                status: HTTP_FORBIDDEN,
+            },
+        }
+    }
+
+    fn captcha_source(self) -> CaptchaSource {
+        match self {
+            TriggerKind::Blacklist => CaptchaSource::Blacklist,
+            TriggerKind::CcDeny => CaptchaSource::CcDeny,
+            TriggerKind::Modsecurity | TriggerKind::VerifyBot => CaptchaSource::VerifyBot,
+        }
+    }
+}
+
+/// The resolved policy of one trigger, `from` is only carried to keep the
+/// existing audit/variable behavior.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TriggerPolicy {
+    pub from: u32,
+    pub policy: Policy,
 }
 
 /// The per-worker inspection caches created by `waf_cache on`.
@@ -261,10 +273,15 @@ pub struct LocConf {
     pub modsecurity_remote_key: Vec<u8>,
     pub modsecurity_remote_url: Vec<u8>,
     pub block_page: Rc<Vec<u8>>,
-    pub chain_blacklist: Option<Vec<Action>>,
-    pub chain_cc_deny: Option<Vec<Action>>,
-    pub chain_modsecurity: Option<Vec<Action>>,
-    pub chain_verify_bot: Option<Vec<Action>>,
+    /// The policy of each trigger, indexed by `TriggerKind::index()`.  `None`
+    /// means "nothing configured here", which the merge resolves by inheriting
+    /// from the parent and finally falling back to the built in default.
+    pub policies: [Option<TriggerPolicy>; 4],
+    /// A random string generated once per configuration, the salt of the
+    /// captcha cookie HMAC (the C implementation keeps the same value in a
+    /// function static so every worker agrees on it).
+    #[allow(dead_code)] // read by the captcha flow, the next step of the port
+    pub random_str: Vec<u8>,
     pub action_captcha_zone: i64,
     pub action_captcha_tag: Vec<u8>,
     pub priority: Vec<CheckId>,
@@ -311,10 +328,8 @@ impl Default for LocConf {
             modsecurity_remote_key: Vec::new(),
             modsecurity_remote_url: Vec::new(),
             block_page: Rc::new(Vec::new()),
-            chain_blacklist: None,
-            chain_cc_deny: None,
-            chain_modsecurity: None,
-            chain_verify_bot: None,
+            policies: [None, None, None, None],
+            random_str: Vec::new(),
             action_captcha_zone: -1,
             action_captcha_tag: Vec::new(),
             priority: DEFAULT_PRIORITY.to_vec(),
@@ -383,23 +398,21 @@ impl LocConf {
         }
     }
 
-    pub fn chain(&self, kind: ChainKind) -> &[Action] {
-        let chain = match kind {
-            ChainKind::Blacklist => &self.chain_blacklist,
-            ChainKind::CcDeny => &self.chain_cc_deny,
-            ChainKind::Modsecurity => &self.chain_modsecurity,
-            ChainKind::VerifyBot => &self.chain_verify_bot,
-        };
-        chain.as_deref().unwrap_or(&[])
+    /// The policy of a trigger.  It is always concrete: a configuration that
+    /// still has no policy (it was never merged into anything) answers with the
+    /// built in default instead of "no action".
+    pub fn policy(&self, kind: TriggerKind) -> Policy {
+        match &self.policies[kind.index()] {
+            Some(trigger) => trigger.policy.clone(),
+            None => kind.default_policy(),
+        }
     }
 
-    fn chain_mut(&mut self, kind: ChainKind) -> &mut Option<Vec<Action>> {
-        match kind {
-            ChainKind::Blacklist => &mut self.chain_blacklist,
-            ChainKind::CcDeny => &mut self.chain_cc_deny,
-            ChainKind::Modsecurity => &mut self.chain_modsecurity,
-            ChainKind::VerifyBot => &mut self.chain_verify_bot,
-        }
+    fn set_policy(&mut self, kind: TriggerKind, policy: Policy) {
+        self.policies[kind.index()] = Some(TriggerPolicy {
+            from: kind.flag(),
+            policy,
+        });
     }
 
     fn unsupported(&mut self, feature: &'static str) {
@@ -445,9 +458,11 @@ pub fn zone_directive(main: &mut MainConf, args: &[Vec<u8>]) -> Result<(Vec<u8>,
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         match key.as_slice() {
             b"name" => name = value,
-            b"size" => match util::parse_size(&value) {
+            // The C implementation used nginx' `ngx_parse_size()`, which also
+            // accepts a bare byte count and upper case units.
+            b"size" => match util::parse_ngx_size(&value) {
                 Some(parsed) if parsed > 0 => {
-                    size = std::cmp::max(parsed as usize, 5 * 1024 * 1024);
+                    size = std::cmp::max(parsed, 5 * 1024 * 1024);
                 }
                 _ => return Err(INVALID.to_string()),
             },
@@ -966,47 +981,44 @@ fn directive_action(
     conf: &mut LocConf,
     args: &[Vec<u8>],
 ) -> Result<(), String> {
-    let html = Rc::clone(&conf.captcha_html);
-    for kind in [
-        ChainKind::Blacklist,
-        ChainKind::CcDeny,
-        ChainKind::Modsecurity,
-        ChainKind::VerifyBot,
-    ] {
-        *conf.chain_mut(kind) = Some(Vec::new());
+    // The C implementation re-initialises every trigger when `waf_action` is
+    // used, so the ones this directive does not mention fall back to their
+    // built in default instead of inheriting from the parent context.
+    for kind in TRIGGER_KINDS {
+        conf.set_policy(kind, kind.default_policy());
     }
 
     for arg in args {
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         let kind = match key.as_slice() {
-            b"blacklist" => Some(ChainKind::Blacklist),
-            b"cc_deny" => Some(ChainKind::CcDeny),
-            b"modsecurity" => Some(ChainKind::Modsecurity),
-            b"verify_bot" => Some(ChainKind::VerifyBot),
+            b"blacklist" => Some(TriggerKind::Blacklist),
+            b"cc_deny" => Some(TriggerKind::CcDeny),
+            b"modsecurity" => Some(TriggerKind::Modsecurity),
+            b"verify_bot" => Some(TriggerKind::VerifyBot),
             _ => None,
         };
 
         if let Some(kind) = kind {
-            let from = kind.flag();
-            let chain = if eq_ci(&value, "CAPTCHA") {
-                captcha_chain(from | ACTION_FLAG_CAPTCHA, Rc::clone(&html))
-            } else if kind == ChainKind::Modsecurity && eq_ci(&value, "FOLLOW") {
-                vec![Action::Follow { from }]
+            let policy = if eq_ci(&value, "CAPTCHA") {
+                Policy::Captcha {
+                    source: kind.captcha_source(),
+                }
+            } else if kind == TriggerKind::Modsecurity && eq_ci(&value, "FOLLOW") {
+                Policy::Follow
             } else {
                 let status = util::atoi(&value).ok_or_else(|| INVALID.to_string())?;
-                if kind == ChainKind::VerifyBot {
+                if kind == TriggerKind::VerifyBot {
                     if status <= 0 {
                         return Err(INVALID.to_string());
                     }
                 } else if !(300..600).contains(&status) {
                     return Err(INVALID.to_string());
                 }
-                vec![Action::Return {
+                Policy::Return {
                     status: status as u32,
-                    from,
-                }]
+                }
             };
-            *conf.chain_mut(kind) = Some(chain);
+            conf.set_policy(kind, policy);
             continue;
         }
 
@@ -1034,18 +1046,6 @@ fn directive_action(
     }
 
     Ok(())
-}
-
-fn captcha_chain(from: u32, html: Rc<Vec<u8>>) -> Vec<Action> {
-    vec![
-        Action::RegContent { from },
-        Action::Decline { from },
-        Action::Html {
-            status: HTTP_SERVICE_UNAVAILABLE,
-            html,
-            from,
-        },
-    ]
 }
 
 fn directive_block_page(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
@@ -1192,18 +1192,14 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
         child.caches = Caches::new(parent.cache_capacity as usize);
     }
 
-    // Action chains: materialise the defaults on the parent, then inherit.
-    for kind in [
-        ChainKind::Blacklist,
-        ChainKind::CcDeny,
-        ChainKind::Modsecurity,
-        ChainKind::VerifyBot,
-    ] {
-        if parent.chain_mut(kind).is_none() {
-            *parent.chain_mut(kind) = Some(kind.default_chain());
+    // Policies: materialise the defaults on the parent (it serves requests
+    // itself), then let the child inherit what it did not configure.
+    for kind in TRIGGER_KINDS {
+        if parent.policies[kind.index()].is_none() {
+            parent.set_policy(kind, kind.default_policy());
         }
-        if child.chain_mut(kind).is_none() {
-            *child.chain_mut(kind) = parent.chain_mut(kind).clone();
+        if child.policies[kind.index()].is_none() {
+            child.policies[kind.index()] = parent.policies[kind.index()].clone();
         }
     }
 
@@ -1223,48 +1219,25 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
 
 fn apply_block_page(conf: &mut LocConf) {
     let page = Rc::clone(&conf.block_page);
-    for kind in [
-        ChainKind::Blacklist,
-        ChainKind::CcDeny,
-        ChainKind::Modsecurity,
-        ChainKind::VerifyBot,
-    ] {
-        let Some(chain) = conf.chain_mut(kind).as_mut() else {
+    for kind in TRIGGER_KINDS {
+        let Some(trigger) = conf.policies[kind.index()].as_mut() else {
             continue;
         };
-        let Some(status) = chain.first().and_then(Action::return_status) else {
-            continue;
-        };
-        if !chain.first().map(Action::is_return).unwrap_or(false) {
-            continue;
-        }
-        let from = kind.flag();
-        *chain = vec![
-            Action::RegContent { from },
-            Action::Decline { from },
-            Action::Html {
+        // Only a plain status return is turned into the configured block page;
+        // `waf_action X=CAPTCHA` and `FOLLOW` keep their own response.
+        if let Policy::Return { status } = trigger.policy {
+            trigger.policy = Policy::Page {
                 status,
-                html: Rc::clone(&page),
-                from,
-            },
-        ];
+                body: Rc::clone(&page),
+            };
+        }
     }
 }
 
 fn check_captcha_requirement(conf: &LocConf) -> Result<(), String> {
-    let needs_captcha = [
-        ChainKind::Blacklist,
-        ChainKind::CcDeny,
-        ChainKind::Modsecurity,
-        ChainKind::VerifyBot,
-    ]
-    .iter()
-    .any(|kind| {
-        conf.chain(*kind)
-            .first()
-            .map(|action| action.from() & ACTION_FLAG_CAPTCHA != 0)
-            .unwrap_or(false)
-    });
+    let needs_captcha = TRIGGER_KINDS
+        .iter()
+        .any(|kind| matches!(conf.policy(*kind), Policy::Captcha { .. }));
 
     if !needs_captcha {
         return Ok(());
@@ -1542,33 +1515,63 @@ mod tests {
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_action", &["blacklist=405"]).unwrap();
         assert_eq!(
-            conf.chain(ChainKind::Blacklist),
-            &[Action::Return {
-                status: 405,
-                from: ACTION_FLAG_FROM_BLACK_LIST
-            }]
+            conf.policy(TriggerKind::Blacklist),
+            Policy::Return { status: 405 }
         );
+        // The triggers the directive does not mention fall back to their
+        // built-in default instead of staying empty.
+        assert_eq!(
+            conf.policy(TriggerKind::CcDeny),
+            Policy::Return {
+                status: HTTP_SERVICE_UNAVAILABLE
+            }
+        );
+        assert_eq!(conf.policy(TriggerKind::Modsecurity), Policy::Follow);
         assert!(dir(&mut conf, "waf_action", &["blacklist=100"]).is_err());
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_action", &["modsecurity=FOLLOW"]).unwrap();
+        assert_eq!(conf.policy(TriggerKind::Modsecurity), Policy::Follow);
         assert_eq!(
-            conf.chain(ChainKind::Modsecurity),
-            &[Action::Follow {
-                from: ACTION_FLAG_FROM_MODSECURITY
-            }]
+            conf.policy(TriggerKind::Blacklist),
+            Policy::Return {
+                status: HTTP_FORBIDDEN
+            }
         );
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_action", &["verify_bot=400"]).unwrap();
         assert_eq!(
-            conf.chain(ChainKind::VerifyBot),
-            &[Action::Return {
-                status: 400,
-                from: ACTION_FLAG_FROM_VERIFY_BOT
-            }]
+            conf.policy(TriggerKind::VerifyBot),
+            Policy::Return { status: 400 }
         );
         assert!(dir(&mut conf, "waf_action", &["bad=400"]).is_err());
+
+        // `waf_action zone=...` keeps every trigger at its default, which used
+        // to leave four empty chains behind (and serve blocked requests).
+        let mut main = MainConf::default();
+        zone_directive_main(&mut main, &["name=test", "size=10m"]).unwrap();
+        let mut conf = LocConf::default();
+        dir_main(&mut main, &mut conf, "waf_action", &["zone=test:tag"]).unwrap();
+        assert_eq!(
+            conf.policy(TriggerKind::Blacklist),
+            Policy::Return {
+                status: HTTP_FORBIDDEN
+            }
+        );
+        assert_eq!(
+            conf.policy(TriggerKind::CcDeny),
+            Policy::Return {
+                status: HTTP_SERVICE_UNAVAILABLE
+            }
+        );
+        assert_eq!(conf.policy(TriggerKind::Modsecurity), Policy::Follow);
+        assert_eq!(
+            conf.policy(TriggerKind::VerifyBot),
+            Policy::Return {
+                status: HTTP_FORBIDDEN
+            }
+        );
     }
 
     #[test]
@@ -1589,33 +1592,84 @@ mod tests {
         assert_eq!(child.waf, WAF_ON);
         assert_eq!(child.waf_mode, M_FULL);
         assert_eq!(
-            child.chain(ChainKind::Blacklist),
-            &[Action::Return {
-                status: HTTP_FORBIDDEN,
-                from: ACTION_FLAG_FROM_BLACK_LIST
-            }]
+            child.policy(TriggerKind::Blacklist),
+            Policy::Return {
+                status: HTTP_FORBIDDEN
+            }
         );
     }
 
     #[test]
-    fn merge_block_page_converts_the_chain() {
+    fn merge_block_page_converts_the_policy() {
         let mut parent = LocConf::default();
         dir(&mut parent, "waf", &["on"]).unwrap();
         dir(&mut parent, "waf_block_page", &["default"]).unwrap();
         let mut child = LocConf::default();
         merge(&mut child, &mut parent).unwrap();
         assert_eq!(child.block_page.as_slice(), HTML_BLOCK);
-        let chain = child.chain(ChainKind::Blacklist);
-        assert_eq!(chain.len(), 3);
-        assert!(matches!(chain[0], Action::RegContent { .. }));
-        assert!(matches!(chain[1], Action::Decline { .. }));
-        match &chain[2] {
-            Action::Html { status, html, .. } => {
-                assert_eq!(*status, HTTP_FORBIDDEN);
-                assert_eq!(html.as_slice(), HTML_BLOCK);
+        match child.policy(TriggerKind::Blacklist) {
+            Policy::Page { status, body } => {
+                assert_eq!(status, HTTP_FORBIDDEN);
+                assert_eq!(body.as_slice(), HTML_BLOCK);
             }
-            other => panic!("unexpected action {other:?}"),
+            other => panic!("unexpected policy {other:?}"),
         }
+        // The CC trigger of the same context is converted as well, the
+        // modsecurity one keeps its `FOLLOW` policy.
+        match child.policy(TriggerKind::CcDeny) {
+            Policy::Page { status, .. } => assert_eq!(status, HTTP_SERVICE_UNAVAILABLE),
+            other => panic!("unexpected policy {other:?}"),
+        }
+        assert_eq!(child.policy(TriggerKind::Modsecurity), Policy::Follow);
+    }
+
+    #[test]
+    fn a_child_block_page_does_not_change_the_parent() {
+        let mut parent = LocConf::default();
+        dir(&mut parent, "waf", &["on"]).unwrap();
+        let mut child = LocConf::default();
+        dir(&mut child, "waf_block_page", &["default"]).unwrap();
+        merge(&mut child, &mut parent).unwrap();
+        // Only the context that configured the page answers with it.
+        assert_eq!(
+            parent.policy(TriggerKind::Blacklist),
+            Policy::Return {
+                status: HTTP_FORBIDDEN
+            }
+        );
+        assert!(matches!(
+            child.policy(TriggerKind::Blacklist),
+            Policy::Page { .. }
+        ));
+    }
+
+    #[test]
+    fn a_context_without_waf_action_inherits_the_parent_policy() {
+        let mut parent = LocConf::default();
+        dir(&mut parent, "waf", &["on"]).unwrap();
+        dir(&mut parent, "waf_action", &["blacklist=405"]).unwrap();
+        let mut child = LocConf::default();
+        merge(&mut child, &mut parent).unwrap();
+        assert_eq!(
+            child.policy(TriggerKind::Blacklist),
+            Policy::Return { status: 405 }
+        );
+
+        // ... but a `waf_action` in the child resets the triggers it does not
+        // mention, like the C implementation does.
+        let mut other = LocConf::default();
+        dir(&mut other, "waf_action", &["cc_deny=400"]).unwrap();
+        merge(&mut other, &mut parent).unwrap();
+        assert_eq!(
+            other.policy(TriggerKind::Blacklist),
+            Policy::Return {
+                status: HTTP_FORBIDDEN
+            }
+        );
+        assert_eq!(
+            other.policy(TriggerKind::CcDeny),
+            Policy::Return { status: 400 }
+        );
     }
 
     #[test]

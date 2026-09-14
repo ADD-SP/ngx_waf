@@ -39,7 +39,7 @@ registry cache already contains `regex` and `getrandom`.
 | --- | --- |
 | `waf`, `waf_mode`, `waf_rule_path`, `waf_zone`, `waf_priority` | done |
 | the rule files (IP/CIDR, URL, args, user agent, referer, cookie, post, the white lists) | done |
-| `waf_action` (status, block page, CAPTCHA chains), `waf_block_page` | done |
+| `waf_action` (status, block page, CAPTCHA policies), `waf_block_page` | done |
 | `waf_cache`, `waf_cc_deny` (shared memory counters, `$waf_rate`, `Retry-After`) | done |
 | the `$waf_*` variables and the `ngx_waf: [rule][detail]` audit line | done |
 | `waf_captcha`, `waf_verify_bot`, `waf_under_attack`, `waf_modsecurity` | the directives are parsed and validated, the inspections are **not ported yet** |
@@ -58,6 +58,22 @@ What is left is visible in `test/test-nginx/template/`: `captcha.t`,
 * A relative `waf_rule_path` is resolved against the nginx prefix (like every
   other file path of a nginx configuration) instead of the working directory of
   the process that parses the configuration.
+* `waf_action` is a policy per trigger source, not a list of actions: a
+  configuration that does not set a policy inherits it, and a context that uses
+  `waf_action` resets the triggers it does not mention to their built in
+  default.  An empty policy (which used to serve blocked requests) cannot be
+  expressed.  See `Policy`/`TriggerPolicy` in `src/config.rs`.
+* A CC protection that cannot count blocks: a storage failure answers 503 and a
+  configuration without a zone answers 500, where the C implementation dropped
+  its "internal error" action and served the request.
+* The CC counters live in a growable tag directory and a table that evicts a
+  rotating victim when it is full, so a zone with many tags or a flood from many
+  addresses keeps counting instead of losing protection.
+* `waf_zone size=` accepts everything `ngx_parse_size()` accepts (a bare byte
+  count, `k`/`K`, `m`/`M`).
+* A `waf_block_page` in one context does not change the responses of its parent
+  or of its sibling locations.  The C implementation converted the shared action
+  chain in place, so a location level page also reached the parent context.
 * `Retry-After` carries the real number of seconds left of the block; the C
   implementation reports `duration - now` because it never records the time the
   block started.

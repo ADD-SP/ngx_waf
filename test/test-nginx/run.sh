@@ -19,6 +19,9 @@ fi
 if [ ! -f "$MODULE_PATH" ]; then
     MODULE_PATH=""
 fi
+# start.sh runs as a child process, so it only sees the variable when it is
+# exported.
+export MODULE_PATH
 
 if [ -z "$TEST_NGINX_BINARY" ]; then
     binary="$here/../nginx-1.27.2/objs/nginx"

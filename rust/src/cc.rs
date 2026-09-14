@@ -13,6 +13,10 @@
 
 use crate::util::random_uniform;
 
+/// The smallest useful counter table, and the point at which a zone is really
+/// out of room.
+const MIN_CAPACITY: usize = 64;
+
 /// Callbacks the C glue provides for one shared memory zone.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -32,10 +36,12 @@ pub struct ShmOps {
 const ZONE_MAGIC: u64 = 0x4e47_5857_4146_5a4f; // "NGXWAFZO"
 const TABLE_MAGIC: u64 = 0x4e47_5857_4146_5442; // "NGXWAFTB"
 const VERSION: u32 = 1;
-const MAX_TAGS: usize = 8;
+/// Tag entries per directory block; the directory grows by adding blocks, so a
+/// zone is not limited to a handful of tags any more.
+const TAGS_PER_BLOCK: usize = 8;
 const TAG_LEN: usize = 32;
 
-/// The per-zone directory, allocated inside the shared memory segment.
+/// One tag of one directory block.
 #[repr(C)]
 struct TagEntry {
     tag_len: u8,
@@ -43,12 +49,19 @@ struct TagEntry {
     table: *mut TableHeader,
 }
 
+/// A chained block of the per-zone directory.
+#[repr(C)]
+struct TagBlock {
+    next: *mut TagBlock,
+    entries: [TagEntry; TAGS_PER_BLOCK],
+}
+
 #[repr(C)]
 struct ZoneHeader {
     magic: u64,
     version: u32,
     tag_count: u32,
-    entries: [TagEntry; MAX_TAGS],
+    blocks: *mut TagBlock,
 }
 
 #[repr(C)]
@@ -56,6 +69,8 @@ struct TableHeader {
     magic: u64,
     version: u32,
     capacity: u32,
+    /// Rotating victim for the case where the table holds no free slot.
+    cursor: u32,
     used: u64,
     /// `capacity` slots follow the header.
     slots: [Slot; 0],
@@ -113,52 +128,83 @@ impl ZoneHandle {
     }
 
     fn table_capacity(&self) -> usize {
-        let by_size = self.size / 128;
-        std::cmp::max(64, by_size)
+        // Tables are created lazily and share the segment: a 10MB zone gives
+        // one tag ~20k counters (650KB) and halves that per extra tag, so a
+        // zone with many tags still fits.  `create_entry()` halves further
+        // when the segment is tighter than expected.
+        let tags = (unsafe { (*self.header).tag_count } as usize) + 1;
+        std::cmp::max(MIN_CAPACITY, (self.size / 512) / tags)
     }
 
     fn find_entry(&self, tag: &[u8]) -> Option<*mut TableHeader> {
-        let header = unsafe { &*self.header };
-        for entry in header.entries.iter() {
-            if entry.tag_len as usize == tag.len()
-                && entry.tag[..tag.len()] == *tag
-                && !entry.table.is_null()
-            {
-                return Some(entry.table);
+        let mut block = unsafe { (*self.header).blocks };
+        while !block.is_null() {
+            let block_ref = unsafe { &*block };
+            for entry in block_ref.entries.iter() {
+                if entry.tag_len as usize == tag.len()
+                    && entry.tag[..tag.len()] == *tag
+                    && !entry.table.is_null()
+                {
+                    return Some(entry.table);
+                }
             }
+            block = block_ref.next;
         }
         None
     }
 
     fn create_entry(&self, tag: &[u8]) -> Option<*mut TableHeader> {
-        let capacity = self.table_capacity();
+        // Halve the table until the zone can hold it, so that a zone shared by
+        // several tags degrades to smaller tables instead of losing a tag.
+        let mut capacity = self.table_capacity();
+        let memory = loop {
+            let size = std::mem::size_of::<TableHeader>() + capacity * std::mem::size_of::<Slot>();
+            let memory = self.alloc_locked(size);
+            if !memory.is_null() {
+                break memory;
+            }
+            if capacity <= MIN_CAPACITY {
+                return None;
+            }
+            capacity /= 2;
+        };
         let size = std::mem::size_of::<TableHeader>() + capacity * std::mem::size_of::<Slot>();
-        let memory = self.alloc_locked(size);
-        if memory.is_null() {
-            return None;
-        }
         unsafe {
             std::ptr::write_bytes(memory, 0, size);
             let table = memory as *mut TableHeader;
             (*table).magic = TABLE_MAGIC;
             (*table).version = VERSION;
             (*table).capacity = capacity as u32;
+            (*table).cursor = 0;
             (*table).used = 0;
 
             let header = &mut *self.header;
-            let mut free = None;
-            for index in 0..MAX_TAGS {
-                if header.entries[index].tag_len == 0 {
-                    free = Some(index);
-                    break;
+
+            // Reuse a free entry of an existing block ...
+            let mut block = header.blocks;
+            while !block.is_null() {
+                let block_ref = &mut *block;
+                for entry in block_ref.entries.iter_mut() {
+                    if entry.tag_len == 0 {
+                        *entry = new_entry(tag, table);
+                        header.tag_count += 1;
+                        return Some(table);
+                    }
                 }
+                block = block_ref.next;
             }
-            let index = free?;
-            let entry = &mut header.entries[index];
-            entry.tag_len = tag.len() as u8;
-            entry.tag = [0u8; TAG_LEN];
-            entry.tag[..tag.len()].copy_from_slice(tag);
-            entry.table = table;
+
+            // ... or add a block to the directory.
+            let block_size = std::mem::size_of::<TagBlock>();
+            let memory = self.alloc_locked(block_size);
+            if memory.is_null() {
+                return None;
+            }
+            std::ptr::write_bytes(memory, 0, block_size);
+            let new_block = memory as *mut TagBlock;
+            (*new_block).next = header.blocks;
+            (*new_block).entries[0] = new_entry(tag, table);
+            header.blocks = new_block;
             header.tag_count += 1;
             Some(table)
         }
@@ -178,6 +224,17 @@ impl ZoneHandle {
         }
         self.create_entry(tag)
     }
+}
+
+/// A directory entry for `tag` pointing at `table`.
+fn new_entry(tag: &[u8], table: *mut TableHeader) -> TagEntry {
+    let mut entry = TagEntry {
+        tag_len: tag.len() as u8,
+        tag: [0u8; TAG_LEN],
+        table,
+    };
+    entry.tag[..tag.len()].copy_from_slice(tag);
+    entry
 }
 
 /// Called by the C glue from the shared memory zone init handler.
@@ -295,10 +352,18 @@ fn increment_locked(
     let mut probe = slot_index(addr) % slots.len();
     let mut first_free: Option<usize> = None;
     let mut iterations = 0;
+    let mut evicted = false;
     let index;
     loop {
         if iterations > slots.len() {
-            return None;
+            // The table is full of live entries: drop the rotating victim and
+            // keep counting for the new client instead of losing the
+            // protection for the rest of the cycle.
+            let victim = (table_ref.cursor as usize) % slots.len();
+            table_ref.cursor = (table_ref.cursor + 1) % (slots.len() as u32);
+            index = victim;
+            evicted = true;
+            break;
         }
         iterations += 1;
         let slot = &mut slots[probe];
@@ -318,7 +383,8 @@ fn increment_locked(
     }
 
     let slot = &mut slots[index];
-    let fresh = slot.kind == SLOT_EMPTY || slot.kind == SLOT_DELETED || slot.expire <= now;
+    let fresh =
+        evicted || slot.kind == SLOT_EMPTY || slot.kind == SLOT_DELETED || slot.expire <= now;
     if fresh {
         slot.kind = kind;
         slot.addr = [0u8; 16];
@@ -377,22 +443,27 @@ pub fn gc(handle: *mut ZoneHandle, now: i64) {
     };
     handle.lock();
     let header = unsafe { &*handle.header };
-    for entry in header.entries.iter() {
-        if entry.table.is_null() {
-            continue;
-        }
-        let table = unsafe { &mut *entry.table };
-        if table.magic != TABLE_MAGIC || table.version != VERSION {
-            continue;
-        }
-        let slots = unsafe {
-            std::slice::from_raw_parts_mut(table.slots.as_mut_ptr(), table.capacity as usize)
-        };
-        for slot in slots.iter_mut() {
-            if slot.kind != SLOT_EMPTY && slot.kind != SLOT_DELETED && slot.expire <= now {
-                slot.kind = SLOT_DELETED;
+    let mut block = header.blocks;
+    while !block.is_null() {
+        let block_ref = unsafe { &*block };
+        for entry in block_ref.entries.iter() {
+            if entry.table.is_null() {
+                continue;
+            }
+            let table = unsafe { &mut *entry.table };
+            if table.magic != TABLE_MAGIC || table.version != VERSION {
+                continue;
+            }
+            let slots = unsafe {
+                std::slice::from_raw_parts_mut(table.slots.as_mut_ptr(), table.capacity as usize)
+            };
+            for slot in slots.iter_mut() {
+                if slot.kind != SLOT_EMPTY && slot.kind != SLOT_DELETED && slot.expire <= now {
+                    slot.kind = SLOT_DELETED;
+                }
             }
         }
+        block = block_ref.next;
     }
     handle.unlock();
 }
@@ -552,5 +623,43 @@ mod tests {
         assert_eq!(after.rate, 2);
         unsafe { zone_free(first) };
         unsafe { zone_free(second) };
+    }
+
+    #[test]
+    fn many_tags_are_supported() {
+        // The directory used to be a fixed array of eight entries: a zone with
+        // more tags silently stopped counting.
+        let (shm, ctx) = setup("many_tags", 4 * 1024 * 1024);
+        for index in 0..20u32 {
+            let tag = format!("cc{index}");
+            let addr = [10u8, 0, 0, index as u8];
+            let result = match increment(ctx, tag.as_bytes(), &addr, false, 1, 60, 60, 0) {
+                Some(result) => result,
+                None => panic!(
+                    "tag {tag} must have a counter table ({} of {} bytes used)",
+                    shm.offset,
+                    shm.memory.len()
+                ),
+            };
+            assert_eq!(result.rate, 1, "tag {tag}");
+            let blocked = increment(ctx, tag.as_bytes(), &addr, false, 1, 60, 60, 1).unwrap();
+            assert!(blocked.blocked, "tag {tag}");
+        }
+    }
+
+    #[test]
+    fn a_full_table_evicts_instead_of_failing() {
+        let (_shm, ctx) = setup("full_table", 1024 * 1024);
+        // `capacity` is a private detail, flood well past any plausible value.
+        let capacity = 8192 + 64;
+        for index in 0..capacity {
+            let addr = [11, (index >> 16) as u8, (index >> 8) as u8, index as u8];
+            let result = increment(ctx, b"cc", &addr, false, 1, 60, 60, 0)
+                .unwrap_or_else(|| panic!("address {index} must be counted"));
+            assert_eq!(result.rate, 1, "address {index}");
+        }
+        // A brand new client still gets a counter instead of losing protection.
+        let fresh = increment(ctx, b"cc", &[12, 0, 0, 1], false, 1, 60, 60, 0).unwrap();
+        assert_eq!(fresh.rate, 1);
     }
 }

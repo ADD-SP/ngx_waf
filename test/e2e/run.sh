@@ -140,5 +140,21 @@ check 503 "cc 3rd request"                   -H "$cc_headers" "$cc_base/"
 check_body 503 '\[true\]\[true\]\[true\]\[CC-DENY\]' \
     "cc variables"                           -H "$cc_headers" "$cc_base/"
 
+# `waf_action` must not disarm the triggers it does not mention.
+check 403 "waf_action cc_deny keeps the blacklist" \
+    -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
+check 200 "waf_action cc_deny allows the first request" \
+    -H 'X-Real-IP: 9.9.9.11' "http://127.0.0.1:18085/"
+check 400 "waf_action cc_deny uses the configured status" \
+    -H 'X-Real-IP: 9.9.9.11' "http://127.0.0.1:18085/"
+check 405 "waf_action blacklist uses the configured status" \
+    -H 'X-Real-IP: 9.9.9.12' "http://127.0.0.1:18086/www.bak"
+check 200 "waf_action blacklist allows the first request" \
+    -H 'X-Real-IP: 9.9.9.13' "http://127.0.0.1:18086/"
+check 503 "waf_action blacklist keeps the cc denial" \
+    -H 'X-Real-IP: 9.9.9.13' "http://127.0.0.1:18086/"
+check 500 "cc without a zone blocks" \
+    -H 'X-Real-IP: 9.9.9.14' "http://127.0.0.1:18087/"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

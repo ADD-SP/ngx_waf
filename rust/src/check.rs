@@ -3,10 +3,11 @@
 
 use crate::cache::CachedResult;
 use crate::cc;
-use crate::config::{Action, ChainKind, CheckId, LocConf};
+use crate::config::{CheckId, LocConf, Policy, TriggerKind};
 use crate::rules::RuleKind;
 use crate::types::*;
 use crate::util;
+use std::rc::Rc;
 use std::time::Instant;
 
 /// The request data the C glue provides.
@@ -50,6 +51,8 @@ pub struct Outcome {
     pub rule_details: Vec<u8>,
     pub rate: i64,
     pub spend: f64,
+    /// `Set-Cookie` values the decision wants to add to its response.
+    pub cookies: Vec<(String, String)>,
     /// The `ngx_waf: [rule][detail]` line of the log phase, built on demand.
     #[allow(dead_code)]
     pub log: Vec<u8>,
@@ -76,6 +79,7 @@ impl Outcome {
             rule_details: Vec::new(),
             rate: 0,
             spend,
+            cookies: Vec::new(),
             log: Vec::new(),
         }
     }
@@ -92,7 +96,9 @@ impl Outcome {
 struct State<'a> {
     conf: &'a mut LocConf,
     req: &'a Req<'a>,
-    chain: Vec<Action>,
+    /// The response asked for by the inspection that matched, `None` while no
+    /// inspection matched.
+    decision: Option<Decision>,
     blocked: bool,
     general_log: bool,
     rule_type: Vec<u8>,
@@ -100,6 +106,55 @@ struct State<'a> {
     rate: i64,
     /// Seconds left of the current CC block.
     remain: i64,
+}
+
+/// The response one matched inspection asks for.
+struct Decision {
+    status: u32,
+    content_type: u32,
+    /// `Some` means the body is written by the content handler.
+    body: Option<Rc<Vec<u8>>>,
+    cookies: Vec<(String, String)>,
+}
+
+impl Decision {
+    /// Let the request through (`ACTION_FLAG_DECLINE`).
+    fn allow() -> Self {
+        Decision {
+            status: 0,
+            content_type: CT_HTML,
+            body: None,
+            cookies: Vec::new(),
+        }
+    }
+
+    /// Answer with a status only (`ACTION_FLAG_RETURN`).
+    fn status(status: u32) -> Self {
+        Decision {
+            status,
+            content_type: CT_HTML,
+            body: None,
+            cookies: Vec::new(),
+        }
+    }
+
+    fn page(status: u32, body: Rc<Vec<u8>>) -> Self {
+        Decision {
+            status,
+            content_type: CT_HTML,
+            body: Some(body),
+            cookies: Vec::new(),
+        }
+    }
+
+    fn text(status: u32, text: Rc<Vec<u8>>) -> Self {
+        Decision {
+            status,
+            content_type: CT_TEXT,
+            body: Some(text),
+            cookies: Vec::new(),
+        }
+    }
 }
 
 impl State<'_> {
@@ -120,13 +175,31 @@ impl State<'_> {
         }
     }
 
-    fn append(&mut self, kind: ChainKind) {
-        let actions: Vec<Action> = self.conf.chain(kind).to_vec();
-        self.chain.extend(actions);
+    /// Resolve the policy of `kind` into a response.
+    fn trigger(&mut self, kind: TriggerKind) {
+        let policy = self.conf.policy(kind);
+        self.apply_policy(policy);
     }
 
-    fn append_action(&mut self, action: Action) {
-        self.chain.push(action);
+    fn apply_policy(&mut self, policy: Policy) {
+        self.decision = Some(match policy {
+            Policy::Return { status } => Decision::status(status),
+            Policy::Page { status, body } => Decision::page(status, body),
+            Policy::Text { status, text } => Decision::text(status, text),
+            // The status of a `FOLLOW` policy comes from the inspection
+            // itself; no ported inspection produces one yet.
+            Policy::Follow => Decision::allow(),
+            // Until the captcha flow is ported this is what the C action chain
+            // did: register the content handler and serve the captcha page.
+            Policy::Captcha { .. } => {
+                Decision::page(HTTP_SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha_html))
+            }
+        });
+    }
+
+    /// Let the request through, used by the white lists.
+    fn allow(&mut self) {
+        self.decision = Some(Decision::allow());
     }
 
     fn mode_enabled(&self, flag: u64) -> bool {
@@ -150,7 +223,7 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
     let mut state = State {
         conf,
         req,
-        chain: Vec::new(),
+        decision: None,
         blocked: false,
         general_log: false,
         rule_type: Vec::new(),
@@ -169,7 +242,9 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
         if run_check(&mut state, id) {
             break;
         }
-        state.chain.clear();
+        // A check that did not match discards what it prepared, the C
+        // implementation resets the action chain the same way.
+        state.decision = None;
     }
 
     let spend = start.elapsed().as_secs_f64() * 1000.0;
@@ -233,11 +308,9 @@ fn check_ip(state: &mut State, white: bool) -> bool {
     };
     state.set_rule_info(rule_type, &detail, true, !white);
     if white {
-        state.append_action(Action::Decline {
-            from: ACTION_FLAG_FROM_WHITE_LIST,
-        });
+        state.allow();
     } else {
-        state.append(ChainKind::Blacklist);
+        state.trigger(TriggerKind::Blacklist);
     }
     true
 }
@@ -345,11 +418,9 @@ fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
 
     state.set_rule_info(rule_type, &detail, true, !white);
     if white {
-        state.append_action(Action::Decline {
-            from: ACTION_FLAG_FROM_WHITE_LIST,
-        });
+        state.allow();
     } else {
-        state.append(ChainKind::Blacklist);
+        state.trigger(TriggerKind::Blacklist);
     }
     true
 }
@@ -393,7 +464,7 @@ fn check_cookie(state: &mut State) -> bool {
         };
         // The C implementation reports the cookie header value, not the regex.
         state.set_rule_info(b"BLACK-COOKIE", &detail, true, true);
-        state.append(ChainKind::Blacklist);
+        state.trigger(TriggerKind::Blacklist);
         return true;
     }
     false
@@ -410,7 +481,7 @@ fn check_post(state: &mut State) -> bool {
         return false;
     };
     state.set_rule_info(b"BLACK-POST", &detail, true, true);
-    state.append(ChainKind::Blacklist);
+    state.trigger(TriggerKind::Blacklist);
     true
 }
 
@@ -418,17 +489,18 @@ fn check_cc(state: &mut State) -> bool {
     if state.conf.cc_deny != 1 {
         return false;
     }
+    // A CC protection that cannot count has to block: this used to be dropped
+    // by the "a check that did not match resets the chain" rule and the request
+    // was served uninspected.
     if state.conf.cc_deny_cycle <= 0
         || state.conf.cc_deny_duration <= 0
         || state.conf.cc_deny_limit <= 0
         || state.conf.cc_zone < 0
         || state.req.cc_zone.is_null()
     {
-        state.append_action(Action::Return {
-            status: HTTP_INTERNAL_SERVER_ERROR,
-            from: ACTION_FLAG_FROM_CC_DENY,
-        });
-        return false;
+        state.set_rule_info(b"CC-DENY", b"", true, true);
+        state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        return true;
     }
 
     let tag = state.conf.cc_tag.clone();
@@ -443,11 +515,11 @@ fn check_cc(state: &mut State) -> bool {
         state.req.now,
     );
     let Some(result) = result else {
-        state.append_action(Action::Return {
-            status: HTTP_INTERNAL_SERVER_ERROR,
-            from: ACTION_FLAG_FROM_CC_DENY,
-        });
-        return false;
+        // The shared memory could not hold the counter, the C implementation
+        // answers 503 on this path.
+        state.set_rule_info(b"CC-DENY", b"", true, true);
+        state.decision = Some(Decision::status(HTTP_SERVICE_UNAVAILABLE));
+        return true;
     };
 
     state.rate = result.rate;
@@ -457,13 +529,13 @@ fn check_cc(state: &mut State) -> bool {
     }
 
     state.set_rule_info(b"CC-DENY", b"", true, true);
-    state.append(ChainKind::CcDeny);
+    state.trigger(TriggerKind::CcDeny);
     true
 }
 
-/// `ngx_http_waf_perform_action_at_access_end()` plus the content phase part:
-/// walk the chain, register the content handler when needed and resolve the
-/// response.
+/// Turn the decision of the matching inspection into the outcome the C side
+/// applies: a bare status, or a status with a body written by the content
+/// handler.
 fn resolve(state: &mut State, spend: f64) -> Outcome {
     let mut outcome = Outcome::allow(true, spend);
     outcome.blocked = state.blocked;
@@ -472,63 +544,25 @@ fn resolve(state: &mut State, spend: f64) -> Outcome {
     outcome.rule_details = state.rule_details.clone();
     outcome.rate = state.rate;
 
-    let chain = std::mem::take(&mut state.chain);
-    let mut content: Option<(u32, u32, Vec<u8>)> = None;
-    let mut index = 0;
-    while index < chain.len() {
-        match &chain[index] {
-            // The access phase stops here; the content phase then walks the
-            // very same chain looking for the body to send.
-            Action::Decline { .. } => break,
-            Action::Return { status, .. } => {
-                outcome.kind = STEP_RESPONSE;
-                outcome.status = *status;
-                outcome.retry_after = retry_after(state, *status).unwrap_or(-1);
-                return outcome;
-            }
-            Action::RegContent { .. } => {
-                outcome.register_content_handler = true;
-                index += 1;
-            }
-            Action::Follow { .. } => index += 1,
-            Action::Html { status, html, .. } => {
-                content = Some((*status, CT_HTML, html.as_ref().clone()));
-                break;
-            }
-            Action::Str { status, text, .. } => {
-                content = Some((*status, CT_TEXT, text.as_ref().clone()));
-                break;
-            }
-        }
-    }
+    let Some(decision) = state.decision.take() else {
+        return outcome;
+    };
 
-    if let Some((status, content_type, body)) = content {
-        outcome.kind = STEP_RESPONSE;
-        outcome.status = status;
-        outcome.content_type = content_type;
-        outcome.body = body;
-        outcome.register_content_handler = true;
-    } else if outcome.register_content_handler {
-        // The access phase already returned, the content phase walks the rest
-        // of the chain looking for the body to send.
-        for action in chain.iter() {
-            match action {
-                Action::Html { status, html, .. } => {
-                    content = Some((*status, CT_HTML, html.as_ref().clone()));
-                    break;
-                }
-                Action::Str { status, text, .. } => {
-                    content = Some((*status, CT_TEXT, text.as_ref().clone()));
-                    break;
-                }
-                _ => {}
-            }
-        }
-        if let Some((status, content_type, body)) = content {
+    match decision.body {
+        Some(body) => {
             outcome.kind = STEP_RESPONSE;
-            outcome.status = status;
-            outcome.content_type = content_type;
-            outcome.body = body;
+            outcome.status = decision.status;
+            outcome.content_type = decision.content_type;
+            outcome.body = body.as_ref().clone();
+            outcome.register_content_handler = true;
+            outcome.cookies = decision.cookies;
+        }
+        None if decision.status == 0 => {}
+        None => {
+            outcome.kind = STEP_RESPONSE;
+            outcome.status = decision.status;
+            outcome.retry_after = retry_after(state, decision.status).unwrap_or(-1);
+            outcome.cookies = decision.cookies;
         }
     }
 
@@ -565,6 +599,13 @@ mod tests {
     use super::*;
     use crate::rules::{self, RegexRule};
     use std::rc::Rc;
+
+    fn set_policy(conf: &mut LocConf, kind: TriggerKind, policy: Policy) {
+        conf.policies[kind.index()] = Some(crate::config::TriggerPolicy {
+            from: kind.flag(),
+            policy,
+        });
+    }
 
     fn conf_with_rules(rules: rules::RuleSet) -> LocConf {
         LocConf {
@@ -613,10 +654,13 @@ mod tests {
     #[test]
     fn black_url_returns_the_status() {
         let mut conf = conf_with_rules(url_rules());
-        conf.chain_blacklist = Some(vec![Action::Return {
-            status: HTTP_FORBIDDEN,
-            from: ACTION_FLAG_FROM_BLACK_LIST,
-        }]);
+        set_policy(
+            &mut conf,
+            TriggerKind::Blacklist,
+            Policy::Return {
+                status: HTTP_FORBIDDEN,
+            },
+        );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_RESPONSE);
@@ -635,19 +679,15 @@ mod tests {
     fn block_page_registers_the_content_handler() {
         let mut conf = conf_with_rules(url_rules());
         conf.block_page = Rc::new(HTML_BLOCK.to_vec());
-        conf.chain_blacklist = Some(vec![
-            Action::RegContent {
-                from: ACTION_FLAG_FROM_BLACK_LIST,
-            },
-            Action::Decline {
-                from: ACTION_FLAG_FROM_BLACK_LIST,
-            },
-            Action::Html {
+        let page = Rc::clone(&conf.block_page);
+        set_policy(
+            &mut conf,
+            TriggerKind::Blacklist,
+            Policy::Page {
                 status: HTTP_FORBIDDEN,
-                html: Rc::clone(&conf.block_page),
-                from: ACTION_FLAG_FROM_BLACK_LIST,
+                body: page,
             },
-        ]);
+        );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_RESPONSE);
@@ -660,10 +700,13 @@ mod tests {
     #[test]
     fn whitelist_declines() {
         let mut conf = conf_with_rules(url_rules());
-        conf.chain_blacklist = Some(vec![Action::Return {
-            status: HTTP_FORBIDDEN,
-            from: ACTION_FLAG_FROM_BLACK_LIST,
-        }]);
+        set_policy(
+            &mut conf,
+            TriggerKind::Blacklist,
+            Policy::Return {
+                status: HTTP_FORBIDDEN,
+            },
+        );
         // A whitelisted URL wins before the blacklist is inspected.
         conf.rules = Some(Rc::new({
             let mut rules = url_rules();
@@ -686,19 +729,15 @@ mod tests {
         let mut conf = conf_with_rules(url_rules());
         conf.waf = WAF_BYPASS;
         conf.block_page = Rc::new(HTML_BLOCK.to_vec());
-        conf.chain_blacklist = Some(vec![
-            Action::RegContent {
-                from: ACTION_FLAG_FROM_BLACK_LIST,
-            },
-            Action::Decline {
-                from: ACTION_FLAG_FROM_BLACK_LIST,
-            },
-            Action::Html {
+        let page = Rc::clone(&conf.block_page);
+        set_policy(
+            &mut conf,
+            TriggerKind::Blacklist,
+            Policy::Page {
                 status: HTTP_FORBIDDEN,
-                html: Rc::clone(&conf.block_page),
-                from: ACTION_FLAG_FROM_BLACK_LIST,
+                body: page,
             },
-        ]);
+        );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_ALLOW);
@@ -715,10 +754,13 @@ mod tests {
             rules.cookie.push(RegexRule::compile(b"\\.\\./").unwrap());
             rules
         });
-        conf.chain_blacklist = Some(vec![Action::Return {
-            status: HTTP_FORBIDDEN,
-            from: ACTION_FLAG_FROM_BLACK_LIST,
-        }]);
+        set_policy(
+            &mut conf,
+            TriggerKind::Blacklist,
+            Policy::Return {
+                status: HTTP_FORBIDDEN,
+            },
+        );
         let cookies = vec![b"a=1".to_vec(), b"s=../".to_vec()];
         let outcome = check(&mut conf, &request(b"/", &cookies));
         assert_eq!(outcome.kind, STEP_RESPONSE);
@@ -731,20 +773,82 @@ mod tests {
     }
 
     #[test]
-    fn cc_without_a_zone_appends_a_discarded_action() {
+    fn cc_without_a_zone_blocks() {
         let mut conf = conf_with_rules(rules::new_rule_set());
         conf.cc_deny = 1;
         conf.cc_deny_limit = 2;
         conf.cc_deny_cycle = 60;
         conf.cc_deny_duration = 60;
-        // `cc_zone` stays -1: the C implementation appends a 500 action and
-        // then reports "not matched", and the check loop discards the chain of
-        // a check that did not match.  The request therefore goes through,
-        // which is what a drop-in replacement has to do as well.
+        // `cc_zone` stays -1: the configuration cannot count, so the request is
+        // blocked instead of being served uninspected.
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_INTERNAL_SERVER_ERROR);
+        assert!(outcome.blocked);
         assert!(outcome.checked);
+        assert_eq!(outcome.rule_type, b"CC-DENY");
+    }
+
+    #[test]
+    fn cc_storage_failure_blocks_with_503() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// Hands out one buffer (the tag directory) and then fails, so that
+        /// the counter table cannot be created.
+        static DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+
+        unsafe extern "C" fn directory_alloc(
+            _ctx: *mut core::ffi::c_void,
+            size: usize,
+        ) -> *mut core::ffi::c_void {
+            if size > 4096 {
+                return std::ptr::null_mut();
+            }
+            match DIRECTORY.swap(0, Ordering::SeqCst) {
+                0 => std::ptr::null_mut(),
+                addr => addr as *mut core::ffi::c_void,
+            }
+        }
+
+        unsafe extern "C" fn no_alloc(
+            _ctx: *mut core::ffi::c_void,
+            _size: usize,
+        ) -> *mut core::ffi::c_void {
+            std::ptr::null_mut()
+        }
+
+        let directory = Box::leak(vec![0u8; 4096].into_boxed_slice());
+        DIRECTORY.store(directory.as_mut_ptr() as usize, Ordering::SeqCst);
+        let ops = cc::ShmOps {
+            lock: None,
+            unlock: None,
+            alloc: Some(directory_alloc),
+            alloc_locked: Some(no_alloc),
+            ctx: std::ptr::null_mut(),
+        };
+        let handle = unsafe { cc::zone_init(0x1000, 1024 * 1024, std::ptr::null_mut(), ops) };
+        assert!(
+            !handle.is_null(),
+            "the tag directory allocation must succeed"
+        );
+
+        let mut conf = conf_with_rules(rules::new_rule_set());
+        conf.cc_deny = 1;
+        conf.cc_deny_limit = 2;
+        conf.cc_deny_cycle = 60;
+        conf.cc_deny_duration = 60;
+        conf.cc_zone = 0;
+        conf.cc_tag = b"cc_deny".to_vec();
+        let cookies = Vec::new();
+        let mut view = request(b"/", &cookies);
+        view.cc_zone = handle;
+        let outcome = check(&mut conf, &view);
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert!(outcome.blocked);
+        assert_eq!(outcome.rule_type, b"CC-DENY");
+        unsafe { cc::zone_free(handle) };
     }
 
     #[test]
