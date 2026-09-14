@@ -45,6 +45,7 @@ typedef struct {
 
 typedef struct {
     ngx_waf_step_t  *step;
+    ngx_uint_t       applied:1;
     ngx_uint_t       waiting_more_body:1;
     ngx_uint_t       read_body_done:1;
 } ngx_http_waf_ctx_t;
@@ -132,6 +133,21 @@ static void *ngx_http_waf_shm_alloc_locked(void* ctx, size_t size);
 static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
 
 
+static ngx_int_t ngx_http_waf_drive(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static ngx_int_t ngx_http_waf_apply(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static ngx_int_t ngx_http_waf_start_resolve(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static void ngx_http_waf_resolve_handler(ngx_resolver_ctx_t* rc);
+
+
+static void ngx_http_waf_resume(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx, ngx_waf_event_t* event);
+
+
 static ngx_int_t ngx_http_waf_read_body(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
 
 
@@ -146,6 +162,9 @@ static void ngx_http_waf_add_no_cache_header(ngx_http_request_t* r);
 
 
 static void ngx_http_waf_add_retry_after_header(ngx_http_request_t* r, int64_t seconds);
+
+
+static void ngx_http_waf_add_set_cookies(ngx_http_request_t* r, ngx_waf_step_t* step);
 
 
 static ngx_int_t ngx_http_waf_var_log(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
@@ -167,6 +186,34 @@ static ngx_int_t ngx_http_waf_var_spend(ngx_http_request_t* r, ngx_http_variable
 
 
 static ngx_int_t ngx_http_waf_var_rate(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data);
+
+
+/**
+ * Write the `Set-Cookie` headers a decision minted (the captcha flow).
+ */
+static void ngx_http_waf_add_set_cookies(ngx_http_request_t* r, ngx_waf_step_t* step) {
+    size_t i;
+
+    for (i = 0; i < step->set_cookie_count; i++) {
+        ngx_table_elt_t* header = ngx_list_push(&r->headers_out.headers);
+        const ngx_waf_str_t* cookie = &step->set_cookies[i];
+
+        if (header == NULL) {
+            return;
+        }
+
+        header->hash = 1;
+        header->lowcase_key = (u_char*)"set-cookie";
+        ngx_str_set(&header->key, "Set-Cookie");
+        header->value.data = ngx_pnalloc(r->pool, cookie->len);
+        if (header->value.data == NULL) {
+            header->hash = 0;
+            return;
+        }
+        ngx_memcpy(header->value.data, cookie->data, cookie->len);
+        header->value.len = cookie->len;
+    }
+}
 
 
 static ngx_http_waf_ctx_t *ngx_http_waf_get_ctx(ngx_http_request_t* r);
@@ -720,7 +767,9 @@ static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
 
     if (ctx->step != NULL) {
-        return NGX_DECLINED;
+        /* Already inspected: apply the stored decision (a parked request stays
+         * parked until its asynchronous operation answers). */
+        return ngx_http_waf_drive(r, ctx);
     }
 
     if (ctx->waiting_more_body) {
@@ -957,15 +1006,64 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         cc_zone = zones[cc_index].handle;
     }
 
-    step = ngx_waf_check(conf->core, &req, cc_zone);
+    step = ngx_waf_check_begin(conf->core, &req, cc_zone);
     if (step == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     ctx->step = step;
+    ctx->applied = 0;
 
-    if (step->retry_after >= 0 && step->status != NGX_HTTP_CLOSE) {
-        ngx_http_waf_add_retry_after_header(r, step->retry_after);
+    return ngx_http_waf_drive(r, ctx);
+}
+
+
+/**
+ * Run the machine as far as the current step allows: apply a decision, or start
+ * the asynchronous operation the step asks for and park the request.
+ */
+static ngx_int_t ngx_http_waf_drive(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    for ( ;; ) {
+        ngx_waf_step_t* step = ctx->step;
+
+        if (step == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        switch (step->kind) {
+        case NGX_WAF_STEP_RESOLVE_ADDR:
+            return ngx_http_waf_start_resolve(r, ctx);
+
+        case NGX_WAF_STEP_ALLOW:
+        case NGX_WAF_STEP_RESPONSE:
+        case NGX_WAF_STEP_INTERNAL_ERROR:
+            return ngx_http_waf_apply(r, ctx);
+
+        default:
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+    }
+}
+
+
+/**
+ * Turn the decision the core made into the nginx response.  It may run twice
+ * for the same request (the phases are re-entered after an asynchronous step),
+ * so the headers are only written once.
+ */
+static ngx_int_t ngx_http_waf_apply(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    ngx_waf_step_t* step = ctx->step;
+
+    if (step == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    if (!ctx->applied) {
+        if (step->retry_after >= 0 && step->status != NGX_HTTP_CLOSE) {
+            ngx_http_waf_add_retry_after_header(r, step->retry_after);
+        }
+        ngx_http_waf_add_set_cookies(r, step);
+        ctx->applied = 1;
     }
 
     if (step->register_content_handler) {
@@ -983,6 +1081,97 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     default:
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
+}
+
+
+/**
+ * Reverse resolve the client address for the friendly crawler check.
+ */
+static ngx_int_t ngx_http_waf_start_resolve(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    ngx_http_core_loc_conf_t* clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+    ngx_resolver_ctx_t* rc;
+    ngx_waf_event_t event;
+
+    if (clcf->resolver == NULL || ctx->step->ip == NULL || ctx->step->ip_len == 0) {
+        /* No resolver: the crawler cannot be verified, which is reported as a
+         * failed lookup. */
+        ngx_memzero(&event, sizeof(ngx_waf_event_t));
+        event.kind = NGX_WAF_EVENT_RESOLVE_FAILED;
+        ngx_http_waf_resume(r, ctx, &event);
+        return ngx_http_waf_drive(r, ctx);
+    }
+
+    rc = ngx_resolve_start(clcf->resolver, NULL);
+    if (rc == NULL || rc == NGX_NO_RESOLVER) {
+        ngx_memzero(&event, sizeof(ngx_waf_event_t));
+        event.kind = NGX_WAF_EVENT_RESOLVE_FAILED;
+        ngx_http_waf_resume(r, ctx, &event);
+        return ngx_http_waf_drive(r, ctx);
+    }
+
+    rc->addr.sockaddr = r->connection->sockaddr;
+    rc->addr.socklen = r->connection->socklen;
+    rc->handler = ngx_http_waf_resolve_handler;
+    rc->data = r;
+    rc->timeout = clcf->resolver_timeout;
+
+    if (ngx_resolve_addr(rc) != NGX_OK) {
+        ngx_resolve_addr_done(rc);
+        ngx_memzero(&event, sizeof(ngx_waf_event_t));
+        event.kind = NGX_WAF_EVENT_RESOLVE_FAILED;
+        ngx_http_waf_resume(r, ctx, &event);
+        return ngx_http_waf_drive(r, ctx);
+    }
+
+    /* The request must survive until the resolver answers. */
+    r->main->count++;
+
+    return NGX_DONE;
+}
+
+
+static void ngx_http_waf_resolve_handler(ngx_resolver_ctx_t* rc) {
+    ngx_http_request_t* r = rc->data;
+    ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+    ngx_waf_event_t event;
+
+    ngx_memzero(&event, sizeof(ngx_waf_event_t));
+
+    if (ctx == NULL || ctx->step == NULL) {
+        ngx_resolve_addr_done(rc);
+        return;
+    }
+
+    if (rc->state == NGX_OK && rc->name.len != 0) {
+        event.kind = NGX_WAF_EVENT_RESOLVED_NAME;
+        event.name.data = rc->name.data;
+        event.name.len = rc->name.len;
+    } else {
+        event.kind = NGX_WAF_EVENT_RESOLVE_FAILED;
+    }
+
+    ngx_resolve_addr_done(rc);
+
+    ngx_http_waf_resume(r, ctx, &event);
+
+    ngx_http_finalize_request(r, NGX_DONE);
+    ngx_http_core_run_phases(r);
+}
+
+
+/**
+ * Hand the result of an asynchronous operation back to the core and let it
+ * advance to the next decision or request.
+ */
+static void ngx_http_waf_resume(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx, ngx_waf_event_t* event) {
+    if (ctx->step == NULL) {
+        return;
+    }
+    if (ngx_waf_check_resume(ctx->step, event) != 0) {
+        ctx->step->kind = NGX_WAF_STEP_INTERNAL_ERROR;
+        ctx->step->status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    ctx->applied = 0;
 }
 
 

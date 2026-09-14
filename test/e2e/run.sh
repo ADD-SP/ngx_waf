@@ -156,5 +156,18 @@ check 503 "waf_action blacklist keeps the cc denial" \
 check 500 "cc without a zone blocks" \
     -H 'X-Real-IP: 9.9.9.14' "http://127.0.0.1:18087/"
 
+# Friendly crawler verification: without a resolver the address cannot be
+# checked, so a crawler user agent is a fake one.
+check 403 "verify_bot strict blocks a fake bot" \
+    -H 'User-Agent: Googlebot' "http://127.0.0.1:18088/"
+check 403 "verify_bot strict blocks a fake bingbot" \
+    -H 'User-Agent: bingbot' "http://127.0.0.1:18088/"
+check 200 "verify_bot strict lets a normal client through" \
+    -H 'User-Agent: curl/8.0' "http://127.0.0.1:18088/"
+check 200 "verify_bot on allows a fake bot" \
+    -H 'User-Agent: Googlebot' "http://127.0.0.1:18089/"
+check 200 "verify_bot on allows a normal client" \
+    -H 'User-Agent: curl/8.0' "http://127.0.0.1:18089/"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

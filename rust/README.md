@@ -42,7 +42,8 @@ registry cache already contains `regex` and `getrandom`.
 | `waf_action` (status, block page, CAPTCHA policies), `waf_block_page` | done |
 | `waf_cache`, `waf_cc_deny` (shared memory counters, `$waf_rate`, `Retry-After`) | done |
 | the `$waf_*` variables and the `ngx_waf: [rule][detail]` audit line | done |
-| `waf_captcha`, `waf_verify_bot`, `waf_under_attack`, `waf_modsecurity` | the directives are parsed and validated, the inspections are **not ported yet** |
+| `waf_verify_bot` (crawler user agent + reverse DNS) | done |
+| `waf_captcha`, `waf_under_attack`, `waf_modsecurity` | the directives are parsed and validated, the inspections are **not ported yet** |
 
 The directives of the last row are accepted, so an existing configuration keeps
 loading, but they are reported with a warning at configuration time and they do
@@ -71,6 +72,11 @@ What is left is visible in `test/test-nginx/template/`: `captcha.t`,
   addresses keeps counting instead of losing protection.
 * `waf_zone size=` accepts everything `ngx_parse_size()` accepts (a bare byte
   count, `k`/`K`, `m`/`M`).
+* The friendly crawler check only looks at the host name nginx' asynchronous
+  resolver returns, the C implementation also walked the aliases `gethostbyaddr`
+  reports.  A crawler whose lookup needs a `resolver` (see the `resolver`
+  directive of the enclosing context) is treated as a fake one when the lookup
+  fails or no resolver is configured, so `waf_verify_bot strict` fails closed.
 * A `waf_block_page` in one context does not change the responses of its parent
   or of its sibling locations.  The C implementation converted the shared action
   chain in place, so a location level page also reached the parent context.

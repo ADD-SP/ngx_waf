@@ -16,6 +16,14 @@ header = """
 #define NGX_WAF_STEP_ALLOW          0
 #define NGX_WAF_STEP_RESPONSE       1
 #define NGX_WAF_STEP_INTERNAL_ERROR 2
+#define NGX_WAF_STEP_RESOLVE_ADDR   3
+#define NGX_WAF_STEP_HTTP_REQUEST   4
+
+/* The `kind` values of `ngx_waf_event_t`. */
+#define NGX_WAF_EVENT_RESOLVED_NAME  0
+#define NGX_WAF_EVENT_RESOLVE_FAILED 1
+#define NGX_WAF_EVENT_HTTP_RESPONSE  2
+#define NGX_WAF_EVENT_HTTP_FAILED    3
 
 /* The `content_type` values of `ngx_waf_step_t`. */
 #define NGX_WAF_CT_HTML 0
@@ -28,6 +36,7 @@ include = [
     "NgxWafStr",
     "NgxWafReq",
     "NgxWafStep",
+    "NgxWafEvent",
     "ShmOps",
     "ngx_waf_version",
     "ngx_waf_string_free",
@@ -41,7 +50,8 @@ include = [
     "ngx_waf_directive",
     "ngx_waf_zone_directive",
     "ngx_waf_conf_merge",
-    "ngx_waf_check",
+    "ngx_waf_check_begin",
+    "ngx_waf_check_resume",
     "ngx_waf_step_free",
     "ngx_waf_shm_zone_init",
     "ngx_waf_shm_zone_free",
@@ -54,6 +64,7 @@ include = [
 "NgxWafStr" = "ngx_waf_str_t"
 "NgxWafReq" = "ngx_waf_req_t"
 "NgxWafStep" = "ngx_waf_step_t"
+"NgxWafEvent" = "ngx_waf_event_t"
 "ShmOps" = "ngx_waf_shm_ops_t"
 
 [fn]

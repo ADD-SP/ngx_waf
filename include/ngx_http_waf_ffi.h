@@ -2,6 +2,14 @@
 #define NGX_WAF_STEP_ALLOW          0
 #define NGX_WAF_STEP_RESPONSE       1
 #define NGX_WAF_STEP_INTERNAL_ERROR 2
+#define NGX_WAF_STEP_RESOLVE_ADDR   3
+#define NGX_WAF_STEP_HTTP_REQUEST   4
+
+/* The `kind` values of `ngx_waf_event_t`. */
+#define NGX_WAF_EVENT_RESOLVED_NAME  0
+#define NGX_WAF_EVENT_RESOLVE_FAILED 1
+#define NGX_WAF_EVENT_HTTP_RESPONSE  2
+#define NGX_WAF_EVENT_HTTP_FAILED    3
 
 /* The `content_type` values of `ngx_waf_step_t`. */
 #define NGX_WAF_CT_HTML 0
@@ -139,13 +147,30 @@
 #define BOT_TYPE_YANDEX 32
 
 /**
- * Steps returned by the check state machine.
+ * Steps returned by the check state machine.  A decision uses the `ALLOW` or
+ * `RESPONSE` kind, the other two park the request until the C side has run an
+ * asynchronous operation for it.
  */
 #define STEP_ALLOW 0
 
 #define STEP_RESPONSE 1
 
 #define STEP_INTERNAL_ERROR 2
+
+#define STEP_RESOLVE_ADDR 3
+
+#define STEP_HTTP_REQUEST 4
+
+/**
+ * Events that wake a parked machine up.
+ */
+#define EVENT_RESOLVED_NAME 0
+
+#define EVENT_RESOLVE_FAILED 1
+
+#define EVENT_HTTP_RESPONSE 2
+
+#define EVENT_HTTP_FAILED 3
 
 /**
  * Content types the C side knows how to emit.
@@ -175,9 +200,20 @@
 #define SHA256_HEX_LEN 64
 
 /**
+ * The friendly crawler each `BotId` stands for, in the order the C
+ * implementation walks them.
+ */
+typedef struct BotId BotId;
+
+/**
  * The inspection identifiers that `waf_priority` can reorder.
  */
 typedef struct CheckId CheckId;
+
+/**
+ * The four sources that can be configured with `waf_action`.
+ */
+typedef struct TriggerKind TriggerKind;
 
 /**
  * `ngx_str_t` compatible string view: nginx declares the length first, so the
@@ -210,6 +246,22 @@ typedef struct ngx_waf_step_t {
     uint8_t register_content_handler;
     int64_t rate;
     double spend;
+    /**
+     * `Set-Cookie` values for a decision that mints them (captcha).
+     */
+    const struct ngx_waf_str_t *set_cookies;
+    size_t set_cookie_count;
+    /**
+     * `RESOLVE_ADDR`: the address to reverse resolve.
+     */
+    const uint8_t *ip;
+    size_t ip_len;
+    /**
+     * `HTTP_REQUEST`: the request the C side has to perform.
+     */
+    struct ngx_waf_str_t url;
+    struct ngx_waf_str_t http_body;
+    int64_t timeout_ms;
 } ngx_waf_step_t;
 
 /**
@@ -232,6 +284,25 @@ typedef struct ngx_waf_req_t {
 } ngx_waf_req_t;
 
 /**
+ * The event that wakes a parked inspection up.
+ */
+typedef struct ngx_waf_event_t {
+    uint32_t kind;
+    /**
+     * `RESOLVED_NAME`: the host name the address resolves to.
+     */
+    struct ngx_waf_str_t name;
+    /**
+     * `HTTP_RESPONSE`: the status code of the provider.
+     */
+    uint32_t status;
+    /**
+     * `HTTP_RESPONSE`: its body.
+     */
+    struct ngx_waf_str_t body;
+} ngx_waf_event_t;
+
+/**
  * Callbacks the C glue provides for one shared memory zone.
  */
 typedef struct ngx_waf_shm_ops_t {
@@ -250,6 +321,10 @@ typedef struct ngx_waf_shm_ops_t {
      */
     void *ctx;
 } ngx_waf_shm_ops_t;
+
+
+
+
 
 
 
@@ -307,9 +382,19 @@ char *ngx_waf_zone_directive(void *main,
 char *ngx_waf_conf_merge(void *child, void *parent);
 
 /**
- * Run the whole inspection of one request.
+ * Start the inspection of one request.  The returned handle is owned by the C
+ * side and must be freed with `ngx_waf_step_free()` once the request is done,
+ * which is also what keeps the machine of a parked request alive.
  */
-struct ngx_waf_step_t *ngx_waf_check(void *conf, const struct ngx_waf_req_t *req, void *cc_zone);
+struct ngx_waf_step_t *ngx_waf_check_begin(void *conf,
+                                           const struct ngx_waf_req_t *req,
+                                           void *cc_zone);
+
+/**
+ * Feed the result of an asynchronous operation back into the machine, then
+ * report the next step in the same handle.  Returns 0 on success.
+ */
+int32_t ngx_waf_check_resume(struct ngx_waf_step_t *step, const struct ngx_waf_event_t *event);
 
 void ngx_waf_step_free(struct ngx_waf_step_t *step);
 

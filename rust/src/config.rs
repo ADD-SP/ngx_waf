@@ -6,6 +6,7 @@ use crate::cache::LruCache;
 use crate::rules::{self, RuleSet};
 use crate::types::*;
 use crate::util;
+use regex::Regex;
 use std::rc::Rc;
 
 /// The `http` level configuration: the zone registry and the used tags.
@@ -194,6 +195,167 @@ pub struct TriggerPolicy {
     pub policy: Policy,
 }
 
+/// The friendly crawler each `BotId` stands for, in the order the C
+/// implementation walks them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BotId {
+    Google,
+    Bing,
+    Baidu,
+    Yandex,
+    Sogou,
+}
+
+pub const BOTS: [BotId; 5] = [
+    BotId::Google,
+    BotId::Bing,
+    BotId::Baidu,
+    BotId::Yandex,
+    BotId::Sogou,
+];
+
+impl BotId {
+    pub fn index(self) -> usize {
+        match self {
+            BotId::Google => 0,
+            BotId::Bing => 1,
+            BotId::Baidu => 2,
+            BotId::Yandex => 3,
+            BotId::Sogou => 4,
+        }
+    }
+
+    /// The `BOT_TYPE_*` bit of `waf_verify_bot_type`.
+    pub fn flag(self) -> u32 {
+        match self {
+            BotId::Google => BOT_TYPE_GOOGLE,
+            BotId::Bing => BOT_TYPE_BING,
+            BotId::Baidu => BOT_TYPE_BAIDU,
+            BotId::Yandex => BOT_TYPE_YANDEX,
+            BotId::Sogou => BOT_TYPE_SOGOU,
+        }
+    }
+
+    /// The name reported in `$waf_rule_details` / the audit line.
+    pub fn name(self) -> &'static str {
+        match self {
+            BotId::Google => "GoogleBot",
+            BotId::Bing => "BingBot",
+            BotId::Baidu => "Baiduspider",
+            BotId::Yandex => "YandexBot",
+            BotId::Sogou => "SogouSpider",
+        }
+    }
+
+    /// The user agent patterns of the bot, copied from the C implementation.
+    fn ua_patterns(self) -> &'static [&'static str] {
+        match self {
+            BotId::Google => &[
+                "Googlebot",
+                "Google Favicon",
+                "Googlebot-News",
+                "Googlebot-Image",
+                "Googlebot-Video",
+                "Google-Read-Aloud",
+                "AdsBot-Google",
+                "AdsBot-Google-Mobile",
+                "AdsBot-Google-Mobile-Apps",
+                "APIs-Google",
+                "googleweblight",
+                "Storebot-Google",
+                "DuplexWeb-Google",
+                "Mediapartners-Google",
+            ],
+            BotId::Bing => &["bingbot", "adidxbot", "BingPreview"],
+            BotId::Baidu => &[
+                "Baiduspider",
+                "Baiduspider-ads",
+                "Baiduspider-cpro",
+                "Baiduspider-favo",
+                "Baiduspider-news",
+                "Baiduspider-video",
+                "Baiduspider-image",
+            ],
+            BotId::Yandex => &[
+                "YandexBot",
+                "YandexRCA",
+                "YandexNews",
+                "YandexAdNet",
+                "YandexMedia",
+                "YandexBlogs",
+                "YandexTurbo",
+                "YandexVideo",
+                "YandexDirect",
+                "YandexVertis",
+                "YandexMarket",
+                "YandexOntoDB",
+                "YandexImages",
+                "YandexTracker",
+                "YandexMetrika",
+                "YandexPartner",
+                "YandexSpravBot",
+                "YandexCalendar",
+                "YandexFavicons",
+                "YandexMobileBot",
+                "YandexWebmaster",
+                "YandexVerticals",
+                "YandexOntoDBAPI",
+                "YandexDirectDyn",
+                "YandexSitelinks",
+                "YaDirectFetcher",
+                "YandexForDomain",
+                "YandexSearchShop",
+                "YandexVideoParser",
+                "YandexPagechecker",
+                "YandexImageResizer",
+                "YandexAccessibilityBot",
+                "YandexMobileScreenShotBot",
+            ],
+            BotId::Sogou => &["Sogou.*spider"],
+        }
+    }
+
+    /// The host name patterns a real bot resolves to.
+    fn domain_patterns(self) -> &'static [&'static str] {
+        match self {
+            BotId::Google => &["googlebot\\.com$", "google\\.com$"],
+            BotId::Bing => &["search\\.msn\\.com$"],
+            BotId::Baidu => &["baidu\\.com$", "baidu\\.jp$"],
+            BotId::Yandex => &["yandex\\.com$", "yandex\\.net$", "yandex\\.ru$"],
+            BotId::Sogou => &["sogou\\.com$"],
+        }
+    }
+}
+
+/// The compiled crawler patterns of one configuration.
+#[derive(Debug)]
+pub struct BotRules {
+    pub ua: [Vec<Regex>; 5],
+    pub domain: [Vec<Regex>; 5],
+}
+
+impl BotRules {
+    fn compile() -> BotRules {
+        let mut rules = BotRules {
+            ua: Default::default(),
+            domain: Default::default(),
+        };
+        for bot in BOTS {
+            rules.ua[bot.index()] = bot
+                .ua_patterns()
+                .iter()
+                .map(|pattern| Regex::new(pattern).expect("the built in crawler patterns compile"))
+                .collect();
+            rules.domain[bot.index()] = bot
+                .domain_patterns()
+                .iter()
+                .map(|pattern| Regex::new(pattern).expect("the built in crawler patterns compile"))
+                .collect();
+        }
+        rules
+    }
+}
+
 /// The per-worker inspection caches created by `waf_cache on`.
 pub struct Caches {
     pub url: LruCache,
@@ -254,6 +416,8 @@ pub struct LocConf {
     pub cache_capacity: i64,
     pub verify_bot: i64,
     pub verify_bot_type: u32,
+    /// The compiled crawler patterns, `None` until `waf_verify_bot` is used.
+    pub verify_bot_rules: Option<Rc<BotRules>>,
     pub under_attack: i64,
     pub under_attack_html: Rc<Vec<u8>>,
     pub captcha: i64,
@@ -309,6 +473,7 @@ impl Default for LocConf {
             cache_capacity: -1,
             verify_bot: -1,
             verify_bot_type: BOT_TYPE_UNSET,
+            verify_bot_rules: None,
             under_attack: -1,
             under_attack_html: Rc::new(Vec::new()),
             captcha: -1,
@@ -972,7 +1137,7 @@ fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Stri
         conf.verify_bot_type =
             BOT_TYPE_GOOGLE | BOT_TYPE_BING | BOT_TYPE_BAIDU | BOT_TYPE_SOGOU | BOT_TYPE_YANDEX;
     }
-    conf.unsupported("waf_verify_bot");
+    conf.verify_bot_rules = Some(Rc::new(BotRules::compile()));
     Ok(())
 }
 
@@ -1139,6 +1304,9 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
     }
     if child.verify_bot_type == BOT_TYPE_UNSET {
         child.verify_bot_type = parent.verify_bot_type;
+    }
+    if child.verify_bot_rules.is_none() {
+        child.verify_bot_rules = parent.verify_bot_rules.clone();
     }
     if child.waf_mode == 0 {
         child.waf_mode = parent.waf_mode;

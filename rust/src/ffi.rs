@@ -3,8 +3,9 @@
 //! message instead.
 
 use crate::cc::{self, ShmOps};
-use crate::check::{self, Req};
+use crate::check;
 use crate::config::{self, LocConf, MainConf};
+use crate::types::*;
 use crate::util;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
@@ -71,6 +72,81 @@ pub struct NgxWafStep {
     pub register_content_handler: u8,
     pub rate: i64,
     pub spend: f64,
+    /// `Set-Cookie` values for a decision that mints them (captcha).
+    pub set_cookies: *const NgxWafStr,
+    pub set_cookie_count: usize,
+    /// `RESOLVE_ADDR`: the address to reverse resolve.
+    pub ip: *const u8,
+    pub ip_len: usize,
+    /// `HTTP_REQUEST`: the request the C side has to perform.
+    pub url: NgxWafStr,
+    pub http_body: NgxWafStr,
+    pub timeout_ms: i64,
+}
+
+impl NgxWafStep {
+    fn empty() -> NgxWafStep {
+        NgxWafStep {
+            kind: STEP_INTERNAL_ERROR,
+            status: 0,
+            content_type: CT_HTML,
+            retry_after: -1,
+            body: std::ptr::null_mut(),
+            body_len: 0,
+            log: std::ptr::null_mut(),
+            log_len: 0,
+            rule_type: std::ptr::null_mut(),
+            rule_type_len: 0,
+            rule_details: std::ptr::null_mut(),
+            rule_details_len: 0,
+            blocked: 0,
+            checked: 0,
+            general_log: 0,
+            register_content_handler: 0,
+            rate: 0,
+            spend: 0.0,
+            set_cookies: std::ptr::null(),
+            set_cookie_count: 0,
+            ip: std::ptr::null(),
+            ip_len: 0,
+            url: NgxWafStr {
+                len: 0,
+                data: std::ptr::null(),
+            },
+            http_body: NgxWafStr {
+                len: 0,
+                data: std::ptr::null(),
+            },
+            timeout_ms: DEFAULT_HTTP_TIMEOUT_MS,
+        }
+    }
+}
+
+/// The event that wakes a parked inspection up.
+#[repr(C)]
+pub struct NgxWafEvent {
+    pub kind: u32,
+    /// `RESOLVED_NAME`: the host name the address resolves to.
+    pub name: NgxWafStr,
+    /// `HTTP_RESPONSE`: the status code of the provider.
+    pub status: u32,
+    /// `HTTP_RESPONSE`: its body.
+    pub body: NgxWafStr,
+}
+
+/// How long the C side waits for the captcha provider.
+const DEFAULT_HTTP_TIMEOUT_MS: i64 = 5000;
+
+/// The handle the C side owns: the machine lives as long as the request does.
+#[repr(C)]
+struct StepHandle {
+    /// Must stay the first field: C receives a pointer to it.
+    step: NgxWafStep,
+    machine: Option<check::Machine>,
+    /// The `Set-Cookie` texts of the last decision and the views the C side
+    /// reads; both are rebuilt on every step, the texts must outlive the views.
+    cookie_text: Vec<Vec<u8>>,
+    cookie_views: Vec<NgxWafStr>,
 }
 
 const VERSION: &[u8] = b"v10.1.1\0";
@@ -294,9 +370,11 @@ pub unsafe extern "C" fn ngx_waf_conf_merge(
     }
 }
 
-/// Run the whole inspection of one request.
+/// Start the inspection of one request.  The returned handle is owned by the C
+/// side and must be freed with `ngx_waf_step_free()` once the request is done,
+/// which is also what keeps the machine of a parked request alive.
 #[no_mangle]
-pub unsafe extern "C" fn ngx_waf_check(
+pub unsafe extern "C" fn ngx_waf_check_begin(
     conf: *mut c_void,
     req: *const NgxWafReq,
     cc_zone: *mut c_void,
@@ -304,14 +382,9 @@ pub unsafe extern "C" fn ngx_waf_check(
     if conf.is_null() || req.is_null() {
         return std::ptr::null_mut();
     }
+
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let conf = &mut *(conf as *mut LocConf);
         let req = &*req;
-        let ip = if req.ip.is_null() {
-            &[][..]
-        } else {
-            slice::from_raw_parts(req.ip, req.ip_len)
-        };
         let cookies: Vec<Vec<u8>> = if req.cookies.is_null() || req.cookie_count == 0 {
             Vec::new()
         } else {
@@ -320,31 +393,156 @@ pub unsafe extern "C" fn ngx_waf_check(
                 .map(|cookie| cookie.as_slice().to_vec())
                 .collect()
         };
-        let view = Req {
-            ip,
-            ipv6: req.ip_len == 16,
+        let raw = check::RawReq {
+            ip: req.ip,
+            ip_len: req.ip_len,
             method: req.method,
-            uri: req.uri.as_slice(),
-            args: req.args.as_slice(),
-            user_agent: req.user_agent.as_slice(),
-            referer: req.referer.as_slice(),
-            cookies: &cookies,
-            body: req.body.as_slice(),
+            uri: check::RawStr {
+                data: req.uri.data,
+                len: req.uri.len,
+            },
+            args: check::RawStr {
+                data: req.args.data,
+                len: req.args.len,
+            },
+            user_agent: check::RawStr {
+                data: req.user_agent.data,
+                len: req.user_agent.len,
+            },
+            referer: check::RawStr {
+                data: req.referer.data,
+                len: req.referer.len,
+            },
+            body: check::RawStr {
+                data: req.body.data,
+                len: req.body.len,
+            },
             has_body: req.has_body != 0,
             internal: req.internal != 0,
             now: req.now,
             cc_zone: cc_zone as *mut cc::ZoneHandle,
         };
-        check::check(conf, &view)
+        let machine = check::Machine::new(conf as *mut LocConf, raw, cookies);
+        let mut handle = StepHandle {
+            step: NgxWafStep::empty(),
+            machine: Some(machine),
+            cookie_text: Vec::new(),
+            cookie_views: Vec::new(),
+        };
+        handle.advance();
+        Box::into_raw(Box::new(handle)) as *mut NgxWafStep
     }));
 
-    let outcome = match result {
-        Ok(outcome) => outcome,
-        Err(_) => check::Outcome::internal_error(),
-    };
-    Box::into_raw(Box::new(step_from(outcome)))
+    match result {
+        Ok(step) => step,
+        Err(_) => std::ptr::null_mut(),
+    }
 }
 
+/// Feed the result of an asynchronous operation back into the machine, then
+/// report the next step in the same handle.  Returns 0 on success.
+#[no_mangle]
+pub unsafe extern "C" fn ngx_waf_check_resume(
+    step: *mut NgxWafStep,
+    event: *const NgxWafEvent,
+) -> i32 {
+    if step.is_null() || event.is_null() {
+        return -1;
+    }
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let handle = &mut *(step as *mut StepHandle);
+        let event = &*event;
+        let event = match event.kind {
+            EVENT_RESOLVED_NAME => check::Event::ResolvedName(event.name.as_slice()),
+            EVENT_HTTP_RESPONSE => check::Event::HttpResponse {
+                status: event.status,
+                body: event.body.as_slice(),
+            },
+            EVENT_HTTP_FAILED => check::Event::HttpFailed,
+            _ => check::Event::ResolveFailed,
+        };
+        handle.resume(event);
+    }));
+    match result {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+impl StepHandle {
+    /// Run the machine once and publish the result into the C visible step.
+    fn advance(&mut self) {
+        let step = match self.machine.as_mut() {
+            Some(machine) => machine.step(),
+            None => return,
+        };
+        self.publish(step);
+    }
+
+    fn resume(&mut self, event: check::Event<'_>) {
+        let step = match self.machine.as_mut() {
+            Some(machine) => machine.resume(event),
+            None => return,
+        };
+        self.publish(step);
+    }
+
+    /// Refresh the C visible fields; the buffers of the previous step are
+    /// released first and the step object itself is reused, so the C side keeps
+    /// the very same pointer for the whole request.
+    fn publish(&mut self, step: check::Step) {
+        let previous = std::mem::replace(&mut self.step, NgxWafStep::empty());
+        unsafe {
+            drop(take_string(previous.body, previous.body_len));
+            drop(take_string(previous.log, previous.log_len));
+            drop(take_string(previous.rule_type, previous.rule_type_len));
+            drop(take_string(
+                previous.rule_details,
+                previous.rule_details_len,
+            ));
+        }
+        self.cookie_text.clear();
+        self.cookie_views.clear();
+
+        match step {
+            check::Step::Decision(outcome) => {
+                // `Set-Cookie` values the decision mints (captcha), kept alive
+                // by the handle.
+                for (name, value) in &outcome.cookies {
+                    self.cookie_text
+                        .push(format!("{name}={value}; Path=/").into_bytes());
+                }
+                self.cookie_views = self
+                    .cookie_text
+                    .iter()
+                    .map(|text| NgxWafStr {
+                        len: text.len(),
+                        data: text.as_ptr(),
+                    })
+                    .collect();
+                self.step = step_from(outcome);
+                self.step.set_cookies = self.cookie_views.as_ptr();
+                self.step.set_cookie_count = self.cookie_views.len();
+            }
+            check::Step::Pending(pending) => match pending {
+                check::Pending::ResolveAddr => {
+                    self.step.kind = STEP_RESOLVE_ADDR;
+                    if let Some(machine) = self.machine.as_ref() {
+                        let raw = machine.raw();
+                        self.step.ip = raw.ip;
+                        self.step.ip_len = raw.ip_len;
+                    }
+                }
+            },
+            check::Step::InternalError => {
+                self.step.kind = STEP_INTERNAL_ERROR;
+                self.step.status = 500;
+            }
+        }
+    }
+}
+
+/// Fill the C visible fields of a decision.
 fn step_from(outcome: check::Outcome) -> NgxWafStep {
     let body_len = outcome.body.len();
     let body = leak_string(&outcome.body);
@@ -355,26 +553,26 @@ fn step_from(outcome: check::Outcome) -> NgxWafStep {
     } else {
         (std::ptr::null_mut(), 0)
     };
-    NgxWafStep {
-        kind: outcome.kind,
-        status: outcome.status,
-        content_type: outcome.content_type,
-        retry_after: outcome.retry_after,
-        body,
-        body_len,
-        log,
-        log_len,
-        rule_type: leak_string(&outcome.rule_type),
-        rule_type_len: outcome.rule_type.len(),
-        rule_details: leak_string(&outcome.rule_details),
-        rule_details_len: outcome.rule_details.len(),
-        blocked: outcome.blocked as u8,
-        checked: outcome.checked as u8,
-        general_log: outcome.general_log as u8,
-        register_content_handler: outcome.register_content_handler as u8,
-        rate: outcome.rate,
-        spend: outcome.spend,
-    }
+    let mut step = NgxWafStep::empty();
+    step.kind = outcome.kind;
+    step.status = outcome.status;
+    step.content_type = outcome.content_type;
+    step.retry_after = outcome.retry_after;
+    step.body = body;
+    step.body_len = body_len;
+    step.log = log;
+    step.log_len = log_len;
+    step.rule_type = leak_string(&outcome.rule_type);
+    step.rule_type_len = outcome.rule_type.len();
+    step.rule_details = leak_string(&outcome.rule_details);
+    step.rule_details_len = outcome.rule_details.len();
+    step.blocked = outcome.blocked as u8;
+    step.checked = outcome.checked as u8;
+    step.general_log = outcome.general_log as u8;
+    step.register_content_handler = outcome.register_content_handler as u8;
+    step.rate = outcome.rate;
+    step.spend = outcome.spend;
+    step
 }
 
 #[no_mangle]
@@ -383,11 +581,20 @@ pub unsafe extern "C" fn ngx_waf_step_free(step: *mut NgxWafStep) {
         return;
     }
     let _ = catch_unwind(AssertUnwindSafe(|| {
-        let step = Box::from_raw(step);
-        drop(take_string(step.body, step.body_len));
-        drop(take_string(step.log, step.log_len));
-        drop(take_string(step.rule_type, step.rule_type_len));
-        drop(take_string(step.rule_details, step.rule_details_len));
+        // The pointer the C side holds points at the first field of the handle,
+        // which is what keeps the machine alive across the suspensions.
+        let handle = Box::from_raw(step as *mut StepHandle);
+        drop(take_string(handle.step.body, handle.step.body_len));
+        drop(take_string(handle.step.log, handle.step.log_len));
+        drop(take_string(
+            handle.step.rule_type,
+            handle.step.rule_type_len,
+        ));
+        drop(take_string(
+            handle.step.rule_details,
+            handle.step.rule_details_len,
+        ));
+        drop(handle);
     }));
 }
 

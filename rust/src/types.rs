@@ -101,10 +101,20 @@ pub const BOT_TYPE_BAIDU: u32 = 0x8;
 pub const BOT_TYPE_SOGOU: u32 = 0x10;
 pub const BOT_TYPE_YANDEX: u32 = 0x20;
 
-/// Steps returned by the check state machine.
+/// Steps returned by the check state machine.  A decision uses the `ALLOW` or
+/// `RESPONSE` kind, the other two park the request until the C side has run an
+/// asynchronous operation for it.
 pub const STEP_ALLOW: u32 = 0;
 pub const STEP_RESPONSE: u32 = 1;
 pub const STEP_INTERNAL_ERROR: u32 = 2;
+pub const STEP_RESOLVE_ADDR: u32 = 3;
+pub const STEP_HTTP_REQUEST: u32 = 4;
+
+/// Events that wake a parked machine up.
+pub const EVENT_RESOLVED_NAME: u32 = 0;
+pub const EVENT_RESOLVE_FAILED: u32 = 1;
+pub const EVENT_HTTP_RESPONSE: u32 = 2;
+pub const EVENT_HTTP_FAILED: u32 = 3;
 
 /// Content types the C side knows how to emit.
 pub const CT_HTML: u32 = 0;
