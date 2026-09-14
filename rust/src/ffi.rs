@@ -350,6 +350,33 @@ pub extern "C" fn ngx_waf_conf_modsecurity(conf: *mut c_void) -> i64 {
     .unwrap_or(-1)
 }
 
+/// The endpoint the captcha provider of this configuration is asked on: the
+/// `api=` of `waf_captcha`, or the default of the provider it named.  This is
+/// the very URL the core puts into a `STEP_HTTP_REQUEST`, so the C glue parses
+/// what it will actually use instead of looking for `api=` itself (a location
+/// that inherits the directive has no `api=` of its own).
+///
+/// The returned view points into the configuration, which outlives every
+/// request; it is empty when no `waf_captcha` was configured.
+#[no_mangle]
+pub extern "C" fn ngx_waf_conf_captcha_api(conf: *mut c_void) -> NgxWafStr {
+    let empty = NgxWafStr {
+        len: 0,
+        data: std::ptr::null(),
+    };
+    if conf.is_null() {
+        return empty;
+    }
+    catch_unwind(AssertUnwindSafe(|| unsafe {
+        let api = &(*(conf as *const LocConf)).captcha_api;
+        NgxWafStr {
+            len: api.len(),
+            data: api.as_ptr(),
+        }
+    }))
+    .unwrap_or(empty)
+}
+
 /// Apply one directive, returns NULL on success or an error message.
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_directive(

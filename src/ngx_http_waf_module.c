@@ -37,6 +37,8 @@ typedef struct {
  * never has to resolve anything.
  */
 typedef struct {
+    /** The URL the endpoint was parsed from, empty until it is configured. */
+    ngx_str_t                  url;
     ngx_str_t                  host;
     ngx_str_t                  uri;
     struct sockaddr           *sockaddr;
@@ -917,6 +919,13 @@ static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx
     ctx->fetch.in_drive = 1;
 
     if (conf == NULL || !conf->captcha_api.configured) {
+        /*
+         * `waf_captcha` prepares the endpoint while the configuration is read,
+         * so this only happens when a request reaches the provider without a
+         * captcha configuration at all.
+         */
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+            "ngx_waf: the captcha provider endpoint is not configured");
         ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
@@ -1149,6 +1158,15 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
     ngx_str_t ciphers;
     ngx_uint_t ssl = 0;
 
+    /* The same directive is handled again only when it is repeated in one
+     * context; parsing the same endpoint twice is wasted work. */
+    if (conf->captcha_api.configured
+        && conf->captcha_api.url.len == value.len
+        && ngx_strncmp(conf->captcha_api.url.data, value.data, value.len) == 0)
+    {
+        return NGX_OK;
+    }
+
     if (rest.len >= 8 && ngx_strncasecmp(rest.data, (u_char*) "https://", 8) == 0) {
         ssl = 1;
         rest.data += 8;
@@ -1206,6 +1224,12 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
     }
 
     conf->captcha_api.configured = 1;
+    conf->captcha_api.url.data = ngx_pnalloc(cf->pool, value.len);
+    if (conf->captcha_api.url.data == NULL) {
+        return NGX_ERROR;
+    }
+    ngx_memcpy(conf->captcha_api.url.data, value.data, value.len);
+    conf->captcha_api.url.len = value.len;
 
     return NGX_OK;
 }
@@ -1378,16 +1402,24 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
         return ngx_http_waf_report(cf, error);
     }
 
+    /*
+     * The provider endpoint is the URL the core will ask for: the `api=` of
+     * this directive, or the default endpoint of the provider it named.  Ask
+     * the core instead of scanning the argument here, a location that inherits
+     * `waf_captcha` never saw an `api=` of its own (it inherits this endpoint
+     * through the configuration merge).
+     */
     if (ngx_strcmp(cmd->name.data, "waf_captcha") == 0) {
-        ngx_uint_t i;
-        for (i = 1; i < cf->args->nelts; i++) {
-            if (elts[i].len > 4 && ngx_strncmp(elts[i].data, "api=", 4) == 0) {
-                ngx_str_t api;
-                api.data = elts[i].data + 4;
-                api.len = elts[i].len - 4;
-                if (ngx_http_waf_captcha_api(cf, loc_conf, api) != NGX_OK) {
-                    return NGX_CONF_ERROR;
-                }
+        ngx_waf_str_t api = ngx_waf_conf_captcha_api(loc_conf->core);
+
+        if (api.len != 0) {
+            ngx_str_t value;
+
+            value.data = (u_char*) api.data;
+            value.len = api.len;
+
+            if (ngx_http_waf_captcha_api(cf, loc_conf, value) != NGX_OK) {
+                return NGX_CONF_ERROR;
             }
         }
     }
@@ -1489,6 +1521,15 @@ static char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf)
 
     if (child->modsecurity_transaction_id == NULL) {
         child->modsecurity_transaction_id = parent->modsecurity_transaction_id;
+    }
+
+    /*
+     * A location that does not configure `waf_captcha` itself uses the one of
+     * the context above, and with it the endpoint that was parsed there.  The
+     * `ngx_ssl_t` inside is shared, nginx owns it for the life of the cycle.
+     */
+    if (!child->captcha_api.configured && parent->captcha_api.configured) {
+        child->captcha_api = parent->captcha_api;
     }
 
     return NGX_CONF_OK;
@@ -1683,6 +1724,24 @@ static ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_http_set_ctx(r, ctx, ngx_http_waf_module);
 
     if (ctx->step != NULL) {
+        if (ctx->applied) {
+            /*
+             * The decision was carried out already and the phases are running
+             * again: nginx re-enters them for a postponed request (the body of
+             * a POST arrived, the provider answered) and after an internal
+             * redirect (`error_page`, ...).  Answer nothing a second time - an
+             * `error_page` would skip the page it is supposed to produce - but
+             * put the content handler of a decision that has a body back in
+             * place, `ngx_http_update_location_config()` resets it to the
+             * handler of the location at the start of every pass.
+             */
+            if (ctx->step->register_content_handler) {
+                r->content_handler = ngx_http_waf_handler_precontent_phase;
+            }
+
+            return NGX_DECLINED;
+        }
+
         /* Already inspected: apply the stored decision (a parked request stays
          * parked until its asynchronous operation answers). */
         return ngx_http_waf_drive(r, ctx);

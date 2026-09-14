@@ -65,6 +65,7 @@ sed "s/^worker_processes .*/worker_processes  $workers;/" \
 mv "$prefix/conf/nginx.conf.tmp" "$prefix/conf/nginx.conf"
 
 printf 'backend\n' > "$prefix/html/index.html"
+printf 'static error page\n' > "$prefix/html/403.html"
 
 # A provider that accepts the connection and never answers: the module has to
 # give up on its own timeout.  Without python3 the case is skipped.
@@ -213,6 +214,10 @@ check 404 "mode without the URL bit"         "http://127.0.0.1:18083/www.bak"
 check_body 403 'WAF' "block page"            "$base/bp/www.bak"
 check_body 403 '\[true\]\[true\]\[true\]\[BLACK-URL\]' \
     "variables of a blocked request"         -H 'X-Real-IP: 9.9.9.1' "$base/www.bak"
+# An `error_page` that is a file (nginx internally redirects to it) has to be
+# the response, the decision must not be applied a second time.
+check_body 403 'static error page' \
+    "error page from a static file"          "$base/staticerror/www.bak"
 # CC protection: rate=2r/m, the third request of the same address is denied.
 cc_base="http://127.0.0.1:18084"
 cc_headers='X-Real-IP: 9.9.9.3'
@@ -271,6 +276,11 @@ else
 fi
 check_body 200 'good' "captcha accepts the token" \
     -X POST -d 'g-recaptcha-response=token' "$cap/captcha"
+# The location that answers that POST has no `waf_captcha` of its own, so the
+# provider endpoint (and the verification URL) came from the server level
+# through the configuration merge.
+check_body 200 'good' "captcha inherits the provider endpoint" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/captcha"
 check 200 "captcha lets a verified visitor through" -H "Cookie: $cookies" "$cap/"
 check 200 "captcha lets a verified visitor reach the verify url" \
     -H "Cookie: $cookies" "$cap/captcha"
@@ -294,8 +304,24 @@ fi
 if [ -n "$hang_pid" ]; then
     check_body_slow 200 'bad' 5 "captcha provider timeout fails closed" \
         -X POST -d 'g-recaptcha-response=token' "$cap/hang/captcha"
-    check 200 "the worker survives a provider timeout" "$base/"
+check 200 "the worker survives a provider timeout" "$base/"
 fi
+
+# `waf_action X=CAPTCHA` with the captcha inspection off: the action table
+# challenges, the token is verified by the (inherited) provider and the visitor
+# is let through.
+action_cap="http://127.0.0.1:18093"
+action_header='X-Real-IP: 9.9.9.20'
+check 403 "captcha action table challenges the first request" \
+    -H "$action_header" "$action_cap/www.bak"
+check_body 200 'good' "captcha action table is solved with the provider" \
+    -H "$action_header" -X POST -d 'g-recaptcha-response=token' "$action_cap/captcha"
+
+# A `waf_captcha` without `api=` uses the default endpoint of its provider: the
+# configuration has to load and the request has to fail closed when the
+# provider is out of reach.
+check_body_slow 200 'bad' 0 "captcha without api= fails closed" \
+    -X POST -d 'g-recaptcha-response=token' "$action_cap/default/captcha"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

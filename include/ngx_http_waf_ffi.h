@@ -404,6 +404,18 @@ int64_t ngx_waf_conf_waf(void *conf);
 int64_t ngx_waf_conf_modsecurity(void *conf);
 
 /**
+ * The endpoint the captcha provider of this configuration is asked on: the
+ * `api=` of `waf_captcha`, or the default of the provider it named.  This is
+ * the very URL the core puts into a `STEP_HTTP_REQUEST`, so the C glue parses
+ * what it will actually use instead of looking for `api=` itself (a location
+ * that inherits the directive has no `api=` of its own).
+ *
+ * The returned view points into the configuration, which outlives every
+ * request; it is empty when no `waf_captcha` was configured.
+ */
+struct ngx_waf_str_t ngx_waf_conf_captcha_api(void *conf);
+
+/**
  * Apply one directive, returns NULL on success or an error message.
  */
 char *ngx_waf_directive(void *main,

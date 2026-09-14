@@ -1186,7 +1186,10 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
         return CheckResult::Matched;
     }
 
-    if captcha_inc_fails(state) {
+    // Only a challenge or a bad answer is a failure of the visitor: a token the
+    // provider accepted mints the cookies and never touches the counter (the C
+    // implementation counted its CHALLENGE/BAD/FAIL branches only).
+    if verdict != CaptchaVerdict::Pass && captcha_inc_fails(state) {
         state.set_rule_info(b"CAPTCHA", b"TO MANY FAILS", true, true);
         *state.decision = Some(match state.conf.block_page.is_empty() {
             true => Decision::status(HTTP_TOO_MANY_REQUESTS),
@@ -2622,84 +2625,142 @@ mod tests {
         assert_eq!(outcome.body, b"good");
     }
 
-    #[test]
-    fn captcha_fail_counter_blocks_after_the_threshold() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+    /// A plain allocation the zone callbacks hand out, so the tests do not need
+    /// the slab allocator of nginx.  Its address is the `ctx` of the callbacks
+    /// and has to stay valid for as long as the zone lives.
+    struct FakeZone {
+        memory: Vec<u8>,
+        offset: usize,
+    }
 
-        static DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+    impl FakeZone {
+        fn new(size: usize) -> Box<FakeZone> {
+            Box::new(FakeZone {
+                memory: vec![0; size],
+                offset: 0,
+            })
+        }
 
-        unsafe extern "C" fn directory_alloc(
-            _ctx: *mut core::ffi::c_void,
-            size: usize,
-        ) -> *mut core::ffi::c_void {
-            if size > 4096 {
+        /// A bump allocator, the shared structures hold 64 bit counters and
+        /// have to stay aligned.
+        fn alloc(&mut self, size: usize) -> *mut u8 {
+            let start = (self.offset + 15) & !15;
+            if start + size > self.memory.len() {
                 return std::ptr::null_mut();
             }
-            match DIRECTORY.swap(0, Ordering::SeqCst) {
-                0 => std::ptr::null_mut(),
-                addr => addr as *mut core::ffi::c_void,
-            }
+            self.offset = start + size;
+            unsafe { self.memory.as_mut_ptr().add(start) }
         }
+    }
 
-        unsafe extern "C" fn arena_alloc(
-            ctx: *mut core::ffi::c_void,
-            size: usize,
-        ) -> *mut core::ffi::c_void {
-            // A tiny bump allocator over a static arena, enough for two
-            // tables.  It has to be properly aligned, the shared structures
-            // hold 64 bit counters.
-            static mut ARENA: [u64; 8192] = [0; 8192];
-            static mut OFFSET: usize = 0;
-            unsafe {
-                let arena = &mut *std::ptr::addr_of_mut!(ARENA);
-                let offset = &mut *std::ptr::addr_of_mut!(OFFSET);
-                let _ = ctx;
-                let bytes = std::mem::size_of_val(arena);
-                if *offset + size > bytes {
-                    return std::ptr::null_mut();
-                }
-                let pointer = (arena.as_mut_ptr() as *mut u8).add(*offset);
-                *offset += (size + 15) & !15;
-                pointer as *mut core::ffi::c_void
-            }
+    unsafe extern "C" fn fake_zone_alloc(
+        ctx: *mut core::ffi::c_void,
+        size: usize,
+    ) -> *mut core::ffi::c_void {
+        if ctx.is_null() {
+            return std::ptr::null_mut();
         }
+        (*(ctx as *mut FakeZone)).alloc(size) as *mut core::ffi::c_void
+    }
 
-        let directory = Box::leak(vec![0u8; 4096].into_boxed_slice());
-        DIRECTORY.store(directory.as_mut_ptr() as usize, Ordering::SeqCst);
+    /// A shared memory zone for the captcha fail counters.  The allocation is
+    /// owned by the caller, it has to outlive the zone.
+    fn captcha_counter_zone() -> (*mut cc::ZoneHandle, Box<FakeZone>) {
+        let shm = FakeZone::new(1024 * 1024);
         let ops = cc::ShmOps {
             lock: None,
             unlock: None,
-            alloc: Some(directory_alloc),
-            alloc_locked: Some(arena_alloc),
-            ctx: std::ptr::null_mut(),
+            alloc: Some(fake_zone_alloc),
+            alloc_locked: Some(fake_zone_alloc),
+            ctx: &*shm as *const FakeZone as *mut core::ffi::c_void,
         };
         let zone = unsafe { cc::zone_init(0x2000, 1024 * 1024, std::ptr::null_mut(), ops) };
-        assert!(!zone.is_null());
+        assert!(!zone.is_null(), "the zone header must be allocated");
+        (zone, shm)
+    }
 
+    /// A configuration with `waf_captcha on`, a fail counter and its zone.
+    fn captcha_counter_conf() -> LocConf {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &["max_fails=1:1m", "zone=any:tag"]);
         // The zone lookup needs a zone in the main configuration; patch the two
         // fields the checks read.
         conf.captcha_zone = 0;
         conf.captcha_tag = b"captchatag".to_vec();
+        conf
+    }
+
+    /// Drive one verify request through the provider answer.
+    fn captcha_verify(conf: &mut LocConf, zone: *mut cc::ZoneHandle, answer: &[u8]) -> Outcome {
+        let body = b"g-recaptcha-response=token";
+        let mut machine = captcha_machine(conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        machine.set_captcha_zone(zone);
+        assert!(
+            matches!(machine.step(), Step::Pending(Pending::HttpRequest)),
+            "the provider request has to be started"
+        );
+        match machine.resume(Event::HttpResponse {
+            status: 200,
+            body: answer,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("the provider answer decides the request"),
+        }
+    }
+
+    #[test]
+    fn captcha_fail_counter_blocks_after_the_threshold() {
+        let (zone, _shm) = captcha_counter_zone();
+        let mut conf = captcha_counter_conf();
 
         // 20 failures are allowed (`max(max_fails, 20)`), the 21st blocks.
         for attempt in 1..=21 {
-            let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", Vec::new());
+            let body = b"g-recaptcha-response=token";
+            let mut machine =
+                captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
             machine.set_captcha_zone(zone);
-            let outcome = match machine.step() {
+            assert!(matches!(
+                machine.step(),
+                Step::Pending(Pending::HttpRequest)
+            ));
+            let outcome = match machine.resume(Event::HttpResponse {
+                status: 200,
+                body: br#"{"success":false}"#,
+            }) {
                 Step::Decision(outcome) => outcome,
-                _ => panic!("the challenge is decided at once"),
+                _ => panic!("the provider answer decides the request"),
             };
             if attempt <= 20 {
-                assert_eq!(
-                    outcome.status, HTTP_SERVICE_UNAVAILABLE,
-                    "attempt {attempt}"
-                );
+                assert_eq!(outcome.body, b"bad", "attempt {attempt}");
             } else {
                 assert_eq!(outcome.status, HTTP_TOO_MANY_REQUESTS, "attempt {attempt}");
                 assert_eq!(outcome.rule_details, b"TO MANY FAILS");
             }
         }
+
+        unsafe { cc::zone_free(zone) };
+    }
+
+    /// A token the provider accepted must not count as a failure: with the
+    /// counter incremented on every success the visitor would be locked out by
+    /// the 429 page after `max(max_fails, 20)` solved captchas.
+    #[test]
+    fn captcha_success_does_not_count_as_a_failure() {
+        let (zone, _shm) = captcha_counter_zone();
+        let mut conf = captcha_counter_conf();
+
+        for attempt in 1..=25 {
+            let outcome = captcha_verify(&mut conf, zone, br#"{"success":true}"#);
+            assert_eq!(outcome.status, HTTP_OK, "attempt {attempt}");
+            assert_eq!(outcome.body, b"good", "attempt {attempt}");
+            assert_eq!(outcome.cookies.len(), 3, "attempt {attempt}");
+            assert_eq!(outcome.rule_details, b"PASS", "attempt {attempt}");
+        }
+
+        // The counter never moved, a bad answer is still a plain "bad".
+        let outcome = captcha_verify(&mut conf, zone, br#"{"success":false}"#);
+        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.body, b"bad");
+        assert_eq!(outcome.rule_details, b"bad");
 
         unsafe { cc::zone_free(zone) };
     }

@@ -75,6 +75,7 @@ include = [
     "ngx_waf_conf_cc_zone",
     "ngx_waf_conf_waf",
     "ngx_waf_conf_modsecurity",
+    "ngx_waf_conf_captcha_api",
     "ngx_waf_directive",
     "ngx_waf_zone_directive",
     "ngx_waf_conf_merge",

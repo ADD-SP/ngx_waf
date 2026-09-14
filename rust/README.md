@@ -100,6 +100,12 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   enclosing context otherwise (a `resolver` is therefore needed when the host
   cannot be resolved at configuration time); a request that cannot reach the
   provider fails closed.
+* The provider endpoint is the `api=` of `waf_captcha` or the default of the
+  provider it named (hCaptcha and reCAPTCHA have their own), and it is inherited
+  by the contexts below the directive like every other captcha setting.  The C
+  implementation only prepared an endpoint when the directive of the *request's
+  own* context carried `api=`, so the documented default endpoint never worked
+  and a location that inherited `waf_captcha` could never verify anything.
 * `waf_captcha api=https://...` is supported but the provider certificate is not
   verified (there is no way to configure a CA bundle), and an answer bigger than
   8k is treated as a failure.
