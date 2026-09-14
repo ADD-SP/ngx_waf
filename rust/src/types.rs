@@ -131,8 +131,9 @@ pub const HTTP_SERVICE_UNAVAILABLE: u32 = 503;
 /// `crypto_hash_sha256_BYTES * 2`
 pub const SHA256_HEX_LEN: usize = 64;
 
-/// The embedded pages.  They are extracted from `src/ngx_http_waf_module_data.c`
-/// by `tools/extract_data.py`.
+/// The embedded pages, byte for byte the ones the C implementation shipped as
+/// `ngx_http_waf_module_data.c` (see `rust/README.md`); `assets/` is not a
+/// replacement, its captcha templates differ from these.
 pub const HTML_BLOCK: &[u8] = include_bytes!("../data/block.html");
 /// The `waf_block_page SpongeBob` easter egg.
 pub const HTML_SPONGE_BOB: &[u8] = include_bytes!("../data/sponge-bob.html");

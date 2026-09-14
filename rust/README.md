@@ -26,7 +26,17 @@ not up to date.
 | `src/check.rs` | the detection chain and the action chain |
 | `src/modsec.rs` | the raw bindings and the thin wrapper around libmodsecurity |
 | `src/ffi.rs` | the C ABI |
-| `data/` | pages/templates extracted from the C implementation, see `tools/extract_data.py` |
+| `data/` | the pages and captcha templates the module ships, edit them here |
+
+The files of `data/` are byte for byte the pages the C implementation embedded
+as `ngx_http_waf_module_data.c`: they were extracted from it when the port
+landed, and that file was removed together with the rest of the C code.  There
+is no generator anymore, a page is changed by editing it in `data/`.  `assets/`
+is *not* the same thing — it is the upstream directory the test suite copies
+(the rule files and the pages some templates point `waf_block_page` at), and its
+captcha templates differ from the embedded ones.  The last revision of the C
+file is in the git history (the commit before the one that removed it), which
+is where a byte level comparison can still be made.
 
 ## Building
 
