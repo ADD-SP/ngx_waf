@@ -78,6 +78,12 @@ printf 'static error page\n' > "$prefix/html/403.html"
 # enough to compare the two orderings (no CRS needed).
 printf 'SecRuleEngine On\nSecRule ARGS:test "@streq deny" "id:1,phase:2,deny,status:403,log"\n' \
     > "$prefix/modsec.conf"
+# The two rules of the phase comparison: both match `/phase?phase=1`, the first
+# one runs in phase 1 and has to answer on its own.
+printf 'SecRule REQUEST_URI "@contains /phase" "id:2,phase:1,deny,status:403,log,msg:phase one"\n' \
+    >> "$prefix/modsec.conf"
+printf 'SecRule ARGS:phase "@streq 1" "id:3,phase:2,redirect:/moved,status:302,log,msg:phase two"\n' \
+    >> "$prefix/modsec.conf"
 
 # A provider that accepts the connection and never answers: the module has to
 # give up on its own timeout.  Without python3 the case is skipped.
@@ -389,6 +395,26 @@ check 400 "waf_priority runs ModSecurity before the address list" \
     -H 'X-Real-IP: 1.1.1.1' "$priority_base/?test=deny"
 check 403 "the default order keeps the address list first" \
     -H 'X-Real-IP: 1.1.1.1' "$default_base/?test=deny"
+
+# The inspection stops at the first phase of the library that intervenes: the
+# phase 1 rule answers even though the phase 2 rule matches as well, and a
+# request only the phase 2 rule matches is redirected.
+phase_base="http://127.0.0.1:18100"
+check 403 "modsecurity stops at the first matching phase" \
+    "$phase_base/phase?phase=1"
+check 302 "modsecurity redirects when only a later phase matches" \
+    "$phase_base/other?phase=1"
+headers=$(curl -s -D - -o /dev/null --max-time 5 "$phase_base/other?phase=1")
+# nginx turns the relative url of the intervention into an absolute one, like
+# it does for the `Location` of any 3xx special response.
+if printf '%s' "$headers" | grep -qi '^Location: .*/moved'; then
+    pass=$((pass + 1))
+    printf 'ok   %-52s %s\n' "modsecurity keeps the url of the intervention" "/moved"
+else
+    fail=$((fail + 1))
+    printf 'FAIL %-52s (headers: %s)\n' "modsecurity keeps the url of the intervention" \
+        "$(printf '%s' "$headers" | tr -d '\r' | head -4 | tr '\n' '|')"
+fi
 
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \

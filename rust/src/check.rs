@@ -343,7 +343,6 @@ impl State<'_, '_> {
         *self.decision = Some(match policy {
             Policy::Return { status } => Decision::status(status),
             Policy::Page { status, body } => Decision::page(status, body),
-            Policy::Text { status, text } => Decision::text(status, text),
             // The status of a `FOLLOW` policy comes from the inspection that
             // asked for it, it is resolved there (see `check_modsecurity()`).
             Policy::Follow => Decision::allow(),
@@ -520,10 +519,8 @@ pub enum Event<'a> {
     /// No name, no resolver, timeout or lookup error.
     ResolveFailed,
     /// The captcha provider answered.
-    #[allow(dead_code)] // used by the captcha flow, the next step of the port
     HttpResponse { status: u32, body: &'a [u8] },
     /// The captcha provider could not be reached.
-    #[allow(dead_code)]
     HttpFailed,
 }
 
@@ -1016,24 +1013,22 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     };
 
     // Every failed phase answers 500 in the C implementation, whatever the
-    // request looked like.
-    let failed = run_modsecurity_request(&mut transaction, state.req).is_err();
+    // request looked like; the first intervention the library reports stops
+    // the phases (`_process_intervention()` was called after every one of
+    // them).
+    let verdict = match run_modsecurity_request(state, &mut transaction) {
+        Ok(verdict) => verdict,
+        Err(()) => {
+            *state.modsec = Some(transaction);
+            *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+            return CheckResult::Matched;
+        }
+    };
     *state.modsec = Some(transaction);
-    if failed {
-        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
-        return CheckResult::Matched;
-    }
 
-    let Some(verdict) = state.modsec.as_mut().expect("just stored").intervention() else {
+    let Some(verdict) = verdict else {
         return CheckResult::NotMatched;
     };
-
-    if let Some(log) = verdict.log {
-        state.set_rule_info(b"ModSecurity", &log, true, true);
-    }
-    if verdict.disruptive {
-        state.meta.blocked = true;
-    }
 
     if let Some(url) = verdict.url {
         // A redirection ignores the configured policy, the C implementation
@@ -1042,10 +1037,6 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         decision.location = Some(url);
         *state.decision = Some(decision);
         return CheckResult::Matched;
-    }
-
-    if verdict.status == HTTP_OK {
-        return CheckResult::NotMatched;
     }
 
     if state
@@ -1075,16 +1066,56 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     CheckResult::Matched
 }
 
+/// Read the intervention of the transaction the way `_process_intervention()`
+/// did, with the side effects the C implementation applied, and report whether
+/// the phases stop here.  An intervention without a URL and with the status
+/// 200 is not one the C implementation answered with: it keeps the rule info
+/// the answer carried and runs the next phase.
+fn take_intervention(
+    state: &mut State,
+    transaction: &mut modsec::Transaction,
+) -> Result<Option<modsec::Verdict>, ()> {
+    let Some(verdict) = transaction.intervention() else {
+        return Ok(None);
+    };
+
+    if let Some(log) = &verdict.log {
+        state.set_rule_info(b"ModSecurity", log, true, true);
+    }
+    if verdict.disruptive {
+        state.meta.blocked = true;
+    }
+
+    if verdict.url.is_some() || verdict.status != HTTP_OK {
+        return Ok(Some(verdict));
+    }
+
+    Ok(None)
+}
+
 /// The request phases of one transaction, in the order the C implementation
-/// ran them.
-fn run_modsecurity_request(transaction: &mut modsec::Transaction, req: &Req<'_>) -> Result<(), ()> {
+/// ran them.  The phases stop at the first intervention of the library.
+fn run_modsecurity_request(
+    state: &mut State,
+    transaction: &mut modsec::Transaction,
+) -> Result<Option<modsec::Verdict>, ()> {
+    let req = state.req;
+
     transaction.process_connection(
         req.client_addr,
         req.client_port,
         req.server_addr,
         req.server_port,
     )?;
+    if let Some(verdict) = take_intervention(state, transaction)? {
+        return Ok(Some(verdict));
+    }
+
     transaction.process_uri(req.unparsed_uri, req.method_name, req.http_version)?;
+    if let Some(verdict) = take_intervention(state, transaction)? {
+        return Ok(Some(verdict));
+    }
+
     for header in req.headers {
         // The C glue owns the header values and keeps them alive for the whole
         // request, `NgxWafStr::as_slice()` explains the safety.
@@ -1092,10 +1123,16 @@ fn run_modsecurity_request(transaction: &mut modsec::Transaction, req: &Req<'_>)
         transaction.add_request_header(key, value)?;
     }
     transaction.process_request_headers()?;
+    if let Some(verdict) = take_intervention(state, transaction)? {
+        return Ok(Some(verdict));
+    }
+
     if req.has_body {
         transaction.append_request_body(req.body)?;
     }
-    transaction.process_request_body()
+    transaction.process_request_body()?;
+
+    take_intervention(state, transaction)
 }
 
 /// The `waf_captcha` inspection: a visitor that passed the challenge carries a
@@ -3070,6 +3107,59 @@ mod tests {
         let outcome = decide(&mut machine);
         assert_eq!(outcome.status, 302);
         assert_eq!(outcome.location, b"/");
+
+        std::fs::remove_file(&rules).unwrap();
+    }
+
+    /// Two rules that both match one request, the first one in the phase the
+    /// library runs first.
+    fn modsecurity_phase_rules() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "ngx-waf-test-phase-{}-{}.conf",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::write(
+            &path,
+            b"SecRuleEngine On\n\
+              SecRequestBodyAccess On\n\
+              SecRule REQUEST_URI \"@contains both\" \
+                \"id:2001,phase:1,deny,status:403,log,msg:'phase one'\"\n\
+              SecRule ARGS:a \"@streq 1\" \
+                \"id:2002,phase:2,redirect:/later,status:302,log,msg:'phase two'\"\n",
+        )
+        .unwrap();
+        path
+    }
+
+    #[test]
+    fn modsecurity_stops_at_the_first_phase_that_intervenes() {
+        let _guard = modsec::test_lock();
+        let rules = modsecurity_phase_rules();
+        let mut conf = modsecurity_conf(&rules);
+
+        // Both rules match.  The C implementation read the intervention after
+        // every phase (`_process_intervention()`), so the phase 1 rule answers
+        // and the phase 2 rule never runs.
+        let mut machine = modsecurity_machine(&mut conf, b"/both?a=1");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert!(outcome.location.is_empty());
+        assert!(String::from_utf8_lossy(&outcome.rule_details).contains("phase one"));
+        machine.log_phase();
+
+        // Only the second rule matches: the redirect of the intervention is
+        // the response whatever the configured policy says.
+        let mut machine = modsecurity_machine(&mut conf, b"/only?a=1");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, 302);
+        assert_eq!(outcome.location, b"/later");
+        machine.log_phase();
 
         std::fs::remove_file(&rules).unwrap();
     }
