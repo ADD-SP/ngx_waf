@@ -316,6 +316,9 @@ check 200 "cc first request before the reload" -H "$reload_ip" "$cc_base/"
 sleep 0.5
 check 200 "cc second request after the reload" -H "$reload_ip" "$cc_base/"
 check 503 "cc denial survives the reload"      -H "$reload_ip" "$cc_base/"
+# The patterns of the new cycle were compiled again, in the pool of that cycle.
+check 403 "the rules of the reloaded configuration are used" "$base/www.bak"
+check 403 "a PCRE rule of the reloaded configuration is used" "$base/www.pcre"
 
 # `rate=02r/m` and `duration=01h`: nginx' `ngx_atoi()` (and therefore the C
 # implementation) accepts the leading zeros, the limit is two requests.
