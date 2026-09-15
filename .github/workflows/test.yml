@@ -166,6 +166,8 @@ jobs:
 
           # The end to end checks of the module itself, with one worker and
           # with four (the counters and the action table live in shared memory
-          # and have to hold across workers).
+          # and have to hold across workers).  A dynamic build has to load the
+          # module, like the integration tests above.
           cd "${{ github.workspace }}"
-          NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" make test-e2e
+          MODULE_PATH="${MODULE_PATH:-}" \
+            NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" make test-e2e

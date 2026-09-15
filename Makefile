@@ -21,6 +21,11 @@ NGINX_CONFIGURE := $(NGINX_SRC_DIR)/auto/configure
 NGINX_BIN       ?= $(NGINX_SRC_DIR)/objs/nginx
 MODULE_SO       := $(NGINX_SRC_DIR)/objs/ngx_http_waf_module.so
 RUST_LIB        := $(CURDIR)/rust/target/release/libngx_waf_core.a
+# Which kind of module the nginx tree is configured for.  `--add-module` and
+# `--add-dynamic-module` replace the Makefile of the tree, so a target has to
+# reconfigure when the other one built last (a `make` in a tree configured for
+# the other kind would relink a binary without the module).
+MODULE_STAMP    := $(NGINX_SRC_DIR)/.ngx-waf-module-kind
 
 .PHONY: all deps rust-core build build-static build-dynamic test test-rust test-nginx \
 	test-e2e install header clean fmt clippy
@@ -54,13 +59,14 @@ rust-core:
 	cd rust && $(CARGO) build --profile release $(NGX_WAF_CARGO_FLAGS)
 
 build-static: rust-core $(NGINX_CONFIGURE)
-	@if [ ! -f $(NGINX_SRC_DIR)/Makefile ] || [ ! -f $(NGINX_BIN) ]; then \
+	@if [ "$$(cat $(MODULE_STAMP) 2>/dev/null)" != "static" ] || [ ! -f $(NGINX_BIN) ]; then \
 		echo " + configuring nginx (static module)"; \
 		(cd $(NGINX_SRC_DIR) && ./auto/configure \
 			--prefix=$(NGINX_PREFIX) \
 			--with-http_ssl_module \
 			--with-http_realip_module \
 			--add-module=$(CURDIR) > /dev/null) || exit 1; \
+		echo static > $(MODULE_STAMP); \
 	fi
 	@if [ $(NGINX_BIN) -ot $(RUST_LIB) ]; then \
 		echo " + the Rust core changed, relinking nginx"; \
@@ -71,12 +77,15 @@ build-static: rust-core $(NGINX_CONFIGURE)
 
 ## Build the dynamic module as well.
 build-dynamic: rust-core $(NGINX_CONFIGURE)
-	@echo " + configuring nginx (dynamic module)"
-	@(cd $(NGINX_SRC_DIR) && ./auto/configure \
-		--prefix=$(NGINX_PREFIX) \
-		--with-http_ssl_module \
-		--with-http_realip_module \
-		--add-dynamic-module=$(CURDIR) > /dev/null) || exit 1
+	@if [ "$$(cat $(MODULE_STAMP) 2>/dev/null)" != "dynamic" ]; then \
+		echo " + configuring nginx (dynamic module)"; \
+		(cd $(NGINX_SRC_DIR) && ./auto/configure \
+			--prefix=$(NGINX_PREFIX) \
+			--with-http_ssl_module \
+			--with-http_realip_module \
+			--add-dynamic-module=$(CURDIR) > /dev/null) || exit 1; \
+		echo dynamic > $(MODULE_STAMP); \
+	fi
 	@$(MAKE) -C $(NGINX_SRC_DIR) -j$(JOBS) modules
 
 ## Regenerate the C header from the Rust FFI definitions.
