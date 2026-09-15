@@ -95,6 +95,10 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   accepted it (and then never really blocked: the counting window of the next
   request started over).  Every other value `ngx_http_waf_parse_time()`
   accepted is accepted here too.
+* `waf_captcha ... score=` has to be a number: the C implementation ran
+  `atof()` over it, a non numeric value silently became `0.0`.  The value is not
+  range checked, like in the C implementation whose check
+  (`score < 0.0 && score > 1.0`) can never be true.
 * The captcha provider is reached with a small non blocking client of the
   module itself (connect, send the POST, read until the provider closes); a
   provider that cannot be reached counts as a failed attempt ("bad"/429), the C

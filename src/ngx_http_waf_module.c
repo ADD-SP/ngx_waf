@@ -1653,17 +1653,27 @@ static ngx_int_t ngx_http_waf_postconfiguration(ngx_conf_t* cf) {
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if (h == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES,
+            "ngx_waf: failed to install handler at NGX_HTTP_ACCESS_PHASE");
         return NGX_ERROR;
     }
     *h = ngx_http_waf_handler_access_phase;
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
     if (h == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES,
+            "ngx_waf: failed to install handler at NGX_HTTP_LOG_PHASE");
         return NGX_ERROR;
     }
     *h = ngx_http_waf_handler_log_phase;
 
-    return ngx_http_waf_install_variables(cf);
+    if (ngx_http_waf_install_variables(cf) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, NGX_ENOMOREFILES,
+            "ngx_waf: failed to add embedded variables");
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
 }
 
 
