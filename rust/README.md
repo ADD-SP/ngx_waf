@@ -129,9 +129,13 @@ stderr is not ported.
 * `waf_zone size=` follows `ngx_parse_size()` (a bare byte count, `k`/`K`,
   `m`/`M`), the same syntax the C implementation accepted.
 * `waf_captcha ... score=` has to be a number: the C implementation ran
-  `atof()` over it, a non numeric value silently became `0.0`.  The value is not
-  range checked, like in the C implementation whose check
-  (`score < 0.0 && score > 1.0`) can never be true.
+  `atof()` over it, a non numeric value silently became `0.0`.  The lower bound
+  is compared as the number it is, where the C implementation narrowed it to an
+  `ngx_int_t` on the way into `_verfiy_reCAPTCHA_compatible()`, so a fractional
+  `score` (0.5, the documented example) compared like `0` there and every answer
+  whose score was not negative passed.  The value is not range checked, like in
+  the C implementation whose check (`score < 0.0 && score > 1.0`) can never be
+  true.
 * The captcha provider is reached with a small non blocking client of the
   module itself (connect, send the POST, read the answer: it ends at the length
   the headers announce, at the end of a chunked body, or when the provider
