@@ -1254,7 +1254,9 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
         return Ok(());
     }
 
-    let mut file: Option<Vec<u8>> = None;
+    // The directive takes more than one `file=` argument and the C
+    // implementation added every one of them to the rule set.
+    let mut files: Vec<Vec<u8>> = Vec::new();
     let mut remote_key: Option<Vec<u8>> = None;
     let mut remote_url: Option<Vec<u8>> = None;
 
@@ -1266,7 +1268,7 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
                 if !std::path::Path::new(&text).is_file() {
                     return Err(format!("ngx_waf: {text}: No such file or directory"));
                 }
-                file = Some(value);
+                files.push(value);
             }
             b"remote_key" => remote_key = Some(value),
             b"remote_url" => remote_url = Some(value),
@@ -1282,7 +1284,8 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
         (Some(key), Some(url)) => Some((key, url)),
         _ => None,
     };
-    let instance = modsec::Instance::create(file.as_deref(), remote)?;
+    let files: Vec<&[u8]> = files.iter().map(Vec::as_slice).collect();
+    let instance = modsec::Instance::create(&files, remote)?;
     conf.modsecurity_instance = Some(Rc::new(instance));
 
     Ok(())
@@ -1719,8 +1722,33 @@ mod tests {
         .unwrap_err();
         assert!(error.starts_with("ngx_waf: "), "{error}");
 
+        // Every `file=` of the directive is loaded, not only the last one:
+        // the first file below is the one the library cannot parse, and the
+        // directive only fails because that file was handed to it.
+        let first = rule_file(
+            "SecRuleEngine On\nSecRule NO_SUCH_VARIABLE \"@streq a\" \
+             \"id:1001,phase:2,log\"\n",
+        );
+        let second = rule_file(
+            "SecRuleEngine On\nSecRule REQUEST_URI \"@contains b\" \
+             \"id:2002,phase:2,log\"\n",
+        );
+        let error = dir(
+            &mut conf,
+            "waf_modsecurity",
+            &[
+                "on",
+                &format!("file={}", first.display()),
+                &format!("file={}", second.display()),
+            ],
+        )
+        .unwrap_err();
+        assert!(error.contains("1001"), "{error}");
+
         std::fs::remove_file(&rules).unwrap();
         std::fs::remove_file(&broken).unwrap();
+        std::fs::remove_file(&first).unwrap();
+        std::fs::remove_file(&second).unwrap();
     }
 
     #[test]

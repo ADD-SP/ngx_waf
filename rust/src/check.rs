@@ -2974,7 +2974,7 @@ mod tests {
 
     /// A configuration with `waf_modsecurity on` and the rules above.
     fn modsecurity_conf(rules: &std::path::Path) -> LocConf {
-        let instance = modsec::Instance::create(Some(rules.to_str().unwrap().as_bytes()), None)
+        let instance = modsec::Instance::create(&[rules.to_str().unwrap().as_bytes()], None)
             .expect("the rules load");
         LocConf {
             waf: WAF_ON,

@@ -136,9 +136,11 @@ pub struct Instance {
 
 impl Instance {
     /// Create the instance and load the rules of one `waf_modsecurity`
-    /// directive.  `file` is its `file=` argument, the optional pair is the
-    /// `remote_key=`/`remote_url=` one.
-    pub fn create(file: Option<&[u8]>, remote: Option<(&[u8], &[u8])>) -> Result<Instance, String> {
+    /// directive.  `files` are its `file=` arguments, in the order they were
+    /// written (the directive accepts more than one), and the optional pair is
+    /// the `remote_key=`/`remote_url=` one, which the C implementation added
+    /// after the files.
+    pub fn create(files: &[&[u8]], remote: Option<(&[u8], &[u8])>) -> Result<Instance, String> {
         let instance = unsafe { msc_init() };
         if instance.is_null() {
             return Err("ngx_waf: msc_init() failed".to_string());
@@ -153,8 +155,8 @@ impl Instance {
         let loaded = Instance { instance, rules };
         unsafe { msc_set_log_cb(loaded.instance, Some(modsecurity_log)) };
 
-        if let Some(file) = file {
-            let file = CString::new(file)
+        for file in files {
+            let file = CString::new(*file)
                 .map_err(|_| "ngx_waf: the path of the rule file is invalid".to_string())?;
             let mut error: *const c_char = std::ptr::null();
             let result = unsafe { msc_rules_add_file(loaded.rules, file.as_ptr(), &mut error) };

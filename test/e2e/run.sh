@@ -84,6 +84,10 @@ printf 'SecRule REQUEST_URI "@contains /phase" "id:2,phase:1,deny,status:403,log
     >> "$prefix/modsec.conf"
 printf 'SecRule ARGS:phase "@streq 1" "id:3,phase:2,redirect:/moved,status:302,log,msg:phase two"\n' \
     >> "$prefix/modsec.conf"
+# A second rule file: `waf_modsecurity` takes more than one `file=`, every one
+# of them has to reach the library.
+printf 'SecRule REQUEST_URI "@contains /second" "id:4,phase:2,deny,status:419,log,msg:second file"\n' \
+    > "$prefix/modsec-second.conf"
 
 # A provider that accepts the connection and never answers: the module has to
 # give up on its own timeout.  Without python3 the case is skipped.
@@ -415,6 +419,13 @@ else
     printf 'FAIL %-52s (headers: %s)\n' "modsecurity keeps the url of the intervention" \
         "$(printf '%s' "$headers" | tr -d '\r' | head -4 | tr '\n' '|')"
 fi
+
+# Both rule files of `waf_modsecurity` are loaded, whichever of the two the
+# matching rule comes from.
+check 403 "modsecurity loads the first rule file" \
+    "http://127.0.0.1:18101/phase?phase=1"
+check 419 "modsecurity loads the second rule file" \
+    "http://127.0.0.1:18101/second"
 
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
