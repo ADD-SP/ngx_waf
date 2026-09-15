@@ -137,11 +137,21 @@ impl RuleSet {
     }
 }
 
+/// The loaded rules and the problems the C implementation only logged.
+#[derive(Debug)]
+pub struct Loaded {
+    pub rules: RuleSet,
+    /// Non fatal problems: the C implementation wrote them to the error log
+    /// and kept the configuration, the block they belong to is dropped.
+    pub warnings: Vec<String>,
+}
+
 /// Load every rule file of `dir` into a fresh container, mirroring
 /// `_load_all_rule()`.  On failure the returned message is what the C side logs
 /// with `ngx_conf_log_error()`.
-pub fn load_all(dir: &[u8]) -> Result<RuleSet, String> {
+pub fn load_all(dir: &[u8]) -> Result<Loaded, String> {
     let mut rules = new_rule_set();
+    let mut warnings = Vec::new();
     let dir = std::str::from_utf8(dir)
         .map_err(|_| "ngx_waf: the rule path is not a valid UTF-8 string".to_string())?;
 
@@ -155,10 +165,10 @@ pub fn load_all(dir: &[u8]) -> Result<RuleSet, String> {
         }
         let content = std::fs::read(path_ref)
             .map_err(|_| format!("ngx_waf: {path}: Cannot read configuration."))?;
-        load_into_container(&content, &path, kind, &mut rules)?;
+        load_into_container(&content, &path, kind, &mut rules, &mut warnings)?;
     }
 
-    Ok(rules)
+    Ok(Loaded { rules, warnings })
 }
 
 /// `fgets(str, NGX_HTTP_WAF_RULE_MAX_LEN - 16, fp)`: at most 8175 bytes are
@@ -170,6 +180,7 @@ fn load_into_container(
     file_name: &str,
     kind: RuleKind,
     rules: &mut RuleSet,
+    warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     let mut line_number = 0usize;
     let mut rest = content;
@@ -228,12 +239,16 @@ fn load_into_container(
                 match rules.trie_mut(kind).add(&cidr, line) {
                     Ok(()) => {}
                     Err(AddError::Overlap) => {
+                        // The block is already covered by one that was read
+                        // before it, so nothing is lost by dropping it.  The C
+                        // implementation logs this and keeps the configuration
+                        // (it only fails when the trie could not allocate).
                         let existing = rules
                             .trie(kind)
                             .and_then(|trie| trie.find(&cidr.addr))
                             .map(|detail| String::from_utf8_lossy(detail).into_owned())
                             .unwrap_or_default();
-                        return Err(format!(
+                        warnings.push(format!(
                             "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",
                             file_name,
                             line_number,
@@ -255,12 +270,16 @@ fn load_into_container(
                 match rules.trie_mut(kind).add(&cidr, line) {
                     Ok(()) => {}
                     Err(AddError::Overlap) => {
+                        // The block is already covered by one that was read
+                        // before it, so nothing is lost by dropping it.  The C
+                        // implementation logs this and keeps the configuration
+                        // (it only fails when the trie could not allocate).
                         let existing = rules
                             .trie(kind)
                             .and_then(|trie| trie.find(&cidr.addr))
                             .map(|detail| String::from_utf8_lossy(detail).into_owned())
                             .unwrap_or_default();
-                        return Err(format!(
+                        warnings.push(format!(
                             "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",
                             file_name,
                             line_number,
@@ -330,16 +349,29 @@ mod tests {
     }
 
     #[test]
-    fn overlapping_blocks_are_reported() {
+    fn overlapping_blocks_are_reported_but_kept() {
         let dir = temp_dir("overlap");
         for (file, _) in RULE_FILES {
             std::fs::write(dir.join(file), b"").unwrap();
         }
         std::fs::write(dir.join("ipv4"), b"2.0.0.0/8\n2.1.0.0/16\n").unwrap();
         let path = format!("{}/", dir.display());
-        let error = load_all(path.as_bytes()).unwrap_err();
-        assert!(error.contains("have overlapping parts."), "{error}");
-        assert!(error.contains("[2.1.0.0/16] and [2.0.0.0/8]"), "{error}");
+
+        // The second block is covered by the first one: the C implementation
+        // logs the overlap and keeps the configuration, the redundant block is
+        // dropped (nothing is lost, the /8 is still in the trie).
+        let loaded = load_all(path.as_bytes()).unwrap();
+        assert_eq!(loaded.warnings.len(), 1);
+        let warning = &loaded.warnings[0];
+        assert!(warning.contains("have overlapping parts."), "{warning}");
+        assert!(
+            warning.contains("[2.1.0.0/16] and [2.0.0.0/8]"),
+            "{warning}"
+        );
+        assert_eq!(
+            loaded.rules.ip_match(&[2, 1, 0, 0], RuleKind::Ipv4Black),
+            Some(&b"2.0.0.0/8"[..])
+        );
     }
 
     #[test]
@@ -350,7 +382,7 @@ mod tests {
         }
         std::fs::write(dir.join("url"), b"\r\n/a\r\n\r\n/b\n").unwrap();
         let path = format!("{}/", dir.display());
-        let rules = load_all(path.as_bytes()).unwrap();
+        let rules = load_all(path.as_bytes()).unwrap().rules;
         assert_eq!(rules.url.len(), 2);
         assert_eq!(rules.url[0].pattern, b"/a");
         assert_eq!(rules.url[1].pattern, b"/b");
@@ -360,7 +392,7 @@ mod tests {
     fn matches_the_shipped_rules() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/rules");
         let path = format!("{}/", root.display());
-        let rules = load_all(path.as_bytes()).unwrap();
+        let rules = load_all(path.as_bytes()).unwrap().rules;
         assert!(rules.url.iter().any(|rule| rule.regex.is_match("/www.bak")));
         assert!(rules
             .args

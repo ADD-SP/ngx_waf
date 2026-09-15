@@ -31,7 +31,9 @@ rm -rf "$prefix"
 mkdir -p "$prefix/conf" "$prefix/logs" "$prefix/html/t" "$prefix/rules"
 
 cp "$root/assets/rules/"* "$prefix/rules/"
-printf '1.1.1.1\n2.0.0.0/8\n'            >> "$prefix/rules/ipv4"
+# The second block is covered by the first one: the C implementation logs the
+# overlap and keeps the configuration, the redundant block is dropped.
+printf '1.1.1.1\n2.0.0.0/8\n2.1.0.0/16\n' >> "$prefix/rules/ipv4"
 printf '3.3.3.3\n4.0.0.0/8\n'            >> "$prefix/rules/white-ipv4"
 printf 'AAAA::\nBBBB::/16\n'             >> "$prefix/rules/ipv6"
 printf 'CCCC::\nDDDD::/16\n'             >> "$prefix/rules/white-ipv6"
@@ -221,6 +223,18 @@ check 403 "256k body with a rule"            -d "@$prefix/big.with-rule" "$base/
 check 405 "256k body without a rule"         -d "@$prefix/big.body" "$base/"
 check 403 "black ipv4"                       -H 'X-Real-IP: 1.1.1.1' "$base/"
 check 403 "black ipv4 block"                 -H 'X-Real-IP: 2.1.0.0' "$base/"
+# `rules/ipv4` has 2.0.0.0/8 and then the covered 2.1.0.0/16: nginx logged the
+# overlap while it read the configuration and kept the covering block.
+if grep -q 'have overlapping parts.' "$prefix/logs/error.log"; then
+    pass=$((pass + 1))
+    printf 'ok   %-52s %s\n' "overlapping address block is logged" "kept 2.0.0.0/8"
+else
+    fail=$((fail + 1))
+    printf 'FAIL %-52s (no message in the error log)\n' \
+        "overlapping address block is logged"
+fi
+check_body 403 '\[BLACK-IPV4\]\[2.0.0.0/8\]' \
+    "overlapping address block keeps the covering rule" -H 'X-Real-IP: 2.1.0.0' "$base/"
 check 403 "black ipv4 host bit"              -H 'X-Real-IP: 2.0.0.1' "$base/"
 check 404 "white ipv4"                       -H 'X-Real-IP: 3.3.3.3' "$base/www.bak"
 check 404 "white ipv4 block"                 -H 'X-Real-IP: 4.1.0.0' "$base/www.bak"

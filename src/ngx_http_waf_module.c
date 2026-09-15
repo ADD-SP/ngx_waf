@@ -1479,6 +1479,22 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     }
 
     /*
+     * Problems the C implementation only logged, e.g. an address block that is
+     * already covered by one read before it: nginx keeps the configuration and
+     * the block is dropped.
+     */
+    for ( ;; ) {
+        char* warning = ngx_waf_conf_take_warning(loc_conf->core);
+
+        if (warning == NULL) {
+            break;
+        }
+
+        ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "%s", warning);
+        ngx_waf_string_free(warning);
+    }
+
+    /*
      * The provider endpoint is the URL the core will ask for: the `api=` of
      * this directive, or the default endpoint of the provider it named.  Ask
      * the core instead of scanning the argument here, a location that inherits

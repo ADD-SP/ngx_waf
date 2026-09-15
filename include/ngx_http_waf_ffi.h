@@ -404,6 +404,14 @@ int64_t ngx_waf_conf_waf(void *conf);
 int64_t ngx_waf_conf_modsecurity(void *conf);
 
 /**
+ * One message the core wants nginx to log while it keeps the configuration
+ * (see [`crate::config::LocConf::warnings`]), or NULL when there is none.
+ * The C side drains the list after every directive and frees the message with
+ * [`ngx_waf_string_free`].
+ */
+char *ngx_waf_conf_take_warning(void *conf);
+
+/**
  * The endpoint the captcha provider of this configuration is asked on: the
  * `api=` of `waf_captcha`, or the default of the provider it named.  This is
  * the very URL the core puts into a `STEP_HTTP_REQUEST`, so the C glue parses

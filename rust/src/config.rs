@@ -463,6 +463,10 @@ pub struct LocConf {
     pub priority: Vec<CheckId>,
     pub is_custom_priority: bool,
     pub rules: Option<Rc<RuleSet>>,
+    /// Messages the core wants nginx to log while it keeps the configuration
+    /// (the C implementation logged an overlapping address block and dropped
+    /// it, it did not fail).  The C side drains them after every directive.
+    pub warnings: Vec<String>,
     pub caches: Caches,
 }
 
@@ -517,6 +521,7 @@ impl Default for LocConf {
             priority: DEFAULT_PRIORITY.to_vec(),
             is_custom_priority: false,
             rules: None,
+            warnings: Vec::new(),
             caches: Caches::default(),
         }
     }
@@ -681,8 +686,9 @@ fn directive_rule_path(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Strin
     }
     conf.waf_rule_path = args[0].clone();
     conf.ensure_rules();
-    let rules = rules::load_all(&conf.waf_rule_path)?;
-    conf.rules = Some(Rc::new(rules));
+    let loaded = rules::load_all(&conf.waf_rule_path)?;
+    conf.rules = Some(Rc::new(loaded.rules));
+    conf.warnings.extend(loaded.warnings);
     Ok(())
 }
 

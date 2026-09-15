@@ -350,6 +350,29 @@ pub extern "C" fn ngx_waf_conf_modsecurity(conf: *mut c_void) -> i64 {
     .unwrap_or(-1)
 }
 
+/// One message the core wants nginx to log while it keeps the configuration
+/// (see [`crate::config::LocConf::warnings`]), or NULL when there is none.
+/// The C side drains the list after every directive and frees the message with
+/// [`ngx_waf_string_free`].
+#[no_mangle]
+pub extern "C" fn ngx_waf_conf_take_warning(conf: *mut c_void) -> *mut c_char {
+    if conf.is_null() {
+        return std::ptr::null_mut();
+    }
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+        let warnings = &mut (*(conf as *mut LocConf)).warnings;
+        if warnings.is_empty() {
+            None
+        } else {
+            Some(warnings.remove(0))
+        }
+    }));
+    match result {
+        Ok(Some(message)) => error_string(&message),
+        _ => std::ptr::null_mut(),
+    }
+}
+
 /// The endpoint the captcha provider of this configuration is asked on: the
 /// `api=` of `waf_captcha`, or the default of the provider it named.  This is
 /// the very URL the core puts into a `STEP_HTTP_REQUEST`, so the C glue parses

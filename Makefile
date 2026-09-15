@@ -80,8 +80,11 @@ build-dynamic: rust-core $(NGINX_CONFIGURE)
 	@$(MAKE) -C $(NGINX_SRC_DIR) -j$(JOBS) modules
 
 ## Regenerate the C header from the Rust FFI definitions.
+## `--only-target-dependencies` keeps the `cargo metadata` call of cbindgen to
+## the crates of the host platform, so it works without network access.
 header:
-	$(CBINDGEN) --config rust/cbindgen.toml --output include/ngx_http_waf_ffi.h rust
+	$(CBINDGEN) --config rust/cbindgen.toml --only-target-dependencies \
+		--output include/ngx_http_waf_ffi.h rust
 
 test: test-rust test-nginx
 
