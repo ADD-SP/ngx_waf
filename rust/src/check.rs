@@ -1766,7 +1766,10 @@ fn check_cookie(state: &mut State) -> bool {
         let Some(detail) = matched_detail else {
             continue;
         };
-        // The C implementation reports the cookie header value, not the regex.
+        // The detail is the text of the rule that matched, like in every other
+        // list: the C implementation reported the `name` of the
+        // `ngx_regex_elt_t` its `ngx_regex_exec()` matched, which is the line
+        // of the rule file (`_load_into_container()`).
         state.set_rule_info(b"BLACK-COOKIE", &detail, true, true);
         state.trigger(TriggerKind::Blacklist);
         return true;
