@@ -103,10 +103,21 @@ stderr is not ported.
 * A configuration error is one message at level `emerg`.  The C implementation
   reported an invalid value with `emerg` too (and nginx then appends
   `(22: Invalid argument)` when the handler passes an errno), failed without
-  any message for some directives, and reported a rule file that cannot be
-  loaded with `error` and a second message (`<file>: Cannot read
-  configuration.`).  What stops the start up, and the primary message, are the
-  same.
+  any message for some directives, and reported a rule file of `waf_rule_path`
+  it cannot open at level `error` (`<file>: No such file or directory`,
+  whichever the failure of `access()` was) where this port logs the same
+  message at `emerg`; a `waf_modsecurity file=` the library cannot open keeps
+  the message of the library (`Failed to open the file: <path>`).  What stops
+  the start up, and the message, are the same.
+* A rule file the module can open but cannot read (a directory in place of a
+  file) is a configuration error here.  The `fgets()` of the C implementation
+  reported the read error as the end of the file, so the configuration was
+  accepted with the rules that had been read until then - none at all for a
+  directory, which left the address list of that directory empty.  A page file
+  that is a directory (`waf_block_page`, `waf_under_attack file=`,
+  `waf_captcha file=`) is refused by both; the C implementation printed the
+  failure of the `malloc()` of its `ftell()` size probe (2^63 bytes for a
+  directory) in front of the read failure this port reports.
 * A line of a rule file the C implementation could not use is a configuration
   error here: a prefix length outside the family (`1.2.3.4/33`,
   `fe80::1/129`), a character between that number and the end of the line
