@@ -333,6 +333,13 @@ static ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end);
 static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* out_len);
 
 
+static ngx_uint_t ngx_http_waf_fetch_length(u_char* headers, u_char* end, size_t* out_len);
+
+
+static ngx_uint_t ngx_http_waf_fetch_answer(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    u_char* data, u_char* last, ngx_uint_t eof);
+
+
 static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
     ngx_str_t value);
 
@@ -811,13 +818,26 @@ static ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end) {
     u_char* p;
 
     for (p = headers; p + 17 <= end; p++) {
+        if (p != headers && p[-1] != '\n') {
+            continue;
+        }
+
         if (ngx_strncasecmp(p, (u_char*) "transfer-encoding", 17) != 0) {
             continue;
         }
 
         p += 17;
 
-        while (p < end && (*p == ' ' || *p == '\t' || *p == ':')) {
+        while (p < end && (*p == ' ' || *p == '\t')) {
+            p++;
+        }
+
+        if (p >= end || *p != ':') {
+            continue;
+        }
+        p++;
+
+        while (p < end && (*p == ' ' || *p == '\t')) {
             p++;
         }
 
@@ -906,6 +926,157 @@ static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* 
 }
 
 
+/**
+ * The `Content-Length` of the answer, when the headers carry one.  Only a field
+ * that starts a line counts: a header whose name merely ends with the same text
+ * (`x-content-length`) is not one.
+ */
+static ngx_uint_t ngx_http_waf_fetch_length(u_char* headers, u_char* end, size_t* out_len) {
+    u_char* p;
+
+    for (p = headers; p + 14 <= end; p++) {
+        size_t value = 0;
+        ngx_uint_t digits = 0;
+
+        if (p != headers && p[-1] != '\n') {
+            continue;
+        }
+
+        if (ngx_strncasecmp(p, (u_char*) "content-length", 14) != 0) {
+            continue;
+        }
+
+        p += 14;
+
+        while (p < end && (*p == ' ' || *p == '\t')) {
+            p++;
+        }
+
+        if (p >= end || *p != ':') {
+            continue;
+        }
+        p++;
+
+        while (p < end && (*p == ' ' || *p == '\t')) {
+            p++;
+        }
+
+        while (p < end && *p >= '0' && *p <= '9') {
+            if (value > (NGX_MAX_SIZE_T_VALUE / 10)) {
+                return 0;
+            }
+
+            value = value * 10 + (*p - '0');
+            digits++;
+            p++;
+        }
+
+        if (digits == 0) {
+            return 0;
+        }
+
+        *out_len = value;
+        return 1;
+    }
+
+    return 0;
+}
+
+
+/**
+ * Settle the provider request once the answer in the buffer is complete: the
+ * body of a `Content-Length` that arrived, the framing of a chunked answer, or
+ * the bytes the provider sent before it closed the connection.  `eof` says the
+ * provider closed, so an answer without a length is complete then, and an
+ * answer that is still incomplete becomes the failure of the request.
+ *
+ * Returns 1 when the request was settled (the caller returns), 0 when more
+ * bytes are needed.
+ */
+static ngx_uint_t ngx_http_waf_fetch_answer(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    u_char* data, u_char* last, ngx_uint_t eof)
+{
+    u_char* p;
+    u_char* body;
+    size_t length = 0;
+    size_t have;
+    size_t decoded;
+    ngx_uint_t status = 0;
+    ngx_uint_t has_length;
+
+    p = ngx_strlchr(data, last, ' ');
+    if (p != NULL) {
+        status = ngx_atoi(p + 1, 3);
+    }
+
+    if (p == NULL || (ngx_int_t) status == NGX_ERROR) {
+        if (!eof) {
+            /* the status line is not complete yet */
+            return 0;
+        }
+
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return 1;
+    }
+
+    p = ngx_strlcasestrn(data, last, (u_char*) CRLF CRLF, 4 - 1);
+    if (p == NULL) {
+        if (!eof) {
+            /* the headers are not complete yet */
+            return 0;
+        }
+
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return 1;
+    }
+
+    body = p + 4;
+    have = (size_t) (last - body);
+    has_length = ngx_http_waf_fetch_length(data, p, &length);
+
+    if (ngx_http_waf_fetch_is_chunked(data, p)) {
+        if (!ngx_http_waf_fetch_dechunk(body, last, &decoded)) {
+            /*
+             * An incomplete framing cannot be told from a broken one, so the
+             * connection has to end before the answer is judged.
+             */
+            if (!eof) {
+                return 0;
+            }
+
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            return 1;
+        }
+
+        ngx_http_waf_fetch_finish(r, status, body, decoded, 0);
+        return 1;
+    }
+
+    if (has_length) {
+        if (have < length) {
+            if (!eof) {
+                return 0;
+            }
+
+            /* the provider closed before the length it announced */
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            return 1;
+        }
+
+        ngx_http_waf_fetch_finish(r, status, body, length, 0);
+        return 1;
+    }
+
+    if (!eof) {
+        /* without a length the body ends with the connection */
+        return 0;
+    }
+
+    ngx_http_waf_fetch_finish(r, status, body, have, 0);
+    return 1;
+}
+
+
 static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
     ngx_connection_t* c = rev->data;
     ngx_http_request_t* r = c->data;
@@ -936,48 +1107,20 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
                 return;
             }
 
+            /* a length or a chunked framing says the answer is complete */
+            if (ngx_http_waf_fetch_answer(r, ctx, b->pos, b->last, 0)) {
+                return;
+            }
+
             continue;
         }
 
         if (n == 0) {
             /* the provider is done (the request asked to close) */
-            u_char* p;
-            u_char* last = b->last;
-            ngx_uint_t status = 0;
-
-            p = ngx_strlchr(b->pos, last, ' ');
-            if (p != NULL) {
-                status = ngx_atoi(p + 1, 3);
-            }
-
-            if (p == NULL || (ngx_int_t) status == NGX_ERROR) {
+            if (!ngx_http_waf_fetch_answer(r, ctx, b->pos, b->last, 1)) {
+                /* an answer the provider did not finish */
                 ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-                return;
             }
-
-            p = ngx_strlcasestrn(b->pos, last, (u_char*) CRLF CRLF, 4 - 1);
-            if (p == NULL) {
-                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-                return;
-            }
-
-            if (ngx_http_waf_fetch_is_chunked(b->pos, p)) {
-                size_t len;
-
-                p += 4;
-
-                if (!ngx_http_waf_fetch_dechunk(p, last, &len)) {
-                    ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-                    return;
-                }
-
-                ngx_http_waf_fetch_finish(r, status, p, len, 0);
-                return;
-            }
-
-            p += 4;
-
-            ngx_http_waf_fetch_finish(r, status, p, last - p, 0);
             return;
         }
 

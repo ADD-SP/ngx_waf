@@ -133,12 +133,12 @@ stderr is not ported.
   range checked, like in the C implementation whose check
   (`score < 0.0 && score > 1.0`) can never be true.
 * The captcha provider is reached with a small non blocking client of the
-  module itself (connect, send the POST, read until the provider closes), the
-  framing of an answer that uses `Transfer-Encoding: chunked` is removed like
-  curl did it for the C implementation; an answer the client cannot read
-  (a malformed framing included) and a provider that cannot be reached count as
-  a failed attempt ("bad"/429), the C implementation leaked its `success` flag
-  and let the visitor through.
+  module itself (connect, send the POST, read the answer: it ends at the length
+  the headers announce, at the end of a chunked body, or when the provider
+  closes the connection).  curl did all of that for the C implementation, whose
+  only framing was a leaked `success` flag that let a visitor through; an answer
+  the client cannot read (a malformed framing included) and a provider that
+  cannot be reached count as a failed attempt ("bad"/429) here.
 * The provider host name is resolved while the configuration is read when the
   system resolver can do it, and per request with the `resolver` of the
   enclosing context otherwise (a `resolver` is therefore needed when the host
