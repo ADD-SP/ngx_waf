@@ -37,7 +37,9 @@ is *not* the same thing — it is the upstream directory the test suite copies
 (the rule files and the pages some templates point `waf_block_page` at), and its
 captcha templates differ from the embedded ones.  The last revision of the C
 file is in the git history (the commit before the one that removed it), which
-is where a byte level comparison can still be made.
+is where a byte level comparison can still be made.  `types.rs` hands out the
+prefix of those pages the C module actually served (see the known differences
+below).
 
 The rules of `waf_rule_path` are compiled and matched with the PCRE engine of
 nginx (`ngx_regex_compile()`/`ngx_regex_exec()`), which the glue hands over as
@@ -147,6 +149,14 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   `ngx_strncmp()` with `ngx_min()` did it (the names of `waf_mode` stay exact,
   only their case is ignored), and a tag is always the user supplied text with a
   suffix (`zone=test:cc` gives the tag `cccc_deny`).
+* The embedded pages (`waf_block_page default`, `waf_block_page SpongeBob` and
+  the built in page of `waf_under_attack on`) are served without their last
+  byte, because the C implementation set their length with `ngx_str_set()`,
+  that is `sizeof(array) - 1`; the responses stay byte for byte the ones of the
+  C implementation.  A page read from a file (`waf_block_page <path>`,
+  `waf_under_attack file=`) is served complete, like the C implementation did.
+  The captcha templates are rendered with the site key and were complete in the
+  C implementation as well.
 * ModSecurity: the C implementation installed nginx header/body filters and ran
   the response phases of the library (and the rules of CRS phase 3/4) with them.
   This port only runs the request phases — connection, URI, request headers and

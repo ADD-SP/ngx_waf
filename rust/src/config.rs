@@ -937,7 +937,7 @@ fn directive_under_attack(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), St
     }
 
     if conf.under_attack_html.is_empty() {
-        conf.under_attack_html = Rc::new(HTML_UNDER_ATTACK.to_vec());
+        conf.under_attack_html = Rc::new(embedded_page(HTML_UNDER_ATTACK));
     }
     Ok(())
 }
@@ -1233,11 +1233,11 @@ fn directive_action(
 fn directive_block_page(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
     let value = args.first().map(Vec::as_slice).unwrap_or(b"");
     if eq_ci(value, "default") {
-        conf.block_page = Rc::new(HTML_BLOCK.to_vec());
+        conf.block_page = Rc::new(embedded_page(HTML_BLOCK));
         return Ok(());
     }
     if eq_ci(value, "SpongeBob") {
-        conf.block_page = Rc::new(HTML_SPONGE_BOB.to_vec());
+        conf.block_page = Rc::new(embedded_page(HTML_SPONGE_BOB));
         return Ok(());
     }
     conf.block_page = Rc::new(read_file(value)?);
@@ -1662,7 +1662,10 @@ mod tests {
         assert!(dir(&mut conf, "waf_under_attack", &["on", "file=bad"]).is_err());
         dir(&mut conf, "waf_under_attack", &["on"]).unwrap();
         assert_eq!(conf.under_attack, 1);
-        assert_eq!(conf.under_attack_html.as_slice(), HTML_UNDER_ATTACK);
+        assert_eq!(
+            conf.under_attack_html.as_slice(),
+            embedded_page(HTML_UNDER_ATTACK)
+        );
     }
 
     /// A rule file the tests can load, the name is unique per call.
@@ -1866,8 +1869,44 @@ mod tests {
     fn block_page_directive() {
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_block_page", &["default"]).unwrap();
-        assert_eq!(conf.block_page.as_slice(), HTML_BLOCK);
+        assert_eq!(conf.block_page.as_slice(), embedded_page(HTML_BLOCK));
         assert!(dir(&mut conf, "waf_block_page", &["/nonexistent/file"]).is_err());
+    }
+
+    /// The C implementation set the length of its embedded pages with
+    /// `ngx_str_set()`, that is `sizeof(array) - 1`: the last byte of the page
+    /// was never part of a response, and the port serves the same prefix so the
+    /// pages stay byte for byte the ones of the C implementation.  A page read
+    /// from a file was served complete.
+    #[test]
+    fn the_embedded_pages_are_served_without_their_last_byte() {
+        assert!(HTML_BLOCK.ends_with(b"</html>"));
+        assert!(HTML_UNDER_ATTACK.ends_with(b"</html>"));
+        assert!(HTML_SPONGE_BOB.ends_with(b"</html>"));
+
+        let mut conf = LocConf::default();
+        dir(&mut conf, "waf_block_page", &["default"]).unwrap();
+        assert!(conf.block_page.ends_with(b"</html"));
+        assert_eq!(
+            conf.block_page.as_slice(),
+            &HTML_BLOCK[..HTML_BLOCK.len() - 1]
+        );
+
+        let mut conf = LocConf::default();
+        dir(&mut conf, "waf_block_page", &["SpongeBob"]).unwrap();
+        assert_eq!(conf.block_page.len(), HTML_SPONGE_BOB.len() - 1);
+
+        let mut conf = LocConf::default();
+        dir(&mut conf, "waf_under_attack", &["on"]).unwrap();
+        assert_eq!(
+            conf.under_attack_html.as_slice(),
+            &HTML_UNDER_ATTACK[..HTML_UNDER_ATTACK.len() - 1]
+        );
+
+        let path = rule_file("</html>\n");
+        let mut conf = LocConf::default();
+        dir(&mut conf, "waf_block_page", &[path.to_str().unwrap()]).unwrap();
+        assert_eq!(conf.block_page.as_slice(), b"</html>\n");
     }
 
     #[test]
@@ -1894,11 +1933,11 @@ mod tests {
         dir(&mut parent, "waf_block_page", &["default"]).unwrap();
         let mut child = LocConf::default();
         merge(&mut child, &mut parent).unwrap();
-        assert_eq!(child.block_page.as_slice(), HTML_BLOCK);
+        assert_eq!(child.block_page.as_slice(), embedded_page(HTML_BLOCK));
         match child.policy(TriggerKind::Blacklist) {
             Policy::Page { status, body } => {
                 assert_eq!(status, HTTP_FORBIDDEN);
-                assert_eq!(body.as_slice(), HTML_BLOCK);
+                assert_eq!(body.as_slice(), embedded_page(HTML_BLOCK));
             }
             other => panic!("unexpected policy {other:?}"),
         }

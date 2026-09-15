@@ -203,6 +203,28 @@ check_body_slow() {
     fi
 }
 
+# check_page <file of rust/data> <description> <curl args...>
+#
+# The C implementation set the length of its embedded pages with
+# `ngx_str_set()`, that is `sizeof(array) - 1`: it never sent the last byte of
+# the page.  The response has to be the file of `rust/data/` minus that byte,
+# byte for byte.
+check_page() {
+    expected=$1
+    description=$2
+    shift 2
+    curl -s --max-time 5 -o "$prefix/page.out" "$@"
+    head -c -1 "$expected" > "$prefix/page.exp"
+    if cmp -s "$prefix/page.out" "$prefix/page.exp"; then
+        pass=$((pass + 1))
+        printf 'ok   %-52s %s bytes\n' "$description" "$(wc -c < "$prefix/page.out")"
+    else
+        fail=$((fail + 1))
+        printf 'FAIL %-52s %s bytes (want %s)\n' "$description" \
+            "$(wc -c < "$prefix/page.out")" "$(wc -c < "$prefix/page.exp")"
+    fi
+}
+
 base="http://127.0.0.1:$port"
 
 check 200 "allowed request"                  "$base/"
@@ -267,6 +289,10 @@ check 404 "waf off"                          "http://127.0.0.1:18082/www.bak"
 check 404 "waf bypass"                       "http://127.0.0.1:18081/www.bak"
 check 404 "mode without the URL bit"         "http://127.0.0.1:18083/www.bak"
 check_body 403 'WAF' "block page"            "$base/bp/www.bak"
+check_page "$root/rust/data/block.html" \
+    "the block page is byte for byte the C page" "$base/bp/www.bak"
+check_page "$root/rust/data/under-attack.html" \
+    "the under attack page is byte for byte" "http://127.0.0.1:18099/"
 check_body 403 '\[true\]\[true\]\[true\]\[BLACK-URL\]' \
     "variables of a blocked request"         -H 'X-Real-IP: 9.9.9.1' "$base/www.bak"
 # An `error_page` that is a file (nginx internally redirects to it) has to be
