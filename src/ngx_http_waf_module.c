@@ -18,6 +18,18 @@
 #include <ngx_http_waf_ffi.h>
 
 
+/*
+ * The captcha provider client is an SSL client of nginx itself and the
+ * configuration holds an `ngx_ssl_t`, so an nginx without SSL support cannot
+ * compile the module.  The `config` script refuses such a tree as well; this is
+ * the message a build system that does not run the script (a hand written
+ * compile line, for instance) sees.
+ */
+#if !(NGX_OPENSSL)
+#error "ngx_waf needs an nginx built with SSL support, e.g. --with-http_ssl_module"
+#endif
+
+
 /**
  * @brief The shared memory zones declared with `waf_zone`.
  *

@@ -122,6 +122,7 @@ jobs:
           fi
 
           ./configure ${opt}=${{ github.workspace }} \
+            --with-http_ssl_module \
             --with-http_realip_module \
             --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
           make -j"$(nproc)"

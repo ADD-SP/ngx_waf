@@ -242,6 +242,13 @@ stderr is not ported.
 * ModSecurity: with PCRE1 the C implementation pointed the allocator globals of
   libpcre at the nginx pool while the rules were parsed; the glue does the same,
   the rule loading itself happens in the Rust core.
+* The module needs an nginx built with SSL support (`--with-http_ssl_module`, or
+  the `mail`/`stream` one): the client that reaches a captcha provider is built
+  on the TLS machinery of nginx (`ngx_ssl_create()`, `ngx_ssl_handshake()`) and
+  the configuration of a context holds an `ngx_ssl_t`.  The C implementation
+  reached the provider with libcurl and compiled into an nginx without SSL as
+  well; the `config` script refuses such a tree with a message, and a build
+  system that does not run the script sees the `#error` of the glue.
 
 ## Verifying
 

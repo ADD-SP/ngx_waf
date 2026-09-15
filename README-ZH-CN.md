@@ -59,9 +59,11 @@ make test-e2e # 自研端到端检查，单 worker 与四 worker 各跑一轮
 ```
 
 需要 stable Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如
-`libmodsecurity-dev` 软件包，或用 `LIB_MODSECURITY` 指定安装前缀）。`NGINX_SRC`
-指定要复制的 nginx 源码目录，`NGINX_VERSION` 指定缺失时下载的版本。与 C 实现的
-已知差异见 [`rust/README.md`](rust/README.md)。
+`libmodsecurity-dev` 软件包，或用 `LIB_MODSECURITY` 指定安装前缀），并且 nginx
+必须启用 SSL 支持（`--with-http_ssl_module`）：访问验证码服务商的客户端使用的
+是 nginx 自身的 TLS 设施。`NGINX_SRC` 指定要复制的 nginx 源码目录，
+`NGINX_VERSION` 指定缺失时下载的版本。与 C 实现的已知差异见
+[`rust/README.md`](rust/README.md)。
 
 ## 联系方式
 

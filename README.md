@@ -61,7 +61,9 @@ make test-e2e # the end to end checks, with one worker and with four
 
 A stable Rust toolchain (with cargo) and the development files of
 libmodsecurity 3 (for example the `libmodsecurity-dev` package, or `LIB_MODSECURITY`
-pointing at a prefix) are required.  `NGINX_SRC` selects the nginx source tree to
+pointing at a prefix) are required, and nginx has to be built with SSL support
+(`--with-http_ssl_module`): the client that reaches a captcha provider uses the
+TLS machinery of nginx itself.  `NGINX_SRC` selects the nginx source tree to
 copy and `NGINX_VERSION` the version to download when it is missing.  The known
 differences to the C implementation are listed in [`rust/README.md`](rust/README.md).
 

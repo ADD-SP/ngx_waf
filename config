@@ -89,6 +89,20 @@ END
     exit 1
 fi
 
+#
+# The client that reaches a captcha provider uses the TLS machinery of nginx
+# (`ngx_ssl_create()`, `ngx_ssl_handshake()`) and the glue holds an `ngx_ssl_t`,
+# so the tree has to be configured with SSL support.  The C implementation
+# reached the provider with libcurl and did not need it.
+#
+if [ "$USE_OPENSSL" != "YES" ]; then
+    cat << END
+$0: error: the $ngx_addon_name module needs an nginx built with SSL support,
+add --with-http_ssl_module to the configure options of nginx.
+END
+    exit 1
+fi
+
 ngx_feature=
 ngx_feature_name=
 ngx_feature_run=
