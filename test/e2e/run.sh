@@ -70,18 +70,38 @@ printf 'static error page\n' > "$prefix/html/403.html"
 # A provider that accepts the connection and never answers: the module has to
 # give up on its own timeout.  Without python3 the case is skipped.
 if command -v python3 > /dev/null 2>&1; then
-    python3 - "$hang_port" <<'PY' &
+    python3 - "$hang_port" "$prefix/hang.received" <<'PY' &
 import socket
 import sys
+import threading
 
-# Accept the connections and hold them open, never write a byte back.
+# Accept the connections and hold them open, never write a byte back.  Whatever
+# a client sends is recorded: a provider request must not reach this stub (its
+# TLS handshake never completes, a request written here would be clear text).
+received = open(sys.argv[2], "ab", buffering=0)
+
+
+def hold(connection):
+    while True:
+        try:
+            data = connection.recv(4096)
+        except OSError:
+            continue  # the timeout fired, the connection stays open
+        if not data:
+            return
+        received.write(data)
+
+
 server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("127.0.0.1", int(sys.argv[1])))
 server.listen(16)
 held = []
 while True:
-    held.append(server.accept()[0])
+    connection, _ = server.accept()
+    held.append(connection)
+    connection.settimeout(0.2)
+    threading.Thread(target=hold, args=(connection,), daemon=True).start()
 PY
     hang_pid=$!
 fi
@@ -297,6 +317,10 @@ check_body 200 'bad' "captcha v3 rejects a low score" \
 if [ -s "$prefix/conf/ssl/cert.pem" ]; then
     check_body 200 'good' "captcha reaches an https provider" \
         -X POST -d 'g-recaptcha-response=token' "$cap/tls/captcha"
+    # The provider only accepts a client that sent its host name as the SNI, so
+    # this fails when the name is not terminated properly.
+    check_body 200 'good' "captcha sends the host name as SNI" \
+        -X POST -d 'g-recaptcha-response=token' "$cap/tlsname/captcha"
 fi
 
 # The stub of this script accepts the connection and never answers: the module
@@ -304,7 +328,26 @@ fi
 if [ -n "$hang_pid" ]; then
     check_body_slow 200 'bad' 5 "captcha provider timeout fails closed" \
         -X POST -d 'g-recaptcha-response=token' "$cap/hang/captcha"
-check 200 "the worker survives a provider timeout" "$base/"
+    check 200 "the worker survives a provider timeout" "$base/"
+
+    # The same stub over TLS: the handshake never completes, and the request
+    # (the token and the secret) must not be written into the socket in clear
+    # text while the handshake is pending.
+    before=$(wc -c < "$prefix/hang.received")
+    check_body_slow 200 'bad' 5 "captcha tls handshake timeout fails closed" \
+        -X POST -d 'g-recaptcha-response=token' "$cap/tlshang/captcha"
+    # Only what the TLS connection wrote: the plain provider request above went
+    # to the same stub and is supposed to carry the token and the secret.
+    tail -c +$((before + 1)) "$prefix/hang.received" > "$prefix/hang.tls"
+    if grep -q 'secret' "$prefix/hang.tls"; then
+        fail=$((fail + 1))
+        printf 'FAIL %-52s (the request reached the stub)\n' \
+            "captcha never writes the request before the handshake"
+    else
+        pass=$((pass + 1))
+        printf 'ok   %-52s %s\n' \
+            "captcha never writes the request before the handshake" "no clear text"
+    fi
 fi
 
 # `waf_action X=CAPTCHA` with the captcha inspection off: the action table

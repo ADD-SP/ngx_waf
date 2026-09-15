@@ -308,6 +308,9 @@ static void ngx_http_waf_fetch_finish(ngx_http_request_t* r, ngx_uint_t status, 
 static void ngx_http_waf_fetch_cleanup(void* data);
 
 
+static void ngx_http_waf_fetch_close(ngx_http_waf_ctx_t* ctx);
+
+
 static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_connection_t* c);
 
 
@@ -645,15 +648,39 @@ static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_connection_t* c) {
 
 
 /**
- * Close the provider connection; it is also registered as a pool cleanup so a
- * client that gives up does not leak it.
+ * Hand the provider connection back to the worker.
+ *
+ * A https provider owns an SSL object, it has to be released before the
+ * connection (that is what `ngx_ssl_shutdown()` does, the module does not wait
+ * for the close alert of the peer).  The pointer of the context is cleared
+ * first: the connection is in the free list of the worker afterwards and may
+ * serve another request before this one is destroyed.
+ */
+static void ngx_http_waf_fetch_close(ngx_http_waf_ctx_t* ctx) {
+    ngx_connection_t* c = ctx->fetch.connection;
+
+    if (c == NULL) {
+        return;
+    }
+
+    ctx->fetch.connection = NULL;
+
+    if (c->ssl != NULL) {
+        c->ssl->no_wait_shutdown = 1;
+        c->ssl->no_send_shutdown = 1;
+        (void) ngx_ssl_shutdown(c);
+    }
+
+    ngx_close_connection(c);
+}
+
+
+/**
+ * Close the provider connection of a request that is being destroyed; it is
+ * registered as a pool cleanup so a client that gives up does not leak it.
  */
 static void ngx_http_waf_fetch_cleanup(void* data) {
-    ngx_connection_t* c = data;
-
-    if (c->fd != -1) {
-        ngx_close_connection(c);
-    }
+    ngx_http_waf_fetch_close(data);
 }
 
 
@@ -666,14 +693,14 @@ static void ngx_http_waf_fetch_cleanup(void* data) {
 static ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
     ngx_uint_t status, u_char* body, size_t len, ngx_uint_t failed)
 {
-    ngx_connection_t* c = NULL;
+    ngx_connection_t* c;
     ngx_waf_event_t event;
 
     ngx_memzero(&event, sizeof(ngx_waf_event_t));
 
-    if (ctx->fetch.connection != NULL) {
-        c = ctx->fetch.connection;
-        ctx->fetch.connection = NULL;
+    c = ctx->fetch.connection;
+
+    if (c != NULL) {
         if (c->read->timer_set) {
             ngx_del_timer(c->read);
         }
@@ -695,9 +722,7 @@ static ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_
     ngx_http_waf_resume(r, ctx, &event);
     ctx->fetch.finished = 1;
 
-    if (c != NULL) {
-        ngx_close_connection(c);
-    }
+    ngx_http_waf_fetch_close(ctx);
 
     return ctx->fetch.in_drive;
 }
@@ -736,6 +761,17 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
 
     if (ctx == NULL || ctx->fetch.request == NULL || ctx->fetch.finished) {
+        return;
+    }
+
+    /*
+     * nginx calls this handler when the handshake timed out or failed as well,
+     * and then `c->send` is still the raw socket: sending the request would put
+     * the token and the secret on the wire in clear text, and the TLS bytes the
+     * peer sends back would be parsed as an answer.
+     */
+    if (c->ssl == NULL || !c->ssl->handshaked || c->timedout || c->error) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
         return;
     }
 
@@ -1074,6 +1110,19 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
     c->read->handler = ngx_http_waf_fetch_read;
     c->write->handler = ngx_http_waf_fetch_write;
 
+    /*
+     * The cleanup gets the context, not the connection: the connection is back
+     * in the free list of the worker once the fetch settled and the pointer in
+     * the context is what tells whether it is still ours.
+     */
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (cln == NULL) {
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        return NGX_OK;
+    }
+    cln->handler = ngx_http_waf_fetch_cleanup;
+    cln->data = ctx;
+
     if (ctx->fetch.use_ssl) {
         if (ngx_ssl_create_connection(&conf->captcha_api.ssl, c,
                                       NGX_SSL_BUFFER|NGX_SSL_CLIENT) != NGX_OK)
@@ -1114,14 +1163,6 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
 
         return NGX_DONE;
     }
-
-    cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (cln == NULL) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-        return NGX_OK;
-    }
-    cln->handler = ngx_http_waf_fetch_cleanup;
-    cln->data = c;
 
     if (rc == NGX_OK || c->write->ready) {
         /* the first send may already carry the whole request */
@@ -1214,7 +1255,21 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
 
     conf->captcha_api.use_ssl = ssl;
     conf->captcha_api.port = url.port != 0 ? url.port : (in_port_t) (ssl ? 443 : 80);
-    conf->captcha_api.host = url.host;
+
+    /*
+     * `SSL_set_tlsext_host_name()` is a macro that runs `strlen()` over the
+     * name, and the core hands its endpoint over as a view without a
+     * terminator: copy the host with one, it is what the ClientHello carries as
+     * the server name.
+     */
+    conf->captcha_api.host.data = ngx_pnalloc(cf->pool, url.host.len + 1);
+    if (conf->captcha_api.host.data == NULL) {
+        return NGX_ERROR;
+    }
+    ngx_memcpy(conf->captcha_api.host.data, url.host.data, url.host.len);
+    conf->captcha_api.host.data[url.host.len] = '\0';
+    conf->captcha_api.host.len = url.host.len;
+
     conf->captcha_api.uri = url.uri.len != 0 ? url.uri : (ngx_str_t) ngx_string("/");
 
     if (url.naddrs) {
@@ -1933,6 +1988,37 @@ static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_str_t* bo
 }
 
 
+/*
+ * One cookie header for the core: `Cookie=<value>`, the shape nginx 1.23 and
+ * later hands over as `headers_in.cookie`.  `rust/src/check.rs` reads the pairs
+ * after the first `=`, which is that prefix.
+ */
+static ngx_waf_str_t* ngx_http_waf_push_cookie(ngx_http_request_t* r, ngx_array_t* cookies,
+    ngx_str_t* key, ngx_str_t* value) {
+    size_t len = key->len + value->len + 1;
+    u_char* buf = ngx_pnalloc(r->pool, len);
+    ngx_waf_str_t* item;
+
+    if (buf == NULL) {
+        return NULL;
+    }
+
+    ngx_memcpy(buf, key->data, key->len);
+    buf[key->len] = '=';
+    ngx_memcpy(buf + key->len + 1, value->data, value->len);
+
+    item = ngx_array_push(cookies);
+    if (item == NULL) {
+        return NULL;
+    }
+
+    item->data = buf;
+    item->len = len;
+
+    return item;
+}
+
+
 static ngx_int_t ngx_http_waf_make_cookies(ngx_http_request_t* r, ngx_array_t** cookies) {
     ngx_table_elt_t* p;
 
@@ -1947,23 +2033,9 @@ static ngx_int_t ngx_http_waf_make_cookies(ngx_http_request_t* r, ngx_array_t** 
 
 #if (nginx_version >= 1023000)
     for (p = r->headers_in.cookie; p != NULL; p = p->next) {
-        size_t len = p->key.len + p->value.len + 1;
-        u_char* buf = ngx_pnalloc(r->pool, len);
-        ngx_waf_str_t* item;
-
-        if (buf == NULL) {
+        if (ngx_http_waf_push_cookie(r, *cookies, &p->key, &p->value) == NULL) {
             return NGX_ERROR;
         }
-        ngx_memcpy(buf, p->key.data, p->key.len);
-        buf[p->key.len] = '=';
-        ngx_memcpy(buf + p->key.len + 1, p->value.data, p->value.len);
-
-        item = ngx_array_push(*cookies);
-        if (item == NULL) {
-            return NGX_ERROR;
-        }
-        item->data = buf;
-        item->len = len;
     }
 #else
     if (r->headers_in.cookies.nelts == 0) {
@@ -1973,14 +2045,12 @@ static ngx_int_t ngx_http_waf_make_cookies(ngx_http_request_t* r, ngx_array_t** 
     {
         ngx_table_elt_t** pp = r->headers_in.cookies.elts;
         ngx_uint_t i;
+        ngx_str_t key = ngx_string("Cookie");
 
         for (i = 0; i < r->headers_in.cookies.nelts; i++, pp++) {
-            ngx_waf_str_t* item = ngx_array_push(*cookies);
-            if (item == NULL) {
+            if (ngx_http_waf_push_cookie(r, *cookies, &key, &(*pp)->value) == NULL) {
                 return NGX_ERROR;
             }
-            item->data = (*pp)->value.data;
-            item->len = (*pp)->value.len;
         }
     }
 #endif

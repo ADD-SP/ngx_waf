@@ -108,7 +108,10 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   and a location that inherited `waf_captcha` could never verify anything.
 * `waf_captcha api=https://...` is supported but the provider certificate is not
   verified (there is no way to configure a CA bundle), and an answer bigger than
-  8k is treated as a failure.
+  8k is treated as a failure.  The request is only written after the TLS
+  handshake completed (a timeout or a failed handshake is a failed attempt, the
+  token and the secret never reach the socket in clear text) and the host name
+  of the endpoint is sent as the SNI.
 * The friendly crawler check only looks at the host name nginx' asynchronous
   resolver returns, the C implementation also walked the aliases `gethostbyaddr`
   reports.  A crawler whose lookup needs a `resolver` (see the `resolver`
