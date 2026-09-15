@@ -1440,11 +1440,59 @@ static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 }
 
 
+/*
+ * The regex engine of the rules.  The C implementation compiled every rule of
+ * `waf_rule_path` with `ngx_regex_compile()` and matched it with
+ * `ngx_regex_exec()`, so a rule file may use the whole PCRE syntax; the core
+ * uses these two callbacks for the same engine instead of a regex library of
+ * its own.  They are handed to the core with the directive that needs them, and
+ * `ctx` is the pool the compiled patterns live in.
+ */
+static void* ngx_http_waf_regex_compile(void* ctx, const uint8_t* pattern, size_t len) {
+    ngx_regex_compile_t  rc;
+    u_char               errstr[NGX_MAX_CONF_ERRSTR];
+    ngx_pool_t*          pool = ctx;
+
+    ngx_memzero(&rc, sizeof(ngx_regex_compile_t));
+
+    rc.pattern.data = (u_char*) pattern;
+    rc.pattern.len = len;
+    rc.pool = pool;
+    rc.options = 0;
+    rc.err.data = errstr;
+    rc.err.len = NGX_MAX_CONF_ERRSTR;
+
+    if (ngx_regex_compile(&rc) != NGX_OK) {
+        return NULL;
+    }
+
+    return rc.regex;
+}
+
+
+static ptrdiff_t ngx_http_waf_regex_exec(void* regex, const uint8_t* value, size_t len) {
+    ngx_str_t subject;
+    ngx_int_t rc;
+
+    subject.data = (u_char*) value;
+    subject.len = len;
+
+    rc = ngx_regex_exec((ngx_regex_t*) regex, &subject, NULL, 0);
+
+    if (rc == NGX_REGEX_NO_MATCHED) {
+        return 0;
+    }
+
+    return rc < 0 ? -1 : 1;
+}
+
+
 static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_main_conf_t* mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* elts = cf->args->elts;
     ngx_str_t expanded;
+    ngx_waf_regex_ops_t regex_ops;
     const ngx_waf_str_t* args = (const ngx_waf_str_t*)(elts + 1);
     ngx_uint_t nargs = cf->args->nelts - 1;
 
@@ -1477,12 +1525,17 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     }
 #endif
 
+    regex_ops.compile = ngx_http_waf_regex_compile;
+    regex_ops.exec = ngx_http_waf_regex_exec;
+    regex_ops.ctx = cf->pool;
+
     char* error = ngx_waf_directive(
         mcf->core,
         loc_conf->core,
         *(const ngx_waf_str_t*)(elts),
         args,
-        nargs);
+        nargs,
+        &regex_ops);
 
 #if !(NGX_PCRE2)
     if (pcre_hooked) {

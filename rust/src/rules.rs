@@ -1,6 +1,7 @@
 //! Rule containers and rule file loading.
 
 use crate::ip_trie::{AddError, IpTrie};
+use crate::pcre::{PcreRegex, RegexOps};
 use crate::util::{parse_ipv4, parse_ipv6};
 use regex::Regex;
 use std::fmt::Write as _;
@@ -42,16 +43,53 @@ pub enum RuleKind {
 #[derive(Debug)]
 pub struct RegexRule {
     pub pattern: Vec<u8>,
-    pub regex: Regex,
+    engine: RegexEngine,
 }
 
+/// How the patterns of a rule are matched.
+#[derive(Debug)]
+enum RegexEngine {
+    /// The engine the C module used: the PCRE of nginx, reached through the
+    /// callbacks of the glue.  It understands the whole syntax a rule file
+    /// could use before.
+    Pcre(PcreRegex),
+    /// The `regex` crate, which accepts a subset of the PCRE syntax.  It is the
+    /// engine of the unit tests and of a build of the core outside nginx; the
+    /// module itself always has the callbacks of the glue.
+    Native(Regex),
+}
+
+/// The engine refused the pattern; the caller reports the file and the line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegexError;
+
 impl RegexRule {
-    pub fn compile(line: &[u8]) -> Result<Self, regex::Error> {
-        let text = String::from_utf8_lossy(line);
+    /// Compile `line` with the engine of the glue, or with the `regex` crate
+    /// when there is no glue (see [`RegexOps`]).
+    pub fn compile(line: &[u8], ops: Option<&RegexOps>) -> Result<Self, RegexError> {
+        let engine = match ops.filter(|ops| ops.usable()) {
+            Some(ops) => match PcreRegex::compile(line, ops) {
+                Some(regex) => RegexEngine::Pcre(regex),
+                None => return Err(RegexError),
+            },
+            None => match Regex::new(&String::from_utf8_lossy(line)) {
+                Ok(regex) => RegexEngine::Native(regex),
+                Err(_) => return Err(RegexError),
+            },
+        };
+
         Ok(RegexRule {
             pattern: line.to_vec(),
-            regex: Regex::new(&text)?,
+            engine,
         })
+    }
+
+    /// Whether `value` matches the rule.
+    pub fn is_match(&self, value: &[u8]) -> bool {
+        match &self.engine {
+            RegexEngine::Pcre(regex) => regex.is_match(value),
+            RegexEngine::Native(regex) => regex.is_match(&String::from_utf8_lossy(value)),
+        }
     }
 }
 
@@ -149,7 +187,7 @@ pub struct Loaded {
 /// Load every rule file of `dir` into a fresh container, mirroring
 /// `_load_all_rule()`.  On failure the returned message is what the C side logs
 /// with `ngx_conf_log_error()`.
-pub fn load_all(dir: &[u8]) -> Result<Loaded, String> {
+pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
     let mut rules = new_rule_set();
     let mut warnings = Vec::new();
     let dir = std::str::from_utf8(dir)
@@ -165,7 +203,7 @@ pub fn load_all(dir: &[u8]) -> Result<Loaded, String> {
         }
         let content = std::fs::read(path_ref)
             .map_err(|_| format!("ngx_waf: {path}: Cannot read configuration."))?;
-        load_into_container(&content, &path, kind, &mut rules, &mut warnings)?;
+        load_into_container(&content, &path, kind, &mut rules, &mut warnings, ops)?;
     }
 
     Ok(Loaded { rules, warnings })
@@ -181,6 +219,7 @@ fn load_into_container(
     kind: RuleKind,
     rules: &mut RuleSet,
     warnings: &mut Vec<String>,
+    ops: Option<&RegexOps>,
 ) -> Result<(), String> {
     let mut line_number = 0usize;
     let mut rest = content;
@@ -214,7 +253,7 @@ fn load_into_container(
             | RuleKind::Post
             | RuleKind::WhiteUrl
             | RuleKind::WhiteReferer => {
-                let rule = RegexRule::compile(line).map_err(|_| {
+                let rule = RegexRule::compile(line, ops).map_err(|_| {
                     let mut message = String::new();
                     let _ = write!(
                         message,
@@ -310,7 +349,7 @@ mod tests {
     fn missing_file_is_reported() {
         let dir = temp_dir("missing");
         let path = format!("{}/", dir.display());
-        let error = load_all(path.as_bytes()).unwrap_err();
+        let error = load_all(path.as_bytes(), None).unwrap_err();
         assert_eq!(
             error,
             format!("ngx_waf: {path}ipv4: No such file or directory")
@@ -325,7 +364,7 @@ mod tests {
         }
         std::fs::write(dir.join("url"), b"([a-z]\n").unwrap();
         let path = format!("{}/", dir.display());
-        let error = load_all(path.as_bytes()).unwrap_err();
+        let error = load_all(path.as_bytes(), None).unwrap_err();
         assert!(error.contains("is not a valid regex string."), "{error}");
         assert!(
             error.ends_with(", [([a-z]] is not a valid regex string."),
@@ -341,7 +380,7 @@ mod tests {
         }
         std::fs::write(dir.join("ipv4"), b"300.1.1.1\n").unwrap();
         let path = format!("{}/", dir.display());
-        let error = load_all(path.as_bytes()).unwrap_err();
+        let error = load_all(path.as_bytes(), None).unwrap_err();
         assert!(
             error.contains("[300.1.1.1] is not a valid IPV4 string."),
             "{error}"
@@ -360,7 +399,7 @@ mod tests {
         // The second block is covered by the first one: the C implementation
         // logs the overlap and keeps the configuration, the redundant block is
         // dropped (nothing is lost, the /8 is still in the trie).
-        let loaded = load_all(path.as_bytes()).unwrap();
+        let loaded = load_all(path.as_bytes(), None).unwrap();
         assert_eq!(loaded.warnings.len(), 1);
         let warning = &loaded.warnings[0];
         assert!(warning.contains("have overlapping parts."), "{warning}");
@@ -386,7 +425,7 @@ mod tests {
         std::fs::write(dir.join("ipv6"), b"AAAA::/\n").unwrap();
         let path = format!("{}/", dir.display());
 
-        let rules = load_all(path.as_bytes()).unwrap().rules;
+        let rules = load_all(path.as_bytes(), None).unwrap().rules;
         assert_eq!(
             rules.ip_match(&[1, 2, 3, 4], RuleKind::Ipv4Black),
             Some(&b"1.2.3.4/"[..])
@@ -408,26 +447,108 @@ mod tests {
         }
         std::fs::write(dir.join("url"), b"\r\n/a\r\n\r\n/b\n").unwrap();
         let path = format!("{}/", dir.display());
-        let rules = load_all(path.as_bytes()).unwrap().rules;
+        let rules = load_all(path.as_bytes(), None).unwrap().rules;
         assert_eq!(rules.url.len(), 2);
         assert_eq!(rules.url[0].pattern, b"/a");
         assert_eq!(rules.url[1].pattern, b"/b");
+    }
+
+    /// The engine of the glue, faked: it compiles every pattern and matches the
+    /// value that contains "evil", so a test can see which engine a rule used.
+    unsafe extern "C" fn fake_compile(
+        _ctx: *mut std::os::raw::c_void,
+        _pattern: *const u8,
+        _len: usize,
+    ) -> *mut std::os::raw::c_void {
+        std::ptr::NonNull::<u8>::dangling().as_ptr().cast()
+    }
+
+    unsafe extern "C" fn fake_exec(
+        _handle: *mut std::os::raw::c_void,
+        value: *const u8,
+        len: usize,
+    ) -> isize {
+        let value = std::slice::from_raw_parts(value, len);
+        if value.windows(4).any(|window| window == b"evil") {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// A pattern the `regex` crate refuses but PCRE accepts (a look around
+    /// assert) has to load when the glue hands its engine over: the C module
+    /// compiled the rule files with `ngx_regex_compile()`.
+    #[test]
+    fn the_engine_of_the_glue_compiles_the_rules() {
+        let dir = temp_dir("glue_engine");
+        for (file, _) in RULE_FILES {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        std::fs::write(dir.join("url"), b"(?!evil)www\\.bak\n").unwrap();
+        let path = format!("{}/", dir.display());
+
+        let ops = RegexOps {
+            compile: Some(fake_compile),
+            exec: Some(fake_exec),
+            ctx: std::ptr::null_mut(),
+        };
+        let rules = load_all(path.as_bytes(), Some(&ops)).unwrap().rules;
+
+        assert_eq!(rules.url.len(), 1);
+        assert_eq!(rules.url[0].pattern, b"(?!evil)www\\.bak");
+        assert!(rules.url[0].is_match(b"/evil/www.bak"));
+        assert!(!rules.url[0].is_match(b"/other/www.bak"));
+
+        // Without the callbacks of the glue there is no engine to use.
+        let unusable = RegexOps {
+            compile: None,
+            exec: None,
+            ctx: std::ptr::null_mut(),
+        };
+        let error = load_all(path.as_bytes(), Some(&unusable)).unwrap_err();
+        assert!(error.contains("is not a valid regex string."), "{error}");
+    }
+
+    /// A pattern the engine refuses is an error, whatever the `regex` crate
+    /// would have made of it: that is what the C implementation did.
+    #[test]
+    fn a_pattern_the_engine_refuses_is_reported() {
+        unsafe extern "C" fn refuse(
+            _ctx: *mut std::os::raw::c_void,
+            _pattern: *const u8,
+            _len: usize,
+        ) -> *mut std::os::raw::c_void {
+            std::ptr::null_mut()
+        }
+
+        let dir = temp_dir("glue_refuses");
+        for (file, _) in RULE_FILES {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        std::fs::write(dir.join("url"), b"/plain\n").unwrap();
+        let path = format!("{}/", dir.display());
+
+        let ops = RegexOps {
+            compile: Some(refuse),
+            exec: Some(fake_exec),
+            ctx: std::ptr::null_mut(),
+        };
+        let error = load_all(path.as_bytes(), Some(&ops)).unwrap_err();
+        assert!(
+            error.ends_with(", [/plain] is not a valid regex string."),
+            "{error}"
+        );
     }
 
     #[test]
     fn matches_the_shipped_rules() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/rules");
         let path = format!("{}/", root.display());
-        let rules = load_all(path.as_bytes()).unwrap().rules;
-        assert!(rules.url.iter().any(|rule| rule.regex.is_match("/www.bak")));
-        assert!(rules
-            .args
-            .iter()
-            .any(|rule| rule.regex.is_match("s=onload=")));
-        assert!(rules.post.iter().any(|rule| rule.regex.is_match("onload=")));
-        assert!(rules
-            .user_agent
-            .iter()
-            .any(|rule| rule.regex.is_match("/ SF/")));
+        let rules = load_all(path.as_bytes(), None).unwrap().rules;
+        assert!(rules.url.iter().any(|rule| rule.is_match(b"/www.bak")));
+        assert!(rules.args.iter().any(|rule| rule.is_match(b"s=onload=")));
+        assert!(rules.post.iter().any(|rule| rule.is_match(b"onload=")));
+        assert!(rules.user_agent.iter().any(|rule| rule.is_match(b"/ SF/")));
     }
 }

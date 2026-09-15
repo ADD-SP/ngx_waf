@@ -20,6 +20,7 @@ not up to date.
 | `src/util.rs` | time/size parsing, IP parsing, random strings |
 | `src/ip_trie.rs` | the IPv4/IPv6 CIDR prefix trie |
 | `src/rules.rs` | rule containers and rule-file loading |
+| `src/pcre.rs` | rule matching through the PCRE engine of nginx |
 | `src/cache.rs` | per-worker LRU inspection cache |
 | `src/cc.rs` | shared memory CC counters |
 | `src/config.rs` | directive parsing/validation, conf creation and merging |
@@ -37,6 +38,16 @@ is *not* the same thing — it is the upstream directory the test suite copies
 captcha templates differ from the embedded ones.  The last revision of the C
 file is in the git history (the commit before the one that removed it), which
 is where a byte level comparison can still be made.
+
+The rules of `waf_rule_path` are compiled and matched with the PCRE engine of
+nginx (`ngx_regex_compile()`/`ngx_regex_exec()`), which the glue hands over as
+the callback table of `src/pcre.rs` while it forwards a directive: a rule file
+keeps the whole syntax the C implementation accepted (look around asserts, back
+references, atomic groups, `\K`, ...), the pattern text is still what
+`$waf_rule_details` reports, and a pattern the engine refuses aborts the start
+up with the message of the C implementation.  The `regex` crate is only the
+fallback of a build without the glue (the unit tests of this crate); it accepts
+a subset of that syntax and is never the engine of the module inside nginx.
 
 ## Building
 

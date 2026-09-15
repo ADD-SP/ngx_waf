@@ -225,6 +225,23 @@ typedef struct ngx_waf_str_t {
 } ngx_waf_str_t;
 
 /**
+ * The engine of the glue, `ngx_waf_regex_ops_t` in the generated header.
+ *
+ * * `compile(ctx, pattern, len)` returns an opaque handle for the pattern, or
+ *   null when the engine refused it.
+ * * `exec(handle, value, len)` returns 1 when the value matches, 0 when it
+ *   does not, and -1 when the engine failed.
+ *
+ * Both callbacks are provided by `src/ngx_http_waf_module.c`, and `ctx` is the
+ * configuration pool the compiled patterns live in.
+ */
+typedef struct ngx_waf_regex_ops_t {
+    void *(*compile)(void*, const uint8_t*, size_t);
+    ptrdiff_t (*exec)(void*, const uint8_t*, size_t);
+    void *ctx;
+} ngx_waf_regex_ops_t;
+
+/**
  * The result of one inspection.
  */
 typedef struct ngx_waf_step_t {
@@ -430,7 +447,8 @@ char *ngx_waf_directive(void *main,
                         void *conf,
                         struct ngx_waf_str_t name,
                         const struct ngx_waf_str_t *args,
-                        size_t nargs);
+                        size_t nargs,
+                        const struct ngx_waf_regex_ops_t *regex_ops);
 
 /**
  * Parse and validate `waf_zone`.  On success the returned name pointer stays

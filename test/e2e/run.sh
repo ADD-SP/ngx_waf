@@ -39,6 +39,10 @@ printf 'AAAA::\nBBBB::/16\n'             >> "$prefix/rules/ipv6"
 printf 'CCCC::\nDDDD::/16\n'             >> "$prefix/rules/white-ipv6"
 printf '/white/\n'                       >> "$prefix/rules/white-url"
 printf '/white/\n'                       >> "$prefix/rules/white-referer"
+# A pattern only PCRE accepts: the rules go through the engine of nginx, like
+# the ones of the C implementation did (`rust/src/pcre.rs`).  The leading
+# newline ends the last line of the shipped file, which has none.
+printf '\n^/(?!allowed/)www\\.pcre$\n'   >> "$prefix/rules/url"
 # A certificate for the TLS provider stub; without openssl the TLS case is
 # skipped.
 # nginx resolves a relative certificate path against the configuration
@@ -207,6 +211,12 @@ check 200 "allowed request"                  "$base/"
 check_body 404 '\[true\]\[\]\[false\]\[\]\[\]\[0\]' \
     "variables of an allowed request"        -H 'X-Real-IP: 9.9.9.2' "$base/test0"
 check 403 "black url"                        "$base/www.bak"
+# The rule files are matched with the PCRE engine of nginx: a look around assert
+# (which the `regex` crate cannot compile) has to load and to be honoured.
+check 403 "a rule only the PCRE engine accepts" "$base/www.pcre"
+check_body 403 '(?!allowed/)' \
+    "the blocked page carries that rule"     "$base/www.pcre"
+check 404 "the look around assert is honoured" "$base/allowed/www.pcre"
 check 403 "black args"                       "$base/?s=onload="
 check 403 "black user agent"                 -H 'User-Agent: / SF/' "$base/"
 check 403 "black referer"                    -H 'Referer: /www.bak' "$base/"

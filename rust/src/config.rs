@@ -610,10 +610,11 @@ pub fn directive(
     conf: &mut LocConf,
     name: &[u8],
     args: &[Vec<u8>],
+    regex_ops: Option<&crate::pcre::RegexOps>,
 ) -> Result<(), String> {
     match name {
         b"waf" => directive_waf(conf, args),
-        b"waf_rule_path" => directive_rule_path(conf, args),
+        b"waf_rule_path" => directive_rule_path(conf, args, regex_ops),
         b"waf_mode" => directive_mode(conf, args),
         b"waf_cc_deny" => directive_cc_deny(main, conf, args),
         b"waf_cache" => directive_cache(conf, args),
@@ -680,13 +681,17 @@ fn directive_waf(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
     Err(INVALID.to_string())
 }
 
-fn directive_rule_path(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
+fn directive_rule_path(
+    conf: &mut LocConf,
+    args: &[Vec<u8>],
+    ops: Option<&crate::pcre::RegexOps>,
+) -> Result<(), String> {
     if args.len() != 1 {
         return Err("ngx_waf: the path of the rule files is not specified".to_string());
     }
     conf.waf_rule_path = args[0].clone();
     conf.ensure_rules();
-    let loaded = rules::load_all(&conf.waf_rule_path)?;
+    let loaded = rules::load_all(&conf.waf_rule_path, ops)?;
     conf.rules = Some(Rc::new(loaded.rules));
     conf.warnings.extend(loaded.warnings);
     Ok(())
@@ -1460,7 +1465,7 @@ mod tests {
         args: &[&str],
     ) -> Result<(), String> {
         let args: Vec<Vec<u8>> = args.iter().map(|arg| arg.as_bytes().to_vec()).collect();
-        directive(main, conf, name.as_bytes(), &args)
+        directive(main, conf, name.as_bytes(), &args, None)
     }
 
     fn zone_directive_main(main: &mut MainConf, args: &[&str]) -> Result<(Vec<u8>, usize), String> {

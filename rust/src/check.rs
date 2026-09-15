@@ -1551,7 +1551,7 @@ fn lookup_regex(rules: &crate::rules::RuleSet, kind: RuleKind, value: &[u8]) -> 
     rules
         .regex_list(kind)
         .iter()
-        .find(|rule| rule.regex.is_match(&String::from_utf8_lossy(value)))
+        .find(|rule| rule.is_match(value))
         .map(|rule| rule.pattern.clone())
 }
 
@@ -1857,7 +1857,9 @@ mod tests {
 
     fn url_rules() -> rules::RuleSet {
         let mut rules = rules::new_rule_set();
-        rules.url.push(RegexRule::compile(b"/www\\.bak").unwrap());
+        rules
+            .url
+            .push(RegexRule::compile(b"/www\\.bak", None).unwrap());
         rules
     }
 
@@ -1963,7 +1965,7 @@ mod tests {
             let mut rules = url_rules();
             rules
                 .white_url
-                .push(RegexRule::compile(b"^/white/").unwrap());
+                .push(RegexRule::compile(b"^/white/", None).unwrap());
             rules
         }));
         conf.priority = vec![CheckId::WhiteUrl, CheckId::Url];
@@ -2002,7 +2004,9 @@ mod tests {
     fn cookies_are_inspected_one_by_one() {
         let mut conf = conf_with_rules({
             let mut rules = rules::new_rule_set();
-            rules.cookie.push(RegexRule::compile(b"\\.\\./").unwrap());
+            rules
+                .cookie
+                .push(RegexRule::compile(b"\\.\\./", None).unwrap());
             rules
         });
         set_policy(
@@ -2180,7 +2184,7 @@ mod tests {
             ..LocConf::default()
         };
         let args: Vec<Vec<u8>> = vec![mode.as_bytes().to_vec(), b"GoogleBot".to_vec()];
-        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args).unwrap();
+        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args, None).unwrap();
         conf
     }
 
@@ -2284,7 +2288,9 @@ mod tests {
         // `on` mode lets a fake bot through, and the rest of the chain still
         // runs: the blacklist is inspected afterwards.
         let mut rules = rules::new_rule_set();
-        rules.url.push(RegexRule::compile(b"/www\\.bak").unwrap());
+        rules
+            .url
+            .push(RegexRule::compile(b"/www\\.bak", None).unwrap());
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
             waf: WAF_ON,
@@ -2293,7 +2299,7 @@ mod tests {
             ..LocConf::default()
         };
         let args: Vec<Vec<u8>> = vec![b"on".to_vec(), b"GoogleBot".to_vec()];
-        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args).unwrap();
+        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args, None).unwrap();
 
         let user_agent = b"Googlebot";
         let uri = b"/www.bak";
@@ -2373,7 +2379,7 @@ mod tests {
             b"api=http://127.0.0.1:1/verify".to_vec(),
         ];
         args.extend(extra.iter().map(|value| value.as_bytes().to_vec()));
-        crate::config::directive(&mut main, &mut conf, b"waf_captcha", &args).unwrap();
+        crate::config::directive(&mut main, &mut conf, b"waf_captcha", &args, None).unwrap();
         conf
     }
 
@@ -2773,8 +2779,14 @@ mod tests {
             waf_mode: M_FULL,
             ..LocConf::new()
         };
-        crate::config::directive(&mut main, &mut conf, b"waf_under_attack", &[b"on".to_vec()])
-            .unwrap();
+        crate::config::directive(
+            &mut main,
+            &mut conf,
+            b"waf_under_attack",
+            &[b"on".to_vec()],
+            None,
+        )
+        .unwrap();
         conf
     }
 

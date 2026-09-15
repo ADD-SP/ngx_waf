@@ -5,6 +5,7 @@
 use crate::cc::{self, ShmOps};
 use crate::check;
 use crate::config::{self, LocConf, MainConf};
+use crate::pcre::RegexOps;
 use crate::types::*;
 use crate::util;
 use std::ffi::CString;
@@ -408,6 +409,7 @@ pub unsafe extern "C" fn ngx_waf_directive(
     name: NgxWafStr,
     args: *const NgxWafStr,
     nargs: usize,
+    regex_ops: *const RegexOps,
 ) -> *mut c_char {
     if main.is_null() || conf.is_null() {
         return error_string("ngx_waf: unexpected error");
@@ -422,7 +424,14 @@ pub unsafe extern "C" fn ngx_waf_directive(
             slice::from_raw_parts(args, nargs)
         };
         let args: Vec<Vec<u8>> = raw_args.iter().map(|arg| arg.as_slice().to_vec()).collect();
-        config::directive(main, conf, name, &args)
+        // SAFETY: the glue passes either null or a table that stays valid for
+        // the whole call (it lives on the stack of the directive handler).
+        let ops = if regex_ops.is_null() {
+            None
+        } else {
+            Some(&*regex_ops)
+        };
+        config::directive(main, conf, name, &args, ops)
     }));
     match result {
         Ok(Ok(())) => std::ptr::null_mut(),

@@ -14,6 +14,7 @@ mod config;
 mod ffi;
 mod ip_trie;
 mod modsec;
+mod pcre;
 mod rules;
 mod types;
 mod util;

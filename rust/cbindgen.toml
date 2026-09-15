@@ -66,6 +66,7 @@ include = [
     "NgxWafStep",
     "NgxWafEvent",
     "ShmOps",
+    "RegexOps",
     "ngx_waf_version",
     "ngx_waf_string_free",
     "ngx_waf_main_create",
@@ -98,6 +99,7 @@ include = [
 "NgxWafStep" = "ngx_waf_step_t"
 "NgxWafEvent" = "ngx_waf_event_t"
 "ShmOps" = "ngx_waf_shm_ops_t"
+"RegexOps" = "ngx_waf_regex_ops_t"
 
 [fn]
 args = "auto"
