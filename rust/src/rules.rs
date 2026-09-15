@@ -198,11 +198,23 @@ pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
         // path, so the path must end with '/'.
         let path = format!("{dir}{file}");
         let path_ref = Path::new(&path);
-        if !path_ref.is_file() {
-            return Err(format!("ngx_waf: {path}: No such file or directory"));
-        }
-        let content = std::fs::read(path_ref)
+
+        // `access(path, R_OK)` of the C implementation reported every failure
+        // it saw with the same hardcoded message, whether the file was missing
+        // or unreadable.
+        let mut file = match std::fs::File::open(path_ref) {
+            Err(_) => return Err(format!("ngx_waf: {path}: No such file or directory")),
+            Ok(file) => file,
+        };
+
+        let mut content = Vec::new();
+        // The C implementation read the file with `fgets()`, which reports a
+        // read error as the end of the file: a file it could open but not read
+        // (a directory in place of a rule file) was accepted with the rules it
+        // had read until then, which is a configuration error here.
+        std::io::Read::read_to_end(&mut file, &mut content)
             .map_err(|_| format!("ngx_waf: {path}: Cannot read configuration."))?;
+
         load_into_container(&content, &path, kind, &mut rules, &mut warnings, ops)?;
     }
 
@@ -370,6 +382,26 @@ mod tests {
         assert_eq!(
             error,
             format!("ngx_waf: {path}ipv4: No such file or directory")
+        );
+    }
+
+    /// A file the module can open but cannot read (a directory) is refused: the
+    /// `fgets()` of the C implementation treated the read error as the end of
+    /// the file and accepted the configuration with an empty rule set.
+    #[test]
+    fn a_directory_in_place_of_a_file_is_refused() {
+        let dir = temp_dir("is_dir");
+        let path = format!("{}/", dir.display());
+        for (file, _) in RULE_FILES {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        std::fs::remove_file(dir.join("ipv4")).unwrap();
+        std::fs::create_dir(dir.join("ipv4")).unwrap();
+
+        let error = load_all(path.as_bytes(), None).unwrap_err();
+        assert_eq!(
+            error,
+            format!("ngx_waf: {path}ipv4: Cannot read configuration.")
         );
     }
 

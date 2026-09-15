@@ -904,10 +904,17 @@ fn directive_priority(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String
 
 fn read_file(path: &[u8]) -> Result<Vec<u8>, String> {
     let text = String::from_utf8_lossy(path).into_owned();
-    match std::fs::metadata(&text) {
-        Err(_) => Err(format!("ngx_waf: Unable to open file {text}.")),
-        Ok(_) => std::fs::read(&text)
-            .map_err(|_| format!("ngx_waf: Failed to read file {text} completely..")),
+    // The C implementation opened the file with `fopen()`: a file it cannot
+    // open and a file it can open but cannot read are two different failures.
+    let mut file = match std::fs::File::open(&text) {
+        Err(_) => return Err(format!("ngx_waf: Unable to open file {text}.")),
+        Ok(file) => file,
+    };
+
+    let mut content = Vec::new();
+    match std::io::Read::read_to_end(&mut file, &mut content) {
+        Ok(_) => Ok(content),
+        Err(_) => Err(format!("ngx_waf: Failed to read file {text} completely..")),
     }
 }
 
@@ -1263,13 +1270,10 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
     for arg in &args[1..] {
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         match key.as_slice() {
-            b"file" => {
-                let text = String::from_utf8_lossy(&value).into_owned();
-                if !std::path::Path::new(&text).is_file() {
-                    return Err(format!("ngx_waf: {text}: No such file or directory"));
-                }
-                files.push(value);
-            }
+            // The file is handed to the library as it is: a path the library
+            // cannot open is reported with its own message, the one the C
+            // implementation printed.
+            b"file" => files.push(value),
             b"remote_key" => remote_key = Some(value),
             b"remote_url" => remote_url = Some(value),
             _ => return Err(INVALID.to_string()),
@@ -1690,12 +1694,18 @@ mod tests {
         let mut conf = LocConf::default();
         assert!(dir(&mut conf, "waf_modsecurity", &["bad"]).is_err());
         assert!(dir(&mut conf, "waf_modsecurity", &["on", "bad"]).is_err());
-        assert!(dir(
+        // The library reports a rule file it cannot open itself, the message
+        // the C implementation printed, so the path is handed over as it is.
+        let error = dir(
             &mut conf,
             "waf_modsecurity",
-            &["on", "file=/does/not/exist"]
+            &["on", "file=/does/not/exist"],
         )
-        .is_err());
+        .unwrap_err();
+        assert!(
+            error.starts_with("ngx_waf: Failed to open the file: /does/not/exist"),
+            "{error}"
+        );
 
         dir(&mut conf, "waf_modsecurity", &["off"]).unwrap();
         assert_eq!(conf.modsecurity, 0);
@@ -1896,6 +1906,15 @@ mod tests {
         dir(&mut conf, "waf_block_page", &["default"]).unwrap();
         assert_eq!(conf.block_page.as_slice(), embedded_page(HTML_BLOCK));
         assert!(dir(&mut conf, "waf_block_page", &["/nonexistent/file"]).is_err());
+
+        // A file that can be opened but not read (a directory) is the read
+        // failure of the C implementation (`fopen()` succeeded there too).
+        let dir_path = std::env::temp_dir().join(format!("ngx_waf_page_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir_path);
+        std::fs::create_dir_all(&dir_path).unwrap();
+        let error = dir(&mut conf, "waf_block_page", &[dir_path.to_str().unwrap()]).unwrap_err();
+        assert!(error.starts_with("ngx_waf: Failed to read file"), "{error}");
+        let _ = std::fs::remove_dir_all(&dir_path);
     }
 
     /// The C implementation set the length of its embedded pages with
