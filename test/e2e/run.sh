@@ -136,11 +136,15 @@ fi
 
 # A provider that answers with a chunked body, like a HTTP/1.1 back end in
 # front of the provider would: the module has to decode the framing (the C
-# implementation left that to curl).
+# implementation left that to curl).  The answer is split in front of the last
+# chunk, with the chunk of the body complete in the first piece: a decoding
+# that compacts the buffer as it walks the framing has to be able to read the
+# whole framing again when the rest of it arrives.
 if command -v python3 > /dev/null 2>&1; then
     python3 - "$chunked_port" <<'PY' &
 import socket
 import sys
+import time
 
 body = b'{"success":true,"score":0.9}'
 server = socket.socket()
@@ -160,6 +164,7 @@ while True:
     connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n")
     connection.sendall(b"Transfer-Encoding: chunked\r\n\r\n")
     connection.sendall(b"%x\r\n%s\r\n" % (len(body), body))
+    time.sleep(0.2)
     connection.sendall(b"0\r\n\r\n")
     connection.close()
 PY
@@ -388,6 +393,25 @@ check 403 "captcha action table on its own zone challenges" \
 check_body 200 'good' "captcha action table on its own zone passes" \
     -H 'X-Real-IP: 9.9.9.41' -X POST -d 'g-recaptcha-response=token' \
     "$multi/captcha"
+
+# The session flow of that challenge answers the "good" of the C
+# implementation: the action of the policy carried `ACTION_FLAG_NONE`, so no
+# cookie trio is minted and no rule is reported, the entry of the address is
+# dropped instead.
+check 403 "captcha action session challenges" \
+    -H 'X-Real-IP: 9.9.9.44' "$multi/www.bak"
+curl -s -D "$prefix/session.headers" -o "$prefix/session.body" --max-time 5 \
+    -H 'X-Real-IP: 9.9.9.44' -X POST -d 'g-recaptcha-response=token' \
+    "$multi/captcha"
+if [ "$(cat "$prefix/session.body")" = "good" ] \
+    && ! grep -qi '^Set-Cookie:' "$prefix/session.headers"; then
+    pass=$((pass + 1))
+    printf 'ok   %-52s %s\n' "captcha action session mints no cookie" "good"
+else
+    fail=$((fail + 1))
+    printf 'FAIL %-52s (headers: %s)\n' "captcha action session mints no cookie" \
+        "$(tr -d '\r' < "$prefix/session.headers" | grep -i '^Set-Cookie:' | tr '\n' ' ')"
+fi
 
 # The fail counter of that server lives in a fourth zone: `max_fails=1:1m`
 # means twenty failures are allowed (`max(max_fails, 20)`), the 21st blocks.
