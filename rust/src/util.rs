@@ -15,8 +15,9 @@ pub fn now() -> i64 {
 /// Parse `10s`, `10m`, `10h`, `10d` into seconds.
 ///
 /// Mirrors `ngx_http_waf_parse_time()` including its quirks: a bare unit
-/// character means "1 unit", a leading zero is rejected because nginx'
-/// `ngx_atoi` rejects a non-zero value with a leading zero.
+/// character means "1 unit", and the number in front of the unit is read with
+/// nginx' `ngx_atoi()`, which accepts a leading zero (`030s` is 30 seconds)
+/// but nothing that is not a decimal digit.
 pub fn parse_time(text: &[u8]) -> Option<i64> {
     if text.len() == 1 {
         return match text[0] {
@@ -242,84 +243,84 @@ fn parse_ipv4_addr(text: &[u8]) -> Option<[u8; 4]> {
     Some(addr)
 }
 
-/// A small IPv6 text parser: supports `::` compression and embedded IPv4.
+/// One side of an IPv6 address, the part before or after its `::`.  An empty
+/// side is the empty list, every group has to be 1..4 hexadecimal digits and
+/// the empty groups a `::` would leave behind are refused; `ipv4_tail` allows
+/// the last group to be the IPv4 form `inet_pton()` accepts at the end of an
+/// address (`::ffff:1.2.3.4`), which counts as two groups.
+fn parse_ipv6_side(side: &[u8], ipv4_tail: bool) -> Option<Vec<u16>> {
+    let mut words = Vec::new();
+    if side.is_empty() {
+        return Some(words);
+    }
+
+    let groups: Vec<&[u8]> = side.split(|&c| c == b':').collect();
+    for (index, group) in groups.iter().enumerate() {
+        let last = index + 1 == groups.len();
+
+        if group.contains(&b'.') {
+            // Only the end of the address may hold the IPv4 form.
+            if !ipv4_tail || !last {
+                return None;
+            }
+            let addr = parse_ipv4_addr(group)?;
+            words.push(((addr[0] as u16) << 8) | addr[1] as u16);
+            words.push(((addr[2] as u16) << 8) | addr[3] as u16);
+            continue;
+        }
+
+        if group.is_empty() || group.len() > 4 {
+            return None;
+        }
+        let mut value: u16 = 0;
+        for &c in group.iter() {
+            let digit = char::from(c).to_digit(16)?;
+            value = value.checked_mul(16)?.checked_add(digit as u16)?;
+        }
+        words.push(value);
+    }
+
+    Some(words)
+}
+
+/// The IPv6 text parser, the equivalent of the `inet_pton()` the C
+/// implementation used: `::` compresses the zero groups and may appear once,
+/// a lone `:` is not a separator `inet_pton()` accepts, and an embedded IPv4
+/// address is only allowed as the last group.
 fn parse_ipv6_addr(text: &[u8]) -> Option<[u8; 16]> {
     if text.is_empty() {
         return None;
     }
 
-    let mut head: Vec<u16> = Vec::new();
-    let mut tail: Vec<u16> = Vec::new();
-    let mut in_tail = false;
-    let mut compressed = false;
-
-    let push = |value: u16, in_tail: bool, head: &mut Vec<u16>, tail: &mut Vec<u16>| {
-        if in_tail {
-            tail.push(value);
-        } else {
-            head.push(value);
-        }
-    };
-
+    // Where the `::` is, if there is one.  A second `::` and a `:::` give an
+    // empty group on one of the two sides, which `parse_ipv6_side()` refuses.
+    let mut compressed: Option<usize> = None;
     let mut index = 0;
-    while index < text.len() {
-        if text[index] == b':' {
-            if index + 1 < text.len() && text[index + 1] == b':' {
-                if compressed {
-                    return None;
-                }
-                compressed = true;
-                in_tail = true;
-                index += 2;
-                if index == text.len() {
-                    // trailing "::"
-                }
-                continue;
+    while index + 1 < text.len() {
+        if text[index] == b':' && text[index + 1] == b':' {
+            if compressed.is_some() {
+                return None;
             }
-            index += 1;
-            continue;
-        }
-
-        let start = index;
-        while index < text.len() && text[index] != b':' {
+            compressed = Some(index);
+            index += 2;
+        } else {
             index += 1;
         }
-        let group = &text[start..index];
-
-        if group.contains(&b'.') {
-            let v4 = parse_ipv4_addr(group)?;
-            push(
-                ((v4[0] as u16) << 8) | v4[1] as u16,
-                in_tail,
-                &mut head,
-                &mut tail,
-            );
-            push(
-                ((v4[2] as u16) << 8) | v4[3] as u16,
-                in_tail,
-                &mut head,
-                &mut tail,
-            );
-            continue;
-        }
-        if group.is_empty() || group.len() > 4 {
-            return None;
-        }
-        let mut value: u16 = 0;
-        for &c in group {
-            let digit = (c as char).to_digit(16)?;
-            value = value.checked_mul(16)?.checked_add(digit as u16)?;
-        }
-        push(value, in_tail, &mut head, &mut tail);
     }
 
+    let (head, tail) = match compressed {
+        Some(position) => (&text[..position], &text[position + 2..]),
+        None => (text, &[][..]),
+    };
+    let head = parse_ipv6_side(head, compressed.is_none())?;
+    let tail = parse_ipv6_side(tail, compressed.is_some())?;
+
     let total = head.len() + tail.len();
-    if compressed {
-        if total > 7 {
-            return None;
-        }
-    } else if total != 8 {
-        return None;
+    match compressed {
+        // The `::` stands for at least one zero group.
+        Some(_) if total > 7 => return None,
+        None if total != 8 => return None,
+        _ => {}
     }
 
     let mut words = [0u16; 8];
@@ -605,6 +606,39 @@ mod tests {
         assert_eq!(parse_ipv6(b"gggg::"), None);
         assert_eq!(parse_ipv6(b"::/129"), None);
         assert_eq!(parse_ipv6(b"AAAA::/").unwrap().depth, 128);
+
+        // The text forms `inet_pton()` accepts, which is what the C
+        // implementation parsed the rule lines with.
+        assert_eq!(parse_ipv6(b"::").unwrap().addr, [0u8; 16]);
+        assert_eq!(&parse_ipv6(b"1::").unwrap().addr[..2], &[0, 1]);
+        assert_eq!(parse_ipv6(b"1:2:3:4:5:6:7::").unwrap().addr[13], 7);
+        assert_eq!(parse_ipv6(b"1:2:3:4:5:6:7:8").unwrap().addr[15], 8);
+        assert_eq!(parse_ipv6(b"1:2:3:4:5:6:1.2.3.4").unwrap().addr[15], 4);
+        assert_eq!(parse_ipv6(b"::FFFF:1.2.3.4").unwrap().addr[11], 0xff);
+
+        // The text forms `inet_pton()` refuses: an embedded IPv4 address that
+        // is not the last group, a lone `:` (an empty group) and a second
+        // `::`.  The C implementation refused the configuration for all of
+        // them, this parser accepts none of them either.
+        for text in [
+            &b"1.2.3.4::"[..],
+            b"1.2.3.4::1",
+            b"::1.2.3.4:5",
+            b"1.2.3.4:5:6:7:8:9:10",
+            b"1:2:3:4:5:6:7:8:",
+            b":1:2:3:4:5:6:7:8",
+            b":1::2",
+            b"1::2:",
+            b":::",
+            b"1:::2",
+            b":",
+            b"1:",
+            b"1::2::3",
+            b"::ffff:01.2.3.4",
+            b"1:2:3:4:5:6:7:8:9",
+        ] {
+            assert_eq!(parse_ipv6(text), None, "{:?}", String::from_utf8_lossy(text));
+        }
     }
 
     #[test]
