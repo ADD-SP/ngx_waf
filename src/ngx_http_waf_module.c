@@ -851,14 +851,19 @@ static ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end) {
 
 
 /**
- * Remove the chunked framing of `body` in place: the size line (its extensions
+ * Walk the chunked framing of `body` .. `end`: the size line (its extensions
  * included), the CRLF that ends every chunk, and the last chunk with its
- * trailers.  Returns 0 when the framing is not one we can read, the caller
- * answers the failure of the provider request then.
+ * trailers.  `write` is where the bytes of the chunks are copied, `NULL` for a
+ * pass that only checks the framing.  Returns 1 when the terminal chunk was
+ * reached (the length of the body is in `out_len`), 0 when the framing is
+ * incomplete or cannot be read at all.
  */
-static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* out_len) {
+static ngx_uint_t ngx_http_waf_fetch_dechunk_parse(u_char* body, u_char* end, u_char* write,
+    size_t* out_len)
+{
     u_char* read = body;
-    u_char* write = body;
+    u_char* out = write;
+    size_t decoded = 0;
 
     for ( ;; ) {
         size_t size = 0;
@@ -904,7 +909,7 @@ static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* 
         read++;
 
         if (size == 0) {
-            *out_len = (size_t) (write - body);
+            *out_len = decoded;
             return 1;
         }
 
@@ -912,10 +917,13 @@ static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* 
             return 0;
         }
 
-        if (write != read) {
-            ngx_memmove(write, read, size);
+        if (write != NULL) {
+            if (out != read) {
+                ngx_memmove(out, read, size);
+            }
+            out += size;
         }
-        write += size;
+        decoded += size;
         read += size;
 
         if (read[0] != '\r' || read[1] != '\n') {
@@ -923,6 +931,29 @@ static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* 
         }
         read += 2;
     }
+}
+
+
+/**
+ * Remove the chunked framing of `body` in place: the size line (its extensions
+ * included), the CRLF that ends every chunk, and the last chunk with its
+ * trailers.  Returns 0 when the framing is not one we can read, the caller
+ * answers the failure of the provider request then.
+ *
+ * The answer of a provider may arrive in several reads, so the buffer has to
+ * stay readable as the framing of the whole answer until the framing is
+ * complete: a pass that only checks the framing runs first, and a call that has
+ * to wait for more bytes (that is, one that returns 0) leaves the buffer alone.
+ * Compacting as it went made the next call read the decoded bytes as a size
+ * line, which turned a valid answer split in front of its last chunk into a
+ * failed attempt.
+ */
+static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* out_len) {
+    if (!ngx_http_waf_fetch_dechunk_parse(body, end, NULL, out_len)) {
+        return 0;
+    }
+
+    return ngx_http_waf_fetch_dechunk_parse(body, end, body, out_len);
 }
 
 
