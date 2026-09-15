@@ -91,6 +91,10 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   addresses keeps counting instead of losing protection.
 * `waf_zone size=` accepts everything `ngx_parse_size()` accepts (a bare byte
   count, `k`/`K`, `m`/`M`).
+* `waf_cc_deny on rate=... duration=0` is rejected while the C implementation
+  accepted it (and then never really blocked: the counting window of the next
+  request started over).  Every other value `ngx_http_waf_parse_time()`
+  accepted is accepted here too.
 * The captcha provider is reached with a small non blocking client of the
   module itself (connect, send the POST, read until the provider closes); a
   provider that cannot be reached counts as a failed attempt ("bad"/429), the C

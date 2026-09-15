@@ -237,6 +237,9 @@ static void ngx_http_waf_conf_cleanup(void* data);
 static void ngx_http_waf_request_cleanup(void* data);
 
 
+static void ngx_http_waf_zone_cleanup(void* data);
+
+
 static ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data);
 
 
@@ -1143,19 +1146,29 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
 
         rc = ngx_ssl_handshake(c);
 
-        if (rc == NGX_ERROR) {
-            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-            return NGX_OK;
+        if (rc == NGX_AGAIN) {
+            if (!c->read->timer_set) {
+                ngx_add_timer(c->read, NGX_HTTP_WAF_FETCH_TIMEOUT);
+            }
+
+            r->main->count++;
+            ctx->fetch.in_drive = 0;
+
+            return NGX_DONE;
         }
+
+        /*
+         * `ngx_ssl_handshake()` does not call the handler when it is done (or
+         * when it failed) in this call, the upstream module calls it for every
+         * other return value as well.  It checks `handshaked` and fails the
+         * fetch when the handshake did not complete.
+         */
+        ngx_http_waf_fetch_ssl_done(c);
 
         if (ctx->fetch.finished) {
             /* the whole request finished within the handshake */
             ctx->fetch.in_drive = 0;
             return NGX_OK;
-        }
-
-        if (!c->read->timer_set) {
-            ngx_add_timer(c->read, NGX_HTTP_WAF_FETCH_TIMEOUT);
         }
 
         r->main->count++;
@@ -1399,6 +1412,14 @@ static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     zone->zone->init = ngx_http_waf_shm_zone_init;
     zone->zone->data = zone;
 
+    /* the handle the init callback builds belongs to this cycle */
+    ngx_pool_cleanup_t* cln = ngx_pool_cleanup_add(cf->pool, 0);
+    if (cln == NULL) {
+        return ngx_http_waf_report(cf, NULL);
+    }
+    cln->handler = ngx_http_waf_zone_cleanup;
+    cln->data = zone;
+
     return NGX_CONF_OK;
 }
 
@@ -1637,6 +1658,21 @@ static void ngx_http_waf_cleanup(void* data) {
 
 static void ngx_http_waf_conf_cleanup(void* data) {
     ngx_waf_conf_free(data);
+}
+
+
+/**
+ * Release the core side handle of one shared memory zone with the cycle it was
+ * built in.  The segment itself belongs to nginx; on a reload the new cycle
+ * builds its own handle on top of the same segment.
+ */
+static void ngx_http_waf_zone_cleanup(void* data) {
+    ngx_http_waf_zone_t* zone = data;
+
+    if (zone->handle != NULL) {
+        ngx_waf_shm_zone_free(zone->handle);
+        zone->handle = NULL;
+    }
 }
 
 

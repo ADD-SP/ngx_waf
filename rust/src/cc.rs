@@ -258,12 +258,13 @@ pub unsafe fn zone_init(
     }
     if let Some(old) = old.as_ref() {
         // The segment is reused, `old.header` points at the directory written
-        // by the previous cycle.
-        return Box::into_raw(Box::new(ZoneHandle {
-            header: old.header,
-            size,
-            ops,
-        }));
+        // by the previous cycle.  Only trust it when it is ours: a segment
+        // written by another version of the core would be read as a directory
+        // of tables (garbage pointers) otherwise.
+        let header = old.header;
+        if !header.is_null() && (*header).magic == ZONE_MAGIC && (*header).version == VERSION {
+            return Box::into_raw(Box::new(ZoneHandle { header, size, ops }));
+        }
     }
 
     let memory = match ops.alloc {
@@ -345,8 +346,7 @@ fn increment_locked(
     duration: i64,
     now: i64,
 ) -> Option<CcResult> {
-    let (_, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
-    let table = handle.table(tag)?;
+    let (table, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
     let table_ref = unsafe { &mut *table };
     let slots = unsafe {
         std::slice::from_raw_parts_mut(table_ref.slots.as_mut_ptr(), table_ref.capacity as usize)
@@ -443,9 +443,13 @@ fn slot_for(
 }
 
 fn reset_slot(slot: &mut Slot, addr: &[u8], ipv6: bool, expire: i64) {
+    // The C glue hands over the 4 or 16 bytes of the address; a shorter slice
+    // is not an address we can match, but it must not panic either.
+    let len = std::cmp::min(addr.len(), slot.addr.len());
+
     slot.kind = if ipv6 { SLOT_USED_V6 } else { SLOT_USED_V4 };
     slot.addr = [0u8; 16];
-    slot.addr[..addr.len()].copy_from_slice(addr);
+    slot.addr[..len].copy_from_slice(&addr[..len]);
     slot.count = 0;
     slot.expire = expire;
     slot.flags = 0;
@@ -616,8 +620,7 @@ pub fn reset_counter(
     let handle = unsafe { handle_ref(handle)? };
     handle.lock();
     let result = {
-        let (_, index, _) = slot_for(handle, tag, addr, ipv6, now)?;
-        let table = handle.table(tag)?;
+        let (table, index, _) = slot_for(handle, tag, addr, ipv6, now)?;
         let table_ref = unsafe { &mut *table };
         let slots = unsafe {
             std::slice::from_raw_parts_mut(
@@ -634,7 +637,8 @@ pub fn reset_counter(
 
 fn same_addr(slot: &Slot, addr: &[u8], ipv6: bool) -> bool {
     let len = if ipv6 { 16 } else { 4 };
-    slot.addr[..len] == addr[..len]
+    // A slice that is not a full address never matches one of the slots.
+    addr.len() >= len && slot.addr[..len] == addr[..len]
 }
 
 fn slot_index(addr: &[u8]) -> usize {
@@ -834,6 +838,32 @@ mod tests {
         assert_eq!(after.rate, 2);
         unsafe { zone_free(first) };
         unsafe { zone_free(second) };
+    }
+
+    /// A segment that is not ours (another version of the core, a zone that
+    /// was never initialised) must not be read as a directory of tables.
+    #[test]
+    fn a_foreign_zone_header_is_rebuilt() {
+        let (shm, ctx) = setup("foreign", 1024 * 1024);
+
+        increment(ctx, b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 0).unwrap();
+
+        // Something else wrote over the header of the segment.
+        let header = unsafe { (*ctx).header };
+        unsafe {
+            (*header).magic = 0xdead_beef;
+            (*header).blocks = std::ptr::dangling_mut::<TagBlock>();
+            (*header).tag_count = 7;
+        }
+
+        // The reload reuses the segment and has to notice.
+        let rebuilt =
+            unsafe { zone_init(shm.memory.as_ptr() as usize, 1024 * 1024, ctx, (*ctx).ops) };
+        assert!(!rebuilt.is_null());
+        let result = increment(rebuilt, b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 0).unwrap();
+        assert_eq!(result.rate, 1, "the counter table was rebuilt");
+        unsafe { zone_free(ctx) };
+        unsafe { zone_free(rebuilt) };
     }
 
     #[test]
