@@ -637,7 +637,12 @@ mod tests {
             b"::ffff:01.2.3.4",
             b"1:2:3:4:5:6:7:8:9",
         ] {
-            assert_eq!(parse_ipv6(text), None, "{:?}", String::from_utf8_lossy(text));
+            assert_eq!(
+                parse_ipv6(text),
+                None,
+                "{:?}",
+                String::from_utf8_lossy(text)
+            );
         }
     }
 
