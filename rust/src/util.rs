@@ -78,13 +78,11 @@ pub fn parse_ngx_size(text: &[u8]) -> Option<usize> {
     usize::try_from(value).ok()?.checked_mul(scale)
 }
 
-/// `ngx_atoi()`: parses a non negative decimal number, rejecting a leading zero
-/// (unless the number is exactly "0") and overflow.
+/// `ngx_atoi()`: a non negative decimal number, an empty string, a non digit
+/// and an overflow are rejected.  A leading zero is accepted (`0100` is 100),
+/// nginx does not reject it either.
 pub fn atoi(text: &[u8]) -> Option<i64> {
     if text.is_empty() {
-        return None;
-    }
-    if text[0] == b'0' && text.len() > 1 {
         return None;
     }
     let mut value: i64 = 0;
@@ -215,6 +213,11 @@ fn parse_ipv4_addr(text: &[u8]) -> Option<[u8; 4]> {
     for byte in addr.iter_mut() {
         let part = parts.next()?;
         if part.is_empty() || part.len() > 3 {
+            return None;
+        }
+        // `inet_pton()`, which the C implementation used, does not accept a
+        // leading zero: "010.1.1.1" is not 10.1.1.1 there either.
+        if part.len() > 1 && part[0] == b'0' {
             return None;
         }
         let mut value: u32 = 0;
@@ -499,8 +502,22 @@ mod tests {
         assert_eq!(parse_time(b"s"), Some(1));
         assert_eq!(parse_time(b"1"), None);
         assert_eq!(parse_time(b"1b"), None);
-        assert_eq!(parse_time(b"01s"), None);
+        // `ngx_atoi()` accepts a leading zero, so "01s" is one second.
+        assert_eq!(parse_time(b"01s"), Some(1));
+        assert_eq!(parse_time(b"010m"), Some(600));
         assert_eq!(parse_time(b"-1r"), None);
+    }
+
+    #[test]
+    fn nginx_atoi() {
+        assert_eq!(atoi(b"0"), Some(0));
+        assert_eq!(atoi(b"7"), Some(7));
+        assert_eq!(atoi(b"007"), Some(7));
+        assert_eq!(atoi(b"0100"), Some(100));
+        assert_eq!(atoi(b""), None);
+        assert_eq!(atoi(b"1a"), None);
+        assert_eq!(atoi(b"-1"), None);
+        assert_eq!(atoi(b"9999999999999999999999"), None);
     }
 
     #[test]
@@ -510,12 +527,15 @@ mod tests {
         assert_eq!(parse_size(b"10g"), Some(10 * 1024 * 1024 * 1024));
         assert_eq!(parse_size(b"10"), None);
         assert_eq!(parse_size(b"10z"), None);
+        // `ngx_http_waf_parse_size()` used `ngx_atoi()` as well.
+        assert_eq!(parse_size(b"010k"), Some(10240));
     }
 
     #[test]
     fn nginx_size_parsing() {
         // `ngx_parse_size()`: bare bytes and both cases of the units.
         assert_eq!(parse_ngx_size(b"10485760"), Some(10485760));
+        assert_eq!(parse_ngx_size(b"010485760"), Some(10485760));
         assert_eq!(parse_ngx_size(b"10k"), Some(10240));
         assert_eq!(parse_ngx_size(b"10K"), Some(10240));
         assert_eq!(parse_ngx_size(b"10m"), Some(10 * 1024 * 1024));
@@ -546,6 +566,15 @@ mod tests {
         assert_eq!(parse_ipv4(b"1.1.1.1/33"), None);
         assert_eq!(parse_ipv4(b"256.1.1.1"), None);
         assert_eq!(parse_ipv4(b"1.1.1.1/"), None);
+        // `inet_pton()`, like the C implementation: no leading zeros.
+        assert_eq!(parse_ipv4(b"010.1.1.1"), None);
+        assert_eq!(
+            parse_ipv4(b"0.0.0.0"),
+            Some(Cidr {
+                addr: [0u8; 16],
+                depth: 32
+            })
+        );
     }
 
     #[test]

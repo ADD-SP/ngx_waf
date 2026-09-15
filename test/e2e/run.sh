@@ -270,6 +270,14 @@ sleep 0.5
 check 200 "cc second request after the reload" -H "$reload_ip" "$cc_base/"
 check 503 "cc denial survives the reload"      -H "$reload_ip" "$cc_base/"
 
+# `rate=02r/m` and `duration=01h`: nginx' `ngx_atoi()` (and therefore the C
+# implementation) accepts the leading zeros, the limit is two requests.
+padding_base="http://127.0.0.1:18095"
+padding_headers='X-Real-IP: 9.9.9.31'
+check 200 "cc rate with a leading zero, 1st"   -H "$padding_headers" "$padding_base/"
+check 200 "cc rate with a leading zero, 2nd"   -H "$padding_headers" "$padding_base/"
+check 503 "cc rate with a leading zero, 3rd"   -H "$padding_headers" "$padding_base/"
+
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
     -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
