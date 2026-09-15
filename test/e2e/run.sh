@@ -16,10 +16,16 @@ port=18080
 # The provider stub that accepts a connection and never answers.
 hang_port=18092
 hang_pid=""
+# The provider stub that answers with a chunked body.
+chunked_port=18094
+chunked_pid=""
 
 cleanup() {
     if [ -n "$hang_pid" ]; then
         kill "$hang_pid" 2>/dev/null || true
+    fi
+    if [ -n "$chunked_pid" ]; then
+        kill "$chunked_pid" 2>/dev/null || true
     fi
     if [ -f "$prefix/logs/nginx.pid" ]; then
         kill "$(cat "$prefix/logs/nginx.pid")" 2>/dev/null || true
@@ -126,6 +132,38 @@ while True:
     threading.Thread(target=hold, args=(connection,), daemon=True).start()
 PY
     hang_pid=$!
+fi
+
+# A provider that answers with a chunked body, like a HTTP/1.1 back end in
+# front of the provider would: the module has to decode the framing (the C
+# implementation left that to curl).
+if command -v python3 > /dev/null 2>&1; then
+    python3 - "$chunked_port" <<'PY' &
+import socket
+import sys
+
+body = b'{"success":true,"score":0.9}'
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("127.0.0.1", int(sys.argv[1])))
+server.listen(16)
+
+while True:
+    connection, _ = server.accept()
+    request = b""
+    while b"\r\n\r\n" not in request:
+        chunk = connection.recv(4096)
+        if not chunk:
+            break
+        request += chunk
+
+    connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n")
+    connection.sendall(b"Transfer-Encoding: chunked\r\n\r\n")
+    connection.sendall(b"%x\r\n%s\r\n" % (len(body), body))
+    connection.sendall(b"0\r\n\r\n")
+    connection.close()
+PY
+    chunked_pid=$!
 fi
 
 "$nginx_bin" -p "$prefix" -c conf/nginx.conf -t > /dev/null || exit 1
@@ -442,6 +480,10 @@ check 403 "mode without the GET bit keeps the address list" \
     -H 'X-Real-IP: 1.1.1.1' "http://127.0.0.1:18102/"
 check 404 "mode without the GET bit skips the URL list" \
     -H 'X-Real-IP: 9.9.9.60' "http://127.0.0.1:18102/www.bak"
+
+# The provider answers with a chunked body: the module has to decode it.
+check_body 200 'good' "captcha accepts a chunked provider answer" \
+    -X POST -d 'g-recaptcha-response=token' "http://127.0.0.1:18103/captcha"
 
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \

@@ -13,12 +13,9 @@ if [ -z "$MODULE_TEST_PATH" ]; then
     export MODULE_TEST_PATH
 fi
 
-if [ -z "$MODULE_PATH" ]; then
-    MODULE_PATH="$here/../nginx-1.27.2/objs/ngx_http_waf_module.so"
-fi
-if [ ! -f "$MODULE_PATH" ]; then
-    MODULE_PATH=""
-fi
+# `MODULE_PATH` is only used when the caller set it: a tree that built the
+# dynamic module as well still has a static nginx next to the `.so`, and nginx
+# refuses to load a module it was linked with.
 # start.sh runs as a child process, so it only sees the variable when it is
 # exported.
 export MODULE_PATH

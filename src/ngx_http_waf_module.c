@@ -327,6 +327,12 @@ static ngx_int_t ngx_http_waf_get_peer(ngx_peer_connection_t* pc, void* data);
 static void ngx_http_waf_fetch_noop(ngx_event_t* ev);
 
 
+static ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end);
+
+
+static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* out_len);
+
+
 static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
     ngx_str_t value);
 
@@ -795,6 +801,111 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
 }
 
 
+/**
+ * Whether the headers of the answer announce a chunked body.  The request is
+ * HTTP/1.0, so a compliant provider does not use it, but curl did decode it for
+ * the C implementation and a provider in front of a HTTP/1.1 back end may still
+ * send it.
+ */
+static ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end) {
+    u_char* p;
+
+    for (p = headers; p + 17 <= end; p++) {
+        if (ngx_strncasecmp(p, (u_char*) "transfer-encoding", 17) != 0) {
+            continue;
+        }
+
+        p += 17;
+
+        while (p < end && (*p == ' ' || *p == '\t' || *p == ':')) {
+            p++;
+        }
+
+        if (p + 7 <= end && ngx_strncasecmp(p, (u_char*) "chunked", 7) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+/**
+ * Remove the chunked framing of `body` in place: the size line (its extensions
+ * included), the CRLF that ends every chunk, and the last chunk with its
+ * trailers.  Returns 0 when the framing is not one we can read, the caller
+ * answers the failure of the provider request then.
+ */
+static ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* out_len) {
+    u_char* read = body;
+    u_char* write = body;
+
+    for ( ;; ) {
+        size_t size = 0;
+        ngx_uint_t digits = 0;
+
+        while (read < end && *read != '\r' && *read != '\n' && *read != ';') {
+            size_t digit;
+
+            if (*read >= '0' && *read <= '9') {
+                digit = *read - '0';
+
+            } else if (*read >= 'a' && *read <= 'f') {
+                digit = *read - 'a' + 10;
+
+            } else if (*read >= 'A' && *read <= 'F') {
+                digit = *read - 'A' + 10;
+
+            } else {
+                return 0;
+            }
+
+            if (size > (NGX_MAX_SIZE_T_VALUE >> 4)) {
+                return 0;
+            }
+
+            size = (size << 4) + digit;
+            digits++;
+            read++;
+        }
+
+        if (digits == 0) {
+            return 0;
+        }
+
+        /* skip the rest of the size line and its CRLF */
+        while (read < end && *read != '\n') {
+            read++;
+        }
+
+        if (read >= end) {
+            return 0;
+        }
+        read++;
+
+        if (size == 0) {
+            *out_len = (size_t) (write - body);
+            return 1;
+        }
+
+        if ((size_t) (end - read) < size + 2) {
+            return 0;
+        }
+
+        if (write != read) {
+            ngx_memmove(write, read, size);
+        }
+        write += size;
+        read += size;
+
+        if (read[0] != '\r' || read[1] != '\n') {
+            return 0;
+        }
+        read += 2;
+    }
+}
+
+
 static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
     ngx_connection_t* c = rev->data;
     ngx_http_request_t* r = c->data;
@@ -849,6 +960,21 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
                 ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
                 return;
             }
+
+            if (ngx_http_waf_fetch_is_chunked(b->pos, p)) {
+                size_t len;
+
+                p += 4;
+
+                if (!ngx_http_waf_fetch_dechunk(p, last, &len)) {
+                    ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                    return;
+                }
+
+                ngx_http_waf_fetch_finish(r, status, p, len, 0);
+                return;
+            }
+
             p += 4;
 
             ngx_http_waf_fetch_finish(r, status, p, last - p, 0);
