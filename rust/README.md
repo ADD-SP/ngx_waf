@@ -89,8 +89,8 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
 * The CC counters live in a growable tag directory and a table that evicts a
   rotating victim when it is full, so a zone with many tags or a flood from many
   addresses keeps counting instead of losing protection.
-* `waf_zone size=` accepts everything `ngx_parse_size()` accepts (a bare byte
-  count, `k`/`K`, `m`/`M`).
+* `waf_zone size=` follows `ngx_parse_size()` (a bare byte count, `k`/`K`,
+  `m`/`M`), the same syntax the C implementation accepted.
 * `waf_cc_deny on rate=... duration=0` is rejected while the C implementation
   accepted it (and then never really blocked: the counting window of the next
   request started over).  Every other value `ngx_http_waf_parse_time()`
@@ -127,10 +127,11 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
 * `Retry-After` carries the real number of seconds left of the block; the C
   implementation reports `duration - now` because it never records the time the
   block started.
-* A few C quirks are preserved on purpose, e.g. the 500 action of a CC check
-  that cannot find its zone is discarded by the "a check that did not match
-  resets the action chain" rule, and a tag is always the user supplied text with
-  a suffix (`zone=test:cc` gives the tag `cccc_deny`).
+* A few C quirks are preserved on purpose, e.g. the `on`/`off` (and `strict`)
+  head of a directive is matched by prefix, a `waf_cc_deny o` is `on`, the way
+  `ngx_strncmp()` with `ngx_min()` did it (the names of `waf_mode` stay exact,
+  only their case is ignored), and a tag is always the user supplied text with a
+  suffix (`zone=test:cc` gives the tag `cccc_deny`).
 * ModSecurity: the C implementation installed nginx header/body filters and ran
   the response phases of the library (and the rules of CRS phase 3/4) with them.
   This port only runs the request phases — connection, URI, request headers and

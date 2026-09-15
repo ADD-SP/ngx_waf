@@ -1481,6 +1481,20 @@ mod tests {
         assert!(dir(&mut conf, "waf", &["bad"]).is_err());
     }
 
+    /// The `on`/`off` head is compared with `ngx_strncmp()` and `ngx_min()`,
+    /// i.e. a prefix of the keyword is enough; `waf` itself is exact.
+    #[test]
+    fn the_on_off_head_is_a_prefix() {
+        let mut conf = LocConf::default();
+        dir(&mut conf, "waf_cc_deny", &["o", "rate=1r/m"]).unwrap();
+        assert_eq!(conf.cc_deny, 1);
+        dir(&mut conf, "waf_cc_deny", &["offx"]).unwrap();
+        assert_eq!(conf.cc_deny, 0);
+
+        let mut conf = LocConf::default();
+        assert!(dir(&mut conf, "waf", &["o"]).is_err());
+    }
+
     #[test]
     fn mode_flags() {
         let mut conf = LocConf::default();
