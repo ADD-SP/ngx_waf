@@ -111,10 +111,6 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   addresses keeps counting instead of losing protection.
 * `waf_zone size=` follows `ngx_parse_size()` (a bare byte count, `k`/`K`,
   `m`/`M`), the same syntax the C implementation accepted.
-* `waf_cc_deny on rate=... duration=0` is rejected while the C implementation
-  accepted it (and then never really blocked: the counting window of the next
-  request started over).  Every other value `ngx_http_waf_parse_time()`
-  accepted is accepted here too.
 * `waf_captcha ... score=` has to be a number: the C implementation ran
   `atof()` over it, a non numeric value silently became `0.0`.  The value is not
   range checked, like in the C implementation whose check
