@@ -132,9 +132,12 @@ pub fn parse_ipv4(text: &[u8]) -> Option<Cidr> {
                 seen = true;
             }
             if !seen {
-                return None;
+                // `ngx_http_waf_parse_ipv4()` used `UINT32_MAX` as "no suffix
+                // was given" and turned it into /32.
+                32
+            } else {
+                depth
             }
-            depth
         }
     };
     if depth > 32 {
@@ -152,9 +155,8 @@ pub fn parse_ipv4(text: &[u8]) -> Option<Cidr> {
 
 /// Parse an IPv6 address or CIDR block.
 ///
-/// Mirrors `ngx_http_waf_parse_ipv6()`.  Unlike the IPv4 version the C code
-/// accepts an empty suffix (`::1/` is treated as `::1/64`), which is kept for
-/// compatibility.
+/// Mirrors `ngx_http_waf_parse_ipv6()`, including its empty suffix (`::1/` is
+/// `::1/128`, the C code used `UINT32_MAX` to mean "no suffix was given").
 pub fn parse_ipv6(text: &[u8]) -> Option<Cidr> {
     let slash = text.iter().position(|&c| c == b'/');
     let prefix_text = match slash {
@@ -176,9 +178,11 @@ pub fn parse_ipv6(text: &[u8]) -> Option<Cidr> {
                 seen = true;
             }
             if !seen {
-                return None;
+                // See the IPv4 version: an empty suffix is the full length.
+                128
+            } else {
+                depth
             }
-            depth
         }
     };
     if depth > 128 {
@@ -565,7 +569,9 @@ mod tests {
         assert_eq!(parse_ipv4(b"1.1.1/24"), None);
         assert_eq!(parse_ipv4(b"1.1.1.1/33"), None);
         assert_eq!(parse_ipv4(b"256.1.1.1"), None);
-        assert_eq!(parse_ipv4(b"1.1.1.1/"), None);
+        // An empty suffix is the full length, like `UINT32_MAX` in the C code.
+        assert_eq!(parse_ipv4(b"1.1.1.1/").unwrap().depth, 32);
+        assert_eq!(parse_ipv4(b"1.1.1.1/x"), None);
         // `inet_pton()`, like the C implementation: no leading zeros.
         assert_eq!(parse_ipv4(b"010.1.1.1"), None);
         assert_eq!(
@@ -598,6 +604,7 @@ mod tests {
         assert_eq!(parse_ipv6(b"1.1.1.1"), None);
         assert_eq!(parse_ipv6(b"gggg::"), None);
         assert_eq!(parse_ipv6(b"::/129"), None);
+        assert_eq!(parse_ipv6(b"AAAA::/").unwrap().depth, 128);
     }
 
     #[test]

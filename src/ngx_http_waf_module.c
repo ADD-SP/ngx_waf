@@ -22,7 +22,10 @@
  * @brief The shared memory zones declared with `waf_zone`.
  *
  * The order is the order of the directives, which is also the order the Rust
- * core stores them in, so the index of a zone is the same on both sides.
+ * core stores them in, so the index of a zone is the same on both sides.  The
+ * array only holds pointers: a `waf_zone` may reallocate it after the shared
+ * memory zone was handed the entry, and a stale copy would lose the handle the
+ * init callback writes.
  */
 typedef struct {
     ngx_str_t      name;
@@ -1376,6 +1379,7 @@ static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     size_t name_len = 0;
     size_t size = 0;
     ngx_http_waf_zone_t* zone = NULL;
+    ngx_http_waf_zone_t** slot = NULL;
 
     char* error = ngx_waf_zone_directive(
         mcf->core,
@@ -1389,7 +1393,13 @@ static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
         return ngx_http_waf_report(cf, error);
     }
 
-    zone = ngx_array_push(mcf->zones);
+    /*
+     * The zone entry lives in the pool and only its pointer goes into the
+     * array: the array is grown by a later `waf_zone` (it starts with room for
+     * four), and the shared memory zone keeps the entry it was handed, so a
+     * reallocated array would leave every reader with a stale copy.
+     */
+    zone = ngx_pcalloc(cf->pool, sizeof(ngx_http_waf_zone_t));
     if (zone == NULL) {
         return ngx_http_waf_report(cf, NULL);
     }
@@ -1403,6 +1413,12 @@ static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
     zone->size = size;
     zone->handle = NULL;
     zone->zone = NULL;
+
+    slot = ngx_array_push(mcf->zones);
+    if (slot == NULL) {
+        return ngx_http_waf_report(cf, NULL);
+    }
+    *slot = zone;
 
     zone->zone = ngx_shared_memory_add(cf, &zone->name, size, &ngx_http_waf_module);
     if (zone->zone == NULL) {
@@ -1760,7 +1776,7 @@ static void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, void* core,
         return NULL;
     }
 
-    return ((ngx_http_waf_zone_t *) mcf->zones->elts)[index].handle;
+    return ((ngx_http_waf_zone_t **) mcf->zones->elts)[index]->handle;
 }
 
 
@@ -2257,8 +2273,8 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     if (cc_index >= 0 && mcf != NULL && mcf->zones != NULL
         && (ngx_uint_t) cc_index < mcf->zones->nelts)
     {
-        ngx_http_waf_zone_t* zones = mcf->zones->elts;
-        cc_zone = zones[cc_index].handle;
+        ngx_http_waf_zone_t** zones = mcf->zones->elts;
+        cc_zone = zones[cc_index]->handle;
     }
 
     step = ngx_waf_check_begin(
@@ -2589,12 +2605,12 @@ static ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
         ngx_waf_gc(conf->core);
 
         if (mcf != NULL && mcf->zones != NULL) {
-            ngx_http_waf_zone_t* zones = mcf->zones->elts;
+            ngx_http_waf_zone_t** zones = mcf->zones->elts;
             ngx_uint_t i;
 
             for (i = 0; i < mcf->zones->nelts; i++) {
-                if (zones[i].handle != NULL) {
-                    ngx_waf_shm_zone_gc(zones[i].handle);
+                if (zones[i]->handle != NULL) {
+                    ngx_waf_shm_zone_gc(zones[i]->handle);
                 }
             }
         }

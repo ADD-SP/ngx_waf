@@ -374,6 +374,32 @@ mod tests {
         );
     }
 
+    /// An empty CIDR suffix is the full length, the C parser accepted
+    /// `AAAA::/` (and `1.1.1.1/`) as `/128` (and `/32`).
+    #[test]
+    fn an_empty_cidr_suffix_is_the_full_length() {
+        let dir = temp_dir("empty_suffix");
+        for (file, _) in RULE_FILES {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        std::fs::write(dir.join("ipv4"), b"1.2.3.4/\n").unwrap();
+        std::fs::write(dir.join("ipv6"), b"AAAA::/\n").unwrap();
+        let path = format!("{}/", dir.display());
+
+        let rules = load_all(path.as_bytes()).unwrap().rules;
+        assert_eq!(
+            rules.ip_match(&[1, 2, 3, 4], RuleKind::Ipv4Black),
+            Some(&b"1.2.3.4/"[..])
+        );
+        let mut ipv6 = [0u8; 16];
+        ipv6[0] = 0xaa;
+        ipv6[1] = 0xaa;
+        assert_eq!(
+            rules.ip_match(&ipv6, RuleKind::Ipv6Black),
+            Some(&b"AAAA::/"[..])
+        );
+    }
+
     #[test]
     fn crlf_and_blank_lines() {
         let dir = temp_dir("crlf");
