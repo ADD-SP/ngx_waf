@@ -209,6 +209,11 @@ check 404 "white url"                        "$base/white/www.bak"
 check 403 "black cookie"                     -H 'Cookie: s=../' "$base/"
 check 403 "black post body"                  -d 'onload=' "$base/"
 check 405 "harmless post body"               -d 's=test' "$base/"
+# A chunked body has no Content-Length: nginx decodes it, the module still has
+# to see it (and the body above the buffer threshold lands in a temp file).
+check 403 "black chunked post body" \
+    -H 'Transfer-Encoding: chunked' -d 'onload=' "$base/"
+check 403 "black url with HEAD"              -I "$base/www.bak"
 # Long values are inspected as they are, nothing is truncated on the way to the
 # checks (the caches of the C implementation were keyed on the whole value).
 long_ua=$(head -c 4096 /dev/zero | tr '\0' a)

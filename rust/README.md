@@ -138,11 +138,12 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   request body — so a rule that reacts to a response does not fire.  The
   transaction is created when the inspection runs, kept in the request machine
   and released with the request pool.
-* ModSecurity: the port calls `msc_process_logging()` in the log phase, so the
-  audit log the library configures (`SecAuditLog`) is written; the C
-  implementation leaked the transaction and never wrote it.  The transaction id
-  of `waf_modsecurity_transaction_id` is passed the same way, including when the
-  value it evaluates to is empty.
+* ModSecurity: `msc_process_logging()` runs in the log phase like the C
+  implementation did (that is where the audit log of `SecAuditLog` is written);
+  the transaction of a request is released with the request pool, the C released
+  it right after the audit log.  The transaction id of
+  `waf_modsecurity_transaction_id` is evaluated once per request and passed the
+  same way, including when the value is empty.
 * A request body above `client_body_buffer_size` is written to a temporary file
   by nginx; the module reads it back so the POST list and ModSecurity still see
   it.  The C implementation gave up on those requests (`_read_request_body()`
