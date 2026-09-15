@@ -60,14 +60,20 @@ else
 fi
 
 # Every check runs against one worker by default; `E2E_WORKERS=4` makes the
-# counters and the action table of the shared memory matter.
+# counters and the action table of the shared memory matter.  `@PREFIX@` is
+# substituted so that the configuration can point at the files of this run.
 workers=${E2E_WORKERS:-1}
-sed "s/^worker_processes .*/worker_processes  $workers;/" \
+sed -e "s/^worker_processes .*/worker_processes  $workers;/" \
+    -e "s|@PREFIX@|$prefix|g" \
     "$prefix/conf/nginx.conf" > "$prefix/conf/nginx.conf.tmp"
 mv "$prefix/conf/nginx.conf.tmp" "$prefix/conf/nginx.conf"
 
 printf 'backend\n' > "$prefix/html/index.html"
 printf 'static error page\n' > "$prefix/html/403.html"
+# The ModSecurity rules of the `waf_priority` servers: one rule in phase 2,
+# enough to compare the two orderings (no CRS needed).
+printf 'SecRuleEngine On\nSecRule ARGS:test "@streq deny" "id:1,phase:2,deny,status:403,log"\n' \
+    > "$prefix/modsec.conf"
 
 # A provider that accepts the connection and never answers: the module has to
 # give up on its own timeout.  Without python3 the case is skipped.
@@ -335,6 +341,15 @@ check_body 404 '\[3\]\[\]' "cc counter on its zone survives the reload" \
     -H 'X-Real-IP: 9.9.9.40' "$multi/rate"
 check_body 200 'bad' "captcha action entry survives the reload" \
     -H 'X-Real-IP: 9.9.9.43' -X POST -d 'x=1' "$multi/captcha"
+
+# `waf_priority` decides which inspection answers first: both servers have the
+# ModSecurity rule below and use a blacklisted address, only the order differs.
+priority_base="http://127.0.0.1:18097"
+default_base="http://127.0.0.1:18098"
+check 400 "waf_priority runs ModSecurity before the address list" \
+    -H 'X-Real-IP: 1.1.1.1' "$priority_base/?test=deny"
+check 403 "the default order keeps the address list first" \
+    -H 'X-Real-IP: 1.1.1.1' "$default_base/?test=deny"
 
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
