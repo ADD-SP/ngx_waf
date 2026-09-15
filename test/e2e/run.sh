@@ -324,6 +324,18 @@ else
         "captcha fail counter on its own zone" "$attempt" "$status"
 fi
 
+# A reload reuses the segment of every zone and rebuilds its handle: the CC
+# counter of `ngx_waf_z2` continues where it was, and the action table of
+# `ngx_waf_z3` still knows the visitor it challenged.
+check 403 "captcha action entry before the reload" \
+    -H 'X-Real-IP: 9.9.9.43' "$multi/www.bak"
+"$nginx_bin" -p "$prefix" -c conf/nginx.conf -s reload
+sleep 0.5
+check_body 404 '\[3\]\[\]' "cc counter on its zone survives the reload" \
+    -H 'X-Real-IP: 9.9.9.40' "$multi/rate"
+check_body 200 'bad' "captcha action entry survives the reload" \
+    -H 'X-Real-IP: 9.9.9.43' -X POST -d 'x=1' "$multi/captcha"
+
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
     -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
