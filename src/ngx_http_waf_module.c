@@ -1572,7 +1572,8 @@ static void *ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
         return NULL;
     }
 
-    mcf->zones = ngx_array_create(cf->pool, 4, sizeof(ngx_http_waf_zone_t));
+    /* the array holds pointers, the entries themselves live in the pool */
+    mcf->zones = ngx_array_create(cf->pool, 4, sizeof(ngx_http_waf_zone_t *));
     if (mcf->zones == NULL) {
         return NULL;
     }

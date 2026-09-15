@@ -283,6 +283,47 @@ check 200 "cc rate with a leading zero, 1st"   -H "$padding_headers" "$padding_b
 check 200 "cc rate with a leading zero, 2nd"   -H "$padding_headers" "$padding_base/"
 check 503 "cc rate with a leading zero, 3rd"   -H "$padding_headers" "$padding_base/"
 
+# Three shared memory consumers on three different zones of one server.
+multi="http://127.0.0.1:18096"
+check 200 "cc on its own zone allows the first request" \
+    -H 'X-Real-IP: 9.9.9.40' "$multi/"
+# `$waf_rate` is the counter of the zone the CC directive named.
+check_body 404 '\[2\]\[\]' "cc on its own zone counts the second" \
+    -H 'X-Real-IP: 9.9.9.40' "$multi/rate"
+check 403 "captcha action table on its own zone challenges" \
+    -H 'X-Real-IP: 9.9.9.41' "$multi/www.bak"
+check_body 200 'good' "captcha action table on its own zone passes" \
+    -H 'X-Real-IP: 9.9.9.41' -X POST -d 'g-recaptcha-response=token' \
+    "$multi/captcha"
+
+# The fail counter of that server lives in a fourth zone: `max_fails=1:1m`
+# means twenty failures are allowed (`max(max_fails, 20)`), the 21st blocks.
+# Counting needs a visitor the action table challenges, so it is blacklisted
+# first, and every following request to the verification URL has no token.
+check 403 "captcha fail counter visitor is challenged" \
+    -H 'X-Real-IP: 9.9.9.42' "$multi/www.bak"
+fail_zone_ok=1
+attempt=0
+while [ "$attempt" -lt 21 ]; do
+    attempt=$((attempt + 1))
+    status=$(curl -s -o /dev/null --max-time 5 -w '%{http_code}' \
+        -H 'X-Real-IP: 9.9.9.42' -X POST -d 'x=1' "$multi/captcha")
+    if [ "$attempt" -le 20 ] && [ "$status" != 200 ]; then
+        fail_zone_ok=0
+    fi
+    if [ "$attempt" -eq 21 ] && [ "$status" != 429 ]; then
+        fail_zone_ok=0
+    fi
+done
+if [ "$fail_zone_ok" = 1 ]; then
+    pass=$((pass + 1))
+    printf 'ok   %-52s %s\n' "captcha fail counter on its own zone" "429 after 20"
+else
+    fail=$((fail + 1))
+    printf 'FAIL %-52s (attempt %s was %s)\n' \
+        "captcha fail counter on its own zone" "$attempt" "$status"
+fi
+
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
     -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
