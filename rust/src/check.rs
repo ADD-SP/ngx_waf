@@ -639,6 +639,12 @@ impl Machine {
         self.req.captcha_zone = zone;
     }
 
+    /// Let a test inject the shared memory handle of the captcha action table.
+    #[cfg(test)]
+    pub fn set_action_zone(&mut self, zone: *mut cc::ZoneHandle) {
+        self.req.action_zone = zone;
+    }
+
     /// The HTTP request of a parked step, `(url, body)`.
     pub fn fetch(&self) -> Option<(&str, &[u8])> {
         self.fetch
@@ -1230,26 +1236,32 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
 
     match verdict {
         CaptchaVerdict::Pass => {
-            state.set_rule_info(b"CAPTCHA", b"PASS", true, true);
-            let minted = captcha_mint(state);
-            *state.decision = Some(match minted {
-                Some((time, uid, hmac)) => {
-                    let mut decision = Decision::text(HTTP_OK, Rc::new(b"good".to_vec()));
-                    decision.cookies = vec![
-                        ("__waf_captcha_time".to_string(), time),
-                        ("__waf_captcha_uid".to_string(), uid),
-                        ("__waf_captcha_hmac".to_string(), hmac),
-                    ];
-                    decision
-                }
-                None => Decision::status(HTTP_INTERNAL_SERVER_ERROR),
-            });
+            // Only the captcha inspection mints the cookie trio, reports the
+            // rule info and can fail on the way: the session flow of a
+            // `waf_action X=CAPTCHA` challenge answered the plain "good" of its
+            // action chain (the action carried `ACTION_FLAG_NONE`) and only
+            // dropped the address from the action table.
             if path == CaptchaPath::Session {
                 let zone = state.req.action_zone;
                 if !zone.is_null() && !state.conf.action_captcha_tag.is_empty() {
                     let tag = state.conf.action_captcha_tag.clone();
                     cc::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
                 }
+                *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"good".to_vec())));
+            } else {
+                state.set_rule_info(b"CAPTCHA", b"PASS", true, true);
+                *state.decision = Some(match captcha_mint(state) {
+                    Some((time, uid, hmac)) => {
+                        let mut decision = Decision::text(HTTP_OK, Rc::new(b"good".to_vec()));
+                        decision.cookies = vec![
+                            ("__waf_captcha_time".to_string(), time),
+                            ("__waf_captcha_uid".to_string(), uid),
+                            ("__waf_captcha_hmac".to_string(), hmac),
+                        ];
+                        decision
+                    }
+                    None => Decision::status(HTTP_INTERNAL_SERVER_ERROR),
+                });
             }
         }
         CaptchaVerdict::Bad => {
@@ -1376,55 +1388,76 @@ fn cookie_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
     util::sha256_hex(&buffer)
 }
 
-/// The value of one cookie, the cookies the C glue hands over are the header
+/// The value of one cookie, the port of `ngx_http_parse_multi_header_lines()`
+/// of nginx which the C implementation used: the name is compared case
+/// insensitively at the start of a header value or right after a `;` or `,`
+/// separator, spaces are allowed around the `=`, and the value ends at the
+/// next `;`.  The glue hands one string per cookie header over, the header
 /// values prefixed with the header name (`Cookie=a=1; b=2`).
 fn cookie_value<'a>(cookies: &'a [Vec<u8>], name: &str) -> Option<&'a [u8]> {
+    let name = name.as_bytes();
+
     for cookie in cookies {
         let value = match cookie.iter().position(|&byte| byte == b'=') {
             Some(index) => &cookie[index + 1..],
             None => continue,
         };
-        for pair in value.split(|&byte| byte == b';') {
-            let pair = trim(pair);
-            if let Some(index) = pair.iter().position(|&byte| byte == b'=') {
-                if pair[..index] == *name.as_bytes() {
-                    return Some(trim(&pair[index + 1..]));
+
+        let mut start = 0;
+        while start < value.len() {
+            if value.len() - start >= name.len()
+                && value[start..start + name.len()].eq_ignore_ascii_case(name)
+            {
+                let mut cursor = start + name.len();
+                while cursor < value.len() && value[cursor] == b' ' {
+                    cursor += 1;
                 }
+                if cursor < value.len() && value[cursor] == b'=' {
+                    cursor += 1;
+                    while cursor < value.len() && value[cursor] == b' ' {
+                        cursor += 1;
+                    }
+                    let end = value[cursor..]
+                        .iter()
+                        .position(|&byte| byte == b';')
+                        .map(|offset| cursor + offset)
+                        .unwrap_or(value.len());
+                    return Some(&value[cursor..end]);
+                }
+                start = cursor;
+            }
+
+            // The next candidate starts after the next separator, a comma was
+            // one as well.
+            while start < value.len() {
+                let byte = value[start];
+                start += 1;
+                if byte == b';' || byte == b',' {
+                    break;
+                }
+            }
+            while start < value.len() && value[start] == b' ' {
+                start += 1;
             }
         }
     }
     None
 }
 
-fn trim(mut value: &[u8]) -> &[u8] {
-    while let Some((first, rest)) = value.split_first() {
-        if first.is_ascii_whitespace() {
-            value = rest;
-        } else {
-            break;
-        }
-    }
-    while let Some((last, rest)) = value.split_last() {
-        if last.is_ascii_whitespace() {
-            value = rest;
-        } else {
-            break;
-        }
-    }
-    value
-}
-
 /// The value of one `application/x-www-form-urlencoded` field.  The C
-/// implementation splits on `&` and `=` without decoding anything.
+/// implementation splits on `&` and `=` without decoding anything and keeps
+/// the fields of the body in a hash table: a name that appears twice is
+/// answered with the last field, the one its lookup finds first.
 fn form_value<'a>(body: &'a [u8], key: &str) -> Option<&'a [u8]> {
+    let mut found = None;
     for field in body.split(|&byte| byte == b'&') {
         let mut parts = field.split(|&byte| byte == b'=');
         let name = parts.next().unwrap_or(&[]);
         if name == key.as_bytes() {
-            return Some(parts.next().unwrap_or(&[]));
+            found = Some(parts.next().unwrap_or(&[]));
         }
     }
-    None
+    found
 }
 
 /// Decide whether the provider accepted the token.
@@ -2741,6 +2774,127 @@ mod tests {
         };
         assert_eq!(outcome.status, HTTP_OK);
         assert_eq!(outcome.body, b"good");
+    }
+
+    /// A form body whose token field appears twice is sent with the last one:
+    /// the lookup of the C implementation answers with the entry it added
+    /// last.
+    #[test]
+    fn captcha_posts_the_last_token_of_the_form() {
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        let body = b"g-recaptcha-response=first&g-recaptcha-response=second";
+        let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let (_, fetch_body) = machine.fetch().expect("the provider request");
+        assert_eq!(fetch_body, b"response=second&secret=secret");
+    }
+
+    /// The cookie names are matched the way `ngx_http_parse_multi_header_lines()`
+    /// of nginx matched them: case insensitively, at the start of a header
+    /// value or after a `;` or `,` separator, with spaces allowed around the
+    /// `=`.
+    #[test]
+    fn captcha_cookie_names_are_matched_like_nginx() {
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        let mut machine = captcha_machine(
+            &mut conf,
+            M_INSPECT_POST,
+            b"/captcha",
+            b"g-recaptcha-response=t",
+            Vec::new(),
+        );
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let outcome = match machine.resume(Event::HttpResponse {
+            status: 200,
+            body: br#"{"success":true}"#,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("decided"),
+        };
+        let value = |name: &str| {
+            outcome
+                .cookies
+                .iter()
+                .find(|(cookie, _)| cookie == name)
+                .expect("the trio")
+                .1
+                .clone()
+        };
+
+        let cookies = vec![
+            format!(
+                "Cookie=a=1, __WAF_CAPTCHA_TIME = {}",
+                value("__waf_captcha_time")
+            )
+            .into_bytes(),
+            format!("Cookie=__WAF_CAPTCHA_UID={}; x", value("__waf_captcha_uid")).into_bytes(),
+            format!("Cookie=__waf_captcha_hmac={}", value("__waf_captcha_hmac")).into_bytes(),
+        ];
+
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", cookies);
+        match machine.step() {
+            Step::Decision(outcome) => {
+                assert_eq!(outcome.kind, STEP_ALLOW);
+                assert!(!outcome.blocked);
+            }
+            other => panic!(
+                "a valid cookie decides the request: {:?}",
+                matches!(other, Step::Pending(_))
+            ),
+        }
+    }
+
+    /// The session flow of `waf_action X=CAPTCHA`: the visitor posted a token
+    /// while its address was in the action table.  The C implementation
+    /// answered the "good" of the action chain of the policy (`ACTION_FLAG_NONE`),
+    /// minted no cookies and reported no rule; it only dropped the address.
+    #[test]
+    fn captcha_session_pass_answers_good_without_cookies() {
+        let (zone, _shm) = captcha_counter_zone();
+        let tag = b"anyaction_captcha";
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        conf.action_captcha_tag = tag.to_vec();
+        let ip = [1u8, 2, 3, 4];
+        assert!(cc::action_entry(zone, tag, &ip, false, 999, 600, 1).is_some());
+
+        let body = b"g-recaptcha-response=token";
+        let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        machine.set_action_zone(zone);
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let outcome = match machine.resume(Event::HttpResponse {
+            status: 200,
+            body: br#"{"success":true}"#,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("the provider answer decides the request"),
+        };
+
+        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.body, b"good");
+        assert!(
+            outcome.cookies.is_empty(),
+            "the session flow mints no cookie"
+        );
+        assert!(
+            outcome.rule_type.is_empty(),
+            "the session flow reports no rule"
+        );
+        assert!(!outcome.blocked);
+        // The address left the action table, the next request is inspected
+        // from the beginning instead of being challenged again.
+        assert!(cc::entry_flags(zone, tag, &ip, false).is_none());
+
+        unsafe { cc::zone_free(zone) };
     }
 
     /// A plain allocation the zone callbacks hand out, so the tests do not need
