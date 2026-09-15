@@ -35,7 +35,10 @@ pub struct ShmOps {
 
 const ZONE_MAGIC: u64 = 0x4e47_5857_4146_5a4f; // "NGXWAFZO"
 const TABLE_MAGIC: u64 = 0x4e47_5857_4146_5442; // "NGXWAFTB"
-const VERSION: u32 = 1;
+/// Bumped whenever a structure of the segment changes: the init handler
+/// validates it and rebuilds a table written by another version, so a segment
+/// is never read with the wrong layout.
+const VERSION: u32 = 2;
 /// Tag entries per directory block; the directory grows by adding blocks, so a
 /// zone is not limited to a handful of tags any more.
 const TAGS_PER_BLOCK: usize = 8;
@@ -71,7 +74,6 @@ struct TableHeader {
     capacity: u32,
     /// Rotating victim for the case where the table holds no free slot.
     cursor: u32,
-    used: u64,
     /// `capacity` slots follow the header.
     slots: [Slot; 0],
 }
@@ -179,7 +181,6 @@ impl ZoneHandle {
             (*table).version = VERSION;
             (*table).capacity = capacity as u32;
             (*table).cursor = 0;
-            (*table).used = 0;
 
             let header = &mut *self.header;
 
