@@ -136,33 +136,10 @@ jobs:
           export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
           sh ./init.sh
 
-          # Every template.  modsecurity.t and the ModSecurity cases of
-          # action.t need the ModSecurity/coreruleset repositories, init.sh
-          # clones them (once, into $MODULE_TEST_DEPS).
-          sh ./start.sh \
-            t/DATA_EXPUNGED.t \
-            t/action.t \
-            t/args.t \
-            t/bad_config.t \
-            t/block_page.t \
-            t/bug.t \
-            t/bypass.t \
-            t/cache.t \
-            t/captcha.t \
-            t/cc.t \
-            t/cookie.t \
-            t/disable.t \
-            t/ipv4.t \
-            t/ipv6.t \
-            t/mode.t \
-            t/modsecurity.t \
-            t/post.t \
-            t/referer.t \
-            t/under_attack.t \
-            t/uri.t \
-            t/user_agent.t \
-            t/var.t \
-            t/verify_bot.t
+          # Every template `init.sh` just wrote into t/.  modsecurity.t and
+          # the ModSecurity cases of action.t need the ModSecurity/coreruleset
+          # repositories, init.sh clones them (once, into $MODULE_TEST_DEPS).
+          sh ./start.sh
 
           # The end to end checks of the module itself, with one worker and
           # with four (the counters and the action table live in shared memory
