@@ -1660,8 +1660,9 @@ fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
         _ => unreachable!(),
     };
 
-    // Only the "black" lists are cached by the C implementation, except the
-    // post list which has no cache at all.
+    // The C implementation built a cache for every list this function is
+    // called for (the white lists included); the cookie list has a cache of
+    // its own in `check_cookie()` and the post list has none at all.
     let cached = matches!(
         kind,
         RuleKind::Url
