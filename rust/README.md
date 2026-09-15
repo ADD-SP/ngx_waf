@@ -99,6 +99,13 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
 * A CC protection that cannot count blocks: a storage failure answers 503 and a
   configuration without a zone answers 500, where the C implementation dropped
   its "internal error" action and served the request.
+* A configuration error is one message at level `emerg`.  The C implementation
+  reported an invalid value with `emerg` too (and nginx then appends
+  `(22: Invalid argument)` when the handler passes an errno), failed without
+  any message for some directives, and reported a rule file that cannot be
+  loaded with `error` and a second message (`<file>: Cannot read
+  configuration.`).  What stops the start up, and the primary message, are the
+  same.
 * The CC counters live in a growable tag directory and a table that evicts a
   rotating victim when it is full, so a zone with many tags or a flood from many
   addresses keeps counting instead of losing protection.

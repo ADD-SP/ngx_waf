@@ -227,19 +227,36 @@ fn load_into_container(
     while !rest.is_empty() {
         line_number += 1;
         let take = std::cmp::min(FGETS_LIMIT - 1, rest.len());
-        let mut line = &rest[..take];
-        match line.iter().position(|&c| c == b'\n') {
-            Some(index) => {
-                rest = &rest[index + 1..];
-                line = &line[..index];
-            }
-            None => {
-                rest = &rest[take..];
-            }
+        let chunk = &rest[..take];
+
+        // What one `fgets()` stored: the bytes up to and including the newline,
+        // or the whole buffer when there is none.
+        let newline = chunk.iter().position(|&c| c == b'\n');
+        rest = match newline {
+            Some(index) => &rest[index + 1..],
+            None => &rest[take..],
+        };
+        let mut line = match newline {
+            Some(index) => &chunk[..=index],
+            None => chunk,
+        };
+
+        // `strlen()` of that buffer: the line ends at its first NUL byte, the
+        // bytes after it (the newline included) are dropped.
+        if let Some(index) = line.iter().position(|&c| c == 0) {
+            line = &line[..index];
         }
-        if line.last() == Some(&b'\r') {
+
+        // The newline, and the carriage return in front of it, are the only
+        // bytes the C implementation stripped: a carriage return that ends the
+        // file without a newline stayed part of the rule.
+        if line.last() == Some(&b'\n') {
             line = &line[..line.len() - 1];
+            if line.last() == Some(&b'\r') {
+                line = &line[..line.len() - 1];
+            }
         }
+
         if line.is_empty() {
             continue;
         }
@@ -451,6 +468,38 @@ mod tests {
         assert_eq!(rules.url.len(), 2);
         assert_eq!(rules.url[0].pattern, b"/a");
         assert_eq!(rules.url[1].pattern, b"/b");
+    }
+
+    /// `fgets()` filled the buffer and `strlen()` measured the line, so the C
+    /// implementation stopped a rule at its first NUL byte: the rest of the
+    /// line (up to the newline it had read) was dropped.
+    #[test]
+    fn a_nul_byte_ends_the_line() {
+        let dir = temp_dir("nul_byte");
+        for (file, _) in RULE_FILES {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        std::fs::write(dir.join("url"), b"/ok\0/evil\n/next\n").unwrap();
+        let path = format!("{}/", dir.display());
+        let rules = load_all(path.as_bytes(), None).unwrap().rules;
+        assert_eq!(rules.url.len(), 2);
+        assert_eq!(rules.url[0].pattern, b"/ok");
+        assert_eq!(rules.url[1].pattern, b"/next");
+    }
+
+    /// The carriage return in front of a newline is stripped, a carriage return
+    /// that ends the file is not (`fgets()` never reported a newline for it).
+    #[test]
+    fn a_carriage_return_without_a_newline_is_kept() {
+        let dir = temp_dir("lone_carriage_return");
+        for (file, _) in RULE_FILES {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        std::fs::write(dir.join("url"), b"/a\r").unwrap();
+        let path = format!("{}/", dir.display());
+        let rules = load_all(path.as_bytes(), None).unwrap().rules;
+        assert_eq!(rules.url.len(), 1);
+        assert_eq!(rules.url[0].pattern, b"/a\r");
     }
 
     /// The engine of the glue, faked: it compiles every pattern and matches the
