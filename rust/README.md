@@ -120,6 +120,12 @@ stderr is not ported.
 * The CC counters live in a growable tag directory and a table that evicts a
   rotating victim when it is full, so a zone with many tags or a flood from many
   addresses keeps counting instead of losing protection.
+* A connection over a unix domain socket (`listen unix:...`) has no client
+  address: the address lists, the CC counters and the captcha fail counters see
+  nothing and none of them matches or counts.  The C implementation read the
+  bytes of another address family out of the `sockaddr` (the family and the path
+  of the socket, or the uninitialized memory `ngx_http_waf_make_inx_addr()` left
+  behind), so a block could match such a connection by accident.
 * `waf_zone size=` follows `ngx_parse_size()` (a bare byte count, `k`/`K`,
   `m`/`M`), the same syntax the C implementation accepted.
 * `waf_captcha ... score=` has to be a number: the C implementation ran

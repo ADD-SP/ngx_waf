@@ -1282,6 +1282,10 @@ fn captcha_inc_fails(state: &mut State) -> bool {
         // Without `max_fails` the C implementation does not count at all.
         return false;
     }
+    // A connection without an address cannot be counted either.
+    if state.req.ip.is_empty() {
+        return false;
+    }
     let zone = state.req.captcha_zone;
     if zone.is_null() || state.conf.captcha_tag.is_empty() {
         return false;
@@ -1558,6 +1562,10 @@ fn check_ip(state: &mut State, white: bool) -> bool {
     if !state.mode_enabled(M_INSPECT_IP) {
         return false;
     }
+    // A connection without an address (`listen unix:...`) matches no block.
+    if state.req.ip.is_empty() {
+        return false;
+    }
     let kind = match (white, state.req.ipv6) {
         (true, false) => RuleKind::Ipv4White,
         (true, true) => RuleKind::Ipv6White,
@@ -1755,7 +1763,8 @@ fn check_post(state: &mut State) -> bool {
 }
 
 fn check_cc(state: &mut State) -> bool {
-    if state.conf.cc_deny != 1 {
+    // A connection without an address has no counter to keep.
+    if state.conf.cc_deny != 1 || state.req.ip.is_empty() {
         return false;
     }
     // A CC protection that cannot count has to block: this used to be dropped
@@ -2141,6 +2150,41 @@ mod tests {
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
         unsafe { cc::zone_free(handle) };
+    }
+
+    #[test]
+    fn a_connection_without_an_address_skips_the_address_checks() {
+        let mut rules = rules::new_rule_set();
+        let mut trie = crate::ip_trie::IpTrie::new(false);
+        trie.add(
+            &crate::util::parse_ipv4(b"0.0.0.0/0").unwrap(),
+            b"0.0.0.0/0",
+        )
+        .unwrap();
+        rules.ipv4_black = Some(trie);
+        let mut conf = conf_with_rules(rules);
+        // A CC protection that cannot count answers 500 for a client with an
+        // address; a connection without one (`listen unix:...`) is not counted
+        // at all, and no block of the IP lists may match it either.
+        conf.cc_deny = 1;
+        conf.cc_deny_limit = 1;
+        conf.cc_deny_cycle = 60;
+        conf.cc_deny_duration = 60;
+        let cookies = Vec::new();
+
+        let mut view = request(b"/", &cookies);
+        view.ip = &[];
+        let outcome = check(&mut conf, &view);
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(!outcome.blocked);
+        assert!(outcome.rule_type.is_empty());
+
+        // The same configuration still matches the address of a connection
+        // that has one.
+        conf.cc_deny = 0;
+        let outcome = check(&mut conf, &request(b"/", &cookies));
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.rule_type, b"BLACK-IPV4");
     }
 
     #[test]

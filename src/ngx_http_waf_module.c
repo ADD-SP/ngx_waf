@@ -2215,15 +2215,24 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    req.ip = (const uint8_t *) &((struct sockaddr_in *) r->connection->sockaddr)->sin_addr;
-    req.ip_len = 4;
-
 #if (NGX_HAVE_INET6)
     if (r->connection->sockaddr->sa_family == AF_INET6) {
         req.ip = (const uint8_t *) &((struct sockaddr_in6 *) r->connection->sockaddr)->sin6_addr;
         req.ip_len = 16;
-    }
+    } else
 #endif
+    if (r->connection->sockaddr->sa_family == AF_INET) {
+        req.ip = (const uint8_t *) &((struct sockaddr_in *) r->connection->sockaddr)->sin_addr;
+        req.ip_len = 4;
+    } else {
+        /*
+         * A unix domain connection has no address: the IP lists, the CC
+         * counters and the captcha tables see nothing to match on (the C
+         * implementation read whatever the memory of another family held).
+         */
+        req.ip = NULL;
+        req.ip_len = 0;
+    }
 
     req.method = r->method;
     req.uri.data = r->uri.data;

@@ -427,6 +427,15 @@ check 403 "modsecurity loads the first rule file" \
 check 419 "modsecurity loads the second rule file" \
     "http://127.0.0.1:18101/second"
 
+# A connection over a unix domain socket carries no client address at all: a
+# blacklisted URL is still refused, while no address list or counter matches.
+check 403 "unix socket request is still inspected" \
+    --unix-socket "$prefix/waf.sock" "http://localhost/www.bak"
+check 200 "unix socket request is served" \
+    --unix-socket "$prefix/waf.sock" "http://localhost/"
+check 200 "unix socket connection is not counted" \
+    --unix-socket "$prefix/waf.sock" "http://localhost/"
+
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
     -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
