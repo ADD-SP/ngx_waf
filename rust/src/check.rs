@@ -584,8 +584,12 @@ impl Machine {
 
         let req = self.req.view(&self.cookies);
 
-        // `ngx_http_waf_check_flag(!loc_conf->waf_mode, r->method)`
-        if (!conf.waf_mode) & req.method == req.method {
+        // `ngx_http_waf_check_flag(!loc_conf->waf_mode, r->method)`: the `!` of
+        // C is the logical not, so the flag is `NGX_HTTP_UNKNOWN` when the
+        // configuration set no mode bit at all (`waf_mode !FULL`), and 0
+        // otherwise.  Every request whose method is known runs the
+        // inspections, each of them gated by its own method bit.
+        if conf.waf_mode == 0 && req.method == M_UNKNOWN {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -2194,6 +2198,48 @@ mod tests {
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(!outcome.blocked);
+    }
+
+    #[test]
+    fn a_mode_without_the_method_bit_keeps_the_other_inspections() {
+        // `waf_mode FULL !GET`: the URL list needs the bit of the method
+        // (`check_flag(waf_mode, INSPECT_URL | r->method)`), the address list
+        // does not (`check_flag(waf_mode, INSPECT_IP)`), exactly like the C
+        // implementation.
+        let mut rules = rules::new_rule_set();
+        rules
+            .url
+            .push(RegexRule::compile(b"www\\.bak$", None).unwrap());
+        let mut trie = crate::ip_trie::IpTrie::new(false);
+        trie.add(
+            &crate::util::parse_ipv4(b"9.9.9.0/24").unwrap(),
+            b"9.9.9.0/24",
+        )
+        .unwrap();
+        rules.ipv4_black = Some(trie);
+        let mut conf = conf_with_rules(rules);
+        conf.waf_mode = M_FULL & !M_INSPECT_GET;
+        let cookies = Vec::new();
+
+        // The URL rule is skipped for a GET request without its mode bit.
+        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(outcome.checked);
+
+        // The address list is not gated by the method.
+        let mut view = request(b"/", &cookies);
+        view.ip = &[9, 9, 9, 9];
+        let outcome = check(&mut conf, &view);
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.rule_type, b"BLACK-IPV4");
+
+        // A mode without any bit at all runs the inspections as well, every
+        // one of them gated by its own bit; the request counts as inspected.
+        conf.waf_mode = 0;
+        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(outcome.checked);
         assert!(!outcome.blocked);
     }
 

@@ -15,6 +15,8 @@ pub const WAF_OFF: i64 = 0;
 pub const WAF_ON: i64 = 1;
 pub const WAF_BYPASS: i64 = 2;
 
+/// `NGX_HTTP_UNKNOWN`, the bit of a request whose method nginx does not know.
+pub const M_UNKNOWN: u64 = 0x0001;
 pub const M_INSPECT_GET: u64 = 0x0002;
 pub const M_INSPECT_HEAD: u64 = 0x0004;
 pub const M_INSPECT_POST: u64 = 0x0008;

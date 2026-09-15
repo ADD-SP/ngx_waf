@@ -436,6 +436,13 @@ check 200 "unix socket request is served" \
 check 200 "unix socket connection is not counted" \
     --unix-socket "$prefix/waf.sock" "http://localhost/"
 
+# `waf_mode FULL !GET` clears the bit of the method: the URL list is gated by
+# it, the address list is not, so the blacklist still answers.
+check 403 "mode without the GET bit keeps the address list" \
+    -H 'X-Real-IP: 1.1.1.1' "http://127.0.0.1:18102/"
+check 404 "mode without the GET bit skips the URL list" \
+    -H 'X-Real-IP: 9.9.9.60' "http://127.0.0.1:18102/www.bak"
+
 # `waf_action` must not disarm the triggers it does not mention.
 check 403 "waf_action cc_deny keeps the blacklist" \
     -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
