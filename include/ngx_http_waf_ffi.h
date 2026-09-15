@@ -36,6 +36,11 @@
 
 #define WAF_BYPASS 2
 
+/**
+ * `NGX_HTTP_UNKNOWN`, the bit of a request whose method nginx does not know.
+ */
+#define M_UNKNOWN 1
+
 #define M_INSPECT_GET 2
 
 #define M_INSPECT_HEAD 4
@@ -308,7 +313,6 @@ typedef struct ngx_waf_req_t {
     size_t cookie_count;
     struct ngx_waf_str_t body;
     uint8_t has_body;
-    uint8_t internal;
     int64_t now;
     /**
      * The request headers, only `waf_modsecurity` reads them.

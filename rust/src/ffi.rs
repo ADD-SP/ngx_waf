@@ -63,7 +63,6 @@ pub struct NgxWafReq {
     pub cookie_count: usize,
     pub body: NgxWafStr,
     pub has_body: u8,
-    pub internal: u8,
     pub now: i64,
     /// The request headers, only `waf_modsecurity` reads them.
     pub headers: *const NgxWafHeader,
@@ -556,7 +555,6 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
                 len: req.body.len,
             },
             has_body: req.has_body != 0,
-            internal: req.internal != 0,
             now: req.now,
             headers: req.headers,
             header_count: req.header_count,

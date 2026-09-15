@@ -52,7 +52,6 @@ pub struct RawReq {
     pub referer: RawStr,
     pub body: RawStr,
     pub has_body: bool,
-    pub internal: bool,
     pub now: i64,
     /// The request headers, only `waf_modsecurity` reads them.
     pub headers: *const crate::ffi::NgxWafHeader,
@@ -98,7 +97,6 @@ impl RawReq {
             cookies,
             body: self.body.view(),
             has_body: self.has_body,
-            internal: self.internal,
             now: self.now,
             headers: if self.headers.is_null() || self.header_count == 0 {
                 &[]
@@ -138,10 +136,6 @@ pub struct Req<'a> {
     pub cookies: &'a [Vec<u8>],
     pub body: &'a [u8],
     pub has_body: bool,
-    /// Non zero for internal (sub)requests; kept for the inspections that need
-    /// to distinguish them.
-    #[allow(dead_code)]
-    pub internal: bool,
     pub now: i64,
     /// The request headers, in the order nginx parsed them.
     pub headers: &'a [crate::ffi::NgxWafHeader],
@@ -190,9 +184,6 @@ pub struct Outcome {
     pub location: Vec<u8>,
     /// `Set-Cookie` values the decision wants to add to its response.
     pub cookies: Vec<(String, String)>,
-    /// The `ngx_waf: [rule][detail]` line of the log phase, built on demand.
-    #[allow(dead_code)]
-    pub log: Vec<u8>,
 }
 
 impl Outcome {
@@ -213,7 +204,6 @@ impl Outcome {
             spend,
             location: Vec::new(),
             cookies: Vec::new(),
-            log: Vec::new(),
         }
     }
 }
@@ -935,7 +925,6 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
                 len: req.body.len(),
             },
             has_body: req.has_body,
-            internal: req.internal,
             now: req.now,
             headers: std::ptr::null(),
             header_count: 0,
@@ -1925,7 +1914,6 @@ mod tests {
             cookies,
             body: b"",
             has_body: false,
-            internal: false,
             now: 1_000,
             headers: &[],
             trans_id: None,
@@ -2283,7 +2271,6 @@ mod tests {
                 len: 0,
             },
             has_body: false,
-            internal: false,
             now: 1_000,
             headers: std::ptr::null(),
             header_count: 0,
@@ -2456,7 +2443,6 @@ mod tests {
                 len: 0,
             },
             has_body: false,
-            internal: false,
             now: 1_000,
             headers: std::ptr::null(),
             header_count: 0,
@@ -2545,7 +2531,6 @@ mod tests {
                 len: body_len,
             },
             has_body: body_len != 0,
-            internal: false,
             now: 1_000,
             headers: std::ptr::null(),
             header_count: 0,
@@ -2945,7 +2930,6 @@ mod tests {
                 len: 0,
             },
             has_body: false,
-            internal: false,
             now,
             headers: std::ptr::null(),
             header_count: 0,
@@ -3097,7 +3081,6 @@ mod tests {
             referer: RawStr::EMPTY,
             body: RawStr::EMPTY,
             has_body: false,
-            internal: false,
             now: 1_000,
             headers: std::ptr::null(),
             header_count: 0,

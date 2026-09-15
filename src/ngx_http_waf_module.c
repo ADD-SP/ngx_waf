@@ -99,7 +99,8 @@ typedef struct {
 
 /* compile time guarantees for the values shared with the Rust core */
 typedef char ngx_http_waf_method_bits_must_match[
-    (NGX_HTTP_GET == 0x0002
+    (NGX_HTTP_UNKNOWN == M_UNKNOWN
+     && NGX_HTTP_GET == 0x0002
      && NGX_HTTP_HEAD == 0x0004
      && NGX_HTTP_POST == 0x0008
      && NGX_HTTP_PUT == 0x0010
@@ -2253,7 +2254,6 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     req.cookie_count = cookies->nelts;
     req.body = body;
     req.has_body = body.data != NULL ? 1 : 0;
-    req.internal = r->internal ? 1 : 0;
     req.now = ngx_time();
     /* where the core reports an internal error, and where ModSecurity logs */
     req.log = r->connection->log;

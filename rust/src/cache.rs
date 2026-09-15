@@ -37,12 +37,12 @@ impl LruCache {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.items.len()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }

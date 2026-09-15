@@ -54,14 +54,9 @@ impl IpTrie {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.size
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
     }
 
     fn bits(&self) -> u32 {
