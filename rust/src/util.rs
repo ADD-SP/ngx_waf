@@ -1,7 +1,7 @@
 //! Small helpers ported from `ngx_http_waf_module_util.c`.
 //!
-//! `rand_letters()` and the SHA-256 helpers are used by the captcha support
-//! which is not ported yet.
+//! `rand_letters()` and the SHA-256 helpers are used by the captcha support and
+//! by the under attack page.
 #![allow(dead_code)]
 
 /// `time(NULL)`.

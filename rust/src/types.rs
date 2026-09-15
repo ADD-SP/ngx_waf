@@ -1,7 +1,7 @@
 //! Constants shared with the C side.
 //!
-//! A few of them belong to inspections that are still being ported, they are
-//! kept here so the values keep matching the C implementation.
+//! The C side re-declares a few of them for its compile time assertions, see
+//! `src/ngx_http_waf_module.c`.
 #![allow(dead_code)]
 
 //!

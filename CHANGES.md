@@ -6,9 +6,10 @@
 * Bazel has been replaced by the nginx `config` script, cargo and a `Makefile`.
 * The FFI header `include/ngx_http_waf_ffi.h` is generated with cbindgen and
   checked in.
-* The captcha and the friendly crawler verification are ported, including the
-  asynchronous parts: reverse DNS through the nginx resolver and a non blocking
-  provider request.  The five seconds shield and ModSecurity are still accepted
-  by the configuration, reported with a warning and do nothing for now.
+* Every inspection is ported, including the asynchronous ones: the captcha and
+  the friendly crawler verification use reverse DNS through the nginx resolver
+  and a non blocking request to the captcha provider.  The response phases of
+  ModSecurity are not ported.  The differences to the C implementation are
+  listed in `rust/README.md`.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

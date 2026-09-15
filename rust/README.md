@@ -84,7 +84,8 @@ Every directive of the C implementation is implemented and the full
 repositories, `test/test-nginx/init.sh` fetches them once into
 `$MODULE_TEST_DEPS`, `ngx-waf-test-deps` next to `$MODULE_TEST_PATH` by
 default).  Of the easter eggs, `waf_mode NICO` is accepted and
-`waf_block_page SpongeBob` works.
+`waf_block_page SpongeBob` works; the ASCII art `waf_mode NICO` printed to
+stderr is not ported.
 
 ## Known differences
 
@@ -106,6 +107,16 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   loaded with `error` and a second message (`<file>: Cannot read
   configuration.`).  What stops the start up, and the primary message, are the
   same.
+* A line of a rule file the C implementation could not use is a configuration
+  error here: a prefix length outside the family (`1.2.3.4/33`,
+  `fe80::1/129`), a character between that number and the end of the line
+  (`1.2.3.4/8x`) and a line longer than the buffer the IPv4/IPv6 parser copies
+  into are refused while the configuration is read.  The C implementation
+  wrapped the number into a mask and added a block the trie could never match,
+  so the rule silently did nothing (`1.2.3.4/33` and `5.6.7.8/40` did not
+  block their own address), and it aborted on some inputs: a negative suffix
+  (`1.2.3.4/-1`) with a segmentation fault, an over-long line through the
+  buffer overflow check of the build.
 * The CC counters live in a growable tag directory and a table that evicts a
   rotating victim when it is full, so a zone with many tags or a flood from many
   addresses keeps counting instead of losing protection.
@@ -136,17 +147,40 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   handshake completed (a timeout or a failed handshake is a failed attempt, the
   token and the secret never reach the socket in clear text) and the host name
   of the endpoint is sent as the SNI.
+* The endpoint of `api=` has to be a URL `ngx_parse_url()` accepts (`http://`,
+  `https://` or a bare `host[:port][/path]`).  The C implementation stored the
+  string as it was and left it to curl: a configuration `api=ftp://...` was
+  accepted and every verification failed at run time.
+* The captcha and the under attack cookies are copied into fixed size fields,
+  which hold at most 20, 64 and 64 bytes (the time, the uid and the hmac
+  cookie) plus a NUL; a longer value is not a cookie the module minted and is
+  refused.  The C implementation `memcpy()`ed the header value into those
+  fields whatever its length, which writes outside the `_info_t` it allocated
+  from the request pool.
 * The friendly crawler check only looks at the host name nginx' asynchronous
   resolver returns, the C implementation also walked the aliases `gethostbyaddr`
   reports.  A crawler whose lookup needs a `resolver` (see the `resolver`
   directive of the enclosing context) is treated as a fake one when the lookup
   fails or no resolver is configured, so `waf_verify_bot strict` fails closed.
+  When the lookup answers, `$waf_rule_details` and the audit line carry that
+  host name; the C implementation reported the name of the crawler the user
+  agent claims (`FAKE-BOT`/`REAL-BOT` with `GoogleBot`, `BingBot`, ...).
 * A `waf_block_page` in one context does not change the responses of its parent
   or of its sibling locations.  The C implementation converted the shared action
   chain in place, so a location level page also reached the parent context.
+* The decision of a blocked request is reachable for the whole request, an
+  `error_page` of the blocked status included: the audit line is written and
+  `$waf_log`, `$waf_blocked`, `$waf_rule_type` and `$waf_rule_details` keep
+  their value in the access log.  The C implementation lost the request context
+  of an internal redirect at the log phase (the response body was the same, the
+  variables read there were not found).
 * `Retry-After` carries the real number of seconds left of the block; the C
   implementation reports `duration - now` because it never records the time the
   block started.
+* `$waf_spend` is the wall clock time the inspection of the request took
+  (`Instant`), the C implementation reports the CPU time of the whole worker
+  (`clock()`), which does not grow while a step waits for the resolver or the
+  captcha provider.
 * A few C quirks are preserved on purpose, e.g. the `on`/`off` (and `strict`)
   head of a directive is matched by prefix, a `waf_cc_deny o` is `on`, the way
   `ngx_strncmp()` with `ngx_min()` did it (the names of `waf_mode` stay exact,

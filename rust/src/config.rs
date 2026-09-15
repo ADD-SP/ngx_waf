@@ -115,9 +115,6 @@ pub enum Policy {
     Return { status: u32 },
     /// Answer with this status and an HTML body, written by the content handler.
     Page { status: u32, body: Rc<Vec<u8>> },
-    /// Answer with this status and a `text/plain` body.
-    #[allow(dead_code)] // used by the captcha flow, the next step of the port
-    Text { status: u32, text: Rc<Vec<u8>> },
     /// Let the inspection decide the status (`waf_action modsecurity=FOLLOW`).
     Follow,
     /// Show the captcha page and hand the request to the captcha flow.
@@ -456,7 +453,6 @@ pub struct LocConf {
     /// A random string generated once per configuration, the salt of the
     /// captcha cookie HMAC (the C implementation keeps the same value in a
     /// function static so every worker agrees on it).
-    #[allow(dead_code)] // read by the captcha flow, the next step of the port
     pub random_str: Vec<u8>,
     pub action_captcha_zone: i64,
     pub action_captcha_tag: Vec<u8>,
@@ -763,7 +759,8 @@ fn directive_mode(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
             M_FULL
         } else if value == b"NICO" {
             // The easter egg of the C implementation prints ASCII art to
-            // stderr; it is not ported yet, see rust/README.md.
+            // stderr; the value is accepted but the art is not ported, see
+            // rust/README.md.
             continue;
         } else {
             return Err("ngx_waf: invalid value.".to_string());
