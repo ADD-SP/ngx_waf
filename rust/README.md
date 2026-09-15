@@ -149,6 +149,10 @@ default).  Of the easter eggs, `waf_mode NICO` is accepted and
   it.  The C implementation gave up on those requests (`_read_request_body()`
   returned `NGX_HTTP_WAF_FAIL` for `r->request_body->temp_file`), so a POST
   larger than that buffer was never inspected.
+* The cookie rules are matched against `Cookie=<value>` on every nginx version,
+  the shape 1.23 and later hand over.  The C implementation matched the raw
+  header value on older versions (which is also why the cookies of the captcha
+  and of the under attack page never validated there).
 * ModSecurity: with PCRE1 the C implementation pointed the allocator globals of
   libpcre at the nginx pool while the rules were parsed; the glue does the same,
   the rule loading itself happens in the Rust core.
