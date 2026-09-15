@@ -49,7 +49,10 @@ impl LruCache {
 
     pub fn find(&mut self, key: &[u8], now: i64) -> Option<CachedResult> {
         let expire = self.items.get(key)?.expire;
-        if expire <= now {
+        // `lru_cache_find()` of the C implementation deleted an entry only
+        // when `expire < time(NULL)`: an entry that expires in the current
+        // second is still a hit.
+        if expire < now {
             self.remove(key);
             return None;
         }
@@ -108,7 +111,8 @@ impl LruCache {
         while index < self.order.len() && dropped < limit {
             let key = self.order[index].clone();
             match self.items.get(&key) {
-                Some(item) if item.expire <= now => {
+                // `lru_cache_eliminate_expire()` compared the same way.
+                Some(item) if item.expire < now => {
                     self.items.remove(&key);
                     self.order.remove(index);
                     dropped += 1;
@@ -136,7 +140,10 @@ mod tests {
         let mut cache = LruCache::new(4);
         cache.insert(b"a", 100, result(true));
         assert!(cache.find(b"a", 50).unwrap().matched);
-        assert!(cache.find(b"a", 100).is_none());
+        // The second the entry expires in is still a hit, one second later it
+        // is gone.
+        assert!(cache.find(b"a", 100).is_some());
+        assert!(cache.find(b"a", 101).is_none());
         assert!(cache.is_empty());
     }
 

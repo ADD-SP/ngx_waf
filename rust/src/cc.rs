@@ -8,8 +8,10 @@
 //!
 //! The C implementation keeps an LRU cache in the zone; a fixed size open
 //! addressing table is used here instead.  The observable behaviour (a per IP
-//! counter that expires after the configured cycle, blocked for `duration`
-//! once the limit is exceeded, `$waf_rate` being the counter) is the same.
+//! counter that stops counting one second after the configured cycle, blocked
+//! for `duration` once the limit is exceeded, `$waf_rate` being the counter) is
+//! the same: an entry of the LRU of the C implementation was expired only when
+//! `expire < time(NULL)`, so the second an entry expires in still counts.
 
 use crate::util::random_uniform;
 
@@ -435,9 +437,12 @@ fn slot_for(
         probe = (probe + 1) % slots.len();
     }
 
+    // An entry is expired only when `expire < now`: the C implementation's
+    // `lru_cache_find()` kept (and counted) an entry whose expire is the
+    // current second, `lru_cache_add()` treated it the same way.
     let fresh = {
         let slot = &slots[index];
-        evicted || slot.kind == SLOT_EMPTY || slot.kind == SLOT_DELETED || slot.expire <= now
+        evicted || slot.kind == SLOT_EMPTY || slot.kind == SLOT_DELETED || slot.expire < now
     };
 
     Some((table, index, fresh))
@@ -674,7 +679,9 @@ pub fn gc(handle: *mut ZoneHandle, now: i64) {
                 std::slice::from_raw_parts_mut(table.slots.as_mut_ptr(), table.capacity as usize)
             };
             for slot in slots.iter_mut() {
-                if slot.kind != SLOT_EMPTY && slot.kind != SLOT_DELETED && slot.expire <= now {
+                // `lru_cache_eliminate_expire()` of the C implementation swept
+                // the entries it found with `expire < now`.
+                if slot.kind != SLOT_EMPTY && slot.kind != SLOT_DELETED && slot.expire < now {
                     slot.kind = SLOT_DELETED;
                 }
             }
@@ -797,6 +804,29 @@ mod tests {
         let after = increment(ctx, b"cc", &addr, false, 1, 60, 60, 62).unwrap();
         assert_eq!(after.rate, 1);
         assert!(!after.blocked);
+    }
+
+    /// The C implementation kept the entry of a client while
+    /// `expire >= time(NULL)`, so the counting window of a cycle of one second
+    /// covers the second the entry expires in as well: `waf_cc_deny on
+    /// rate=1r/s` counted the request that arrives one second after the first
+    /// one (and answered 429 for it), only the request after that started a
+    /// new window.
+    #[test]
+    fn the_window_covers_the_second_it_expires_in() {
+        let (_shm, ctx) = setup("window", 1024 * 1024);
+        let addr = [5u8, 5, 5, 5];
+
+        // The limit is never reached, so the entry keeps the expiry of its
+        // cycle: added at 1000 with a cycle of 1 second, it expires at 1001.
+        let first = increment(ctx, b"cc", &addr, false, 10, 1, 60, 1000).unwrap();
+        assert_eq!(first.rate, 1);
+
+        let boundary = increment(ctx, b"cc", &addr, false, 10, 1, 60, 1001).unwrap();
+        assert_eq!(boundary.rate, 2, "the second it expires in still counts");
+
+        let after = increment(ctx, b"cc", &addr, false, 10, 1, 60, 1002).unwrap();
+        assert_eq!(after.rate, 1, "the window is over one second later");
     }
 
     #[test]
