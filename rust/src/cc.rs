@@ -615,6 +615,13 @@ pub fn remove_entry(handle: *mut ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool
 
 /// Reset the counter of one client (the captcha flow clears the CC counter of
 /// an address it challenges).
+///
+/// `_perform_action_html()` of the C implementation only wrote `count`,
+/// `is_blocked`, `record_time` and `block_time` of the entry: the expiry the
+/// denial had just set (`now + duration`) stayed, so the address kept being
+/// counted in the window it was denied in.  `cycle` is only used for a slot
+/// that has to be created, the entry the C implementation dereferenced was
+/// always found (and the port must not fault when it is not).
 pub fn reset_counter(
     handle: *mut ZoneHandle,
     tag: &[u8],
@@ -626,7 +633,7 @@ pub fn reset_counter(
     let handle = unsafe { handle_ref(handle)? };
     handle.lock();
     let result = {
-        let (table, index, _) = slot_for(handle, tag, addr, ipv6, now)?;
+        let (table, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
         let table_ref = unsafe { &mut *table };
         let slots = unsafe {
             std::slice::from_raw_parts_mut(
@@ -634,7 +641,9 @@ pub fn reset_counter(
                 table_ref.capacity as usize,
             )
         };
-        reset_slot(&mut slots[index], addr, ipv6, now + cycle);
+        let slot = &mut slots[index];
+        let expire = if fresh { now + cycle } else { slot.expire };
+        reset_slot(slot, addr, ipv6, expire);
         Some(())
     };
     handle.unlock();
@@ -840,6 +849,42 @@ mod tests {
         assert_eq!(b.rate, 1);
         let c = increment(ctx, b"cc", &v6, true, 5, 60, 60, 1).unwrap();
         assert_eq!(c.rate, 2);
+    }
+
+    /// A `waf_action cc_deny=CAPTCHA` challenge zeroes the counter of the
+    /// address, and `_perform_action_html()` of the C implementation left the
+    /// expiry the denial had just set (`now + duration`) alone: the address
+    /// keeps being counted in that window, so the request after the next one is
+    /// denied again.  Only an entry that had to be created starts a window of
+    /// `cycle` seconds.
+    #[test]
+    fn a_captcha_reset_keeps_the_window_of_the_denial() {
+        let (_shm, ctx) = setup("reset", 1024 * 1024);
+        // `waf_cc_deny on rate=1r/s duration=1h`.
+        let addr = [6u8, 6, 6, 6];
+        let first = increment(ctx, b"cc", &addr, false, 1, 1, 3600, 1000).unwrap();
+        assert!(!first.blocked);
+        let denied = increment(ctx, b"cc", &addr, false, 1, 1, 3600, 1001).unwrap();
+        assert!(denied.blocked, "the second request of the window is denied");
+
+        // The challenge of the denial resets the counter, not the window.
+        reset_counter(ctx, b"cc", &addr, false, 1002, 1).unwrap();
+
+        let counted = increment(ctx, b"cc", &addr, false, 1, 1, 3600, 1004).unwrap();
+        assert_eq!(counted.rate, 1, "the counter counts from one again");
+        assert!(!counted.blocked);
+        let again = increment(ctx, b"cc", &addr, false, 1, 1, 3600, 1006).unwrap();
+        assert_eq!(again.rate, 2);
+        assert!(again.blocked, "the window of the denial is still open");
+
+        // An address without an entry gets a window of `cycle` seconds.
+        let other = [6u8, 6, 6, 7];
+        reset_counter(ctx, b"cc", &other, false, 2000, 5).unwrap();
+        let fresh = increment(ctx, b"cc", &other, false, 10, 5, 3600, 2001).unwrap();
+        assert_eq!(fresh.rate, 1);
+        let over = increment(ctx, b"cc", &other, false, 10, 5, 3600, 2006).unwrap();
+        assert_eq!(over.rate, 1, "the window of the reset is over");
+        assert!(!over.blocked);
     }
 
     #[test]

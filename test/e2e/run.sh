@@ -632,6 +632,13 @@ check_body_slow 200 'bad' 0 "captcha without api= fails closed" \
 # page (a blacklist challenge serves the 403 block page first, a CC one never
 # does), the challenge resets the counter of the address and the action table
 # then holds the visitor back until the provider accepts a token.
+#
+# The counting window of the denial is its `duration` (one minute), not the
+# `rate` cycle (one second): the address is counted from one again inside the
+# window the denial opened, so the second request after the challenge is
+# denied.  A port that started a new cycle long window at the reset would let
+# both of them through, which is why the checks below wait for more than a
+# cycle in between.
 cc_cap="http://127.0.0.1:18104"
 cc_header='X-Real-IP: 9.9.9.23'
 check 200 "cc captcha counts the first request" \
@@ -643,8 +650,10 @@ check 503 "cc captcha challenges from the action table" \
     -H "$cc_header" "$cc_cap/"
 check_body 200 'good' "cc captcha is solved with the provider" \
     -H "$cc_header" -X POST -d 'g-recaptcha-response=token' "$cc_cap/captcha"
+sleep 2
 check 200 "cc captcha counts from one again" \
     -H "$cc_header" "$cc_cap/"
+sleep 2
 check 503 "cc captcha denies the address again" \
     -H "$cc_header" "$cc_cap/"
 
