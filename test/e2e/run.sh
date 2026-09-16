@@ -19,6 +19,9 @@ hang_pid=""
 # The provider stub that answers with a chunked body.
 chunked_port=18094
 chunked_pid=""
+# The resolver stub of the crawler and provider host name checks.
+dns_port=18109
+dns_pid=""
 
 cleanup() {
     if [ -n "$hang_pid" ]; then
@@ -26,6 +29,9 @@ cleanup() {
     fi
     if [ -n "$chunked_pid" ]; then
         kill "$chunked_pid" 2>/dev/null || true
+    fi
+    if [ -n "$dns_pid" ]; then
+        kill "$dns_pid" 2>/dev/null || true
     fi
     if [ -f "$prefix/logs/nginx.pid" ]; then
         kill "$(cat "$prefix/logs/nginx.pid")" 2>/dev/null || true
@@ -171,6 +177,49 @@ PY
     chunked_pid=$!
 fi
 
+# A resolver for the crawler and the provider host name of the two last
+# servers: every A query is answered with 127.0.0.1 and every PTR query with a
+# name of the Google crawler.  nginx caches the answer of a lookup, so the
+# second request that needs one is answered from the cache, inside the call
+# that started the lookup.
+if command -v python3 > /dev/null 2>&1; then
+    python3 - "$dns_port" <<'PY' &
+import socket
+import struct
+import sys
+
+port = int(sys.argv[1])
+server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("127.0.0.1", port))
+
+while True:
+    data, peer = server.recvfrom(4096)
+    if len(data) < 12:
+        continue
+
+    # The question ends at the first NUL byte of the name, followed by the
+    # type and the class of the query.
+    end = data.index(b"\x00", 12) + 1
+    question = data[12 : end + 4]
+    qtype = struct.unpack("!H", question[-4:-2])[0]
+
+    if qtype == 1:
+        rtype = 1
+        rdata = socket.inet_aton("127.0.0.1")
+    else:
+        rtype = 12
+        # `crawl.googlebot.com`, a name the domain of the Google crawler
+        # (`googlebot\.com$`) covers.
+        rdata = b"\x05crawl\x09googlebot\x03com\x00"
+
+    answer = b"\xc0\x0c" + struct.pack("!HHIH", rtype, 1, 60, len(rdata)) + rdata
+    header = data[:2] + struct.pack("!HHHHH", 0x8180, 1, 1, 0, 0)
+    server.sendto(header + question + answer, peer)
+PY
+    dns_pid=$!
+fi
+
 "$nginx_bin" -p "$prefix" -c conf/nginx.conf -t > /dev/null || exit 1
 "$nginx_bin" -p "$prefix" -c conf/nginx.conf > "$prefix/logs/stdout.log" 2>&1 &
 nginx_pid=$!
@@ -253,6 +302,28 @@ check_body_slow() {
         fail=$((fail + 1))
         printf 'FAIL %-52s %s after %ss (want %s, body: %s)\n' \
             "$description" "$status" "$took" "$expected" "$text"
+    fi
+}
+
+# check_closed <expected status> <description> <port> <method> <uri> [body]
+#
+# Like `check`, but over a raw socket with `Connection: close`: the server has
+# to close the connection once the answer is complete.  A request whose
+# reference count leaked is never released, so the answer arrives but the
+# connection stays open and holds one of the worker connections.
+check_closed() {
+    expected=$1
+    description=$2
+    port=$3
+    method=$4
+    uri=$5
+    body=${6:-}
+    if python3 "$here/close-check.py" "$port" "$method" "$uri" "$expected" "$body"; then
+        pass=$((pass + 1))
+        printf 'ok   %-52s %s\n' "$description" "closed"
+    else
+        fail=$((fail + 1))
+        printf 'FAIL %-52s %s\n' "$description" "not closed"
     fi
 }
 
@@ -537,6 +608,34 @@ check 200 "verify_bot on allows a fake bot" \
     -H 'User-Agent: Googlebot' "http://127.0.0.1:18089/"
 check 200 "verify_bot on allows a normal client" \
     -H 'User-Agent: curl/8.0' "http://127.0.0.1:18089/"
+
+# The resolver of these two answers the reverse lookup with a name of the
+# Google crawler and the host name of the captcha provider with 127.0.0.1.  A
+# request whose lookup comes from the cache of the resolver (the second one of
+# an address) has to be answered as well, and the reference a park on the
+# lookup took has to be released: a leaked one leaves the connection open, so
+# the `check_closed` request below would hang here.
+if [ -n "$dns_pid" ]; then
+    resolver_bot="http://127.0.0.1:18106"
+    resolver_cap="http://127.0.0.1:18107"
+
+    check 200 "verify_bot accepts the crawler the resolver named" \
+        -H 'User-Agent: Googlebot' "$resolver_bot/"
+    check 200 "verify_bot accepts it from the resolver cache" \
+        -H 'User-Agent: Googlebot' "$resolver_bot/"
+    check 200 "verify_bot accepts it from the resolver cache again" \
+        -H 'User-Agent: Googlebot' "$resolver_bot/"
+
+    check 503 "captcha challenges the visitor of the provider host name" "$resolver_cap/"
+    check_body 200 'good' "captcha looks the provider host name up" \
+        -X POST -d 'g-recaptcha-response=token' "$resolver_cap/captcha"
+    check_body 200 'good' "captcha takes the lookup from the resolver cache" \
+        -X POST -d 'g-recaptcha-response=token' "$resolver_cap/captcha"
+    check_closed 200 "captcha releases the request of a cached lookup" \
+        18107 POST /captcha 'g-recaptcha-response=token'
+else
+    printf 'skip %-52s %s\n' "the resolver checks need python3"
+fi
 
 # Captcha: a visitor without cookies is challenged, a token the provider
 # accepts mints the cookies, and a visitor that presents them is let through.

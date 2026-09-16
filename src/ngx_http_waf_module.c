@@ -77,12 +77,23 @@ typedef struct {
     struct sockaddr           *sockaddr;
     socklen_t                  socklen;
     ngx_str_t                  host;
+    /**
+     * The address the resolver of the enclosing context answered with while
+     * the request was parked on the lookup.  The memory of the resolver
+     * context is released before the drive loop continues, so the address is
+     * copied into the request pool.  `resolved_failed` is the lookup that did
+     * not answer, either.
+     */
+    struct sockaddr           *resolved_sockaddr;
+    socklen_t                  resolved_socklen;
     unsigned                   use_ssl:1;
     unsigned                   handshake_done:1;
     /** Set once the machine was given the answer. */
     unsigned                   finished:1;
     /** Set while `start_http` runs, i.e. inside the drive loop. */
     unsigned                   in_drive:1;
+    unsigned                   resolved_valid:1;
+    unsigned                   resolved_failed:1;
 } ngx_http_waf_fetch_t;
 
 
@@ -103,6 +114,13 @@ typedef struct {
     ngx_waf_step_t  *step;
     /** The provider request in flight, when the machine parked on one. */
     ngx_http_waf_fetch_t fetch;
+    /**
+     * Set by a resolver handler that runs while its lookup is started, i.e.
+     * while the drive loop is on the stack: the answer came from the cache of
+     * the resolver, the lookup parked nothing and the drive loop has to pick
+     * the answer up.
+     */
+    ngx_uint_t       resolver_inline:1;
     ngx_uint_t       applied:1;
     ngx_uint_t       waiting_more_body:1;
     ngx_uint_t       read_body_done:1;
@@ -298,6 +316,10 @@ static void ngx_http_waf_resume(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx, 
 
 
 static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+static ngx_int_t ngx_http_waf_start_http_peer(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    ngx_http_waf_loc_conf_t* conf);
 
 
 static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
@@ -755,6 +777,11 @@ static ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_
     ctx->fetch.finished = 1;
 
     ngx_http_waf_fetch_close(ctx);
+
+    /* The buffers belong to one provider request: a machine that starts
+     * another one builds its own. */
+    ctx->fetch.request = NULL;
+    ctx->fetch.response = NULL;
 
     return ctx->fetch.in_drive;
 }
@@ -1260,6 +1287,42 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
 
 
 /**
+ * Move the provider request to the address the endpoint already has: the one
+ * `api=` resolved while the configuration was read, or the one the resolver of
+ * the enclosing context answered with earlier in this request.  `NGX_AGAIN`
+ * says the host of the endpoint still has to be looked up.
+ */
+static ngx_int_t ngx_http_waf_start_http_peer(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    ngx_http_waf_loc_conf_t* conf)
+{
+    if (ctx->fetch.resolved_valid) {
+        struct sockaddr* resolved = ctx->fetch.resolved_sockaddr;
+        socklen_t resolved_len = ctx->fetch.resolved_socklen;
+
+        ctx->fetch.resolved_valid = 0;
+
+        return ngx_http_waf_fetch_connect(r, ctx, resolved, resolved_len);
+    }
+
+    if (ctx->fetch.resolved_failed) {
+        ctx->fetch.resolved_failed = 0;
+
+        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ctx->fetch.in_drive = 0;
+
+        return NGX_OK;
+    }
+
+    if (conf->captcha_api.resolved) {
+        return ngx_http_waf_fetch_connect(r, ctx, conf->captcha_api.sockaddr,
+                                          conf->captcha_api.socklen);
+    }
+
+    return NGX_AGAIN;
+}
+
+
+/**
  * Park the request and start the provider request.
  */
 static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
@@ -1268,6 +1331,7 @@ static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx
     ngx_waf_step_t* step = ctx->step;
     ngx_resolver_ctx_t* rc;
     ngx_buf_t* b;
+    ngx_int_t peer;
     u_char* p;
     size_t len;
 
@@ -1286,40 +1350,48 @@ static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx
         return NGX_OK;
     }
 
-    /* the request: POST <uri> HTTP/1.0 with the form body */
-    len = conf->captcha_api.uri.len + conf->captcha_api.host.len + step->http_body.len + 512;
-    b = ngx_create_temp_buf(r->pool, len);
-    if (b == NULL) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-        ctx->fetch.in_drive = 0;
-        return NGX_OK;
+    /*
+     * The request (POST <uri> HTTP/1.0 with the form body) and the answer
+     * buffer are built once per provider request: this function runs again
+     * when the resolver of the enclosing context answered from its cache.
+     */
+    if (ctx->fetch.request == NULL) {
+        len = conf->captcha_api.uri.len + conf->captcha_api.host.len + step->http_body.len + 512;
+        b = ngx_create_temp_buf(r->pool, len);
+        if (b == NULL) {
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ctx->fetch.in_drive = 0;
+            return NGX_OK;
+        }
+
+        p = b->last;
+        p = ngx_sprintf(p, "POST %V HTTP/1.0" CRLF, &conf->captcha_api.uri);
+        p = ngx_sprintf(p, "Host: %V" CRLF, &conf->captcha_api.host);
+        p = ngx_sprintf(p, "Content-Type: application/x-www-form-urlencoded" CRLF);
+        p = ngx_sprintf(p, "Content-Length: %uz" CRLF, step->http_body.len);
+        p = ngx_sprintf(p, "Connection: close" CRLF CRLF);
+        if (step->http_body.len != 0) {
+            p = ngx_cpymem(p, step->http_body.data, step->http_body.len);
+        }
+        b->last = p;
+
+        ctx->fetch.request = b;
+        ctx->fetch.use_ssl = conf->captcha_api.use_ssl;
+        ctx->fetch.host = conf->captcha_api.host;
     }
 
-    p = b->last;
-    p = ngx_sprintf(p, "POST %V HTTP/1.0" CRLF, &conf->captcha_api.uri);
-    p = ngx_sprintf(p, "Host: %V" CRLF, &conf->captcha_api.host);
-    p = ngx_sprintf(p, "Content-Type: application/x-www-form-urlencoded" CRLF);
-    p = ngx_sprintf(p, "Content-Length: %uz" CRLF, step->http_body.len);
-    p = ngx_sprintf(p, "Connection: close" CRLF CRLF);
-    if (step->http_body.len != 0) {
-        p = ngx_cpymem(p, step->http_body.data, step->http_body.len);
-    }
-    b->last = p;
-
-    ctx->fetch.request = b;
-    ctx->fetch.use_ssl = conf->captcha_api.use_ssl;
-    ctx->fetch.host = conf->captcha_api.host;
-
-    ctx->fetch.response = ngx_create_temp_buf(r->pool, NGX_HTTP_WAF_FETCH_BUFFER);
     if (ctx->fetch.response == NULL) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
-        ctx->fetch.in_drive = 0;
-        return NGX_OK;
+        ctx->fetch.response = ngx_create_temp_buf(r->pool, NGX_HTTP_WAF_FETCH_BUFFER);
+        if (ctx->fetch.response == NULL) {
+            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ctx->fetch.in_drive = 0;
+            return NGX_OK;
+        }
     }
 
-    if (conf->captcha_api.resolved) {
-        return ngx_http_waf_fetch_connect(r, ctx, conf->captcha_api.sockaddr,
-                                          conf->captcha_api.socklen);
+    peer = ngx_http_waf_start_http_peer(r, ctx, conf);
+    if (peer != NGX_AGAIN) {
+        return peer;
     }
 
     /* the host was not resolvable while the configuration was read */
@@ -1344,6 +1416,8 @@ static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx
     rc->data = r;
     rc->timeout = clcf->resolver_timeout;
 
+    ctx->resolver_inline = 0;
+
     if (ngx_resolve_name(rc) != NGX_OK) {
         ngx_resolve_name_done(rc);
         ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
@@ -1351,13 +1425,18 @@ static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx
         return NGX_OK;
     }
 
-    /* the resolver may have answered already */
-    if (ctx->fetch.finished) {
-        ctx->fetch.in_drive = 0;
-        return NGX_OK;
+    if (ctx->resolver_inline) {
+        /*
+         * The lookup answered from the cache of the resolver while it was
+         * started: the handler stored the answer, take it like the first
+         * visit does.  The drive loop is still on the stack.
+         */
+        ctx->resolver_inline = 0;
+
+        return ngx_http_waf_start_http_peer(r, ctx, conf);
     }
 
-    /* the request stays alive until the provider answered */
+    /* the request stays alive until the lookup and the provider answered */
     r->main->count++;
     ctx->fetch.in_drive = 0;
 
@@ -1368,8 +1447,10 @@ static ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx
 static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc) {
     ngx_http_request_t* r = rc->data;
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_uint_t inline_answer = (rc->async == 0);
 
-    if (ctx == NULL) {
+    if (ctx == NULL || conf == NULL) {
         ngx_resolve_name_done(rc);
         return;
     }
@@ -1378,13 +1459,61 @@ static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc) {
         struct sockaddr* sockaddr = rc->addrs[0].sockaddr;
         socklen_t socklen = rc->addrs[0].socklen;
 
-        ngx_resolve_name_done(rc);
-        ngx_http_waf_fetch_connect(r, ctx, sockaddr, socklen);
-        return;
+        /*
+         * The address belongs to the resolver context, which is released
+         * before the drive loop continues: copy it into the request pool.
+         */
+        ctx->fetch.resolved_sockaddr = ngx_palloc(r->pool, socklen);
+        if (ctx->fetch.resolved_sockaddr != NULL) {
+            ngx_memcpy(ctx->fetch.resolved_sockaddr, sockaddr, socklen);
+
+            /*
+             * The resolver hands its addresses over with the port of the
+             * query, which is zero here (`ngx_resolver_calloc()`), so the
+             * port of the endpoint has to be written into the copy.
+             */
+            switch (ctx->fetch.resolved_sockaddr->sa_family) {
+#if (NGX_HAVE_INET6)
+            case AF_INET6:
+                ((struct sockaddr_in6*) ctx->fetch.resolved_sockaddr)->sin6_port =
+                    htons(conf->captcha_api.port);
+                break;
+#endif
+            default:
+                ((struct sockaddr_in*) ctx->fetch.resolved_sockaddr)->sin_port =
+                    htons(conf->captcha_api.port);
+            }
+
+            ctx->fetch.resolved_socklen = socklen;
+            ctx->fetch.resolved_valid = 1;
+
+        } else {
+            ctx->fetch.resolved_failed = 1;
+        }
+
+    } else {
+        ctx->fetch.resolved_failed = 1;
     }
 
     ngx_resolve_name_done(rc);
-    ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+
+    if (inline_answer) {
+        /*
+         * The lookup was answered from the cache of the resolver, inside the
+         * call that started it: the drive loop is on the stack and picks the
+         * answer up when that call returns.
+         */
+        ctx->resolver_inline = 1;
+        return;
+    }
+
+    /*
+     * Release the reference the park on the lookup took and re-enter the
+     * phases: the access handler resumes the drive loop, which connects to
+     * the address stored above.
+     */
+    ngx_http_finalize_request(r, NGX_DONE);
+    ngx_http_core_run_phases(r);
 }
 
 
@@ -2694,8 +2823,16 @@ static ngx_int_t ngx_http_waf_drive(ngx_http_request_t* r, ngx_http_waf_ctx_t* c
         }
 
         switch (step->kind) {
-        case NGX_WAF_STEP_RESOLVE_ADDR:
-            return ngx_http_waf_start_resolve(r, ctx);
+        case NGX_WAF_STEP_RESOLVE_ADDR: {
+            ngx_int_t rc = ngx_http_waf_start_resolve(r, ctx);
+
+            if (rc == NGX_DONE) {
+                return rc;
+            }
+
+            /* the resolver answered from its cache, keep driving */
+            continue;
+        }
 
         case NGX_WAF_STEP_HTTP_REQUEST: {
             ngx_int_t rc = ngx_http_waf_start_http(r, ctx);
@@ -2790,12 +2927,24 @@ static ngx_int_t ngx_http_waf_start_resolve(ngx_http_request_t* r, ngx_http_waf_
     rc->data = r;
     rc->timeout = clcf->resolver_timeout;
 
+    ctx->resolver_inline = 0;
+
     if (ngx_resolve_addr(rc) != NGX_OK) {
         ngx_resolve_addr_done(rc);
         ngx_memzero(&event, sizeof(ngx_waf_event_t));
         event.kind = NGX_WAF_EVENT_RESOLVE_FAILED;
         ngx_http_waf_resume(r, ctx, &event);
         return ngx_http_waf_drive(r, ctx);
+    }
+
+    if (ctx->resolver_inline) {
+        /*
+         * The lookup was answered from the cache of the resolver, inside the
+         * call that started it: the handler resumed the machine already, the
+         * drive loop keeps going in the caller.
+         */
+        ctx->resolver_inline = 0;
+        return NGX_OK;
     }
 
     /* The request must survive until the resolver answers. */
@@ -2809,6 +2958,7 @@ static void ngx_http_waf_resolve_handler(ngx_resolver_ctx_t* rc) {
     ngx_http_request_t* r = rc->data;
     ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
     ngx_waf_event_t event;
+    ngx_uint_t inline_answer = (rc->async == 0);
 
     ngx_memzero(&event, sizeof(ngx_waf_event_t));
 
@@ -2828,6 +2978,15 @@ static void ngx_http_waf_resolve_handler(ngx_resolver_ctx_t* rc) {
     ngx_resolve_addr_done(rc);
 
     ngx_http_waf_resume(r, ctx, &event);
+
+    if (inline_answer) {
+        /*
+         * The machine advanced while the drive loop is on the stack; that
+         * loop, and not this handler, carries on.
+         */
+        ctx->resolver_inline = 1;
+        return;
+    }
 
     ngx_http_finalize_request(r, NGX_DONE);
     ngx_http_core_run_phases(r);
