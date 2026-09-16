@@ -2,7 +2,9 @@
 #
 #   make deps      install the build time dependencies (cbindgen)
 #   make build     build nginx with the static module
-#   make build-dynamic  build the dynamic module as well
+#   make build-dynamic  build the dynamic module (the nginx binary of that
+#                       tree carries no module, load the `.so` with
+#                       `MODULE_PATH=... make test`)
 #   make test      run the Rust tests and the nginx integration tests
 #   make test-e2e  run the end to end checks (one and four workers)
 #   make install   install the built module
@@ -75,7 +77,10 @@ build-static: rust-core $(NGINX_CONFIGURE)
 	@echo " + building nginx"
 	@$(MAKE) -C $(NGINX_SRC_DIR) -j$(JOBS)
 
-## Build the dynamic module as well.
+## Build the dynamic module.  The tree is configured for it, so the nginx
+## binary it holds is a plain one: the tests load the module with
+## `MODULE_PATH=<the .so>`, which `test/test-nginx/run.sh` and
+## `test/e2e/run.sh` understand.
 build-dynamic: rust-core $(NGINX_CONFIGURE)
 	@if [ "$$(cat $(MODULE_STAMP) 2>/dev/null)" != "dynamic" ]; then \
 		echo " + configuring nginx (dynamic module)"; \
@@ -85,8 +90,14 @@ build-dynamic: rust-core $(NGINX_CONFIGURE)
 			--with-http_realip_module \
 			--add-dynamic-module=$(CURDIR) > /dev/null) || exit 1; \
 		echo dynamic > $(MODULE_STAMP); \
+		rm -f $(NGINX_BIN); \
 	fi
-	@$(MAKE) -C $(NGINX_SRC_DIR) -j$(JOBS) modules
+	@if [ $(MODULE_SO) -ot $(RUST_LIB) ]; then \
+		echo " + the Rust core changed, relinking the module"; \
+		rm -f $(MODULE_SO); \
+	fi
+	@echo " + building nginx and the dynamic module"
+	@$(MAKE) -C $(NGINX_SRC_DIR) -j$(JOBS)
 
 ## Regenerate the C header from the Rust FFI definitions.
 ## `--only-target-dependencies` keeps the `cargo metadata` call of cbindgen to
