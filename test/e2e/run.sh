@@ -657,5 +657,13 @@ sleep 2
 check 503 "cc captcha denies the address again" \
     -H "$cc_header" "$cc_cap/"
 
+# The tag of `waf_cc_deny zone=name:tag` is stored as the configuration wrote
+# it: a long one counts and denies like any other.
+long_tag="http://127.0.0.1:18105"
+check 200 "a long zone tag counts the first request" \
+    -H 'X-Real-IP: 9.9.9.30' "$long_tag/"
+check 503 "a long zone tag denies the second request" \
+    -H 'X-Real-IP: 9.9.9.30' "$long_tag/"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

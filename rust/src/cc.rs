@@ -40,16 +40,23 @@ const TABLE_MAGIC: u64 = 0x4e47_5857_4146_5442; // "NGXWAFTB"
 /// Bumped whenever a structure of the segment changes: the init handler
 /// validates it and rebuilds a table written by another version, so a segment
 /// is never read with the wrong layout.
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 /// Tag entries per directory block; the directory grows by adding blocks, so a
 /// zone is not limited to a handful of tags any more.
 const TAGS_PER_BLOCK: usize = 8;
-const TAG_LEN: usize = 32;
+/// Longest tag a configuration can produce.  `ngx_http_waf_str_split()` of the
+/// C implementation refused a segment of more than 256 bytes, and the suffixes
+/// this core appends to the tag of a `waf_zone` are at most `action_captcha`
+/// (14 bytes), so a tag is never longer than 270 bytes.  The C implementation
+/// kept the tag of an entry as it was, without a limit of its own.
+const TAG_LEN: usize = 288;
 
 /// One tag of one directory block.
 #[repr(C)]
 struct TagEntry {
-    tag_len: u8,
+    /// `0` marks a free entry of the block; a tag of a `waf_zone` is never
+    /// empty.  The field is wide enough for `TAG_LEN`.
+    tag_len: u16,
     tag: [u8; TAG_LEN],
     table: *mut TableHeader,
 }
@@ -235,7 +242,7 @@ impl ZoneHandle {
 /// A directory entry for `tag` pointing at `table`.
 fn new_entry(tag: &[u8], table: *mut TableHeader) -> TagEntry {
     let mut entry = TagEntry {
-        tag_len: tag.len() as u8,
+        tag_len: tag.len() as u16,
         tag: [0u8; TAG_LEN],
         table,
     };
@@ -997,5 +1004,29 @@ mod tests {
             hits >= expected * 3 / 4 && hits <= expected * 5 / 4,
             "{hits} of {samples} requests collected, expected around {expected}"
         );
+    }
+
+    /// The tag of a `waf_zone` is the text of `zone=name:tag` with a suffix of
+    /// this core (`cc_deny`, `captcha`, `action_captcha`), and the split of the
+    /// C implementation only refused a segment longer than 256 bytes: the C
+    /// counted the address of the longest tag a configuration can write, while
+    /// a shorter field here made every request of that configuration answer
+    /// 503.
+    #[test]
+    fn the_longest_tag_a_configuration_can_write_is_counted() {
+        let (_shm, ctx) = setup("long_tag", 1024 * 1024);
+        // 256 bytes of segment plus the longest suffix (`action_captcha`).
+        let tag = vec![b'a'; 270];
+        let addr = [13u8, 0, 0, 1];
+        let first = increment(ctx, &tag, &addr, false, 1, 60, 60, 0).unwrap();
+        assert_eq!(first.rate, 1);
+        let second = increment(ctx, &tag, &addr, false, 1, 60, 60, 1).unwrap();
+        assert_eq!(second.rate, 2);
+        assert!(second.blocked);
+
+        // Beyond the field the counter is refused, not written over another
+        // tag (the configuration cannot produce such a tag).
+        let too_long = vec![b'b'; TAG_LEN + 1];
+        assert!(increment(ctx, &too_long, &addr, false, 1, 60, 60, 2).is_none());
     }
 }
