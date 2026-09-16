@@ -628,5 +628,25 @@ check_body 200 'good' "captcha action table is solved with the provider" \
 check_body_slow 200 'bad' 0 "captcha without api= fails closed" \
     -X POST -d 'g-recaptcha-response=token' "$action_cap/default/captcha"
 
+# `waf_action cc_deny=CAPTCHA`: the counter denial is answered with the captcha
+# page (a blacklist challenge serves the 403 block page first, a CC one never
+# does), the challenge resets the counter of the address and the action table
+# then holds the visitor back until the provider accepts a token.
+cc_cap="http://127.0.0.1:18104"
+cc_header='X-Real-IP: 9.9.9.23'
+check 200 "cc captcha counts the first request" \
+    -H "$cc_header" "$cc_cap/"
+check_body 503 'g-recaptcha' \
+    "cc captcha serves the captcha page, not the block page" \
+    -H "$cc_header" "$cc_cap/"
+check 503 "cc captcha challenges from the action table" \
+    -H "$cc_header" "$cc_cap/"
+check_body 200 'good' "cc captcha is solved with the provider" \
+    -H "$cc_header" -X POST -d 'g-recaptcha-response=token' "$cc_cap/captcha"
+check 200 "cc captcha counts from one again" \
+    -H "$cc_header" "$cc_cap/"
+check 503 "cc captcha denies the address again" \
+    -H "$cc_header" "$cc_cap/"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
