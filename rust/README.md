@@ -131,6 +131,13 @@ stderr is not ported.
 * The CC counters live in a growable tag directory and a table that evicts a
   rotating victim when it is full, so a zone with many tags or a flood from many
   addresses keeps counting instead of losing protection.
+* An inspection cache never crosses a context.  The C implementation merged the
+  cache pointer of the parent into every context below it, so all of them shared
+  one cache object: a location whose `waf_rule_path` differed from the one of its
+  siblings could be answered with a match another rule list had produced (and
+  vice versa).  A context that inherits the caches here gets its own, empty,
+  caches with the capacity of the parent instead, so a cached result is only
+  ever reused under the rule list it was computed with.
 * A connection over a unix domain socket (`listen unix:...`) has no client
   address: the address lists, the CC counters and the captcha fail counters see
   nothing and none of them matches or counts.  The C implementation read the
