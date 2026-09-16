@@ -590,6 +590,23 @@ impl LocConf {
         }
     }
 
+    /// Whether the inspections may use their cache.
+    ///
+    /// This is the gate the inspections of the C implementation used:
+    ///
+    /// ```c
+    /// if (loc_conf->waf_cache == 1
+    ///     && loc_conf->waf_cache_capacity != NGX_CONF_UNSET
+    ///     && cache != NULL) {
+    /// ```
+    ///
+    /// `waf_cache == 1` is what makes a `waf_cache off` of a context below a
+    /// `waf_cache on` one stop the caching there, although that context still
+    /// inherits the caches of its parent (the pointer of the C implementation).
+    pub fn caching(&self) -> bool {
+        self.cache_enabled == 1 && self.caches.enabled
+    }
+
     fn set_policy(&mut self, kind: TriggerKind, policy: Policy) {
         self.policies[kind.index()] = Some(TriggerPolicy {
             from: kind.flag(),
@@ -1617,6 +1634,40 @@ mod tests {
         assert_eq!(conf.cache_capacity, 1);
         assert!(conf.caches.enabled);
         assert_eq!(conf.caches.url.len(), 0);
+    }
+
+    /// `waf_cache off` below a `waf_cache on` stops the caching of that
+    /// context: the C implementation gated every cached inspection on
+    /// `waf_cache == 1`, a context that inherits the caches of its parent
+    /// included.
+    #[test]
+    fn a_waf_cache_off_below_an_on_disables_the_caching() {
+        let mut parent = LocConf::default();
+        dir(&mut parent, "waf_cache", &["on", "capacity=7"]).unwrap();
+        assert!(parent.caching());
+
+        // A context that does not configure `waf_cache` inherits it, caches and
+        // gate included.
+        let mut inherits = LocConf::default();
+        merge(&mut inherits, &mut parent).unwrap();
+        assert_eq!(inherits.cache_enabled, 1);
+        assert!(inherits.caching());
+
+        // A context that turns it off keeps the caches of its parent (like the
+        // pointer the C implementation inherits) but must not use them.
+        let mut off = LocConf::default();
+        dir(&mut off, "waf_cache", &["off"]).unwrap();
+        merge(&mut off, &mut parent).unwrap();
+        assert_eq!(off.cache_enabled, 0);
+        assert!(off.caches.enabled);
+        assert!(!off.caching());
+
+        // And a context that turns it on again has a cache to use.
+        let mut on = LocConf::default();
+        dir(&mut on, "waf_cache", &["on", "capacity=3"]).unwrap();
+        merge(&mut on, &mut parent).unwrap();
+        assert!(on.caching());
+        assert_eq!(on.cache_capacity, 3);
     }
 
     #[test]

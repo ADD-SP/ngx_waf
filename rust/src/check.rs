@@ -1677,7 +1677,7 @@ fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
     let mut matched_detail: Option<Vec<u8>> = None;
     let mut cache_miss = true;
 
-    if cached && state.conf.caches.enabled {
+    if cached && state.conf.caching() {
         let cache = match kind {
             RuleKind::Url => &mut state.conf.caches.url,
             RuleKind::Args => &mut state.conf.caches.args,
@@ -1697,7 +1697,7 @@ fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
 
     if cache_miss {
         matched_detail = lookup_regex(state.conf.rules(), kind, value);
-        if cached && state.conf.caches.enabled {
+        if cached && state.conf.caching() {
             let expire = state.req.now + 60 * 5 + util::random_uniform(60 * 5) as i64;
             let result = CachedResult {
                 matched: matched_detail.is_some(),
@@ -1741,7 +1741,7 @@ fn check_cookie(state: &mut State) -> bool {
         if cookie.is_empty() {
             continue;
         }
-        let cached = state.conf.caches.enabled;
+        let cached = state.conf.caching();
         let mut matched_detail: Option<Vec<u8>> = None;
         let mut cache_miss = true;
         if cached {
