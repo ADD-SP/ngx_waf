@@ -1368,6 +1368,13 @@ fn captcha_mint(state: &State) -> Option<(String, String, String)> {
 /// `{address, time, uid, salt}` buffer, hex encoded.  The captcha cookies and
 /// the cookies of the "under attack" page use the same field sizes, so both
 /// flows share this function.
+///
+/// The C implementation hashed `sizeof()` of that buffer, which carries the
+/// trailing padding of its layout (231 bytes of fields, one more where an
+/// `inx_addr_t` aligns to four bytes).  Only the fields are hashed here: the
+/// padding is an ABI detail of the C build rather than something the module
+/// ever compares - the salt of the signature is random for every process, so a
+/// cookie is never handed from one build to another.
 fn cookie_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
     let mut buffer = vec![0u8; 16 + COOKIE_TIME_FIELD + COOKIE_UID_FIELD + COOKIE_SALT_FIELD];
     let ip_len = std::cmp::min(state.req.ip.len(), 16);
