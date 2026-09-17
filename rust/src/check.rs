@@ -4,6 +4,7 @@
 use crate::cache::CachedResult;
 use crate::cc;
 use crate::config::{BotId, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, BOTS};
+use crate::flags::WafMode;
 use crate::modsec;
 use crate::rules::RuleKind;
 use crate::types::*;
@@ -89,7 +90,7 @@ impl RawReq {
                 unsafe { std::slice::from_raw_parts(self.ip, self.ip_len) }
             },
             ipv6: self.ip_len == 16,
-            method: self.method,
+            method: WafMode::from_bits_retain(self.method),
             uri: self.uri.view(),
             args: self.args.view(),
             user_agent: self.user_agent.view(),
@@ -128,7 +129,7 @@ pub struct Req<'a> {
     /// Network order address, 4 or 16 bytes.
     pub ip: &'a [u8],
     pub ipv6: bool,
-    pub method: u64,
+    pub method: WafMode,
     pub uri: &'a [u8],
     pub args: &'a [u8],
     pub user_agent: &'a [u8],
@@ -262,7 +263,7 @@ struct Decision {
 }
 
 impl Decision {
-    /// Let the request through (`ACTION_FLAG_DECLINE`).
+    /// Let the request through (the `DECLINE` action of the C implementation).
     fn allow() -> Self {
         Decision {
             status: 0,
@@ -273,7 +274,7 @@ impl Decision {
         }
     }
 
-    /// Answer with a status only (`ACTION_FLAG_RETURN`).
+    /// Answer with a status only (the `RETURN` action of the C implementation).
     fn status(status: u32) -> Self {
         Decision {
             status,
@@ -396,14 +397,13 @@ impl State<'_, '_> {
         *self.decision = Some(Decision::allow());
     }
 
-    fn mode_enabled(&self, flag: u64) -> bool {
-        self.conf.waf_mode & flag == flag
+    fn mode_enabled(&self, flag: WafMode) -> bool {
+        self.conf.waf_mode.contains(flag)
     }
 
-    fn method_enabled(&self, flag: u64) -> bool {
-        let mode = self.conf.waf_mode;
+    fn method_enabled(&self, flag: WafMode) -> bool {
         let requested = flag | self.req.method;
-        mode & requested == requested
+        self.conf.waf_mode.contains(requested)
     }
 }
 
@@ -579,7 +579,7 @@ impl Machine {
         // configuration set no mode bit at all (`waf_mode !FULL`), and 0
         // otherwise.  Every request whose method is known runs the
         // inspections, each of them gated by its own method bit.
-        if conf.waf_mode == 0 && req.method == M_UNKNOWN {
+        if conf.waf_mode.is_empty() && req.method == WafMode::UNKNOWN {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -909,7 +909,7 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
         RawReq {
             ip: req.ip.as_ptr(),
             ip_len: req.ip.len(),
-            method: req.method,
+            method: req.method.bits(),
             uri: RawStr {
                 data: req.uri.as_ptr(),
                 len: req.uri.len(),
@@ -1194,7 +1194,7 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
         _ => return captcha_apply(state, path, CaptchaVerdict::Fault),
     };
 
-    if !captcha_is_verify_url(state) || state.req.method & M_INSPECT_POST == 0 {
+    if !captcha_is_verify_url(state) || !state.req.method.contains(WafMode::POST) {
         return captcha_apply(state, path, CaptchaVerdict::Challenge);
     }
 
@@ -1239,7 +1239,7 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
             // Only the captcha inspection mints the cookie trio, reports the
             // rule info and can fail on the way: the session flow of a
             // `waf_action X=CAPTCHA` challenge answered the plain "good" of its
-            // action chain (the action carried `ACTION_FLAG_NONE`) and only
+            // action chain (the action carried no flag) and only
             // dropped the address from the action table.
             if path == CaptchaPath::Session {
                 let zone = state.req.action_zone;
@@ -1575,7 +1575,11 @@ fn check_verify_bot(state: &mut State) -> CheckResult {
     };
     let user_agent = state.req.user_agent;
     for bot in BOTS {
-        if state.conf.verify_bot_type & bot.flag() == 0 {
+        let enabled = state
+            .conf
+            .verify_bot_type
+            .is_some_and(|types| types.contains(bot.flag()));
+        if !enabled {
             continue;
         }
         // The C implementation reports "not matched" for a user agent that does
@@ -1592,7 +1596,7 @@ fn check_verify_bot(state: &mut State) -> CheckResult {
 }
 
 fn check_ip(state: &mut State, white: bool) -> bool {
-    if !state.mode_enabled(M_INSPECT_IP) {
+    if !state.mode_enabled(WafMode::IP) {
         return false;
     }
     // A connection without an address (`listen unix:...`) matches no block.
@@ -1636,11 +1640,11 @@ fn lookup_regex(rules: &crate::rules::RuleSet, kind: RuleKind, value: &[u8]) -> 
 /// The regex based inspections, including the per-worker cache.
 fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
     let gate = match kind {
-        RuleKind::WhiteUrl | RuleKind::Url => M_INSPECT_URL,
-        RuleKind::Args => M_INSPECT_ARGS,
-        RuleKind::UserAgent => M_INSPECT_UA,
-        RuleKind::WhiteReferer | RuleKind::Referer => M_INSPECT_REFERER,
-        _ => M_INSPECT_URL,
+        RuleKind::WhiteUrl | RuleKind::Url => WafMode::URL,
+        RuleKind::Args => WafMode::ARGS,
+        RuleKind::UserAgent => WafMode::UA,
+        RuleKind::WhiteReferer | RuleKind::Referer => WafMode::REFERER,
+        _ => WafMode::URL,
     };
     if !state.method_enabled(gate) {
         return false;
@@ -1737,7 +1741,7 @@ fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
 }
 
 fn check_cookie(state: &mut State) -> bool {
-    if !state.method_enabled(M_INSPECT_COOKIE) {
+    if !state.method_enabled(WafMode::COOKIE) {
         return false;
     }
     if state.req.cookies.is_empty() {
@@ -1785,7 +1789,7 @@ fn check_cookie(state: &mut State) -> bool {
 }
 
 fn check_post(state: &mut State) -> bool {
-    if !state.mode_enabled(M_INSPECT_RB) {
+    if !state.mode_enabled(WafMode::RBODY) {
         return false;
     }
     if !state.req.has_body || state.req.body.is_empty() {
@@ -1923,16 +1927,13 @@ mod tests {
     use std::rc::Rc;
 
     fn set_policy(conf: &mut LocConf, kind: TriggerKind, policy: Policy) {
-        conf.policies[kind.index()] = Some(crate::config::TriggerPolicy {
-            from: kind.flag(),
-            policy,
-        });
+        conf.policies[kind.index()] = Some(policy);
     }
 
     fn conf_with_rules(rules: rules::RuleSet) -> LocConf {
         LocConf {
             waf: WAF_ON,
-            waf_mode: M_FULL,
+            waf_mode: WafMode::FULL,
             rules: Some(Rc::new(rules)),
             ..LocConf::default()
         }
@@ -1950,7 +1951,7 @@ mod tests {
         Req {
             ip: &[1, 2, 3, 4],
             ipv6: false,
-            method: M_INSPECT_GET,
+            method: WafMode::GET,
             uri,
             args: b"",
             user_agent: b"",
@@ -2226,7 +2227,7 @@ mod tests {
     #[test]
     fn mode_gates_the_inspections() {
         let mut conf = conf_with_rules(url_rules());
-        conf.waf_mode = M_INSPECT_GET; // URL inspection disabled
+        conf.waf_mode = WafMode::GET; // URL inspection disabled
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_ALLOW);
@@ -2251,7 +2252,7 @@ mod tests {
         .unwrap();
         rules.ipv4_black = Some(trie);
         let mut conf = conf_with_rules(rules);
-        conf.waf_mode = M_FULL & !M_INSPECT_GET;
+        conf.waf_mode = WafMode::FULL.difference(WafMode::GET);
         let cookies = Vec::new();
 
         // The URL rule is skipped for a GET request without its mode bit.
@@ -2268,7 +2269,7 @@ mod tests {
 
         // A mode without any bit at all runs the inspections as well, every
         // one of them gated by its own bit; the request counts as inspected.
-        conf.waf_mode = 0;
+        conf.waf_mode = WafMode::empty();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_ALLOW);
         assert!(outcome.checked);
@@ -2338,7 +2339,7 @@ mod tests {
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
             waf: WAF_ON,
-            waf_mode: M_INSPECT_GET | M_INSPECT_UA,
+            waf_mode: WafMode::GET | WafMode::UA,
             ..LocConf::default()
         };
         let args: Vec<Vec<u8>> = vec![mode.as_bytes().to_vec(), b"GoogleBot".to_vec()];
@@ -2452,7 +2453,7 @@ mod tests {
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
             waf: WAF_ON,
-            waf_mode: M_INSPECT_UA | M_INSPECT_URL | M_INSPECT_GET,
+            waf_mode: WafMode::UA | WafMode::URL | WafMode::GET,
             rules: Some(Rc::new(rules)),
             ..LocConf::default()
         };
@@ -2525,7 +2526,7 @@ mod tests {
             .unwrap();
         let mut conf = LocConf {
             waf: WAF_ON,
-            waf_mode: M_INSPECT_GET | M_INSPECT_POST,
+            waf_mode: WafMode::GET | WafMode::POST,
             ..LocConf::new()
         };
         let mut args = vec![
@@ -2864,7 +2865,7 @@ mod tests {
 
     /// The session flow of `waf_action X=CAPTCHA`: the visitor posted a token
     /// while its address was in the action table.  The C implementation
-    /// answered the "good" of the action chain of the policy (`ACTION_FLAG_NONE`),
+    /// answered the "good" of the action chain of the policy (no action flag),
     /// minted no cookies and reported no rule; it only dropped the address.
     #[test]
     fn captcha_session_pass_answers_good_without_cookies() {
@@ -3053,7 +3054,7 @@ mod tests {
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
             waf: WAF_ON,
-            waf_mode: M_FULL,
+            waf_mode: WafMode::FULL,
             ..LocConf::new()
         };
         crate::config::directive(
@@ -3217,7 +3218,7 @@ mod tests {
             .expect("the rules load");
         LocConf {
             waf: WAF_ON,
-            waf_mode: M_FULL,
+            waf_mode: WafMode::FULL,
             modsecurity: 1,
             modsecurity_instance: Some(Rc::new(instance)),
             ..LocConf::new()

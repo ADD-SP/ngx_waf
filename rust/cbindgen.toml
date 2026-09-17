@@ -111,3 +111,8 @@ parse_deps = false
 [parse.expand]
 crates = []
 all_features = false
+
+# The flags of `rust/src/flags.rs` are the typed view of the plain constants of
+# `types.rs`: the header keeps the constants, it never sees the macro.
+[macro_expansion]
+bitflags = false

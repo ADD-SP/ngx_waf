@@ -75,25 +75,6 @@ pub const M_DYNAMIC: u64 = M_INSPECT_IP
 
 pub const M_FULL: u64 = u64::MAX;
 
-/// Action flags, identical to `action_flag_e` of the C implementation.
-pub const ACTION_FLAG_NONE: u32 = 0x0;
-pub const ACTION_FLAG_UNSET: u32 = 0x1;
-pub const ACTION_FLAG_DECLINE: u32 = 0x2;
-pub const ACTION_FLAG_FOLLOW: u32 = 0x4;
-pub const ACTION_FLAG_RETURN: u32 = 0x8;
-pub const ACTION_FLAG_REG_CONTENT: u32 = 0x10;
-pub const ACTION_FLAG_STR: u32 = 0x20;
-pub const ACTION_FLAG_HTML: u32 = 0x40;
-pub const ACTION_FLAG_FROM_WHITE_LIST: u32 = 0x80;
-pub const ACTION_FLAG_FROM_BLACK_LIST: u32 = 0x100;
-pub const ACTION_FLAG_FROM_CC_DENY: u32 = 0x200;
-pub const ACTION_FLAG_FROM_MODSECURITY: u32 = 0x400;
-pub const ACTION_FLAG_FROM_CAPTCHA: u32 = 0x800;
-pub const ACTION_FLAG_FROM_UNDER_ATTACK: u32 = 0x1000;
-pub const ACTION_FLAG_FROM_VERIFY_BOT: u32 = 0x2000;
-pub const ACTION_FLAG_CAPTCHA: u32 = 0x4000;
-pub const ACTION_FLAG_UNDER_ATTACK: u32 = 0x8000;
-
 /// Bot types, identical to `bot_type_e` of the C implementation.
 pub const BOT_TYPE_NONE: u32 = 0x0;
 pub const BOT_TYPE_UNSET: u32 = 0x1;

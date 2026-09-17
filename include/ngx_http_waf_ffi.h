@@ -98,43 +98,6 @@
 #define M_FULL UINT64_MAX
 
 /**
- * Action flags, identical to `action_flag_e` of the C implementation.
- */
-#define ACTION_FLAG_NONE 0
-
-#define ACTION_FLAG_UNSET 1
-
-#define ACTION_FLAG_DECLINE 2
-
-#define ACTION_FLAG_FOLLOW 4
-
-#define ACTION_FLAG_RETURN 8
-
-#define ACTION_FLAG_REG_CONTENT 16
-
-#define ACTION_FLAG_STR 32
-
-#define ACTION_FLAG_HTML 64
-
-#define ACTION_FLAG_FROM_WHITE_LIST 128
-
-#define ACTION_FLAG_FROM_BLACK_LIST 256
-
-#define ACTION_FLAG_FROM_CC_DENY 512
-
-#define ACTION_FLAG_FROM_MODSECURITY 1024
-
-#define ACTION_FLAG_FROM_CAPTCHA 2048
-
-#define ACTION_FLAG_FROM_UNDER_ATTACK 4096
-
-#define ACTION_FLAG_FROM_VERIFY_BOT 8192
-
-#define ACTION_FLAG_CAPTCHA 16384
-
-#define ACTION_FLAG_UNDER_ATTACK 32768
-
-/**
  * Bot types, identical to `bot_type_e` of the C implementation.
  */
 #define BOT_TYPE_NONE 0

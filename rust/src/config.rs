@@ -3,6 +3,7 @@
 //! through `ngx_conf_log_error()`.
 
 use crate::cache::LruCache;
+use crate::flags::{BotTypes, WafMode};
 use crate::modsec;
 use crate::rules::{self, RuleSet};
 use crate::types::*;
@@ -157,19 +158,8 @@ impl TriggerKind {
         }
     }
 
-    /// The `ACTION_FLAG_FROM_*` value, kept for the audit log and for the FFI
-    /// field the C side still reads.
-    pub fn flag(self) -> u32 {
-        match self {
-            TriggerKind::Blacklist => ACTION_FLAG_FROM_BLACK_LIST,
-            TriggerKind::CcDeny => ACTION_FLAG_FROM_CC_DENY,
-            TriggerKind::Modsecurity => ACTION_FLAG_FROM_MODSECURITY,
-            TriggerKind::VerifyBot => ACTION_FLAG_FROM_VERIFY_BOT,
-        }
-    }
-
-    /// The built in policy, the equivalent of the `ACTION_FLAG_UNSET` defaults
-    /// of the C implementation.
+    /// The built in policy, the defaults of the C implementation for a trigger
+    /// no `waf_action` sets.
     pub fn default_policy(self) -> Policy {
         match self {
             TriggerKind::Blacklist => Policy::Return {
@@ -192,14 +182,6 @@ impl TriggerKind {
             TriggerKind::Modsecurity | TriggerKind::VerifyBot => CaptchaSource::VerifyBot,
         }
     }
-}
-
-/// The resolved policy of one trigger, `from` is only carried to keep the
-/// existing audit/variable behavior.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TriggerPolicy {
-    pub from: u32,
-    pub policy: Policy,
 }
 
 /// The friendly crawler each `BotId` stands for, in the order the C
@@ -233,13 +215,13 @@ impl BotId {
     }
 
     /// The `BOT_TYPE_*` bit of `waf_verify_bot_type`.
-    pub fn flag(self) -> u32 {
+    pub fn flag(self) -> BotTypes {
         match self {
-            BotId::Google => BOT_TYPE_GOOGLE,
-            BotId::Bing => BOT_TYPE_BING,
-            BotId::Baidu => BOT_TYPE_BAIDU,
-            BotId::Yandex => BOT_TYPE_YANDEX,
-            BotId::Sogou => BOT_TYPE_SOGOU,
+            BotId::Google => BotTypes::GOOGLE,
+            BotId::Bing => BotTypes::BING,
+            BotId::Baidu => BotTypes::BAIDU,
+            BotId::Yandex => BotTypes::YANDEX,
+            BotId::Sogou => BotTypes::SOGOU,
         }
     }
 
@@ -412,7 +394,7 @@ impl Caches {
 pub struct LocConf {
     pub waf: i64,
     pub waf_rule_path: Vec<u8>,
-    pub waf_mode: u64,
+    pub waf_mode: WafMode,
     pub cc_deny: i64,
     pub cc_deny_limit: i64,
     pub cc_deny_duration: i64,
@@ -422,7 +404,7 @@ pub struct LocConf {
     pub cache_enabled: i64,
     pub cache_capacity: i64,
     pub verify_bot: i64,
-    pub verify_bot_type: u32,
+    pub verify_bot_type: Option<BotTypes>,
     /// The compiled crawler patterns, `None` until `waf_verify_bot` is used.
     pub verify_bot_rules: Option<Rc<BotRules>>,
     pub under_attack: i64,
@@ -449,7 +431,7 @@ pub struct LocConf {
     /// The policy of each trigger, indexed by `TriggerKind::index()`.  `None`
     /// means "nothing configured here", which the merge resolves by inheriting
     /// from the parent and finally falling back to the built in default.
-    pub policies: [Option<TriggerPolicy>; 4],
+    pub policies: [Option<Policy>; 4],
     /// A random string generated once per configuration, the salt of the
     /// captcha cookie HMAC (the C implementation keeps the same value in a
     /// function static so every worker agrees on it).
@@ -481,7 +463,7 @@ impl Default for LocConf {
         LocConf {
             waf: WAF_UNSET,
             waf_rule_path: Vec::new(),
-            waf_mode: 0,
+            waf_mode: WafMode::empty(),
             cc_deny: -1,
             cc_deny_limit: -1,
             cc_deny_duration: -1,
@@ -491,7 +473,7 @@ impl Default for LocConf {
             cache_enabled: -1,
             cache_capacity: -1,
             verify_bot: -1,
-            verify_bot_type: BOT_TYPE_UNSET,
+            verify_bot_type: None,
             verify_bot_rules: None,
             under_attack: -1,
             under_attack_html: Rc::new(Vec::new()),
@@ -585,7 +567,7 @@ impl LocConf {
     /// built in default instead of "no action".
     pub fn policy(&self, kind: TriggerKind) -> Policy {
         match &self.policies[kind.index()] {
-            Some(trigger) => trigger.policy.clone(),
+            Some(policy) => policy.clone(),
             None => kind.default_policy(),
         }
     }
@@ -608,10 +590,7 @@ impl LocConf {
     }
 
     fn set_policy(&mut self, kind: TriggerKind, policy: Policy) {
-        self.policies[kind.index()] = Some(TriggerPolicy {
-            from: kind.flag(),
-            policy,
-        });
+        self.policies[kind.index()] = Some(policy);
     }
 }
 
@@ -718,62 +697,62 @@ fn directive_mode(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
         } else {
             value.as_slice()
         };
-        let bits: u64 = if eq_ci(keyword, "GET") {
-            M_INSPECT_GET
+        let bits: WafMode = if eq_ci(keyword, "GET") {
+            WafMode::GET
         } else if eq_ci(keyword, "HEAD") {
-            M_INSPECT_HEAD
+            WafMode::HEAD
         } else if eq_ci(keyword, "POST") {
-            M_INSPECT_POST
+            WafMode::POST
         } else if eq_ci(keyword, "PUT") {
-            M_INSPECT_PUT
+            WafMode::PUT
         } else if eq_ci(keyword, "DELETE") {
-            M_INSPECT_DELETE
+            WafMode::DELETE
         } else if eq_ci(keyword, "MKCOL") {
-            M_INSPECT_MKCOL
+            WafMode::MKCOL
         } else if eq_ci(keyword, "COPY") {
-            M_INSPECT_COPY
+            WafMode::COPY
         } else if eq_ci(keyword, "MOVE") {
-            M_INSPECT_MOVE
+            WafMode::MOVE
         } else if eq_ci(keyword, "OPTIONS") {
-            M_INSPECT_OPTIONS
+            WafMode::OPTIONS
         } else if eq_ci(keyword, "PROPFIND") {
-            M_INSPECT_PROPFIND
+            WafMode::PROPFIND
         } else if eq_ci(keyword, "PROPPATCH") {
-            M_INSPECT_PROPPATCH
+            WafMode::PROPPATCH
         } else if eq_ci(keyword, "LOCK") {
-            M_INSPECT_LOCK
+            WafMode::LOCK
         } else if eq_ci(keyword, "UNLOCK") {
-            M_INSPECT_UNLOCK
+            WafMode::UNLOCK
         } else if eq_ci(keyword, "PATCH") {
-            M_INSPECT_PATCH
+            WafMode::PATCH
         } else if eq_ci(keyword, "TRACE") {
-            M_INSPECT_TRACE
+            WafMode::TRACE
         } else if eq_ci(keyword, "CMN-METH") {
-            M_CMN_METH
+            WafMode::CMN_METH
         } else if eq_ci(keyword, "ALL-METH") {
-            M_ALL_METH
+            WafMode::ALL_METH
         } else if eq_ci(keyword, "IP") {
-            M_INSPECT_IP
+            WafMode::IP
         } else if eq_ci(keyword, "URL") {
-            M_INSPECT_URL
+            WafMode::URL
         } else if eq_ci(keyword, "RBODY") {
-            M_INSPECT_RB
+            WafMode::RBODY
         } else if eq_ci(keyword, "ARGS") {
-            M_INSPECT_ARGS
+            WafMode::ARGS
         } else if eq_ci(keyword, "UA") {
-            M_INSPECT_UA
+            WafMode::UA
         } else if eq_ci(keyword, "COOKIE") {
-            M_INSPECT_COOKIE
+            WafMode::COOKIE
         } else if eq_ci(keyword, "REFERER") {
-            M_INSPECT_REFERER
+            WafMode::REFERER
         } else if eq_ci(keyword, "STD") {
-            M_STD
+            WafMode::STD
         } else if eq_ci(keyword, "STATIC") {
-            M_STATIC
+            WafMode::STATIC
         } else if eq_ci(keyword, "DYNAMIC") {
-            M_DYNAMIC
+            WafMode::DYNAMIC
         } else if eq_ci(keyword, "FULL") {
-            M_FULL
+            WafMode::FULL
         } else if value == b"NICO" {
             // The easter egg of the C implementation prints ASCII art to
             // stderr; the value is accepted but the art is not ported, see
@@ -784,9 +763,9 @@ fn directive_mode(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
         };
 
         if negative {
-            conf.waf_mode &= !bits;
+            conf.waf_mode.remove(bits);
         } else {
-            conf.waf_mode |= bits;
+            conf.waf_mode.insert(bits);
         }
     }
     Ok(())
@@ -1135,7 +1114,7 @@ fn render_template(template: &[u8], sitekey: &[u8]) -> Vec<u8> {
 
 fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
     conf.verify_bot = -1;
-    conf.verify_bot_type = BOT_TYPE_UNSET;
+    conf.verify_bot_type = None;
 
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
@@ -1154,14 +1133,16 @@ fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Stri
     for arg in &args[1..] {
         let mut matched = false;
         for (name, flag) in [
-            ("GoogleBot", BOT_TYPE_GOOGLE),
-            ("BingBot", BOT_TYPE_BING),
-            ("BaiduSpider", BOT_TYPE_BAIDU),
-            ("YandexBot", BOT_TYPE_YANDEX),
-            ("SogouSpider", BOT_TYPE_SOGOU),
+            ("GoogleBot", BotTypes::GOOGLE),
+            ("BingBot", BotTypes::BING),
+            ("BaiduSpider", BotTypes::BAIDU),
+            ("YandexBot", BotTypes::YANDEX),
+            ("SogouSpider", BotTypes::SOGOU),
         ] {
             if eq_ci(arg, name) {
-                conf.verify_bot_type |= flag;
+                conf.verify_bot_type
+                    .get_or_insert(BotTypes::empty())
+                    .insert(flag);
                 matched = true;
                 break;
             }
@@ -1171,9 +1152,8 @@ fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Stri
         }
     }
 
-    if conf.verify_bot_type == BOT_TYPE_UNSET {
-        conf.verify_bot_type =
-            BOT_TYPE_GOOGLE | BOT_TYPE_BING | BOT_TYPE_BAIDU | BOT_TYPE_SOGOU | BOT_TYPE_YANDEX;
+    if conf.verify_bot_type.is_none() {
+        conf.verify_bot_type = Some(BotTypes::ALL);
     }
     conf.verify_bot_rules = Some(Rc::new(BotRules::compile()));
     Ok(())
@@ -1356,13 +1336,13 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
         child.action_captcha_zone = parent.action_captcha_zone;
         child.action_captcha_tag = parent.action_captcha_tag.clone();
     }
-    if child.verify_bot_type == BOT_TYPE_UNSET {
+    if child.verify_bot_type.is_none() {
         child.verify_bot_type = parent.verify_bot_type;
     }
     if child.verify_bot_rules.is_none() {
         child.verify_bot_rules = parent.verify_bot_rules.clone();
     }
-    if child.waf_mode == 0 {
+    if child.waf_mode.is_empty() {
         child.waf_mode = parent.waf_mode;
     }
     if child.captcha_v3_score.is_nan() {
@@ -1437,13 +1417,13 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
 fn apply_block_page(conf: &mut LocConf) {
     let page = Rc::clone(&conf.block_page);
     for kind in TRIGGER_KINDS {
-        let Some(trigger) = conf.policies[kind.index()].as_mut() else {
+        let Some(policy) = conf.policies[kind.index()].as_mut() else {
             continue;
         };
         // Only a plain status return is turned into the configured block page;
         // `waf_action X=CAPTCHA` and `FOLLOW` keep their own response.
-        if let Policy::Return { status } = trigger.policy {
-            trigger.policy = Policy::Page {
+        if let Policy::Return { status } = *policy {
+            *policy = Policy::Page {
                 status,
                 body: Rc::clone(&page),
             };
@@ -1525,9 +1505,12 @@ mod tests {
     fn mode_flags() {
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_mode", &["FULL", "!GET"]).unwrap();
-        assert_eq!(conf.waf_mode, M_FULL & !M_INSPECT_GET);
+        assert_eq!(conf.waf_mode, WafMode::FULL.difference(WafMode::GET));
         dir(&mut conf, "waf_mode", &["std"]).unwrap();
-        assert_eq!(conf.waf_mode, (M_FULL & !M_INSPECT_GET) | M_STD);
+        assert_eq!(
+            conf.waf_mode,
+            WafMode::FULL.difference(WafMode::GET) | WafMode::STD
+        );
         assert!(dir(&mut conf, "waf_mode", &["BAD"]).is_err());
     }
 
@@ -1698,15 +1681,12 @@ mod tests {
         assert!(dir(&mut conf, "waf_verify_bot", &["bad"]).is_err());
         assert!(dir(&mut conf, "waf_verify_bot", &["on", "bad"]).is_err());
         dir(&mut conf, "waf_verify_bot", &["on"]).unwrap();
-        assert_eq!(
-            conf.verify_bot_type,
-            BOT_TYPE_GOOGLE | BOT_TYPE_BING | BOT_TYPE_BAIDU | BOT_TYPE_SOGOU | BOT_TYPE_YANDEX
-        );
+        assert_eq!(conf.verify_bot_type, Some(BotTypes::ALL));
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_verify_bot", &["strict", "GoogleBot"]).unwrap();
         assert_eq!(conf.verify_bot, 2);
-        assert_eq!(conf.verify_bot_type, BOT_TYPE_UNSET | BOT_TYPE_GOOGLE);
+        assert_eq!(conf.verify_bot_type, Some(BotTypes::GOOGLE));
     }
 
     #[test]
@@ -2012,7 +1992,7 @@ mod tests {
         let mut child = LocConf::default();
         merge(&mut child, &mut parent).unwrap();
         assert_eq!(child.waf, WAF_ON);
-        assert_eq!(child.waf_mode, M_FULL);
+        assert_eq!(child.waf_mode, WafMode::FULL);
         assert_eq!(
             child.policy(TriggerKind::Blacklist),
             Policy::Return {

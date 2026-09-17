@@ -16,7 +16,8 @@ not up to date.
 
 | file | contents |
 | --- | --- |
-| `src/types.rs` | constants shared with the C side (modes, action flags, status codes) |
+| `src/types.rs` | constants shared with the C side (modes, bot types, status codes) |
+| `src/flags.rs` | the typed view of those bits (`bitflags`) |
 | `src/util.rs` | time/size parsing, IP parsing, random strings |
 | `src/ip_trie.rs` | the IPv4/IPv6 CIDR prefix trie |
 | `src/rules.rs` | rule containers and rule-file loading |
@@ -56,8 +57,8 @@ a subset of that syntax and is never the engine of the module inside nginx.
 The nginx `config` script drives cargo; `make build` at the repository root is
 the supported entry point.  `rust-toolchain.toml` in the repository root pins
 the stable toolchain (with rustfmt and clippy) for every cargo invocation of the
-repository.  The crate builds offline as long as the cargo
-registry cache already contains `regex`, `serde_json` and `getrandom`.  nginx
+repository.  The crate builds offline as long as the cargo registry cache
+already contains `regex`, `serde_json`, `getrandom`, `bitflags` and `sha2`.  nginx
 links the crate against libmodsecurity, whose C API the `waf_modsecurity`
 inspection calls: the development files (headers and the shared library) have to
 be installed, `LIB_MODSECURITY` can point at a prefix when they are not in the
