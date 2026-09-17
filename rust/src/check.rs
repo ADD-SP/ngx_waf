@@ -3312,6 +3312,41 @@ mod tests {
     }
 
     #[test]
+    fn modsecurity_takes_the_nul_of_a_complex_transaction_id() {
+        let _guard = modsec::test_lock();
+        let rules = modsecurity_rules();
+        let mut conf = modsecurity_conf(&rules);
+
+        // `waf_modsecurity_transaction_id $request_id` reaches the core the way
+        // nginx compiled it: with `zero = 1`, so the length carries the
+        // terminating NUL.  The C implementation handed its pointer to
+        // libmodsecurity, which read the text in front of that NUL; the
+        // inspection has to run instead of answering 500.
+        let (id, id_len) = leaked(b"0123456789abcdef0123456789abcdef\0");
+        let id = RawStr {
+            data: id,
+            len: id_len,
+        };
+
+        let mut machine = modsecurity_machine(&mut conf, b"/");
+        machine.req.trans_id = id;
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert!(outcome.rule_type.is_empty());
+        machine.log_phase();
+
+        // A rule of the file still reacts with the id in place.
+        let mut machine = modsecurity_machine(&mut conf, b"/blocked");
+        machine.req.trans_id = id;
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        machine.log_phase();
+
+        std::fs::remove_file(&rules).unwrap();
+    }
+
+    #[test]
     fn modsecurity_applies_the_configured_policy() {
         let _guard = modsec::test_lock();
         let rules = modsecurity_rules();

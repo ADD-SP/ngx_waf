@@ -189,6 +189,15 @@ impl Instance {
     pub fn transaction(&self, id: Option<&[u8]>, log: *mut c_void) -> Option<Transaction> {
         let transaction = match id {
             Some(id) => {
+                // `waf_modsecurity_transaction_id` is compiled with
+                // `ngx_http_compile_complex_value_t::zero = 1`, so the length
+                // of the value nginx hands over counts the terminating NUL
+                // (the C implementation passed its pointer to the library,
+                // which read the text in front of it).  The id is that text.
+                let id = match id.iter().position(|&byte| byte == 0) {
+                    Some(end) => &id[..end],
+                    None => id,
+                };
                 let id = CString::new(id).ok()?;
                 unsafe { msc_new_transaction_with_id(self.instance, self.rules, id.as_ptr(), log) }
             }
