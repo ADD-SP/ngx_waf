@@ -126,6 +126,20 @@ pub struct Verdict {
     pub disruptive: bool,
 }
 
+/// The library refused a call: the C API only reports success with `1` and
+/// offers no message of its own, so the caller answers the internal error of
+/// the request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModSecError;
+
+impl std::fmt::Display for ModSecError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the libmodsecurity call failed")
+    }
+}
+
+impl std::error::Error for ModSecError {}
+
 /// A `ModSecurity` instance and its rule set, the pair the C implementation
 /// kept in the location configuration (`modsecurity_instance` and
 /// `modsecurity_rules`).
@@ -237,9 +251,9 @@ impl Transaction {
         client_port: u32,
         server: &[u8],
         server_port: u32,
-    ) -> Result<(), ()> {
-        let client = CString::new(client).map_err(|_| ())?;
-        let server = CString::new(server).map_err(|_| ())?;
+    ) -> Result<(), ModSecError> {
+        let client = CString::new(client).map_err(|_| ModSecError)?;
+        let server = CString::new(server).map_err(|_| ModSecError)?;
         let result = unsafe {
             msc_process_connection(
                 self.transaction,
@@ -249,7 +263,7 @@ impl Transaction {
                 server_port as c_int,
             )
         };
-        same_as_c(result)
+        check_status(result)
     }
 
     /// `msc_process_uri()`.
@@ -258,10 +272,10 @@ impl Transaction {
         uri: &[u8],
         method: &[u8],
         http_version: &[u8],
-    ) -> Result<(), ()> {
-        let uri = CString::new(uri).map_err(|_| ())?;
-        let method = CString::new(method).map_err(|_| ())?;
-        let http_version = CString::new(http_version).map_err(|_| ())?;
+    ) -> Result<(), ModSecError> {
+        let uri = CString::new(uri).map_err(|_| ModSecError)?;
+        let method = CString::new(method).map_err(|_| ModSecError)?;
+        let http_version = CString::new(http_version).map_err(|_| ModSecError)?;
         let result = unsafe {
             msc_process_uri(
                 self.transaction,
@@ -270,11 +284,11 @@ impl Transaction {
                 http_version.as_ptr(),
             )
         };
-        same_as_c(result)
+        check_status(result)
     }
 
     /// `msc_add_n_request_header()`, called once per header of the request.
-    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) -> Result<(), ()> {
+    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) -> Result<(), ModSecError> {
         if key.is_empty() {
             return Ok(());
         }
@@ -287,27 +301,29 @@ impl Transaction {
                 value.len(),
             )
         };
-        same_as_c(result)
+        check_status(result)
     }
 
     /// `msc_process_request_headers()`.
-    pub fn process_request_headers(&mut self) -> Result<(), ()> {
-        same_as_c(unsafe { msc_process_request_headers(self.transaction) })
+    pub fn process_request_headers(&mut self) -> Result<(), ModSecError> {
+        check_status(unsafe { msc_process_request_headers(self.transaction) })
     }
 
     /// `msc_append_request_body()`.
-    pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), ()> {
-        same_as_c(unsafe { msc_append_request_body(self.transaction, body.as_ptr(), body.len()) })
+    pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), ModSecError> {
+        check_status(unsafe {
+            msc_append_request_body(self.transaction, body.as_ptr(), body.len())
+        })
     }
 
     /// `msc_process_request_body()`.
-    pub fn process_request_body(&mut self) -> Result<(), ()> {
-        same_as_c(unsafe { msc_process_request_body(self.transaction) })
+    pub fn process_request_body(&mut self) -> Result<(), ModSecError> {
+        check_status(unsafe { msc_process_request_body(self.transaction) })
     }
 
     /// `msc_update_status_code()`.
-    pub fn update_status_code(&mut self, status: u32) -> Result<(), ()> {
-        same_as_c(unsafe { msc_update_status_code(self.transaction, status as c_int) })
+    pub fn update_status_code(&mut self, status: u32) -> Result<(), ModSecError> {
+        check_status(unsafe { msc_update_status_code(self.transaction, status as c_int) })
     }
 
     /// `msc_intervention()`, `None` when the library has nothing to ask for.
@@ -344,11 +360,11 @@ impl Drop for Transaction {
 }
 
 /// The library and the C implementation both treat `1` as success.
-fn same_as_c(result: c_int) -> Result<(), ()> {
+fn check_status(result: c_int) -> Result<(), ModSecError> {
     if result == 1 {
         Ok(())
     } else {
-        Err(())
+        Err(ModSecError)
     }
 }
 

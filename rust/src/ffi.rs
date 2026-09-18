@@ -173,11 +173,11 @@ pub(crate) struct RawReq {
     pub(crate) server_port: u32,
     /// `r->connection->log`, the data of the ModSecurity log callback.
     pub(crate) log: *mut c_void,
-    pub(crate) cc_zone: *mut cc::ZoneHandle,
+    pub(crate) cc_zone: *const cc::ZoneHandle,
     /// The shared memory zone of the captcha action table (`waf_action ... zone=`).
-    pub(crate) action_zone: *mut cc::ZoneHandle,
+    pub(crate) action_zone: *const cc::ZoneHandle,
     /// The shared memory zone of the captcha fail counters (`waf_captcha ... zone=`).
-    pub(crate) captcha_zone: *mut cc::ZoneHandle,
+    pub(crate) captcha_zone: *const cc::ZoneHandle,
 }
 
 impl RawReq {
@@ -186,9 +186,9 @@ impl RawReq {
     /// [`NgxWafReq`].
     fn new(
         req: &NgxWafReq,
-        cc_zone: *mut cc::ZoneHandle,
-        action_zone: *mut cc::ZoneHandle,
-        captcha_zone: *mut cc::ZoneHandle,
+        cc_zone: *const cc::ZoneHandle,
+        action_zone: *const cc::ZoneHandle,
+        captcha_zone: *const cc::ZoneHandle,
     ) -> Self {
         RawReq {
             ip: req.ip,
@@ -260,9 +260,13 @@ impl RawReq {
             server_addr: self.server_addr.view(),
             server_port: self.server_port,
             log: self.log,
-            cc_zone: self.cc_zone,
-            action_zone: self.action_zone,
-            captcha_zone: self.captcha_zone,
+            // SAFETY: the C side owns every zone handle for the life of the
+            // worker, which outlives the request; a NULL handle is `None`.
+            cc_zone: unsafe { self.cc_zone.as_ref() },
+            // SAFETY: see above.
+            action_zone: unsafe { self.action_zone.as_ref() },
+            // SAFETY: see above.
+            captcha_zone: unsafe { self.captcha_zone.as_ref() },
         }
     }
 }
@@ -778,9 +782,9 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
         };
         let raw = RawReq::new(
             req,
-            cc_zone as *mut cc::ZoneHandle,
-            action_zone as *mut cc::ZoneHandle,
-            captcha_zone as *mut cc::ZoneHandle,
+            cc_zone as *const cc::ZoneHandle,
+            action_zone as *const cc::ZoneHandle,
+            captcha_zone as *const cc::ZoneHandle,
         );
         // The C side passes whether it can perform the captcha provider request
         // (the subrequest fetch); until it can, the captcha checks stay inert.
@@ -1039,8 +1043,10 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_gc(handle: *mut c_void) {
         if handle.is_null() {
             return;
         }
-        // The handle is live until `ngx_waf_shm_zone_free()`.
-        cc::gc(handle as *mut cc::ZoneHandle, util::now());
+        // SAFETY: the handle is live until `ngx_waf_shm_zone_free()`, and the
+        // core only ever reads it.
+        let handle = unsafe { &*(handle as *const cc::ZoneHandle) };
+        cc::gc(handle, util::now());
     });
 }
 

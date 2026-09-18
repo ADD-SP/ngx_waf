@@ -52,12 +52,13 @@ pub struct Req<'a> {
     pub server_port: u32,
     /// `r->connection->log`.
     pub log: *mut std::os::raw::c_void,
-    /// The handle of the CC zone, NULL when the configuration does not use one.
-    pub cc_zone: *mut cc::ZoneHandle,
+    /// The handle of the CC zone, `None` when the configuration does not use
+    /// one.
+    pub cc_zone: Option<&'a cc::ZoneHandle>,
     /// The handle of the captcha action table (`waf_action ... zone=...`).
-    pub action_zone: *mut cc::ZoneHandle,
+    pub action_zone: Option<&'a cc::ZoneHandle>,
     /// The handle of the captcha fail counters (`waf_captcha ... zone=...`).
-    pub captcha_zone: *mut cc::ZoneHandle,
+    pub captcha_zone: Option<&'a cc::ZoneHandle>,
 }
 
 /// The kind of response an [`Outcome`] asks the C side for.
@@ -266,8 +267,9 @@ impl State<'_, '_> {
         let mut error_page = false;
 
         {
-            let zone = self.req.action_zone;
-            if let (false, Some(action_zone)) = (zone.is_null(), &self.conf.action.captcha_zone) {
+            if let (Some(zone), Some(action_zone)) =
+                (self.req.action_zone, &self.conf.action.captcha_zone)
+            {
                 let expire = 60 * 45 + util::random_uniform(60 * 15) as i64;
                 let tag = action_zone.tag.clone();
                 if let Some(entry) = cc::action_entry(
@@ -290,8 +292,7 @@ impl State<'_, '_> {
 
         if source == CaptchaSource::CcDeny {
             {
-                let zone = self.req.cc_zone;
-                if let (false, Some(cc_zone)) = (zone.is_null(), &self.conf.cc_deny.zone) {
+                if let (Some(zone), Some(cc_zone)) = (self.req.cc_zone, &self.conf.cc_deny.zone) {
                     let tag = cc_zone.tag.clone();
                     let cycle = std::cmp::max(self.conf.cc_deny.cycle.unwrap_or(0), 1);
                     cc::reset_counter(zone, &tag, self.req.ip, self.req.ipv6, self.req.now, cycle);
@@ -577,13 +578,13 @@ impl Machine {
     /// Let a test inject the shared memory handle of the fail counters.
     #[cfg(test)]
     pub fn set_captcha_zone(&mut self, zone: *mut cc::ZoneHandle) {
-        self.req.captcha_zone = zone;
+        self.req.captcha_zone = zone as *const cc::ZoneHandle;
     }
 
     /// Let a test inject the shared memory handle of the captcha action table.
     #[cfg(test)]
     pub fn set_action_zone(&mut self, zone: *mut cc::ZoneHandle) {
-        self.req.action_zone = zone;
+        self.req.action_zone = zone as *const cc::ZoneHandle;
     }
 
     /// The HTTP request of a parked step, `(url, body)`.
@@ -885,9 +886,15 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
             server_addr: RawStr::EMPTY,
             server_port: 0,
             log: std::ptr::null_mut(),
-            cc_zone: req.cc_zone,
-            action_zone: req.action_zone,
-            captcha_zone: req.captcha_zone,
+            cc_zone: req
+                .cc_zone
+                .map_or(std::ptr::null(), |zone| zone as *const cc::ZoneHandle),
+            action_zone: req
+                .action_zone
+                .map_or(std::ptr::null(), |zone| zone as *const cc::ZoneHandle),
+            captcha_zone: req
+                .captcha_zone
+                .map_or(std::ptr::null(), |zone| zone as *const cc::ZoneHandle),
         },
         req.cookies.to_vec(),
         true,
@@ -959,7 +966,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     // them).
     let verdict = match run_modsecurity_request(state, &mut transaction) {
         Ok(verdict) => verdict,
-        Err(()) => {
+        Err(_) => {
             *state.modsec = Some(transaction);
             *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
             return CheckResult::Matched;
@@ -1013,7 +1020,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
 fn take_intervention(
     state: &mut State,
     transaction: &mut modsec::Transaction,
-) -> Result<Option<modsec::Verdict>, ()> {
+) -> Result<Option<modsec::Verdict>, modsec::ModSecError> {
     let Some(verdict) = transaction.intervention() else {
         return Ok(None);
     };
@@ -1037,7 +1044,7 @@ fn take_intervention(
 fn run_modsecurity_request(
     state: &mut State,
     transaction: &mut modsec::Transaction,
-) -> Result<Option<modsec::Verdict>, ()> {
+) -> Result<Option<modsec::Verdict>, modsec::ModSecError> {
     let req = state.req;
 
     transaction.process_connection(
@@ -1107,10 +1114,9 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
     if state.conf.waf == Some(Waf::Bypass) {
         return CheckResult::NotMatched;
     }
-    let action_zone = state.req.action_zone;
-    if action_zone.is_null() {
+    let Some(action_zone) = state.req.action_zone else {
         return CheckResult::NotMatched;
-    }
+    };
     let Some(action) = &state.conf.action.captcha_zone else {
         return CheckResult::NotMatched;
     };
@@ -1181,8 +1187,9 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
             // action chain (the action carried no flag) and only
             // dropped the address from the action table.
             if path == CaptchaPath::Session {
-                let zone = state.req.action_zone;
-                if let (false, Some(action)) = (zone.is_null(), &state.conf.action.captcha_zone) {
+                if let (Some(zone), Some(action)) =
+                    (state.req.action_zone, &state.conf.action.captcha_zone)
+                {
                     let tag = action.tag.clone();
                     cc::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
                 }
@@ -1236,13 +1243,12 @@ fn captcha_inc_fails(state: &mut State) -> bool {
     if state.req.ip.is_empty() {
         return false;
     }
-    let zone = state.req.captcha_zone;
+    let Some(zone) = state.req.captcha_zone else {
+        return false;
+    };
     let Some(captcha_zone) = &state.conf.captcha.zone else {
         return false;
     };
-    if zone.is_null() {
-        return false;
-    }
 
     let limit = std::cmp::max(max_fails, 20);
     let cycle = 60 * 45 + util::random_uniform(60 * 15) as i64;
@@ -1785,7 +1791,7 @@ fn check_cc(state: &mut State) -> bool {
         || state.conf.cc_deny.duration.is_none_or(|value| value <= 0)
         || state.conf.cc_deny.limit.is_none_or(|value| value <= 0)
         || state.conf.cc_deny.zone.is_none()
-        || state.req.cc_zone.is_null()
+        || state.req.cc_zone.is_none()
     {
         state.set_rule_info(b"CC-DENY", b"", true, true);
         *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
@@ -1804,7 +1810,7 @@ fn check_cc(state: &mut State) -> bool {
         .tag
         .clone();
     let result = cc::increment(
-        state.req.cc_zone,
+        state.req.cc_zone.expect("checked above"),
         &tag,
         state.req.ip,
         state.req.ipv6,
@@ -1982,9 +1988,9 @@ mod tests {
             server_addr: b"127.0.0.1",
             server_port: 80,
             log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null_mut(),
-            action_zone: std::ptr::null_mut(),
-            captcha_zone: std::ptr::null_mut(),
+            cc_zone: None,
+            action_zone: None,
+            captcha_zone: None,
         }
     }
 
@@ -2194,7 +2200,8 @@ mod tests {
         });
         let cookies = Vec::new();
         let mut view = request(b"/", &cookies);
-        view.cc_zone = handle;
+        // SAFETY: the zone handle outlives the request in this test.
+        view.cc_zone = Some(unsafe { &*handle });
         let outcome = check(&mut conf, &view);
         assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
@@ -2339,9 +2346,9 @@ mod tests {
             server_addr: RawStr::EMPTY,
             server_port: 0,
             log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null_mut(),
-            action_zone: std::ptr::null_mut(),
-            captcha_zone: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
         };
         Machine::new(NonNull::from(conf), raw, Vec::new(), true)
     }
@@ -2511,9 +2518,9 @@ mod tests {
             server_addr: RawStr::EMPTY,
             server_port: 0,
             log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null_mut(),
-            action_zone: std::ptr::null_mut(),
-            captcha_zone: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
         };
         let mut machine = Machine::new(NonNull::from(&mut conf), raw, Vec::new(), true);
         assert!(matches!(
@@ -2599,9 +2606,9 @@ mod tests {
             server_addr: RawStr::EMPTY,
             server_port: 0,
             log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null_mut(),
-            action_zone: std::ptr::null_mut(),
-            captcha_zone: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
         };
         Machine::new(NonNull::from(conf), raw, cookies, true)
     }
@@ -2888,7 +2895,9 @@ mod tests {
             tag: tag.to_vec(),
         });
         let ip = [1u8, 2, 3, 4];
-        assert!(cc::action_entry(zone, tag, &ip, false, 999, 600, 1).is_some());
+        // SAFETY: the zone of `captcha_counter_zone()` outlives this test.
+        let zone_ref = unsafe { &*zone };
+        assert!(cc::action_entry(zone_ref, tag, &ip, false, 999, 600, 1).is_some());
 
         let body = b"g-recaptcha-response=token";
         let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
@@ -2918,7 +2927,7 @@ mod tests {
         assert!(!outcome.blocked);
         // The address left the action table, the next request is inspected
         // from the beginning instead of being challenged again.
-        assert!(cc::entry_flags(zone, tag, &ip, false).is_none());
+        assert!(cc::entry_flags(zone_ref, tag, &ip, false).is_none());
 
         unsafe { cc::zone_free(zone) };
     }
@@ -3124,9 +3133,9 @@ mod tests {
             server_addr: RawStr::EMPTY,
             server_port: 0,
             log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null_mut(),
-            action_zone: std::ptr::null_mut(),
-            captcha_zone: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
         };
         Machine::new(NonNull::from(conf), raw, cookies, true)
     }
@@ -3292,9 +3301,9 @@ mod tests {
             },
             server_port: 80,
             log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null_mut(),
-            action_zone: std::ptr::null_mut(),
-            captcha_zone: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
         };
         Machine::new(NonNull::from(conf), raw, Vec::new(), true)
     }
