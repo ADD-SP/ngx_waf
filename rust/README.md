@@ -58,8 +58,8 @@ The nginx `config` script drives cargo; `make build` at the repository root is
 the supported entry point.  `rust-toolchain.toml` in the repository root pins
 the stable toolchain (with rustfmt and clippy) for every cargo invocation of the
 repository.  The crate builds offline as long as the cargo registry cache
-already contains `regex`, `serde_json`, `getrandom`, `bitflags`, `sha2` and
-`lru`.  nginx
+already contains `regex`, `serde_json`, `bitflags`, `sha2`, `lru`, `hmac`,
+`rand` and `subtle`.  nginx
 links the crate against libmodsecurity, whose C API the `waf_modsecurity`
 inspection calls: the development files (headers and the shared library) have to
 be installed, `LIB_MODSECURITY` can point at a prefix when they are not in the
@@ -190,6 +190,13 @@ stderr is not ported.
   refused.  The C implementation `memcpy()`ed the header value into those
   fields whatever its length, which writes outside the `_info_t` it allocated
   from the request pool.
+* The captcha and the under attack cookies are signed with HMAC-SHA256 of the
+  zero padded `{address, time, uid}` fields, with the salt of the process as
+  the key.  The C implementation hashed a struct that carried the salt as its
+  last field, the padding of that layout included, with its own SHA-256: the
+  digest of a cookie changes once at the upgrade and every visitor is
+  challenged again.  A cookie never crossed a process anyway, the salt is
+  drawn while the configuration is read and a restart replaces it.
 * The friendly crawler check only looks at the host name nginx' asynchronous
   resolver returns, the C implementation also walked the aliases `gethostbyaddr`
   reports.  A crawler whose lookup needs a `resolver` (see the `resolver`

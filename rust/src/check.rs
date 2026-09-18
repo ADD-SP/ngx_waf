@@ -9,8 +9,11 @@ use crate::modsec;
 use crate::rules::RuleKind;
 use crate::types::*;
 use crate::util;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use std::rc::Rc;
 use std::time::Instant;
+use subtle::ConstantTimeEq;
 
 /// A borrowed byte range that crosses a suspension: the C side owns the memory
 /// and keeps it alive until the request is finished.  nginx declares the length
@@ -485,7 +488,6 @@ enum CaptchaVerdict {
 const COOKIE_TIME_FIELD: usize = 21;
 const COOKIE_UID_FIELD: usize = 65;
 const COOKIE_HMAC_FIELD: usize = 65;
-const COOKIE_SALT_FIELD: usize = 129;
 
 /// `difftime(time(NULL), client_time) > 60 * 30`: the cookies of the "under
 /// attack" page expire after half an hour.
@@ -1342,7 +1344,7 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
     }
 
     let expected = cookie_hmac(state, time, uid);
-    if expected.as_bytes() != hmac {
+    if !bool::from(expected.as_bytes().ct_eq(hmac)) {
         return Ok(false);
     }
 
@@ -1364,35 +1366,44 @@ fn captcha_mint(state: &State) -> Option<(String, String, String)> {
     Some((time, uid, hmac))
 }
 
-/// The HMAC of the C implementation: SHA-256 over the zero padded
-/// `{address, time, uid, salt}` buffer, hex encoded.  The captcha cookies and
-/// the cookies of the "under attack" page use the same field sizes, so both
-/// flows share this function.
+/// The signature of the cookie trio: HMAC-SHA256 of the zero padded
+/// `{address, time, uid}` fields with the salt of the process as the key, hex
+/// encoded.  The captcha cookies and the cookies of the "under attack" page
+/// use the same field sizes, so both flows share this function.
 ///
-/// The C implementation hashed `sizeof()` of that buffer, which carries the
-/// trailing padding of its layout (231 bytes of fields, one more where an
-/// `inx_addr_t` aligns to four bytes).  Only the fields are hashed here: the
-/// padding is an ABI detail of the C build rather than something the module
-/// ever compares - the salt of the signature is random for every process, so a
-/// cookie is never handed from one build to another.
+/// The C implementation hashed `sizeof()` of a struct that carried the salt as
+/// its last field, the padding of that layout included, with its hand written
+/// `ngx_http_waf_sha256()`; this is the standard HMAC over the same fields.
+/// The salt is random for every process, a cookie was therefore never handed
+/// from one process to another, and the new value only costs every visitor one
+/// more challenge at the upgrade.
 fn cookie_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
-    let mut buffer = vec![0u8; 16 + COOKIE_TIME_FIELD + COOKIE_UID_FIELD + COOKIE_SALT_FIELD];
-    let ip_len = std::cmp::min(state.req.ip.len(), 16);
-    buffer[..ip_len].copy_from_slice(&state.req.ip[..ip_len]);
+    cookie_mac(&state.conf.random_str, state.req.ip, time, uid)
+}
 
-    let time_offset = 16;
+/// HMAC-SHA256 of the zero padded fields, hex encoded.
+fn cookie_mac(key: &[u8], ip: &[u8], time: &[u8], uid: &[u8]) -> String {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC takes a key of any length");
+
+    // The fields are the ones the C implementation hashed: a fixed size
+    // buffer with the address (16 bytes, 4 of them for an IPv4 one), the time
+    // and the uid, every one of them zero padded.
+    let mut ip_field = [0u8; 16];
+    let ip_len = std::cmp::min(ip.len(), ip_field.len());
+    ip_field[..ip_len].copy_from_slice(&ip[..ip_len]);
+    mac.update(&ip_field);
+
+    let mut time_field = [0u8; COOKIE_TIME_FIELD];
     let time_len = std::cmp::min(time.len(), COOKIE_TIME_FIELD - 1);
-    buffer[time_offset..time_offset + time_len].copy_from_slice(&time[..time_len]);
+    time_field[..time_len].copy_from_slice(&time[..time_len]);
+    mac.update(&time_field);
 
-    let uid_offset = time_offset + COOKIE_TIME_FIELD;
+    let mut uid_field = [0u8; COOKIE_UID_FIELD];
     let uid_len = std::cmp::min(uid.len(), COOKIE_UID_FIELD - 1);
-    buffer[uid_offset..uid_offset + uid_len].copy_from_slice(&uid[..uid_len]);
+    uid_field[..uid_len].copy_from_slice(&uid[..uid_len]);
+    mac.update(&uid_field);
 
-    let salt_offset = uid_offset + COOKIE_UID_FIELD;
-    let salt_len = std::cmp::min(state.conf.random_str.len(), COOKIE_SALT_FIELD - 1);
-    buffer[salt_offset..salt_offset + salt_len].copy_from_slice(&state.conf.random_str[..salt_len]);
-
-    util::sha256_hex(&buffer)
+    util::hex(&mac.finalize().into_bytes())
 }
 
 /// The value of one cookie, the port of `ngx_http_parse_multi_header_lines()`
@@ -1512,7 +1523,7 @@ fn check_under_attack(state: &mut State) -> CheckResult {
                 || hmac.len() >= COOKIE_HMAC_FIELD
             {
                 false
-            } else if cookie_hmac(state, time, uid).as_bytes() == hmac {
+            } else if bool::from(cookie_hmac(state, time, uid).as_bytes().ct_eq(hmac)) {
                 client_time = util::atoi(time);
                 true
             } else {
@@ -1932,6 +1943,18 @@ mod tests {
 
     fn set_policy(conf: &mut LocConf, kind: TriggerKind, policy: Policy) {
         conf.policies[kind.index()] = Some(policy);
+    }
+
+    /// The cookie signature is an HMAC-SHA256 of the zero padded fields with
+    /// the salt as the key.  The value is the one
+    /// `openssl dgst -sha256 -hmac "the process salt"` reports for `{1,2,3,4}`
+    /// (zero padded to 16 bytes), `1000` (to 21) and `uid` (to 65).
+    #[test]
+    fn the_cookie_signature_is_a_known_hmac() {
+        assert_eq!(
+            cookie_mac(b"the process salt", &[1, 2, 3, 4], b"1000", b"uid"),
+            "5ebe577ed03ba83540d536fc119ac43bbaa8c24eb5830a8dacf50900dd9429be"
+        );
     }
 
     fn conf_with_rules(rules: rules::RuleSet) -> LocConf {

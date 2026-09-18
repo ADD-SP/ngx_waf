@@ -1,8 +1,11 @@
 //! Small helpers ported from `ngx_http_waf_module_util.c`.
 //!
-//! `rand_letters()` and the SHA-256 helpers are used by the captcha support and
-//! by the under attack page.
+//! `rand_letters()` feeds the salt and the cookies of the captcha support and
+//! of the under attack page.
 #![allow(dead_code)]
+
+use rand::rngs::OsRng;
+use rand::{Rng, TryRngCore};
 
 /// `time(NULL)`.
 pub fn now() -> i64 {
@@ -341,53 +344,42 @@ fn parse_ipv6_addr(text: &[u8]) -> Option<[u8; 16]> {
 }
 
 /// `ngx_http_waf_rand_str()`: `len` random ASCII letters.
+///
+/// Every letter is drawn from the operating system generator, uniformly like
+/// the `randombytes_uniform(52)` of the C implementation.  `OsRng` is
+/// stateless, which is what the module needs: nginx forks its workers from the
+/// master, and the userspace generator of the `rand` crate would hand every
+/// worker the same sequence.  A failure of the system generator panics; every
+/// caller runs behind a `catch_unwind()` that answers the internal error of
+/// the module, so a predictable letter is never handed out.
 pub fn rand_letters(len: usize) -> Vec<u8> {
-    let mut out = vec![0u8; len];
-    let mut random = [0u8; 256];
-    let mut filled = 0;
-    while filled < len {
-        let take = std::cmp::min(random.len(), len - filled);
-        if getrandom::fill(&mut random[..take]).is_err() {
-            // Fall back to a deterministic but still unique-ish string; the
-            // C implementation would abort here, which is not acceptable
-            // inside an nginx worker.
-            for byte in out[filled..filled + take].iter_mut() {
-                *byte = b'A';
-            }
-            filled += take;
-            continue;
-        }
-        for &byte in &random[..take] {
+    let mut rng = OsRng.unwrap_err();
+    (0..len)
+        .map(|_| {
             // 52 == 'A'..='Z' + 'a'..='z'
-            let value = (byte as u32) % 52;
-            out[filled] = if value < 26 {
+            let value = rng.random_range(0..52u32);
+            if value < 26 {
                 b'A' + value as u8
             } else {
                 b'a' + (value - 26) as u8
-            };
-            filled += 1;
-        }
-    }
-    out
+            }
+        })
+        .collect()
 }
 
-/// Uniform value in `[0, upper)` like libsodium's `randombytes_uniform()`.
+/// Uniform value in `[0, upper)`, the `randombytes_uniform()` of the C
+/// implementation.
 pub fn random_uniform(upper: u32) -> u32 {
     if upper < 2 {
         return 0;
     }
-    let mut buf = [0u8; 4];
-    if getrandom::fill(&mut buf).is_err() {
-        return 0;
-    }
-    u32::from_ne_bytes(buf) % upper
+    OsRng.unwrap_err().random_range(0..upper)
 }
 
-/// Hex encoded SHA-256, matching `ngx_http_waf_sha256()`.
-pub fn sha256_hex(data: &[u8]) -> String {
-    let digest = sha256(data);
-    let mut out = String::with_capacity(64);
-    for byte in digest {
+/// Lower case hex of `bytes`, the `sodium_bin2hex()` of the C implementation.
+pub fn hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
         out.push(HEX[(byte >> 4) as usize] as char);
         out.push(HEX[(byte & 0x0f) as usize] as char);
     }
@@ -396,9 +388,12 @@ pub fn sha256_hex(data: &[u8]) -> String {
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-/// SHA-256, used for the captcha cookie signature.
-///
-/// The digest is the one the hand written `ngx_http_waf_sha256()` of the C
+/// Hex encoded SHA-256, matching `ngx_http_waf_sha256()`.
+pub fn sha256_hex(data: &[u8]) -> String {
+    hex(&sha256(data))
+}
+
+/// SHA-256, the digest the hand written `ngx_http_waf_sha256()` of the C
 /// implementation produced.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
@@ -584,5 +579,18 @@ mod tests {
         let value = rand_letters(128);
         assert_eq!(value.len(), 128);
         assert!(value.iter().all(|byte| byte.is_ascii_alphabetic()));
+    }
+
+    #[test]
+    fn random_uniform_is_in_range() {
+        assert_eq!(random_uniform(0), 0);
+        assert_eq!(random_uniform(1), 0);
+        // The upper bounds the module uses: the letters, the cache jitter and
+        // the worker count of the garbage collector.
+        for upper in [2u32, 52, 300, 900] {
+            for _ in 0..1_000 {
+                assert!(random_uniform(upper) < upper);
+            }
+        }
     }
 }
