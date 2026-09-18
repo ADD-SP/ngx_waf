@@ -296,7 +296,11 @@ pub extern "C" fn ngx_waf_conf_cc_zone(conf: *mut c_void) -> i64 {
         return -1;
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
-        (*(conf as *const LocConf)).cc_zone
+        (*(conf as *const LocConf))
+            .cc_deny
+            .zone
+            .as_ref()
+            .map_or(-1, |zone| zone.index as i64)
     }))
     .unwrap_or(-1)
 }
@@ -308,7 +312,11 @@ pub extern "C" fn ngx_waf_conf_action_zone(conf: *mut c_void) -> i64 {
         return -1;
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
-        (*(conf as *const LocConf)).action_captcha_zone
+        (*(conf as *const LocConf))
+            .action
+            .captcha_zone
+            .as_ref()
+            .map_or(-1, |zone| zone.index as i64)
     }))
     .unwrap_or(-1)
 }
@@ -320,7 +328,11 @@ pub extern "C" fn ngx_waf_conf_captcha_zone(conf: *mut c_void) -> i64 {
         return -1;
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
-        (*(conf as *const LocConf)).captcha_zone
+        (*(conf as *const LocConf))
+            .captcha
+            .zone
+            .as_ref()
+            .map_or(-1, |zone| zone.index as i64)
     }))
     .unwrap_or(-1)
 }
@@ -332,7 +344,9 @@ pub extern "C" fn ngx_waf_conf_waf(conf: *mut c_void) -> i64 {
         return -1;
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
-        (*(conf as *const LocConf)).waf
+        (*(conf as *const LocConf))
+            .waf
+            .map_or(WAF_UNSET, |waf| waf as i64)
     }))
     .unwrap_or(-1)
 }
@@ -345,7 +359,10 @@ pub extern "C" fn ngx_waf_conf_modsecurity(conf: *mut c_void) -> i64 {
         return -1;
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
-        (*(conf as *const LocConf)).modsecurity
+        (*(conf as *const LocConf))
+            .modsecurity
+            .enabled
+            .map_or(-1, i64::from)
     }))
     .unwrap_or(-1)
 }
@@ -391,7 +408,7 @@ pub extern "C" fn ngx_waf_conf_captcha_api(conf: *mut c_void) -> NgxWafStr {
         return empty;
     }
     catch_unwind(AssertUnwindSafe(|| unsafe {
-        let api = &(*(conf as *const LocConf)).captcha_api;
+        let api = &(*(conf as *const LocConf)).captcha.api;
         NgxWafStr {
             len: api.len(),
             data: api.as_ptr(),

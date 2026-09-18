@@ -3,7 +3,10 @@
 
 use crate::cache::{CacheKind, CachedResult};
 use crate::cc;
-use crate::config::{BotId, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, BOTS};
+use crate::config::{
+    BotId, CaptchaProvider, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, VerifyBotMode,
+    Waf, BOTS,
+};
 use crate::flags::WafMode;
 use crate::modsec;
 use crate::rules::RuleKind;
@@ -353,9 +356,9 @@ impl State<'_, '_> {
 
         {
             let zone = self.req.action_zone;
-            if !zone.is_null() && !self.conf.action_captcha_tag.is_empty() {
+            if let (false, Some(action_zone)) = (zone.is_null(), &self.conf.action.captcha_zone) {
                 let expire = 60 * 45 + util::random_uniform(60 * 15) as i64;
-                let tag = self.conf.action_captcha_tag.clone();
+                let tag = action_zone.tag.clone();
                 if let Some(entry) = cc::action_entry(
                     zone,
                     &tag,
@@ -377,9 +380,9 @@ impl State<'_, '_> {
         if source == CaptchaSource::CcDeny {
             {
                 let zone = self.req.cc_zone;
-                if !zone.is_null() && !self.conf.cc_tag.is_empty() {
-                    let tag = self.conf.cc_tag.clone();
-                    let cycle = std::cmp::max(self.conf.cc_deny_cycle, 1);
+                if let (false, Some(cc_zone)) = (zone.is_null(), &self.conf.cc_deny.zone) {
+                    let tag = cc_zone.tag.clone();
+                    let cycle = std::cmp::max(self.conf.cc_deny.cycle.unwrap_or(0), 1);
                     cc::reset_counter(zone, &tag, self.req.ip, self.req.ipv6, self.req.now, cycle);
                 }
             }
@@ -392,7 +395,7 @@ impl State<'_, '_> {
             };
         }
 
-        Decision::page(HTTP_SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha_html))
+        Decision::page(HTTP_SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha.html))
     }
 
     /// Let the request through, used by the white lists.
@@ -549,7 +552,8 @@ impl Machine {
         cookies: Vec<Vec<u8>>,
         http_transport: bool,
     ) -> Machine {
-        let priority = unsafe { (*conf).priority.clone() };
+        let priority = unsafe { (*conf).priority.clone() }
+            .unwrap_or_else(|| crate::config::DEFAULT_PRIORITY.to_vec());
         Machine {
             conf,
             req,
@@ -570,7 +574,7 @@ impl Machine {
     /// Run until the request is decided or an asynchronous operation is needed.
     pub fn step(&mut self) -> Step {
         let conf = unsafe { &mut *self.conf };
-        if conf.waf == WAF_UNSET || conf.waf == WAF_OFF {
+        if !matches!(conf.waf, Some(Waf::On | Waf::Bypass)) {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -677,8 +681,8 @@ impl Machine {
     /// The captcha provider answered, or could not be reached.
     fn resume_captcha(&mut self, path: CaptchaPath, event: Event<'_>) -> Step {
         let conf = unsafe { &*self.conf };
-        let is_v3 = conf.captcha_type == 4;
-        let threshold = conf.captcha_v3_score;
+        let is_v3 = conf.captcha.provider == Some(CaptchaProvider::RecaptchaV3);
+        let threshold = conf.captcha.score;
 
         let verdict = match event {
             Event::HttpResponse { status, body } => {
@@ -730,7 +734,8 @@ impl Machine {
 
         let real = !name.is_empty()
             && conf
-                .verify_bot_rules
+                .verify_bot
+                .rules
                 .as_ref()
                 .map(|rules| {
                     rules.domain[bot.index()]
@@ -759,7 +764,7 @@ impl Machine {
         self.meta.rule_type = b"FAKE-BOT".to_vec();
         self.meta.rule_details = details.to_vec();
         self.meta.general_log = true;
-        if conf.verify_bot == 2 {
+        if conf.verify_bot.mode == Some(VerifyBotMode::Strict) {
             self.meta.blocked = true;
             let policy = conf.policy(TriggerKind::VerifyBot);
             let mut decision = None;
@@ -790,7 +795,7 @@ impl Machine {
         // In bypass mode the inspections still run (so `$waf_*` and the log are
         // filled in) but nothing is blocked and no content handler is
         // installed, exactly like `ngx_http_waf_perform_action_at_access_end()`.
-        if conf.waf == WAF_BYPASS {
+        if conf.waf == Some(Waf::Bypass) {
             outcome.kind = STEP_ALLOW;
             outcome.status = 0;
             outcome.body.clear();
@@ -992,7 +997,7 @@ fn run_check(state: &mut State, id: CheckId) -> CheckResult {
 /// C implementation, without the thread pool path
 /// (`NGX_HTTP_WAF_ASYNC_MODSECURITY`).
 fn check_modsecurity(state: &mut State) -> CheckResult {
-    if state.conf.modsecurity != 1 {
+    if state.conf.modsecurity.enabled != Some(true) {
         return CheckResult::NotMatched;
     }
     // `ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)`
@@ -1000,7 +1005,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         return CheckResult::NotMatched;
     }
 
-    let Some(instance) = state.conf.modsecurity_instance.clone() else {
+    let Some(instance) = state.conf.modsecurity.instance.clone() else {
         // The directive loads the rules while nginx reads the configuration, so
         // an enabled `waf_modsecurity` always has an instance.  A missing one
         // means the configuration was built by hand; inspect nothing rather
@@ -1139,7 +1144,7 @@ fn run_modsecurity_request(
 /// The `waf_captcha` inspection: a visitor that passed the challenge carries a
 /// valid cookie, everybody else is challenged.
 fn check_captcha(state: &mut State) -> CheckResult {
-    if !state.http_transport || state.conf.captcha != 1 {
+    if !state.http_transport || state.conf.captcha.enabled != Some(true) {
         return CheckResult::NotMatched;
     }
 
@@ -1169,15 +1174,17 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
     }
     // The session entry point needs the *action* table (the one
     // `waf_action X=CAPTCHA zone=...` created), not the fail counter.
-    if state.conf.waf == WAF_BYPASS {
+    if state.conf.waf == Some(Waf::Bypass) {
         return CheckResult::NotMatched;
     }
     let action_zone = state.req.action_zone;
-    if action_zone.is_null() || state.conf.action_captcha_tag.is_empty() {
+    if action_zone.is_null() {
         return CheckResult::NotMatched;
     }
-
-    let tag = state.conf.action_captcha_tag.clone();
+    let Some(action) = &state.conf.action.captcha_zone else {
+        return CheckResult::NotMatched;
+    };
+    let tag = action.tag.clone();
     let flags = cc::entry_flags(action_zone, &tag, state.req.ip, state.req.ipv6);
     if flags.is_none() {
         // This address is not in the middle of a captcha challenge.
@@ -1190,10 +1197,10 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
 /// Run the provider (or the "not a verify request" path) for one captcha
 /// attempt.
 fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
-    let response_key = match state.conf.captcha_type {
-        1 => "h-captcha-response",
-        2..=4 => "g-recaptcha-response",
-        _ => return captcha_apply(state, path, CaptchaVerdict::Fault),
+    let response_key = match state.conf.captcha.provider {
+        Some(CaptchaProvider::HCaptcha) => "h-captcha-response",
+        Some(_) => "g-recaptcha-response",
+        None => return captcha_apply(state, path, CaptchaVerdict::Fault),
     };
 
     if !captcha_is_verify_url(state) || !state.req.method.contains(WafMode::POST) {
@@ -1207,11 +1214,11 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
     let mut body = b"response=".to_vec();
     body.extend_from_slice(token);
     body.extend_from_slice(b"&secret=");
-    body.extend_from_slice(&state.conf.captcha_secret);
+    body.extend_from_slice(&state.conf.captcha.secret);
 
     CheckResult::Fetch {
         continuation: Continuation::Captcha { path },
-        url: String::from_utf8_lossy(&state.conf.captcha_api).into_owned(),
+        url: String::from_utf8_lossy(&state.conf.captcha.api).into_owned(),
         body,
     }
 }
@@ -1245,8 +1252,8 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
             // dropped the address from the action table.
             if path == CaptchaPath::Session {
                 let zone = state.req.action_zone;
-                if !zone.is_null() && !state.conf.action_captcha_tag.is_empty() {
-                    let tag = state.conf.action_captcha_tag.clone();
+                if let (false, Some(action)) = (zone.is_null(), &state.conf.action.captcha_zone) {
+                    let tag = action.tag.clone();
                     cc::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
                 }
                 *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"good".to_vec())));
@@ -1274,7 +1281,7 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
             state.set_rule_info(b"CAPTCHA", b"CHALLENGE", true, true);
             *state.decision = Some(Decision::page(
                 HTTP_SERVICE_UNAVAILABLE,
-                Rc::clone(&state.conf.captcha_html),
+                Rc::clone(&state.conf.captcha.html),
             ));
         }
         CaptchaVerdict::Fault => unreachable!(),
@@ -1285,8 +1292,14 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
 
 /// Count one captcha failure, `true` when the visitor is over the limit.
 fn captcha_inc_fails(state: &mut State) -> bool {
-    if state.conf.captcha_max_fails <= 0 || state.conf.captcha_duration <= 0 {
+    let (Some(max_fails), Some(duration)) =
+        (state.conf.captcha.max_fails, state.conf.captcha.duration)
+    else {
         // Without `max_fails` the C implementation does not count at all.
+        return false;
+    };
+    if max_fails <= 0 || duration <= 0 {
+        // A configuration that would not count either.
         return false;
     }
     // A connection without an address cannot be counted either.
@@ -1294,13 +1307,16 @@ fn captcha_inc_fails(state: &mut State) -> bool {
         return false;
     }
     let zone = state.req.captcha_zone;
-    if zone.is_null() || state.conf.captcha_tag.is_empty() {
+    let Some(captcha_zone) = &state.conf.captcha.zone else {
+        return false;
+    };
+    if zone.is_null() {
         return false;
     }
 
-    let limit = std::cmp::max(state.conf.captcha_max_fails, 20);
+    let limit = std::cmp::max(max_fails, 20);
     let cycle = 60 * 45 + util::random_uniform(60 * 15) as i64;
-    let tag = state.conf.captcha_tag.clone();
+    let tag = captcha_zone.tag.clone();
     match cc::increment(
         zone,
         &tag,
@@ -1308,7 +1324,7 @@ fn captcha_inc_fails(state: &mut State) -> bool {
         state.req.ipv6,
         limit,
         cycle,
-        state.conf.captcha_duration,
+        duration,
         state.req.now,
     ) {
         Some(result) => result.blocked,
@@ -1318,7 +1334,7 @@ fn captcha_inc_fails(state: &mut State) -> bool {
 
 /// True when the request targets the configured verification URL.
 fn captcha_is_verify_url(state: &State) -> bool {
-    !state.conf.captcha_verify_url.is_empty() && state.req.uri == state.conf.captcha_verify_url
+    !state.conf.captcha.verify_url.is_empty() && state.req.uri == state.conf.captcha.verify_url
 }
 
 /// Verify the three cookies of a visitor.  `Err(())` is the internal fault of
@@ -1351,7 +1367,12 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
     let Some(client_time) = util::atoi(time) else {
         return Ok(false);
     };
-    if state.req.now - client_time > state.conf.captcha_expire {
+    let Some(expire) = state.conf.captcha.expire else {
+        // Nothing was configured, no cookie of this configuration can be
+        // valid: the C implementation compared against its `-1`.
+        return Ok(false);
+    };
+    if state.req.now - client_time > expire {
         return Ok(false);
     }
 
@@ -1479,7 +1500,7 @@ fn form_value<'a>(body: &'a [u8], key: &str) -> Option<&'a [u8]> {
 }
 
 /// Decide whether the provider accepted the token.
-fn provider_verdict(body: &[u8], is_v3: bool, threshold: f64) -> bool {
+fn provider_verdict(body: &[u8], is_v3: bool, threshold: Option<f64>) -> bool {
     let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) else {
         return false;
     };
@@ -1495,7 +1516,7 @@ fn provider_verdict(body: &[u8], is_v3: bool, threshold: f64) -> bool {
     }
     json.get("score")
         .and_then(|value| value.as_f64())
-        .map(|score| score >= threshold)
+        .map(|score| threshold.is_some_and(|threshold| score >= threshold))
         .unwrap_or(false)
 }
 
@@ -1503,7 +1524,7 @@ fn provider_verdict(body: &[u8], is_v3: bool, threshold: f64) -> bool {
 /// it reach the server.  A visitor that already waited carries a cookie trio,
 /// which is what makes the second request go through.
 fn check_under_attack(state: &mut State) -> CheckResult {
-    if state.conf.under_attack != 1 {
+    if state.conf.under_attack.enabled != Some(true) {
         return CheckResult::NotMatched;
     }
 
@@ -1555,7 +1576,7 @@ fn check_under_attack(state: &mut State) -> CheckResult {
 fn under_attack_hold(state: &mut State, mint: bool) -> CheckResult {
     let mut decision = Decision::page(
         HTTP_SERVICE_UNAVAILABLE,
-        Rc::clone(&state.conf.under_attack_html),
+        Rc::clone(&state.conf.under_attack.html),
     );
     if mint {
         let time = state.req.now.to_string();
@@ -1575,20 +1596,21 @@ fn under_attack_hold(state: &mut State, mint: bool) -> CheckResult {
 /// `waf_verify_bot`: a user agent that claims to be a friendly crawler is
 /// checked against the host name its address resolves to.
 fn check_verify_bot(state: &mut State) -> CheckResult {
-    if state.conf.verify_bot == -1 || state.conf.verify_bot == 0 {
+    if matches!(state.conf.verify_bot.mode, None | Some(VerifyBotMode::Off)) {
         return CheckResult::NotMatched;
     }
     if state.req.user_agent.is_empty() {
         return CheckResult::NotMatched;
     }
-    let Some(rules) = state.conf.verify_bot_rules.clone() else {
+    let Some(rules) = state.conf.verify_bot.rules.clone() else {
         return CheckResult::NotMatched;
     };
     let user_agent = state.req.user_agent;
     for bot in BOTS {
         let enabled = state
             .conf
-            .verify_bot_type
+            .verify_bot
+            .types
             .is_some_and(|types| types.contains(bot.flag()));
         if !enabled {
             continue;
@@ -1820,16 +1842,16 @@ fn check_post(state: &mut State) -> bool {
 
 fn check_cc(state: &mut State) -> bool {
     // A connection without an address has no counter to keep.
-    if state.conf.cc_deny != 1 || state.req.ip.is_empty() {
+    if state.conf.cc_deny.enabled != Some(true) || state.req.ip.is_empty() {
         return false;
     }
     // A CC protection that cannot count has to block: this used to be dropped
     // by the "a check that did not match resets the chain" rule and the request
     // was served uninspected.
-    if state.conf.cc_deny_cycle <= 0
-        || state.conf.cc_deny_duration <= 0
-        || state.conf.cc_deny_limit <= 0
-        || state.conf.cc_zone < 0
+    if state.conf.cc_deny.cycle.is_none_or(|value| value <= 0)
+        || state.conf.cc_deny.duration.is_none_or(|value| value <= 0)
+        || state.conf.cc_deny.limit.is_none_or(|value| value <= 0)
+        || state.conf.cc_deny.zone.is_none()
         || state.req.cc_zone.is_null()
     {
         state.set_rule_info(b"CC-DENY", b"", true, true);
@@ -1837,15 +1859,25 @@ fn check_cc(state: &mut State) -> bool {
         return true;
     }
 
-    let tag = state.conf.cc_tag.clone();
+    let limit = state.conf.cc_deny.limit.expect("checked above");
+    let cycle = state.conf.cc_deny.cycle.expect("checked above");
+    let duration = state.conf.cc_deny.duration.expect("checked above");
+    let tag = state
+        .conf
+        .cc_deny
+        .zone
+        .as_ref()
+        .expect("checked above")
+        .tag
+        .clone();
     let result = cc::increment(
         state.req.cc_zone,
         &tag,
         state.req.ip,
         state.req.ipv6,
-        state.conf.cc_deny_limit,
-        state.conf.cc_deny_cycle,
-        state.conf.cc_deny_duration,
+        limit,
+        cycle,
+        duration,
         state.req.now,
     );
     let Some(result) = result else {
@@ -1942,7 +1974,7 @@ mod tests {
     use std::rc::Rc;
 
     fn set_policy(conf: &mut LocConf, kind: TriggerKind, policy: Policy) {
-        conf.policies[kind.index()] = Some(policy);
+        conf.action.policies[kind.index()] = Some(policy);
     }
 
     /// The cookie signature is an HMAC-SHA256 of the zero padded fields with
@@ -1959,7 +1991,7 @@ mod tests {
 
     fn conf_with_rules(rules: rules::RuleSet) -> LocConf {
         LocConf {
-            waf: WAF_ON,
+            waf: Some(Waf::On),
             waf_mode: WafMode::FULL,
             rules: Some(Rc::new(rules)),
             ..LocConf::default()
@@ -2006,7 +2038,7 @@ mod tests {
     #[test]
     fn disabled_waf_does_not_check() {
         let mut conf = conf_with_rules(url_rules());
-        conf.waf = WAF_OFF;
+        conf.waf = Some(Waf::Off);
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_ALLOW);
@@ -2078,7 +2110,7 @@ mod tests {
                 .push(RegexRule::compile(b"^/white/", None).unwrap());
             rules
         }));
-        conf.priority = vec![CheckId::WhiteUrl, CheckId::Url];
+        conf.priority = Some(vec![CheckId::WhiteUrl, CheckId::Url]);
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/white/www.bak", &cookies));
         assert_eq!(outcome.kind, STEP_ALLOW);
@@ -2090,7 +2122,7 @@ mod tests {
     #[test]
     fn bypass_mode_reports_but_never_blocks() {
         let mut conf = conf_with_rules(url_rules());
-        conf.waf = WAF_BYPASS;
+        conf.waf = Some(Waf::Bypass);
         conf.block_page = Rc::new(HTML_BLOCK.to_vec());
         let page = Rc::clone(&conf.block_page);
         set_policy(
@@ -2140,10 +2172,10 @@ mod tests {
     #[test]
     fn cc_without_a_zone_blocks() {
         let mut conf = conf_with_rules(rules::new_rule_set());
-        conf.cc_deny = 1;
-        conf.cc_deny_limit = 2;
-        conf.cc_deny_cycle = 60;
-        conf.cc_deny_duration = 60;
+        conf.cc_deny.enabled = Some(true);
+        conf.cc_deny.limit = Some(2);
+        conf.cc_deny.cycle = Some(60);
+        conf.cc_deny.duration = Some(60);
         // `cc_zone` stays -1: the configuration cannot count, so the request is
         // blocked instead of being served uninspected.
         let cookies = Vec::new();
@@ -2199,12 +2231,14 @@ mod tests {
         );
 
         let mut conf = conf_with_rules(rules::new_rule_set());
-        conf.cc_deny = 1;
-        conf.cc_deny_limit = 2;
-        conf.cc_deny_cycle = 60;
-        conf.cc_deny_duration = 60;
-        conf.cc_zone = 0;
-        conf.cc_tag = b"cc_deny".to_vec();
+        conf.cc_deny.enabled = Some(true);
+        conf.cc_deny.limit = Some(2);
+        conf.cc_deny.cycle = Some(60);
+        conf.cc_deny.duration = Some(60);
+        conf.cc_deny.zone = Some(crate::config::ZoneRef {
+            index: 0,
+            tag: b"cc_deny".to_vec(),
+        });
         let cookies = Vec::new();
         let mut view = request(b"/", &cookies);
         view.cc_zone = handle;
@@ -2227,10 +2261,10 @@ mod tests {
         // A CC protection that cannot count answers 500 for a client with an
         // address; a connection without one (`listen unix:...`) is not counted
         // at all, and no block of the IP lists may match it either.
-        conf.cc_deny = 1;
-        conf.cc_deny_limit = 1;
-        conf.cc_deny_cycle = 60;
-        conf.cc_deny_duration = 60;
+        conf.cc_deny.enabled = Some(true);
+        conf.cc_deny.limit = Some(1);
+        conf.cc_deny.cycle = Some(60);
+        conf.cc_deny.duration = Some(60);
         let cookies = Vec::new();
 
         let mut view = request(b"/", &cookies);
@@ -2242,7 +2276,7 @@ mod tests {
 
         // The same configuration still matches the address of a connection
         // that has one.
-        conf.cc_deny = 0;
+        conf.cc_deny.enabled = Some(false);
         let outcome = check(&mut conf, &request(b"/", &cookies));
         assert_eq!(outcome.kind, STEP_RESPONSE);
         assert_eq!(outcome.rule_type, b"BLACK-IPV4");
@@ -2362,7 +2396,7 @@ mod tests {
     fn verify_bot_conf(mode: &str) -> LocConf {
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
-            waf: WAF_ON,
+            waf: Some(Waf::On),
             waf_mode: WafMode::GET | WafMode::UA,
             ..LocConf::default()
         };
@@ -2476,7 +2510,7 @@ mod tests {
             .push(RegexRule::compile(b"/www\\.bak", None).unwrap());
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
-            waf: WAF_ON,
+            waf: Some(Waf::On),
             waf_mode: WafMode::UA | WafMode::URL | WafMode::GET,
             rules: Some(Rc::new(rules)),
             ..LocConf::default()
@@ -2549,7 +2583,7 @@ mod tests {
         crate::config::zone_directive(&mut main, &[b"name=any".to_vec(), b"size=10m".to_vec()])
             .unwrap();
         let mut conf = LocConf {
-            waf: WAF_ON,
+            waf: Some(Waf::On),
             waf_mode: WafMode::GET | WafMode::POST,
             ..LocConf::new()
         };
@@ -2639,7 +2673,7 @@ mod tests {
         assert_eq!(outcome.kind, STEP_RESPONSE);
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
         assert!(outcome.register_content_handler);
-        assert_eq!(outcome.body, *conf.captcha_html);
+        assert_eq!(outcome.body, *conf.captcha.html);
         assert_eq!(outcome.rule_type, b"CAPTCHA");
         assert!(outcome.blocked);
     }
@@ -2896,7 +2930,10 @@ mod tests {
         let (zone, _shm) = captcha_counter_zone();
         let tag = b"anyaction_captcha";
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
-        conf.action_captcha_tag = tag.to_vec();
+        conf.action.captcha_zone = Some(crate::config::ZoneRef {
+            index: 0,
+            tag: tag.to_vec(),
+        });
         let ip = [1u8, 2, 3, 4];
         assert!(cc::action_entry(zone, tag, &ip, false, 999, 600, 1).is_some());
 
@@ -2992,8 +3029,10 @@ mod tests {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &["max_fails=1:1m", "zone=any:tag"]);
         // The zone lookup needs a zone in the main configuration; patch the two
         // fields the checks read.
-        conf.captcha_zone = 0;
-        conf.captcha_tag = b"captchatag".to_vec();
+        conf.captcha.zone = Some(crate::config::ZoneRef {
+            index: 0,
+            tag: b"captchatag".to_vec(),
+        });
         conf
     }
 
@@ -3077,7 +3116,7 @@ mod tests {
     fn under_attack_conf() -> LocConf {
         let mut main = crate::config::MainConf::default();
         let mut conf = LocConf {
-            waf: WAF_ON,
+            waf: Some(Waf::On),
             waf_mode: WafMode::FULL,
             ..LocConf::new()
         };
@@ -3169,7 +3208,7 @@ mod tests {
         assert_eq!(outcome.kind, STEP_RESPONSE);
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
         assert!(outcome.register_content_handler);
-        assert_eq!(outcome.body, *conf.under_attack_html);
+        assert_eq!(outcome.body, *conf.under_attack.html);
         assert_eq!(outcome.rule_type, b"UNDER-ATTACK");
         assert!(outcome.blocked);
         assert!(outcome.general_log);
@@ -3241,10 +3280,12 @@ mod tests {
         let instance = modsec::Instance::create(&[rules.to_str().unwrap().as_bytes()], None)
             .expect("the rules load");
         LocConf {
-            waf: WAF_ON,
+            waf: Some(Waf::On),
             waf_mode: WafMode::FULL,
-            modsecurity: 1,
-            modsecurity_instance: Some(Rc::new(instance)),
+            modsecurity: crate::config::ModSecurity {
+                enabled: Some(true),
+                instance: Some(Rc::new(instance)),
+            },
             ..LocConf::new()
         }
     }

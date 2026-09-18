@@ -345,56 +345,218 @@ impl BotRules {
     }
 }
 
-/// The `loc`/`srv` level configuration.
-pub struct LocConf {
-    pub waf: i64,
-    pub waf_rule_path: Vec<u8>,
-    pub waf_mode: WafMode,
-    pub cc_deny: i64,
-    pub cc_deny_limit: i64,
-    pub cc_deny_duration: i64,
-    pub cc_deny_cycle: i64,
-    pub cc_zone: i64,
-    pub cc_tag: Vec<u8>,
-    pub cache_enabled: i64,
-    pub cache_capacity: i64,
-    pub verify_bot: i64,
-    pub verify_bot_type: Option<BotTypes>,
+/// The `waf` switch: the `0`/`1`/`2` of the C implementation, `None` where it
+/// was unset (`-1`) and the merge resolves the inheritance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Waf {
+    Off = 0,
+    On = 1,
+    Bypass = 2,
+}
+
+/// The mode of `waf_verify_bot`, the `1`/`2` of the C implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VerifyBotMode {
+    Off,
+    On,
+    Strict,
+}
+
+/// The `prov=` of `waf_captcha`, the `1..=4` the C implementation stored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptchaProvider {
+    HCaptcha,
+    RecaptchaV2Checkbox,
+    RecaptchaV2Invisible,
+    RecaptchaV3,
+}
+
+/// The shared memory zone a directive writes through: the index of the zone in
+/// [`MainConf::zones`] and the tag its entries are stored under.  Both are set
+/// and inherited together, the C implementation merged the tag with the index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZoneRef {
+    pub index: usize,
+    pub tag: Vec<u8>,
+}
+
+/// The `waf_cc_deny` configuration.
+#[derive(Debug, Default)]
+pub struct CcDeny {
+    pub enabled: Option<bool>,
+    pub limit: Option<i64>,
+    pub duration: Option<i64>,
+    pub cycle: Option<i64>,
+    pub zone: Option<ZoneRef>,
+}
+
+impl CcDeny {
+    fn merge(&mut self, parent: &Self) {
+        self.enabled = self.enabled.or(parent.enabled);
+        self.limit = self.limit.or(parent.limit);
+        self.duration = self.duration.or(parent.duration);
+        self.cycle = self.cycle.or(parent.cycle);
+        self.zone = self.zone.clone().or_else(|| parent.zone.clone());
+    }
+}
+
+/// The `waf_cache` configuration.
+#[derive(Debug, Default)]
+pub struct Cache {
+    pub enabled: Option<bool>,
+    pub capacity: Option<i64>,
+}
+
+impl Cache {
+    fn merge(&mut self, parent: &Self) {
+        self.enabled = self.enabled.or(parent.enabled);
+        self.capacity = self.capacity.or(parent.capacity);
+    }
+}
+
+/// The `waf_verify_bot` configuration.
+#[derive(Debug, Default)]
+pub struct VerifyBot {
+    pub mode: Option<VerifyBotMode>,
+    pub types: Option<BotTypes>,
     /// The compiled crawler patterns, `None` until `waf_verify_bot` is used.
-    pub verify_bot_rules: Option<Rc<BotRules>>,
-    pub under_attack: i64,
-    pub under_attack_html: Rc<Vec<u8>>,
-    pub captcha: i64,
-    pub captcha_type: i64,
-    pub captcha_secret: Vec<u8>,
-    pub captcha_v3_score: f64,
-    pub captcha_api: Vec<u8>,
-    pub captcha_verify_url: Vec<u8>,
-    pub captcha_expire: i64,
-    pub captcha_html: Rc<Vec<u8>>,
-    pub captcha_max_fails: i64,
-    pub captcha_duration: i64,
-    pub captcha_zone: i64,
-    pub captcha_tag: Vec<u8>,
-    pub modsecurity: i64,
+    pub rules: Option<Rc<BotRules>>,
+}
+
+impl VerifyBot {
+    fn merge(&mut self, parent: &Self) {
+        self.mode = self.mode.or(parent.mode);
+        self.types = self.types.or(parent.types);
+        if self.rules.is_none() {
+            self.rules = parent.rules.clone();
+        }
+    }
+}
+
+/// The `waf_under_attack` configuration.
+#[derive(Debug, Default)]
+pub struct UnderAttack {
+    pub enabled: Option<bool>,
+    pub html: Rc<Vec<u8>>,
+}
+
+impl UnderAttack {
+    fn merge(&mut self, parent: &Self) {
+        self.enabled = self.enabled.or(parent.enabled);
+        if self.html.is_empty() {
+            self.html = Rc::clone(&parent.html);
+        }
+    }
+}
+
+/// The `waf_captcha` configuration.
+#[derive(Debug, Default)]
+pub struct Captcha {
+    pub enabled: Option<bool>,
+    pub provider: Option<CaptchaProvider>,
+    pub secret: Vec<u8>,
+    pub score: Option<f64>,
+    pub api: Vec<u8>,
+    pub verify_url: Vec<u8>,
+    pub expire: Option<i64>,
+    pub html: Rc<Vec<u8>>,
+    pub max_fails: Option<i64>,
+    pub duration: Option<i64>,
+    pub zone: Option<ZoneRef>,
+}
+
+impl Captcha {
+    fn merge(&mut self, parent: &Self) {
+        self.enabled = self.enabled.or(parent.enabled);
+        self.provider = self.provider.or(parent.provider);
+        self.score = self.score.or(parent.score);
+        self.expire = self.expire.or(parent.expire);
+        self.max_fails = self.max_fails.or(parent.max_fails);
+        self.duration = self.duration.or(parent.duration);
+        self.zone = self.zone.clone().or_else(|| parent.zone.clone());
+        if self.secret.is_empty() {
+            self.secret = parent.secret.clone();
+        }
+        if self.api.is_empty() {
+            self.api = parent.api.clone();
+        }
+        if self.verify_url.is_empty() {
+            self.verify_url = parent.verify_url.clone();
+        }
+        if self.html.is_empty() {
+            self.html = Rc::clone(&parent.html);
+        }
+    }
+}
+
+/// The `waf_modsecurity` configuration.
+#[derive(Default)]
+pub struct ModSecurity {
+    pub enabled: Option<bool>,
     /// The libmodsecurity instance and its rule set, built while nginx reads
     /// the configuration by `waf_modsecurity on` and inherited by the contexts
     /// below it.  `None` means "no instance yet", which is what the merge
     /// resolves.
-    pub modsecurity_instance: Option<Rc<modsec::Instance>>,
-    pub block_page: Rc<Vec<u8>>,
+    pub instance: Option<Rc<modsec::Instance>>,
+}
+
+impl ModSecurity {
+    fn merge(&mut self, parent: &Self) {
+        self.enabled = self.enabled.or(parent.enabled);
+        if self.instance.is_none() {
+            self.instance = parent.instance.clone();
+        }
+    }
+}
+
+/// The `waf_action` configuration, the zone of its captcha table included.
+#[derive(Debug, Default)]
+pub struct Action {
+    pub captcha_zone: Option<ZoneRef>,
     /// The policy of each trigger, indexed by `TriggerKind::index()`.  `None`
     /// means "nothing configured here", which the merge resolves by inheriting
     /// from the parent and finally falling back to the built in default.
     pub policies: [Option<Policy>; 4],
+}
+
+impl Action {
+    fn merge(&mut self, parent: &mut Self) {
+        self.captcha_zone = self
+            .captcha_zone
+            .clone()
+            .or_else(|| parent.captcha_zone.clone());
+        for kind in TRIGGER_KINDS {
+            if parent.policies[kind.index()].is_none() {
+                parent.policies[kind.index()] = Some(kind.default_policy());
+            }
+            if self.policies[kind.index()].is_none() {
+                self.policies[kind.index()] = parent.policies[kind.index()].clone();
+            }
+        }
+    }
+}
+
+/// The `loc`/`srv` level configuration.
+pub struct LocConf {
+    pub waf: Option<Waf>,
+    pub waf_rule_path: Vec<u8>,
+    pub waf_mode: WafMode,
+    pub cc_deny: CcDeny,
+    pub cache: Cache,
+    pub verify_bot: VerifyBot,
+    pub under_attack: UnderAttack,
+    pub captcha: Captcha,
+    pub modsecurity: ModSecurity,
+    pub action: Action,
+    pub block_page: Rc<Vec<u8>>,
+    /// The order of the inspections of `waf_priority`.  `None` means "nothing
+    /// configured here", which the merge resolves by inheriting from the parent
+    /// and the request path by falling back to [`DEFAULT_PRIORITY`].
+    pub priority: Option<Vec<CheckId>>,
     /// A random string generated once per configuration, the salt of the
     /// captcha cookie HMAC (the C implementation keeps the same value in a
     /// function static so every worker agrees on it).
     pub random_str: Vec<u8>,
-    pub action_captcha_zone: i64,
-    pub action_captcha_tag: Vec<u8>,
-    pub priority: Vec<CheckId>,
-    pub is_custom_priority: bool,
     pub rules: Option<Rc<RuleSet>>,
     /// Messages the core wants nginx to log while it keeps the configuration
     /// (the C implementation logged an overlapping address block and dropped
@@ -416,43 +578,19 @@ impl LocConf {
 impl Default for LocConf {
     fn default() -> Self {
         LocConf {
-            waf: WAF_UNSET,
+            waf: None,
             waf_rule_path: Vec::new(),
             waf_mode: WafMode::empty(),
-            cc_deny: -1,
-            cc_deny_limit: -1,
-            cc_deny_duration: -1,
-            cc_deny_cycle: -1,
-            cc_zone: -1,
-            cc_tag: Vec::new(),
-            cache_enabled: -1,
-            cache_capacity: -1,
-            verify_bot: -1,
-            verify_bot_type: None,
-            verify_bot_rules: None,
-            under_attack: -1,
-            under_attack_html: Rc::new(Vec::new()),
-            captcha: -1,
-            captcha_type: -1,
-            captcha_secret: Vec::new(),
-            captcha_v3_score: f64::NAN,
-            captcha_api: Vec::new(),
-            captcha_verify_url: Vec::new(),
-            captcha_expire: -1,
-            captcha_html: Rc::new(Vec::new()),
-            captcha_max_fails: -1,
-            captcha_duration: -1,
-            captcha_zone: -1,
-            captcha_tag: Vec::new(),
-            modsecurity: -1,
-            modsecurity_instance: None,
+            cc_deny: CcDeny::default(),
+            cache: Cache::default(),
+            verify_bot: VerifyBot::default(),
+            under_attack: UnderAttack::default(),
+            captcha: Captcha::default(),
+            modsecurity: ModSecurity::default(),
+            action: Action::default(),
             block_page: Rc::new(Vec::new()),
-            policies: [None, None, None, None],
+            priority: None,
             random_str: Vec::new(),
-            action_captcha_zone: -1,
-            action_captcha_tag: Vec::new(),
-            priority: DEFAULT_PRIORITY.to_vec(),
-            is_custom_priority: false,
             rules: None,
             warnings: Vec::new(),
             caches: Caches::default(),
@@ -521,7 +659,7 @@ impl LocConf {
     /// still has no policy (it was never merged into anything) answers with the
     /// built in default instead of "no action".
     pub fn policy(&self, kind: TriggerKind) -> Policy {
-        match &self.policies[kind.index()] {
+        match &self.action.policies[kind.index()] {
             Some(policy) => policy.clone(),
             None => kind.default_policy(),
         }
@@ -541,11 +679,11 @@ impl LocConf {
     /// `waf_cache on` one stop the caching there, although that context still
     /// inherits the caches of its parent (the pointer of the C implementation).
     pub fn caching(&self) -> bool {
-        self.cache_enabled == 1 && self.caches.enabled
+        self.cache.enabled == Some(true) && self.caches.enabled
     }
 
     fn set_policy(&mut self, kind: TriggerKind, policy: Policy) {
-        self.policies[kind.index()] = Some(policy);
+        self.action.policies[kind.index()] = Some(policy);
     }
 }
 
@@ -611,16 +749,16 @@ pub fn zone_directive(main: &mut MainConf, args: &[Vec<u8>]) -> Result<(Vec<u8>,
 fn directive_waf(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
     let value = args.first().map(Vec::as_slice).unwrap_or(b"");
     if value == b"off" {
-        conf.waf = WAF_OFF;
+        conf.waf = Some(Waf::Off);
         return Ok(());
     }
     if value == b"on" {
-        conf.waf = WAF_ON;
+        conf.waf = Some(Waf::On);
         conf.ensure_rules();
         return Ok(());
     }
     if value == b"bypass" {
-        conf.waf = WAF_BYPASS;
+        conf.waf = Some(Waf::Bypass);
         conf.ensure_rules();
         return Ok(());
     }
@@ -733,17 +871,17 @@ fn directive_cc_deny(
 ) -> Result<(), String> {
     // The C implementation resets the duration to one hour for every use of
     // the directive.
-    conf.cc_deny_duration = 60 * 60;
+    conf.cc_deny.duration = Some(60 * 60);
 
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
-        conf.cc_deny = 1;
+        conf.cc_deny.enabled = Some(true);
     } else if starts_with_keyword(first, "off") {
-        conf.cc_deny = 0;
+        conf.cc_deny.enabled = Some(false);
     } else {
         return Err(INVALID.to_string());
     }
-    if conf.cc_deny == 0 {
+    if conf.cc_deny.enabled == Some(false) {
         return Ok(());
     }
 
@@ -760,16 +898,16 @@ fn directive_cc_deny(
                     return Err(INVALID.to_string());
                 }
                 match util::atoi(&limit_text[..limit_text.len() - 1]) {
-                    Some(limit) if limit > 0 => conf.cc_deny_limit = limit,
+                    Some(limit) if limit > 0 => conf.cc_deny.limit = Some(limit),
                     _ => return Err(INVALID.to_string()),
                 }
                 match util::parse_time(cycle_text) {
-                    Some(cycle) if cycle > 0 => conf.cc_deny_cycle = cycle,
+                    Some(cycle) if cycle > 0 => conf.cc_deny.cycle = Some(cycle),
                     _ => return Err(INVALID.to_string()),
                 }
             }
             b"duration" => match util::parse_time(&value) {
-                Some(duration) if duration > 0 => conf.cc_deny_duration = duration,
+                Some(duration) if duration > 0 => conf.cc_deny.duration = Some(duration),
                 _ => return Err(INVALID.to_string()),
             },
             b"zone" => {
@@ -787,31 +925,30 @@ fn directive_cc_deny(
                     return Err("ngx_waf: each tag of a zone can only be used once".to_string());
                 }
                 main.tags.push((zone_name.clone(), tag.clone()));
-                conf.cc_zone = index as i64;
-                conf.cc_tag = tag;
+                conf.cc_deny.zone = Some(ZoneRef { index, tag });
             }
             _ => return Err(INVALID.to_string()),
         }
     }
 
-    if conf.cc_deny_limit == -1 {
+    if conf.cc_deny.limit.is_none() {
         return Err(INVALID.to_string());
     }
     Ok(())
 }
 
 fn directive_cache(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
-    conf.cache_capacity = 50;
+    conf.cache.capacity = Some(50);
 
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
-        conf.cache_enabled = 1;
+        conf.cache.enabled = Some(true);
     } else if starts_with_keyword(first, "off") {
-        conf.cache_enabled = 0;
+        conf.cache.enabled = Some(false);
     } else {
         return Err(INVALID.to_string());
     }
-    if conf.cache_enabled == 0 {
+    if conf.cache.enabled == Some(false) {
         return Ok(());
     }
 
@@ -821,17 +958,20 @@ fn directive_cache(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
             return Err(INVALID.to_string());
         }
         match util::atoi(&value) {
-            Some(capacity) if capacity > 0 => conf.cache_capacity = capacity,
+            Some(capacity) if capacity > 0 => conf.cache.capacity = Some(capacity),
             _ => return Err(INVALID.to_string()),
         }
     }
 
-    conf.caches = Caches::new(conf.cache_capacity as usize);
+    conf.caches = Caches::new(
+        conf.cache
+            .capacity
+            .expect("the directive sets the capacity") as usize,
+    );
     Ok(())
 }
 
 fn directive_priority(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
-    conf.is_custom_priority = true;
     let text = args.first().map(Vec::as_slice).unwrap_or(b"");
     let parts = split(text, b' ', 20).ok_or_else(|| INVALID.to_string())?;
     if parts.len() != 15 {
@@ -849,7 +989,7 @@ fn directive_priority(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String
             }
         }
     }
-    conf.priority = priority;
+    conf.priority = Some(priority);
     Ok(())
 }
 
@@ -870,16 +1010,16 @@ fn read_file(path: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 fn directive_under_attack(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
-    conf.under_attack = -1;
+    conf.under_attack.enabled = None;
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
-        conf.under_attack = 1;
+        conf.under_attack.enabled = Some(true);
     } else if starts_with_keyword(first, "off") {
-        conf.under_attack = 0;
+        conf.under_attack.enabled = Some(false);
     } else {
         return Err(INVALID.to_string());
     }
-    if conf.under_attack == 0 {
+    if conf.under_attack.enabled == Some(false) {
         return Ok(());
     }
 
@@ -888,22 +1028,21 @@ fn directive_under_attack(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), St
         if key != b"file" || value.is_empty() {
             return Err(INVALID.to_string());
         }
-        conf.under_attack_html = Rc::new(read_file(&value)?);
+        conf.under_attack.html = Rc::new(read_file(&value)?);
     }
 
-    if conf.under_attack_html.is_empty() {
-        conf.under_attack_html = Rc::new(embedded_page(HTML_UNDER_ATTACK));
+    if conf.under_attack.html.is_empty() {
+        conf.under_attack.html = Rc::new(embedded_page(HTML_UNDER_ATTACK));
     }
     Ok(())
 }
 
-fn captcha_template(captcha_type: i64) -> Option<&'static [u8]> {
-    match captcha_type {
-        1 => Some(HTML_CAPTCHA_HCAPTCHA),
-        2 => Some(HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX),
-        3 => Some(HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE),
-        4 => Some(HTML_CAPTCHA_RECAPTCHA_V3),
-        _ => None,
+fn captcha_template(provider: CaptchaProvider) -> Option<&'static [u8]> {
+    match provider {
+        CaptchaProvider::HCaptcha => Some(HTML_CAPTCHA_HCAPTCHA),
+        CaptchaProvider::RecaptchaV2Checkbox => Some(HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX),
+        CaptchaProvider::RecaptchaV2Invisible => Some(HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE),
+        CaptchaProvider::RecaptchaV3 => Some(HTML_CAPTCHA_RECAPTCHA_V3),
     }
 }
 
@@ -912,19 +1051,19 @@ fn directive_captcha(
     conf: &mut LocConf,
     args: &[Vec<u8>],
 ) -> Result<(), String> {
-    conf.captcha = -1;
-    conf.captcha_expire = 60 * 30;
-    conf.captcha_v3_score = 0.5;
-    conf.captcha_verify_url = b"/captcha".to_vec();
+    conf.captcha.enabled = None;
+    conf.captcha.expire = Some(60 * 30);
+    conf.captcha.score = Some(0.5);
+    conf.captcha.verify_url = b"/captcha".to_vec();
 
     let mut default_template: Option<&'static [u8]> = None;
     let mut sitekey: Vec<u8> = Vec::new();
 
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
-        conf.captcha = 1;
+        conf.captcha.enabled = Some(true);
     } else if starts_with_keyword(first, "off") {
-        conf.captcha = 0;
+        conf.captcha.enabled = Some(false);
     } else {
         return Err(INVALID.to_string());
     }
@@ -936,24 +1075,33 @@ fn directive_captcha(
                 if value.is_empty() {
                     return Err(INVALID.to_string());
                 }
-                conf.captcha_html = Rc::new(read_file(&value)?);
+                conf.captcha.html = Rc::new(read_file(&value)?);
             }
             b"prov" => {
                 if value.is_empty() {
                     return Err(INVALID.to_string());
                 }
-                let (index, template) = if eq_ci(&value, "hCaptcha") {
-                    (1, Some(HTML_CAPTCHA_HCAPTCHA))
+                let (provider, template) = if eq_ci(&value, "hCaptcha") {
+                    (CaptchaProvider::HCaptcha, Some(HTML_CAPTCHA_HCAPTCHA))
                 } else if eq_ci(&value, "reCAPTCHAv2:checkbox") {
-                    (2, Some(HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX))
+                    (
+                        CaptchaProvider::RecaptchaV2Checkbox,
+                        Some(HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX),
+                    )
                 } else if eq_ci(&value, "reCAPTCHAv2:invisible") {
-                    (3, Some(HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE))
+                    (
+                        CaptchaProvider::RecaptchaV2Invisible,
+                        Some(HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE),
+                    )
                 } else if eq_ci(&value, "reCAPTCHAv3") {
-                    (4, Some(HTML_CAPTCHA_RECAPTCHA_V3))
+                    (
+                        CaptchaProvider::RecaptchaV3,
+                        Some(HTML_CAPTCHA_RECAPTCHA_V3),
+                    )
                 } else {
                     return Err(INVALID.to_string());
                 };
-                conf.captcha_type = index;
+                conf.captcha.provider = Some(provider);
                 default_template = template;
             }
             b"secret" => {
@@ -961,7 +1109,7 @@ fn directive_captcha(
                     return Err(INVALID.to_string());
                 }
                 // The C implementation uses the same secret for all providers.
-                conf.captcha_secret = value;
+                conf.captcha.secret = value;
             }
             b"sitekey" => {
                 if value.is_empty() {
@@ -970,27 +1118,27 @@ fn directive_captcha(
                 sitekey = value;
             }
             b"expire" => match util::parse_time(&value) {
-                Some(expire) => conf.captcha_expire = expire,
+                Some(expire) => conf.captcha.expire = Some(expire),
                 None => return Err(INVALID.to_string()),
             },
             b"score" => {
                 let text = String::from_utf8_lossy(&value).into_owned();
-                conf.captcha_v3_score = text.trim().parse().map_err(|_| INVALID.to_string())?;
+                conf.captcha.score = Some(text.trim().parse().map_err(|_| INVALID.to_string())?);
             }
-            b"api" => conf.captcha_api = value,
+            b"api" => conf.captcha.api = value,
             // The typo is part of the public configuration interface.
-            b"verfiy" => conf.captcha_verify_url = value,
+            b"verfiy" => conf.captcha.verify_url = value,
             b"max_fails" => {
                 let parts = split(&value, b':', 256).ok_or_else(|| INVALID.to_string())?;
                 if parts.len() != 2 {
                     return Err(INVALID.to_string());
                 }
                 match util::atoi(&parts[0]) {
-                    Some(max_fails) if max_fails > 0 => conf.captcha_max_fails = max_fails,
+                    Some(max_fails) if max_fails > 0 => conf.captcha.max_fails = Some(max_fails),
                     _ => return Err(INVALID.to_string()),
                 }
                 match util::parse_time(&parts[1]) {
-                    Some(duration) => conf.captcha_duration = duration,
+                    Some(duration) => conf.captcha.duration = Some(duration),
                     None => return Err(INVALID.to_string()),
                 }
             }
@@ -1009,43 +1157,45 @@ fn directive_captcha(
                     return Err("ngx_waf: each tag of a zone can only be used once".to_string());
                 }
                 main.tags.push((zone_name.clone(), tag.clone()));
-                conf.captcha_zone = index as i64;
-                conf.captcha_tag = tag;
+                conf.captcha.zone = Some(ZoneRef { index, tag });
             }
             _ => return Err(INVALID.to_string()),
         }
     }
 
-    if conf.captcha == -1 {
+    if conf.captcha.provider.is_none() {
         return Err("ngx_waf: you must set the parameter [prov]".to_string());
     }
 
-    if (conf.captcha_max_fails > 0 || conf.captcha_duration > 0) && conf.captcha_zone == -1 {
+    if (conf.captcha.max_fails.is_some_and(|value| value > 0)
+        || conf.captcha.duration.is_some_and(|value| value > 0))
+        && conf.captcha.zone.is_none()
+    {
         return Err(
             "ngx_waf: If you set the parameter [max_fails], you must set the parameter [zone]"
                 .to_string(),
         );
     }
 
-    if conf.captcha_html.is_empty() {
+    if conf.captcha.html.is_empty() {
         if sitekey.is_empty() {
             return Err("ngx_waf: you must set the parameter [sitekey]".to_string());
         }
         let template = default_template
-            .or_else(|| captcha_template(conf.captcha_type))
+            .or_else(|| captcha_template(conf.captcha.provider.expect("checked above")))
             .unwrap_or(b"");
-        conf.captcha_html = Rc::new(render_template(template, &sitekey));
+        conf.captcha.html = Rc::new(render_template(template, &sitekey));
     }
 
-    if conf.captcha_secret.is_empty() {
+    if conf.captcha.secret.is_empty() {
         return Err("ngx_waf: you must set the parameter [secret]".to_string());
     }
 
-    if conf.captcha_api.is_empty() {
-        conf.captcha_api = match conf.captcha_type {
-            1 => b"https://hcaptcha.com/siteverify".to_vec(),
-            2..=4 => b"https://www.recaptcha.net/recaptcha/api/siteverify".to_vec(),
-            _ => Vec::new(),
+    if conf.captcha.api.is_empty() {
+        conf.captcha.api = match conf.captcha.provider {
+            Some(CaptchaProvider::HCaptcha) => b"https://hcaptcha.com/siteverify".to_vec(),
+            Some(_) => b"https://www.recaptcha.net/recaptcha/api/siteverify".to_vec(),
+            None => Vec::new(),
         };
     }
 
@@ -1068,20 +1218,20 @@ fn render_template(template: &[u8], sitekey: &[u8]) -> Vec<u8> {
 }
 
 fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
-    conf.verify_bot = -1;
-    conf.verify_bot_type = None;
+    conf.verify_bot.mode = None;
+    conf.verify_bot.types = None;
 
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
-        conf.verify_bot = 1;
+        conf.verify_bot.mode = Some(VerifyBotMode::On);
     } else if starts_with_keyword(first, "strict") {
-        conf.verify_bot = 2;
+        conf.verify_bot.mode = Some(VerifyBotMode::Strict);
     } else if starts_with_keyword(first, "off") {
-        conf.verify_bot = 0;
+        conf.verify_bot.mode = Some(VerifyBotMode::Off);
     } else {
         return Err(INVALID.to_string());
     }
-    if conf.verify_bot == 0 {
+    if conf.verify_bot.mode == Some(VerifyBotMode::Off) {
         return Ok(());
     }
 
@@ -1095,7 +1245,8 @@ fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Stri
             ("SogouSpider", BotTypes::SOGOU),
         ] {
             if eq_ci(arg, name) {
-                conf.verify_bot_type
+                conf.verify_bot
+                    .types
                     .get_or_insert(BotTypes::empty())
                     .insert(flag);
                 matched = true;
@@ -1107,10 +1258,10 @@ fn directive_verify_bot(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Stri
         }
     }
 
-    if conf.verify_bot_type.is_none() {
-        conf.verify_bot_type = Some(BotTypes::ALL);
+    if conf.verify_bot.types.is_none() {
+        conf.verify_bot.types = Some(BotTypes::ALL);
     }
-    conf.verify_bot_rules = Some(Rc::new(BotRules::compile()));
+    conf.verify_bot.rules = Some(Rc::new(BotRules::compile()));
     Ok(())
 }
 
@@ -1175,8 +1326,7 @@ fn directive_action(
                 return Err("ngx_waf: each tag of a zone can only be used once".to_string());
             }
             main.tags.push((zone_name.clone(), tag.clone()));
-            conf.action_captcha_zone = index as i64;
-            conf.action_captcha_tag = tag;
+            conf.action.captcha_zone = Some(ZoneRef { index, tag });
             continue;
         }
 
@@ -1203,13 +1353,13 @@ fn directive_block_page(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Stri
 fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
     if starts_with_keyword(first, "on") {
-        conf.modsecurity = 1;
+        conf.modsecurity.enabled = Some(true);
     } else if starts_with_keyword(first, "off") {
-        conf.modsecurity = 0;
+        conf.modsecurity.enabled = Some(false);
     } else {
         return Err(INVALID.to_string());
     }
-    if conf.modsecurity == 0 {
+    if conf.modsecurity.enabled == Some(false) {
         return Ok(());
     }
 
@@ -1242,7 +1392,7 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
     };
     let files: Vec<&[u8]> = files.iter().map(Vec::as_slice).collect();
     let instance = modsec::Instance::create(&files, remote)?;
-    conf.modsecurity_instance = Some(Rc::new(instance));
+    conf.modsecurity.instance = Some(Rc::new(instance));
 
     Ok(())
 }
@@ -1250,108 +1400,39 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
 /// Merge `child` into the values of `parent`, mirroring
 /// `ngx_http_waf_merge_loc_conf()`.
 pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
-    if child.waf == WAF_UNSET {
-        child.waf = parent.waf;
-    }
+    child.waf = child.waf.or(parent.waf);
 
     if child.rules.is_none() {
         child.rules = parent.rules.clone();
     }
 
-    for (child_value, parent_value) in [
-        (&mut child.cc_deny, parent.cc_deny),
-        (&mut child.cc_deny_limit, parent.cc_deny_limit),
-        (&mut child.cc_deny_cycle, parent.cc_deny_cycle),
-        (&mut child.cc_deny_duration, parent.cc_deny_duration),
-        (&mut child.cache_enabled, parent.cache_enabled),
-        (&mut child.cache_capacity, parent.cache_capacity),
-        (&mut child.under_attack, parent.under_attack),
-        (&mut child.captcha, parent.captcha),
-        (&mut child.captcha_type, parent.captcha_type),
-        (&mut child.captcha_expire, parent.captcha_expire),
-        (&mut child.captcha_max_fails, parent.captcha_max_fails),
-        (&mut child.captcha_duration, parent.captcha_duration),
-        (&mut child.verify_bot, parent.verify_bot),
-        (&mut child.modsecurity, parent.modsecurity),
-    ] {
-        if *child_value == -1 {
-            *child_value = parent_value;
-        }
-    }
+    child.cc_deny.merge(&parent.cc_deny);
+    child.cache.merge(&parent.cache);
+    child.verify_bot.merge(&parent.verify_bot);
+    child.under_attack.merge(&parent.under_attack);
+    child.captcha.merge(&parent.captcha);
+    child.modsecurity.merge(&parent.modsecurity);
 
-    if child.cc_zone == -1 {
-        child.cc_zone = parent.cc_zone;
-        child.cc_tag = parent.cc_tag.clone();
-    }
-    if child.captcha_zone == -1 {
-        child.captcha_zone = parent.captcha_zone;
-        child.captcha_tag = parent.captcha_tag.clone();
-    }
-    if child.action_captcha_zone == -1 {
-        child.action_captcha_zone = parent.action_captcha_zone;
-        child.action_captcha_tag = parent.action_captcha_tag.clone();
-    }
-    if child.verify_bot_type.is_none() {
-        child.verify_bot_type = parent.verify_bot_type;
-    }
-    if child.verify_bot_rules.is_none() {
-        child.verify_bot_rules = parent.verify_bot_rules.clone();
-    }
+    // Policies: materialise the defaults on the parent (it serves requests
+    // itself), then let the child inherit what it did not configure.
+    child.action.merge(&mut parent.action);
+
     if child.waf_mode.is_empty() {
         child.waf_mode = parent.waf_mode;
-    }
-    if child.captcha_v3_score.is_nan() {
-        child.captcha_v3_score = parent.captcha_v3_score;
     }
     if child.waf_rule_path.is_empty() {
         child.waf_rule_path = parent.waf_rule_path.clone();
     }
-    if child.priority.is_empty() {
+    if child.priority.is_none() {
         child.priority = parent.priority.clone();
     }
-
-    for (child_value, parent_value) in [
-        (&mut child.captcha_html, &parent.captcha_html),
-        (&mut child.under_attack_html, &parent.under_attack_html),
-        (&mut child.block_page, &parent.block_page),
-    ] {
-        if child_value.is_empty() {
-            *child_value = Rc::clone(parent_value);
-        }
-    }
-    for (child_value, parent_value) in [
-        (&mut child.captcha_secret, &parent.captcha_secret),
-        (&mut child.captcha_api, &parent.captcha_api),
-        (&mut child.captcha_verify_url, &parent.captcha_verify_url),
-    ] {
-        if child_value.is_empty() {
-            *child_value = parent_value.clone();
-        }
+    if child.block_page.is_empty() {
+        child.block_page = Rc::clone(&parent.block_page);
     }
 
-    // `ngx_conf_merge_ptr_value(child->modsecurity_instance,
-    // parent->modsecurity_instance, NULL)`: a context that does not configure
-    // `waf_modsecurity` shares the instance of its parent.
-    if child.modsecurity_instance.is_none() {
-        child.modsecurity_instance = parent.modsecurity_instance.clone();
-    }
-
-    if parent.is_custom_priority && !child.is_custom_priority {
-        child.priority = parent.priority.clone();
-    }
-
-    if !child.caches.enabled && parent.caches.enabled && parent.cache_capacity > 0 {
-        child.caches = Caches::new(parent.cache_capacity as usize);
-    }
-
-    // Policies: materialise the defaults on the parent (it serves requests
-    // itself), then let the child inherit what it did not configure.
-    for kind in TRIGGER_KINDS {
-        if parent.policies[kind.index()].is_none() {
-            parent.set_policy(kind, kind.default_policy());
-        }
-        if child.policies[kind.index()].is_none() {
-            child.policies[kind.index()] = parent.policies[kind.index()].clone();
+    if !child.caches.enabled && parent.caches.enabled {
+        if let Some(capacity) = parent.cache.capacity.filter(|capacity| *capacity > 0) {
+            child.caches = Caches::new(capacity as usize);
         }
     }
 
@@ -1372,7 +1453,7 @@ pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
 fn apply_block_page(conf: &mut LocConf) {
     let page = Rc::clone(&conf.block_page);
     for kind in TRIGGER_KINDS {
-        let Some(policy) = conf.policies[kind.index()].as_mut() else {
+        let Some(policy) = conf.action.policies[kind.index()].as_mut() else {
             continue;
         };
         // Only a plain status return is turned into the configured block page;
@@ -1395,7 +1476,10 @@ fn check_captcha_requirement(conf: &LocConf) -> Result<(), String> {
         return Ok(());
     }
 
-    if conf.captcha_type <= 0 || conf.captcha_html.is_empty() || conf.captcha_secret.is_empty() {
+    if conf.captcha.provider.is_none()
+        || conf.captcha.html.is_empty()
+        || conf.captcha.secret.is_empty()
+    {
         return Err(
             "ngx_waf: if you use the directive [waf_action xxx=CAPTCHA], you must set the parameters [prov], [sitekey] and [secret] of the directive [waf_captcha] in the current context or a higher context.\n\
 e.g. [waf_captcha off prov=reCAPTCHAv3 secret=your_secret sitekey=you_site_key]"
@@ -1434,12 +1518,12 @@ mod tests {
     fn waf_flag() {
         let mut conf = LocConf::default();
         dir(&mut conf, "waf", &["on"]).unwrap();
-        assert_eq!(conf.waf, WAF_ON);
+        assert_eq!(conf.waf, Some(Waf::On));
         assert!(conf.rules.is_some());
         dir(&mut conf, "waf", &["bypass"]).unwrap();
-        assert_eq!(conf.waf, WAF_BYPASS);
+        assert_eq!(conf.waf, Some(Waf::Bypass));
         dir(&mut conf, "waf", &["off"]).unwrap();
-        assert_eq!(conf.waf, WAF_OFF);
+        assert_eq!(conf.waf, Some(Waf::Off));
         assert!(dir(&mut conf, "waf", &["bad"]).is_err());
     }
 
@@ -1449,9 +1533,9 @@ mod tests {
     fn the_on_off_head_is_a_prefix() {
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_cc_deny", &["o", "rate=1r/m"]).unwrap();
-        assert_eq!(conf.cc_deny, 1);
+        assert_eq!(conf.cc_deny.enabled, Some(true));
         dir(&mut conf, "waf_cc_deny", &["offx"]).unwrap();
-        assert_eq!(conf.cc_deny, 0);
+        assert_eq!(conf.cc_deny.enabled, Some(false));
 
         let mut conf = LocConf::default();
         assert!(dir(&mut conf, "waf", &["o"]).is_err());
@@ -1509,14 +1593,14 @@ mod tests {
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_cc_deny", &["on", "rate=100r/m"]).unwrap();
-        assert_eq!(conf.cc_deny, 1);
-        assert_eq!(conf.cc_deny_limit, 100);
-        assert_eq!(conf.cc_deny_cycle, 60);
-        assert_eq!(conf.cc_deny_duration, 3600);
+        assert_eq!(conf.cc_deny.enabled, Some(true));
+        assert_eq!(conf.cc_deny.limit, Some(100));
+        assert_eq!(conf.cc_deny.cycle, Some(60));
+        assert_eq!(conf.cc_deny.duration, Some(3600));
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_cc_deny", &["off", "rate=100r/m"]).unwrap();
-        assert_eq!(conf.cc_deny, 0);
+        assert_eq!(conf.cc_deny.enabled, Some(false));
     }
 
     #[test]
@@ -1532,11 +1616,14 @@ mod tests {
             &["on", "rate=1r/h", "zone=test:cc"],
         )
         .unwrap();
-        assert_eq!(conf.cc_zone, 0);
+        assert_eq!(conf.cc_deny.zone.as_ref().map(|zone| zone.index), Some(0));
         // The tag is the user supplied one with the "cc_deny" suffix, exactly
         // like `ngx_sprintf(tag, "%s%s", zone_tag, "cc_deny")` in C.  Note
         // that "tag=cc" therefore yields "cccc_deny".
-        assert_eq!(conf.cc_tag, b"cccc_deny");
+        assert_eq!(
+            conf.cc_deny.zone.as_ref().map(|zone| zone.tag.as_slice()),
+            Some(&b"cccc_deny"[..])
+        );
 
         let mut child = LocConf::default();
         assert_eq!(
@@ -1570,7 +1657,7 @@ mod tests {
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_cache", &["on", "capacity=1"]).unwrap();
-        assert_eq!(conf.cache_capacity, 1);
+        assert_eq!(conf.cache.capacity, Some(1));
         assert!(conf.caches.enabled);
         assert_eq!(conf.caches.len(CacheKind::Url), 0);
     }
@@ -1589,7 +1676,7 @@ mod tests {
         // gate included.
         let mut inherits = LocConf::default();
         merge(&mut inherits, &mut parent).unwrap();
-        assert_eq!(inherits.cache_enabled, 1);
+        assert_eq!(inherits.cache.enabled, Some(true));
         assert!(inherits.caching());
 
         // A context that turns it off keeps the caches of its parent (like the
@@ -1597,7 +1684,7 @@ mod tests {
         let mut off = LocConf::default();
         dir(&mut off, "waf_cache", &["off"]).unwrap();
         merge(&mut off, &mut parent).unwrap();
-        assert_eq!(off.cache_enabled, 0);
+        assert_eq!(off.cache.enabled, Some(false));
         assert!(off.caches.enabled);
         assert!(!off.caching());
 
@@ -1606,7 +1693,7 @@ mod tests {
         dir(&mut on, "waf_cache", &["on", "capacity=3"]).unwrap();
         merge(&mut on, &mut parent).unwrap();
         assert!(on.caching());
-        assert_eq!(on.cache_capacity, 3);
+        assert_eq!(on.cache.capacity, Some(3));
     }
 
     #[test]
@@ -1620,9 +1707,9 @@ mod tests {
 
         let full = format!("{order} MODSECURITY");
         dir(&mut conf, "waf_priority", &[&full]).unwrap();
-        assert_eq!(conf.priority[0], CheckId::WhiteIp);
-        assert_eq!(conf.priority[14], CheckId::Modsecurity);
-        assert!(conf.is_custom_priority);
+        let priority = conf.priority.as_ref().expect("configured");
+        assert_eq!(priority[0], CheckId::WhiteIp);
+        assert_eq!(priority[14], CheckId::Modsecurity);
 
         let bad = format!("{order} BAD");
         assert_eq!(
@@ -1637,12 +1724,12 @@ mod tests {
         assert!(dir(&mut conf, "waf_verify_bot", &["bad"]).is_err());
         assert!(dir(&mut conf, "waf_verify_bot", &["on", "bad"]).is_err());
         dir(&mut conf, "waf_verify_bot", &["on"]).unwrap();
-        assert_eq!(conf.verify_bot_type, Some(BotTypes::ALL));
+        assert_eq!(conf.verify_bot.types, Some(BotTypes::ALL));
 
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_verify_bot", &["strict", "GoogleBot"]).unwrap();
-        assert_eq!(conf.verify_bot, 2);
-        assert_eq!(conf.verify_bot_type, Some(BotTypes::GOOGLE));
+        assert_eq!(conf.verify_bot.mode, Some(VerifyBotMode::Strict));
+        assert_eq!(conf.verify_bot.types, Some(BotTypes::GOOGLE));
     }
 
     #[test]
@@ -1652,9 +1739,9 @@ mod tests {
         assert!(dir(&mut conf, "waf_under_attack", &["on", "bad"]).is_err());
         assert!(dir(&mut conf, "waf_under_attack", &["on", "file=bad"]).is_err());
         dir(&mut conf, "waf_under_attack", &["on"]).unwrap();
-        assert_eq!(conf.under_attack, 1);
+        assert_eq!(conf.under_attack.enabled, Some(true));
         assert_eq!(
-            conf.under_attack_html.as_slice(),
+            conf.under_attack.html.as_slice(),
             embedded_page(HTML_UNDER_ATTACK)
         );
     }
@@ -1695,8 +1782,8 @@ mod tests {
         );
 
         dir(&mut conf, "waf_modsecurity", &["off"]).unwrap();
-        assert_eq!(conf.modsecurity, 0);
-        assert!(conf.modsecurity_instance.is_none());
+        assert_eq!(conf.modsecurity.enabled, Some(false));
+        assert!(conf.modsecurity.instance.is_none());
 
         // The rules are loaded while the directive is handled.
         let rules = rule_file("SecRuleEngine On\n");
@@ -1706,8 +1793,8 @@ mod tests {
             &["on", &format!("file={}", rules.display())],
         )
         .unwrap();
-        assert_eq!(conf.modsecurity, 1);
-        assert!(conf.modsecurity_instance.is_some());
+        assert_eq!(conf.modsecurity.enabled, Some(true));
+        assert!(conf.modsecurity.instance.is_some());
 
         // A rule file the library cannot parse reports what it said.
         let broken = rule_file("SecRule nonsense\n");
@@ -1762,8 +1849,8 @@ mod tests {
 
         let mut child = LocConf::default();
         merge(&mut child, &mut parent).unwrap();
-        assert!(child.modsecurity_instance.is_some());
-        assert_eq!(child.modsecurity, 1);
+        assert!(child.modsecurity.instance.is_some());
+        assert_eq!(child.modsecurity.enabled, Some(true));
 
         std::fs::remove_file(&rules).unwrap();
     }
@@ -1813,14 +1900,14 @@ mod tests {
             &["off", "prov=reCAPTCHAv3", "sitekey=key", "secret=sec"],
         )
         .unwrap();
-        assert_eq!(conf.captcha, 0);
-        assert_eq!(conf.captcha_type, 4);
+        assert_eq!(conf.captcha.enabled, Some(false));
+        assert_eq!(conf.captcha.provider, Some(CaptchaProvider::RecaptchaV3));
         assert_eq!(
-            conf.captcha_api,
+            conf.captcha.api,
             b"https://www.recaptcha.net/recaptcha/api/siteverify"
         );
-        assert!(conf.captcha_html.windows(3).any(|window| window == b"key"));
-        assert!(!conf.captcha_html.windows(2).any(|window| window == b"%V"));
+        assert!(conf.captcha.html.windows(3).any(|window| window == b"key"));
+        assert!(!conf.captcha.html.windows(2).any(|window| window == b"%V"));
     }
 
     #[test]
@@ -1930,7 +2017,7 @@ mod tests {
         let mut conf = LocConf::default();
         dir(&mut conf, "waf_under_attack", &["on"]).unwrap();
         assert_eq!(
-            conf.under_attack_html.as_slice(),
+            conf.under_attack.html.as_slice(),
             &HTML_UNDER_ATTACK[..HTML_UNDER_ATTACK.len() - 1]
         );
 
@@ -1947,7 +2034,7 @@ mod tests {
         dir(&mut parent, "waf_mode", &["FULL"]).unwrap();
         let mut child = LocConf::default();
         merge(&mut child, &mut parent).unwrap();
-        assert_eq!(child.waf, WAF_ON);
+        assert_eq!(child.waf, Some(Waf::On));
         assert_eq!(child.waf_mode, WafMode::FULL);
         assert_eq!(
             child.policy(TriggerKind::Blacklist),
@@ -1979,6 +2066,159 @@ mod tests {
             other => panic!("unexpected policy {other:?}"),
         }
         assert_eq!(child.policy(TriggerKind::Modsecurity), Policy::Follow);
+    }
+
+    /// A group inherits every field the child did not set, and only those; the
+    /// zone and its tag follow the index like the C implementation copied the
+    /// two together.
+    #[test]
+    fn merge_inherits_the_cc_deny_fields() {
+        let mut parent = LocConf {
+            cc_deny: CcDeny {
+                enabled: Some(true),
+                limit: Some(100),
+                cycle: Some(60),
+                duration: Some(3600),
+                zone: Some(ZoneRef {
+                    index: 1,
+                    tag: b"parent_cc".to_vec(),
+                }),
+            },
+            ..LocConf::default()
+        };
+
+        let mut child = LocConf {
+            cc_deny: CcDeny {
+                limit: Some(2),
+                ..CcDeny::default()
+            },
+            ..LocConf::default()
+        };
+        merge(&mut child, &mut parent).unwrap();
+
+        assert_eq!(child.cc_deny.enabled, Some(true));
+        assert_eq!(child.cc_deny.limit, Some(2));
+        assert_eq!(child.cc_deny.cycle, Some(60));
+        assert_eq!(child.cc_deny.duration, Some(3600));
+        assert_eq!(child.cc_deny.zone, parent.cc_deny.zone);
+    }
+
+    #[test]
+    fn merge_inherits_the_captcha_fields() {
+        let mut parent = LocConf {
+            captcha: Captcha {
+                enabled: Some(true),
+                provider: Some(CaptchaProvider::RecaptchaV3),
+                score: Some(0.7),
+                expire: Some(600),
+                max_fails: Some(100),
+                duration: Some(60),
+                secret: b"secret".to_vec(),
+                api: b"api".to_vec(),
+                verify_url: b"/verify".to_vec(),
+                zone: Some(ZoneRef {
+                    index: 2,
+                    tag: b"captcha".to_vec(),
+                }),
+                ..Captcha::default()
+            },
+            ..LocConf::default()
+        };
+
+        let mut child = LocConf {
+            captcha: Captcha {
+                score: Some(0.9),
+                secret: b"own".to_vec(),
+                ..Captcha::default()
+            },
+            ..LocConf::default()
+        };
+        merge(&mut child, &mut parent).unwrap();
+
+        assert_eq!(child.captcha.enabled, Some(true));
+        assert_eq!(child.captcha.provider, Some(CaptchaProvider::RecaptchaV3));
+        assert_eq!(child.captcha.score, Some(0.9));
+        assert_eq!(child.captcha.expire, Some(600));
+        assert_eq!(child.captcha.max_fails, Some(100));
+        assert_eq!(child.captcha.duration, Some(60));
+        assert_eq!(child.captcha.secret, b"own".to_vec());
+        assert_eq!(child.captcha.api, b"api".to_vec());
+        assert_eq!(child.captcha.verify_url, b"/verify".to_vec());
+        assert_eq!(child.captcha.zone, parent.captcha.zone);
+    }
+
+    #[test]
+    fn merge_inherits_the_other_groups() {
+        let mut parent = LocConf {
+            cache: Cache {
+                enabled: Some(true),
+                capacity: Some(7),
+            },
+            verify_bot: VerifyBot {
+                mode: Some(VerifyBotMode::Strict),
+                types: Some(BotTypes::GOOGLE),
+                ..VerifyBot::default()
+            },
+            under_attack: UnderAttack {
+                enabled: Some(true),
+                ..UnderAttack::default()
+            },
+            modsecurity: ModSecurity {
+                enabled: Some(true),
+                ..ModSecurity::default()
+            },
+            action: Action {
+                captcha_zone: Some(ZoneRef {
+                    index: 3,
+                    tag: b"action".to_vec(),
+                }),
+                ..Action::default()
+            },
+            ..LocConf::default()
+        };
+
+        let mut child = LocConf {
+            cache: Cache {
+                capacity: Some(1),
+                ..Cache::default()
+            },
+            verify_bot: VerifyBot {
+                mode: Some(VerifyBotMode::Off),
+                ..VerifyBot::default()
+            },
+            ..LocConf::default()
+        };
+        merge(&mut child, &mut parent).unwrap();
+
+        assert_eq!(child.cache.enabled, Some(true));
+        assert_eq!(child.cache.capacity, Some(1));
+        assert_eq!(child.verify_bot.mode, Some(VerifyBotMode::Off));
+        assert_eq!(child.verify_bot.types, Some(BotTypes::GOOGLE));
+        assert_eq!(child.under_attack.enabled, Some(true));
+        assert_eq!(child.modsecurity.enabled, Some(true));
+        assert_eq!(child.action.captcha_zone, parent.action.captcha_zone);
+    }
+
+    #[test]
+    fn merge_keeps_a_configured_priority() {
+        let mut parent = LocConf {
+            priority: Some(vec![CheckId::Url, CheckId::Ip]),
+            ..LocConf::default()
+        };
+
+        let mut child = LocConf::default();
+        merge(&mut child, &mut parent).unwrap();
+        assert_eq!(
+            child.priority.as_deref(),
+            Some(&[CheckId::Url, CheckId::Ip][..])
+        );
+
+        let mut child = LocConf {
+            priority: Some(vec![CheckId::Cc]),
+            ..LocConf::default()
+        };
+        merge(&mut child, &mut parent).unwrap();
+        assert_eq!(child.priority.as_deref(), Some(&[CheckId::Cc][..]));
     }
 
     #[test]
