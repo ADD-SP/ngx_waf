@@ -14,6 +14,7 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 bitflags = "2"
 getrandom = "0.3"
+lru = { version = "0.16", default-features = false }
 regex = "1"
 # Parsing the answer of the captcha provider.
 serde_json = "1"

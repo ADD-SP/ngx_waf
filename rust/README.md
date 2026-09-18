@@ -22,7 +22,7 @@ not up to date.
 | `src/ip_trie.rs` | the IPv4/IPv6 CIDR prefix trie |
 | `src/rules.rs` | rule containers and rule-file loading |
 | `src/pcre.rs` | rule matching through the PCRE engine of nginx |
-| `src/cache.rs` | per-worker LRU inspection cache |
+| `src/cache.rs` | per-worker inspection caches, an `lru` cache plus expiration |
 | `src/cc.rs` | shared memory CC counters |
 | `src/config.rs` | directive parsing/validation, conf creation and merging |
 | `src/check.rs` | the detection chain and the action chain |
@@ -58,7 +58,8 @@ The nginx `config` script drives cargo; `make build` at the repository root is
 the supported entry point.  `rust-toolchain.toml` in the repository root pins
 the stable toolchain (with rustfmt and clippy) for every cargo invocation of the
 repository.  The crate builds offline as long as the cargo registry cache
-already contains `regex`, `serde_json`, `getrandom`, `bitflags` and `sha2`.  nginx
+already contains `regex`, `serde_json`, `getrandom`, `bitflags`, `sha2` and
+`lru`.  nginx
 links the crate against libmodsecurity, whose C API the `waf_modsecurity`
 inspection calls: the development files (headers and the shared library) have to
 be installed, `LIB_MODSECURITY` can point at a prefix when they are not in the

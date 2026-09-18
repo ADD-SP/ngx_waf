@@ -2,7 +2,7 @@
 //! merging.  Every message returned here is exactly what the C side reports
 //! through `ngx_conf_log_error()`.
 
-use crate::cache::LruCache;
+use crate::cache::Caches;
 use crate::flags::{BotTypes, WafMode};
 use crate::modsec;
 use crate::rules::{self, RuleSet};
@@ -342,51 +342,6 @@ impl BotRules {
                 .collect();
         }
         rules
-    }
-}
-
-/// The per-worker inspection caches created by `waf_cache on`.
-pub struct Caches {
-    pub url: LruCache,
-    pub args: LruCache,
-    pub user_agent: LruCache,
-    pub referer: LruCache,
-    pub cookie: LruCache,
-    pub white_url: LruCache,
-    pub white_referer: LruCache,
-    pub enabled: bool,
-}
-
-impl Default for Caches {
-    fn default() -> Self {
-        Caches::new(0)
-    }
-}
-
-impl Caches {
-    fn new(capacity: usize) -> Self {
-        Caches {
-            url: LruCache::new(capacity),
-            args: LruCache::new(capacity),
-            user_agent: LruCache::new(capacity),
-            referer: LruCache::new(capacity),
-            cookie: LruCache::new(capacity),
-            white_url: LruCache::new(capacity),
-            white_referer: LruCache::new(capacity),
-            enabled: capacity > 0,
-        }
-    }
-
-    pub fn all(&mut self) -> [&mut LruCache; 7] {
-        [
-            &mut self.url,
-            &mut self.args,
-            &mut self.user_agent,
-            &mut self.referer,
-            &mut self.cookie,
-            &mut self.white_url,
-            &mut self.white_referer,
-        ]
     }
 }
 
@@ -1453,6 +1408,7 @@ e.g. [waf_captcha off prov=reCAPTCHAv3 secret=your_secret sitekey=you_site_key]"
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::CacheKind;
 
     fn dir(conf: &mut LocConf, name: &str, args: &[&str]) -> Result<(), String> {
         let mut main = MainConf::default();
@@ -1616,7 +1572,7 @@ mod tests {
         dir(&mut conf, "waf_cache", &["on", "capacity=1"]).unwrap();
         assert_eq!(conf.cache_capacity, 1);
         assert!(conf.caches.enabled);
-        assert_eq!(conf.caches.url.len(), 0);
+        assert_eq!(conf.caches.len(CacheKind::Url), 0);
     }
 
     /// `waf_cache off` below a `waf_cache on` stops the caching of that

@@ -1,7 +1,7 @@
 //! The detection chain: it runs the inspections in the configured priority
 //! order and resolves the resulting action chain into a response.
 
-use crate::cache::CachedResult;
+use crate::cache::{CacheKind, CachedResult};
 use crate::cc;
 use crate::config::{BotId, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, BOTS};
 use crate::flags::WafMode;
@@ -1637,6 +1637,22 @@ fn lookup_regex(rules: &crate::rules::RuleSet, kind: RuleKind, value: &[u8]) -> 
         .map(|rule| rule.pattern.clone())
 }
 
+/// The cache one of the lists of `check_regex()` uses.  The C implementation
+/// built a cache for every list this function is called for (the white lists
+/// included); the cookie list has a cache of its own in `check_cookie()` and
+/// the post list has none at all.
+fn cache_kind(kind: RuleKind) -> Option<CacheKind> {
+    Some(match kind {
+        RuleKind::Url => CacheKind::Url,
+        RuleKind::Args => CacheKind::Args,
+        RuleKind::UserAgent => CacheKind::UserAgent,
+        RuleKind::Referer => CacheKind::Referer,
+        RuleKind::WhiteUrl => CacheKind::WhiteUrl,
+        RuleKind::WhiteReferer => CacheKind::WhiteReferer,
+        _ => return None,
+    })
+}
+
 /// The regex based inspections, including the per-worker cache.
 fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
     let gate = match kind {
@@ -1671,59 +1687,40 @@ fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
         _ => unreachable!(),
     };
 
-    // The C implementation built a cache for every list this function is
-    // called for (the white lists included); the cookie list has a cache of
-    // its own in `check_cookie()` and the post list has none at all.
-    let cached = matches!(
-        kind,
-        RuleKind::Url
-            | RuleKind::Args
-            | RuleKind::UserAgent
-            | RuleKind::Referer
-            | RuleKind::WhiteUrl
-            | RuleKind::WhiteReferer
-    );
-
     let value_vec = value.to_vec();
     let mut matched_detail: Option<Vec<u8>> = None;
     let mut cache_miss = true;
+    let cache_kind = cache_kind(kind);
 
-    if cached && state.conf.caching() {
-        let cache = match kind {
-            RuleKind::Url => &mut state.conf.caches.url,
-            RuleKind::Args => &mut state.conf.caches.args,
-            RuleKind::UserAgent => &mut state.conf.caches.user_agent,
-            RuleKind::Referer => &mut state.conf.caches.referer,
-            RuleKind::WhiteUrl => &mut state.conf.caches.white_url,
-            RuleKind::WhiteReferer => &mut state.conf.caches.white_referer,
-            _ => unreachable!(),
-        };
-        if let Some(hit) = cache.find(&value_vec, state.req.now) {
-            cache_miss = false;
-            if hit.matched {
-                matched_detail = Some(hit.detail.clone());
+    if let Some(cache_kind) = cache_kind {
+        if state.conf.caching() {
+            if let Some(hit) = state
+                .conf
+                .caches
+                .find(cache_kind, &value_vec, state.req.now)
+            {
+                cache_miss = false;
+                if hit.matched {
+                    matched_detail = Some(hit.detail.clone());
+                }
             }
         }
     }
 
     if cache_miss {
         matched_detail = lookup_regex(state.conf.rules(), kind, value);
-        if cached && state.conf.caching() {
-            let expire = state.req.now + 60 * 5 + util::random_uniform(60 * 5) as i64;
-            let result = CachedResult {
-                matched: matched_detail.is_some(),
-                detail: matched_detail.clone().unwrap_or_default(),
-            };
-            let cache = match kind {
-                RuleKind::Url => &mut state.conf.caches.url,
-                RuleKind::Args => &mut state.conf.caches.args,
-                RuleKind::UserAgent => &mut state.conf.caches.user_agent,
-                RuleKind::Referer => &mut state.conf.caches.referer,
-                RuleKind::WhiteUrl => &mut state.conf.caches.white_url,
-                RuleKind::WhiteReferer => &mut state.conf.caches.white_referer,
-                _ => unreachable!(),
-            };
-            cache.insert(&value_vec, expire, result);
+        if let Some(cache_kind) = cache_kind {
+            if state.conf.caching() {
+                let expire = state.req.now + 60 * 5 + util::random_uniform(60 * 5) as i64;
+                let result = CachedResult {
+                    matched: matched_detail.is_some(),
+                    detail: matched_detail.clone().unwrap_or_default(),
+                };
+                state
+                    .conf
+                    .caches
+                    .insert(cache_kind, &value_vec, expire, result);
+            }
         }
     }
 
@@ -1756,7 +1753,11 @@ fn check_cookie(state: &mut State) -> bool {
         let mut matched_detail: Option<Vec<u8>> = None;
         let mut cache_miss = true;
         if cached {
-            if let Some(hit) = state.conf.caches.cookie.find(cookie, state.req.now) {
+            if let Some(hit) = state
+                .conf
+                .caches
+                .find(CacheKind::Cookie, cookie, state.req.now)
+            {
                 cache_miss = false;
                 if hit.matched {
                     matched_detail = Some(hit.detail.clone());
@@ -1771,7 +1772,10 @@ fn check_cookie(state: &mut State) -> bool {
                     matched: matched_detail.is_some(),
                     detail: matched_detail.clone().unwrap_or_default(),
                 };
-                state.conf.caches.cookie.insert(cookie, expire, result);
+                state
+                    .conf
+                    .caches
+                    .insert(CacheKind::Cookie, cookie, expire, result);
             }
         }
         let Some(detail) = matched_detail else {

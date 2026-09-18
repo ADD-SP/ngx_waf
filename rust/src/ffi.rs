@@ -892,17 +892,7 @@ pub unsafe extern "C" fn ngx_waf_gc(conf: *mut c_void) {
             return;
         }
         let conf = &mut *(conf as *mut LocConf);
-        for cache in conf.caches.all() {
-            if cache.no_memory {
-                cache.no_memory = false;
-                cache.eliminate(5);
-            } else {
-                let mut rounds = 0;
-                while rounds < 10 && cache.eliminate_expired(5, now) >= 3 {
-                    rounds += 1;
-                }
-            }
-        }
+        conf.caches.gc(now);
     }));
 }
 
