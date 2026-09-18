@@ -4,6 +4,7 @@
 //! of the under attack page.
 #![allow(dead_code)]
 
+use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
 use rand::rngs::OsRng;
 use rand::{Rng, TryRngCore};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -100,13 +101,38 @@ pub fn atoi(text: &[u8]) -> Option<i64> {
     Some(value)
 }
 
-/// The result of parsing an IPv4/IPv6 CIDR expression.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cidr {
-    /// Network order bytes, only the low `4`/`16` bytes are meaningful.
-    pub addr: [u8; 16],
-    /// Number of significant bits.
-    pub depth: u8,
+/// What an IP list needs on top of [`cidr::Cidr`]: the number of bits of an
+/// address of the family and the network address an address belongs to.
+pub trait IpCidr: Cidr {
+    /// Number of bits of an address of the family.
+    const BITS: u8;
+
+    /// The network address `addr` belongs to at `depth`.
+    fn masked(addr: Self::Address, depth: u8) -> Self::Address;
+}
+
+impl IpCidr for Ipv4Cidr {
+    const BITS: u8 = 32;
+
+    fn masked(addr: Ipv4Addr, depth: u8) -> Ipv4Addr {
+        if depth == 0 {
+            Ipv4Addr::UNSPECIFIED
+        } else {
+            Ipv4Addr::from(u32::from(addr) & (u32::MAX << (32 - depth)))
+        }
+    }
+}
+
+impl IpCidr for Ipv6Cidr {
+    const BITS: u8 = 128;
+
+    fn masked(addr: Ipv6Addr, depth: u8) -> Ipv6Addr {
+        if depth == 0 {
+            Ipv6Addr::UNSPECIFIED
+        } else {
+            Ipv6Addr::from(u128::from(addr) & (u128::MAX << (128 - depth)))
+        }
+    }
 }
 
 /// Parse an IPv4 address or CIDR block.
@@ -120,22 +146,18 @@ pub struct Cidr {
 /// means `/32`, an empty suffix does too (the C code used `UINT32_MAX` as "no
 /// suffix was given"), and a suffix that is not a decimal number or that
 /// exceeds 32 is refused (the C implementation wrapped it into the mask
-/// instead, see the Known differences of `rust/README.md`).
-pub fn parse_ipv4(text: &[u8]) -> Option<Cidr> {
+/// instead, see the Known differences of `rust/README.md`).  The host bits of
+/// the address are cleared (`1.1.1.1/24` is the block `1.1.1.0/24`), like the
+/// masking of the C implementation did.
+pub fn parse_ipv4(text: &[u8]) -> Option<Ipv4Cidr> {
     let (prefix, suffix) = split_cidr(text)?;
-    let addr4 = prefix.parse::<Ipv4Addr>().ok()?.octets();
+    let addr = prefix.parse::<Ipv4Addr>().ok()?;
     let depth = parse_depth(suffix, 32)?;
     if depth > 32 {
         return None;
     }
 
-    let mut addr = [0u8; 16];
-    addr[..4].copy_from_slice(&addr4);
-    mask(&mut addr[..4], depth);
-    Some(Cidr {
-        addr,
-        depth: depth as u8,
-    })
+    Ipv4Cidr::new(Ipv4Cidr::masked(addr, depth as u8), depth as u8).ok()
 }
 
 /// Parse an IPv6 address or CIDR block.
@@ -145,33 +167,15 @@ pub fn parse_ipv4(text: &[u8]) -> Option<Cidr> {
 /// groups once, a lone `:` is not a separator, and an embedded IPv4 address is
 /// only allowed as the last group.  The suffix rules are the ones of
 /// [`parse_ipv4()`], with 128 as the full length.
-pub fn parse_ipv6(text: &[u8]) -> Option<Cidr> {
+pub fn parse_ipv6(text: &[u8]) -> Option<Ipv6Cidr> {
     let (prefix, suffix) = split_cidr(text)?;
-    let mut addr = prefix.parse::<Ipv6Addr>().ok()?.octets();
+    let addr = prefix.parse::<Ipv6Addr>().ok()?;
     let depth = parse_depth(suffix, 128)?;
     if depth > 128 {
         return None;
     }
 
-    mask(&mut addr, depth);
-    Some(Cidr {
-        addr,
-        depth: depth as u8,
-    })
-}
-
-fn mask(addr: &mut [u8], depth: u32) {
-    for (index, byte) in addr.iter_mut().enumerate() {
-        let bits = (index as u32) * 8;
-        *byte = if depth >= bits + 8 {
-            *byte
-        } else if depth <= bits {
-            0
-        } else {
-            let keep = depth - bits;
-            *byte & (0xffu8 << (8 - keep))
-        };
-    }
+    Ipv6Cidr::new(Ipv6Cidr::masked(addr, depth as u8), depth as u8).ok()
 }
 
 /// Split an address text at its first `/`, both sides as text.
@@ -324,23 +328,27 @@ mod tests {
 
     #[test]
     fn ipv4_parsing() {
+        let addr = |text: &str| text.parse::<Ipv4Addr>().unwrap();
         assert_eq!(
             parse_ipv4(b"192.168.1.1"),
-            Some(Cidr {
-                addr: [192, 168, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                depth: 32
-            })
+            Some(Ipv4Cidr::new(addr("192.168.1.1"), 32).unwrap())
         );
         let cidr = parse_ipv4(b"2.0.0.0/8").unwrap();
-        assert_eq!(cidr.depth, 8);
-        assert_eq!(&cidr.addr[..4], &[2, 0, 0, 0]);
-        assert_eq!(parse_ipv4(b"0.0.0.0/0").unwrap().depth, 0);
-        assert_eq!(parse_ipv4(b"1.1.1.0/24").unwrap().depth, 24);
+        assert_eq!(cidr.network_length(), 8);
+        assert_eq!(cidr.first_address(), addr("2.0.0.0"));
+        assert_eq!(parse_ipv4(b"0.0.0.0/0").unwrap().network_length(), 0);
+        assert_eq!(parse_ipv4(b"1.1.1.0/24").unwrap().network_length(), 24);
+        // The host bits of the address are cleared, like the masking of the C
+        // implementation did.
+        assert_eq!(
+            parse_ipv4(b"1.1.1.1/24").unwrap().first_address(),
+            addr("1.1.1.0")
+        );
         assert_eq!(parse_ipv4(b"1.1.1/24"), None);
         assert_eq!(parse_ipv4(b"1.1.1.1/33"), None);
         assert_eq!(parse_ipv4(b"256.1.1.1"), None);
         // An empty suffix is the full length, like `UINT32_MAX` in the C code.
-        assert_eq!(parse_ipv4(b"1.1.1.1/").unwrap().depth, 32);
+        assert_eq!(parse_ipv4(b"1.1.1.1/").unwrap().network_length(), 32);
         assert_eq!(parse_ipv4(b"1.1.1.1/x"), None);
         // `inet_pton()`, like the C implementation: no leading zeros.
         assert_eq!(parse_ipv4(b"010.1.1.1"), None);
@@ -350,44 +358,51 @@ mod tests {
         assert_eq!(parse_ipv4("１.1.1.1".as_bytes()), None);
         assert_eq!(
             parse_ipv4(b"0.0.0.0"),
-            Some(Cidr {
-                addr: [0u8; 16],
-                depth: 32
-            })
+            Some(Ipv4Cidr::new(addr("0.0.0.0"), 32).unwrap())
         );
     }
 
     #[test]
     fn ipv6_parsing() {
+        let addr = |text: &str| text.parse::<Ipv6Addr>().unwrap();
         let cidr = parse_ipv6(b"BBBB::/16").unwrap();
-        assert_eq!(cidr.depth, 16);
-        assert_eq!(&cidr.addr[..2], &[0xbb, 0xbb]);
-        assert_eq!(&cidr.addr[2..], &[0u8; 14]);
+        assert_eq!(cidr.network_length(), 16);
+        assert_eq!(cidr.first_address(), addr("bbbb::"));
 
         let cidr = parse_ipv6(b"AAAA::").unwrap();
-        assert_eq!(cidr.depth, 128);
-        assert_eq!(cidr.addr, {
-            let mut expected = [0u8; 16];
-            expected[0] = 0xaa;
-            expected[1] = 0xaa;
-            expected
-        });
+        assert_eq!(cidr.network_length(), 128);
+        assert_eq!(cidr.first_address(), addr("aaaa::"));
 
-        assert_eq!(parse_ipv6(b"::1").unwrap().addr[15], 1);
-        assert_eq!(parse_ipv6(b"::ffff:192.168.0.1").unwrap().addr[10], 0xff);
+        assert_eq!(parse_ipv6(b"::1").unwrap().first_address(), addr("::1"));
+        assert_eq!(
+            parse_ipv6(b"::ffff:192.168.0.1").unwrap().first_address(),
+            addr("::ffff:192.168.0.1")
+        );
         assert_eq!(parse_ipv6(b"1.1.1.1"), None);
         assert_eq!(parse_ipv6(b"gggg::"), None);
         assert_eq!(parse_ipv6(b"::/129"), None);
-        assert_eq!(parse_ipv6(b"AAAA::/").unwrap().depth, 128);
+        assert_eq!(parse_ipv6(b"AAAA::/").unwrap().network_length(), 128);
 
         // The text forms `inet_pton()` accepts, which is what the C
         // implementation parsed the rule lines with.
-        assert_eq!(parse_ipv6(b"::").unwrap().addr, [0u8; 16]);
-        assert_eq!(&parse_ipv6(b"1::").unwrap().addr[..2], &[0, 1]);
-        assert_eq!(parse_ipv6(b"1:2:3:4:5:6:7::").unwrap().addr[13], 7);
-        assert_eq!(parse_ipv6(b"1:2:3:4:5:6:7:8").unwrap().addr[15], 8);
-        assert_eq!(parse_ipv6(b"1:2:3:4:5:6:1.2.3.4").unwrap().addr[15], 4);
-        assert_eq!(parse_ipv6(b"::FFFF:1.2.3.4").unwrap().addr[11], 0xff);
+        assert_eq!(parse_ipv6(b"::").unwrap().first_address(), addr("::"));
+        assert_eq!(parse_ipv6(b"1::").unwrap().first_address(), addr("1::"));
+        assert_eq!(
+            parse_ipv6(b"1:2:3:4:5:6:7::").unwrap().first_address(),
+            addr("1:2:3:4:5:6:7::")
+        );
+        assert_eq!(
+            parse_ipv6(b"1:2:3:4:5:6:7:8").unwrap().first_address(),
+            addr("1:2:3:4:5:6:7:8")
+        );
+        assert_eq!(
+            parse_ipv6(b"1:2:3:4:5:6:1.2.3.4").unwrap().first_address(),
+            addr("1:2:3:4:5:6:1.2.3.4")
+        );
+        assert_eq!(
+            parse_ipv6(b"::FFFF:1.2.3.4").unwrap().first_address(),
+            addr("::ffff:1.2.3.4")
+        );
 
         // The text forms `inet_pton()` refuses: an embedded IPv4 address that
         // is not the last group, a lone `:` (an empty group) and a second

@@ -1,10 +1,12 @@
 //! Rule containers and rule file loading.
 
-use crate::ip_trie::{AddError, IpTrie};
 use crate::pcre::{PcreRegex, RegexOps};
-use crate::util::{parse_ipv4, parse_ipv6};
+use crate::util::{parse_ipv4, parse_ipv6, IpCidr};
+use cidr::{Ipv4Cidr, Ipv6Cidr};
 use regex::Regex;
+use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 
 /// Files loaded from `waf_rule_path`, in the order used by `_load_all_rule()`.
@@ -93,6 +95,69 @@ impl RegexRule {
     }
 }
 
+/// One IP list: a hash table per prefix length, keyed by the network address.
+///
+/// The shortest prefix wins, like the prefix trie of the C implementation
+/// (`ngx_http_waf_module_ip_trie.c`) did: the buckets are probed from the
+/// shortest one and the first hit is the answer.
+#[derive(Debug)]
+pub struct IpList<C: IpCidr> {
+    /// `buckets[depth]` holds the rules whose prefix is that long.
+    buckets: Vec<HashMap<C::Address, usize>>,
+    /// The text of every rule, indexed by the value stored in a bucket.
+    details: Vec<Vec<u8>>,
+}
+
+impl<C: IpCidr> Default for IpList<C> {
+    fn default() -> Self {
+        IpList::new()
+    }
+}
+
+impl<C: IpCidr> IpList<C> {
+    pub fn new() -> Self {
+        IpList {
+            buckets: (0..=C::BITS).map(|_| HashMap::new()).collect(),
+            details: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.details.len()
+    }
+
+    /// The index of the rule that covers `addr`, the shortest prefix first.
+    fn find_index(&self, addr: &C::Address) -> Option<usize> {
+        for (depth, bucket) in self.buckets.iter().enumerate() {
+            let network = C::masked(*addr, depth as u8);
+            if let Some(&index) = bucket.get(&network) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    /// The text of the rule that covers `addr`.
+    pub fn find(&self, addr: &C::Address) -> Option<&[u8]> {
+        Some(&self.details[self.find_index(addr)?])
+    }
+
+    /// Add one rule.  `Err` carries the text of the rule that already covers
+    /// the new block; that is the overlap the C implementation logged and
+    /// dropped the new block for.
+    pub fn add(&mut self, block: C, detail: &[u8]) -> Result<(), Vec<u8>> {
+        let network = block.first_address();
+        if let Some(index) = self.find_index(&network) {
+            return Err(self.details[index].clone());
+        }
+        self.details.push(detail.to_vec());
+        let index = self.details.len() - 1;
+        self.buckets[block.network_length() as usize].insert(network, index);
+        Ok(())
+    }
+}
+
 /// Every rule container of one `ngx_http_waf_loc_conf_t`.
 #[derive(Debug, Default)]
 pub struct RuleSet {
@@ -104,19 +169,19 @@ pub struct RuleSet {
     pub post: Vec<RegexRule>,
     pub white_url: Vec<RegexRule>,
     pub white_referer: Vec<RegexRule>,
-    pub ipv4_black: Option<IpTrie>,
-    pub ipv6_black: Option<IpTrie>,
-    pub ipv4_white: Option<IpTrie>,
-    pub ipv6_white: Option<IpTrie>,
+    pub ipv4_black: Option<IpList<Ipv4Cidr>>,
+    pub ipv6_black: Option<IpList<Ipv6Cidr>>,
+    pub ipv4_white: Option<IpList<Ipv4Cidr>>,
+    pub ipv6_white: Option<IpList<Ipv6Cidr>>,
 }
 
 /// Initialise the empty containers, the equivalent of `_init_rule_containers()`.
 pub fn new_rule_set() -> RuleSet {
     RuleSet {
-        ipv4_black: Some(IpTrie::new(false)),
-        ipv6_black: Some(IpTrie::new(true)),
-        ipv4_white: Some(IpTrie::new(false)),
-        ipv6_white: Some(IpTrie::new(true)),
+        ipv4_black: Some(IpList::new()),
+        ipv6_black: Some(IpList::new()),
+        ipv4_white: Some(IpList::new()),
+        ipv6_white: Some(IpList::new()),
         ..RuleSet::default()
     }
 }
@@ -150,28 +215,26 @@ impl RuleSet {
         }
     }
 
-    fn trie_mut(&mut self, kind: RuleKind) -> &mut IpTrie {
+    pub fn ip_match(&self, addr: &[u8], kind: RuleKind) -> Option<&[u8]> {
         match kind {
-            RuleKind::Ipv4Black => self.ipv4_black.as_mut().expect("initialised"),
-            RuleKind::Ipv6Black => self.ipv6_black.as_mut().expect("initialised"),
-            RuleKind::Ipv4White => self.ipv4_white.as_mut().expect("initialised"),
-            RuleKind::Ipv6White => self.ipv6_white.as_mut().expect("initialised"),
-            _ => unreachable!("regex rules are not ip tries"),
-        }
-    }
-
-    fn trie(&self, kind: RuleKind) -> Option<&IpTrie> {
-        match kind {
-            RuleKind::Ipv4Black => self.ipv4_black.as_ref(),
-            RuleKind::Ipv6Black => self.ipv6_black.as_ref(),
-            RuleKind::Ipv4White => self.ipv4_white.as_ref(),
-            RuleKind::Ipv6White => self.ipv6_white.as_ref(),
+            RuleKind::Ipv4Black | RuleKind::Ipv4White => {
+                let list = match kind {
+                    RuleKind::Ipv4Black => self.ipv4_black.as_ref(),
+                    _ => self.ipv4_white.as_ref(),
+                };
+                let addr = Ipv4Addr::from(<[u8; 4]>::try_from(addr).ok()?);
+                list?.find(&addr)
+            }
+            RuleKind::Ipv6Black | RuleKind::Ipv6White => {
+                let list = match kind {
+                    RuleKind::Ipv6Black => self.ipv6_black.as_ref(),
+                    _ => self.ipv6_white.as_ref(),
+                };
+                let addr = Ipv6Addr::from(<[u8; 16]>::try_from(addr).ok()?);
+                list?.find(&addr)
+            }
             _ => None,
         }
-    }
-
-    pub fn ip_match(&self, addr: &[u8], kind: RuleKind) -> Option<&[u8]> {
-        self.trie(kind)?.find(addr)
     }
 }
 
@@ -296,7 +359,7 @@ fn load_into_container(
                 rules.regex_list_mut(kind).push(rule);
             }
             RuleKind::Ipv4Black | RuleKind::Ipv4White => {
-                let cidr = parse_ipv4(line).ok_or_else(|| {
+                let block = parse_ipv4(line).ok_or_else(|| {
                     format!(
                         "ngx_waf: In {}:{}, [{}] is not a valid IPV4 string.",
                         file_name,
@@ -304,30 +367,27 @@ fn load_into_container(
                         String::from_utf8_lossy(line)
                     )
                 })?;
-                match rules.trie_mut(kind).add(&cidr, line) {
-                    Ok(()) => {}
-                    Err(AddError::Overlap) => {
-                        // The block is already covered by one that was read
-                        // before it, so nothing is lost by dropping it.  The C
-                        // implementation logs this and keeps the configuration
-                        // (it only fails when the trie could not allocate).
-                        let existing = rules
-                            .trie(kind)
-                            .and_then(|trie| trie.find(&cidr.addr))
-                            .map(|detail| String::from_utf8_lossy(detail).into_owned())
-                            .unwrap_or_default();
-                        warnings.push(format!(
-                            "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",
-                            file_name,
-                            line_number,
-                            String::from_utf8_lossy(line),
-                            existing
-                        ));
-                    }
+                let list = match kind {
+                    RuleKind::Ipv4Black => rules.ipv4_black.as_mut(),
+                    _ => rules.ipv4_white.as_mut(),
+                }
+                .expect("the ip lists are initialised");
+                if let Err(existing) = list.add(block, line) {
+                    // The block is already covered by one that was read before
+                    // it, so nothing is lost by dropping it.  The C
+                    // implementation logs this and keeps the configuration (it
+                    // only fails when its trie could not allocate).
+                    warnings.push(format!(
+                        "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",
+                        file_name,
+                        line_number,
+                        String::from_utf8_lossy(line),
+                        String::from_utf8_lossy(&existing)
+                    ));
                 }
             }
             RuleKind::Ipv6Black | RuleKind::Ipv6White => {
-                let cidr = parse_ipv6(line).ok_or_else(|| {
+                let block = parse_ipv6(line).ok_or_else(|| {
                     format!(
                         "ngx_waf: In {}:{}, [{}] is not a valid IPV6 string.",
                         file_name,
@@ -335,26 +395,19 @@ fn load_into_container(
                         String::from_utf8_lossy(line)
                     )
                 })?;
-                match rules.trie_mut(kind).add(&cidr, line) {
-                    Ok(()) => {}
-                    Err(AddError::Overlap) => {
-                        // The block is already covered by one that was read
-                        // before it, so nothing is lost by dropping it.  The C
-                        // implementation logs this and keeps the configuration
-                        // (it only fails when the trie could not allocate).
-                        let existing = rules
-                            .trie(kind)
-                            .and_then(|trie| trie.find(&cidr.addr))
-                            .map(|detail| String::from_utf8_lossy(detail).into_owned())
-                            .unwrap_or_default();
-                        warnings.push(format!(
-                            "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",
-                            file_name,
-                            line_number,
-                            String::from_utf8_lossy(line),
-                            existing
-                        ));
-                    }
+                let list = match kind {
+                    RuleKind::Ipv6Black => rules.ipv6_black.as_mut(),
+                    _ => rules.ipv6_white.as_mut(),
+                }
+                .expect("the ip lists are initialised");
+                if let Err(existing) = list.add(block, line) {
+                    warnings.push(format!(
+                        "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",
+                        file_name,
+                        line_number,
+                        String::from_utf8_lossy(line),
+                        String::from_utf8_lossy(&existing)
+                    ));
                 }
             }
         }
@@ -631,5 +684,88 @@ mod tests {
         assert!(rules.args.iter().any(|rule| rule.is_match(b"s=onload=")));
         assert!(rules.post.iter().any(|rule| rule.is_match(b"onload=")));
         assert!(rules.user_agent.iter().any(|rule| rule.is_match(b"/ SF/")));
+    }
+
+    fn ipv4(text: &str) -> Ipv4Cidr {
+        parse_ipv4(text.as_bytes()).unwrap()
+    }
+
+    fn address4(text: &str) -> Ipv4Addr {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn an_ip_list_matches_what_its_blocks_cover() {
+        let mut list = IpList::new();
+        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        for text in ["2.0.0.1", "2.1.0.0", "2.255.255.255"] {
+            assert_eq!(
+                list.find(&address4(text)),
+                Some(&b"2.0.0.0/8"[..]),
+                "{text}"
+            );
+        }
+        assert_eq!(list.find(&address4("3.0.0.0")), None);
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn a_single_address_covers_only_itself() {
+        let mut list = IpList::new();
+        list.add(ipv4("1.1.1.1"), b"1.1.1.1").unwrap();
+        assert_eq!(list.find(&address4("1.1.1.1")), Some(&b"1.1.1.1"[..]));
+        assert_eq!(list.find(&address4("1.1.1.2")), None);
+    }
+
+    #[test]
+    fn an_overlapping_block_is_refused_with_the_rule_that_covers_it() {
+        let mut list = IpList::new();
+        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        assert_eq!(
+            list.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16"),
+            Err(b"2.0.0.0/8".to_vec())
+        );
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn the_whole_space_matches_everything_and_is_taken_once() {
+        let mut list = IpList::new();
+        list.add(ipv4("0.0.0.0/0"), b"0.0.0.0/0").unwrap();
+        assert_eq!(list.find(&address4("8.8.8.8")), Some(&b"0.0.0.0/0"[..]));
+        assert_eq!(
+            list.add(ipv4("1.1.1.1"), b"1.1.1.1"),
+            Err(b"0.0.0.0/0".to_vec())
+        );
+    }
+
+    #[test]
+    fn the_shortest_prefix_wins() {
+        // A block that covers one read before it is not detected as an
+        // overlap, exactly like in the trie of the C implementation: the
+        // later, shorter block shadows the one below it.
+        let mut list = IpList::new();
+        list.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
+        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        assert_eq!(list.find(&address4("2.1.0.1")), Some(&b"2.0.0.0/8"[..]));
+        assert_eq!(list.find(&address4("2.2.0.1")), Some(&b"2.0.0.0/8"[..]));
+    }
+
+    #[test]
+    fn an_ipv6_list_matches_the_same_way() {
+        let mut list = IpList::new();
+        list.add(parse_ipv6(b"2001:db8::/32").unwrap(), b"2001:db8::/32")
+            .unwrap();
+        assert_eq!(
+            list.find(&"2001:db8::1".parse::<Ipv6Addr>().unwrap()),
+            Some(&b"2001:db8::/32"[..])
+        );
+        assert_eq!(list.find(&"2001:db9::1".parse::<Ipv6Addr>().unwrap()), None);
+    }
+
+    #[test]
+    fn an_empty_ip_list_matches_nothing() {
+        let list: IpList<Ipv4Cidr> = IpList::new();
+        assert_eq!(list.find(&Ipv4Addr::LOCALHOST), None);
     }
 }

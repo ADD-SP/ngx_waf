@@ -2219,13 +2219,10 @@ mod tests {
     #[test]
     fn a_connection_without_an_address_skips_the_address_checks() {
         let mut rules = rules::new_rule_set();
-        let mut trie = crate::ip_trie::IpTrie::new(false);
-        trie.add(
-            &crate::util::parse_ipv4(b"0.0.0.0/0").unwrap(),
-            b"0.0.0.0/0",
-        )
-        .unwrap();
-        rules.ipv4_black = Some(trie);
+        let mut list = crate::rules::IpList::new();
+        list.add(crate::util::parse_ipv4(b"0.0.0.0/0").unwrap(), b"0.0.0.0/0")
+            .unwrap();
+        rules.ipv4_black = Some(list);
         let mut conf = conf_with_rules(rules);
         // A CC protection that cannot count answers 500 for a client with an
         // address; a connection without one (`listen unix:...`) is not counted
@@ -2271,13 +2268,13 @@ mod tests {
         rules
             .url
             .push(RegexRule::compile(b"www\\.bak$", None).unwrap());
-        let mut trie = crate::ip_trie::IpTrie::new(false);
-        trie.add(
-            &crate::util::parse_ipv4(b"9.9.9.0/24").unwrap(),
+        let mut list = crate::rules::IpList::new();
+        list.add(
+            crate::util::parse_ipv4(b"9.9.9.0/24").unwrap(),
             b"9.9.9.0/24",
         )
         .unwrap();
-        rules.ipv4_black = Some(trie);
+        rules.ipv4_black = Some(list);
         let mut conf = conf_with_rules(rules);
         conf.waf_mode = WafMode::FULL.difference(WafMode::GET);
         let cookies = Vec::new();

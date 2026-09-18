@@ -13,6 +13,7 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 bitflags = "2"
+cidr = { version = "0.3", default-features = false }
 hmac = "0.12"
 lru = { version = "0.16", default-features = false }
 rand = { version = "0.9", default-features = false, features = ["std", "os_rng"] }

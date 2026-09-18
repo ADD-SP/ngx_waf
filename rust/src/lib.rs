@@ -13,7 +13,6 @@ mod check;
 mod config;
 mod ffi;
 mod flags;
-mod ip_trie;
 mod modsec;
 mod pcre;
 mod rules;
