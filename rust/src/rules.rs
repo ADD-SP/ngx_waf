@@ -602,7 +602,9 @@ mod tests {
         value: *const u8,
         len: usize,
     ) -> isize {
-        let value = std::slice::from_raw_parts(value, len);
+        // SAFETY: the fake callback gets the same contract as the real one:
+        // `value` is readable for `len` bytes.
+        let value = unsafe { std::slice::from_raw_parts(value, len) };
         if value.windows(4).any(|window| window == b"evil") {
             1
         } else {

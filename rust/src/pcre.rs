@@ -83,11 +83,9 @@ impl PcreRegex {
     }
 }
 
-/*
- * A compiled pattern is immutable: the engine allocates its match state per
- * call (`ngx_regex_exec()` creates a new `pcre2_match_data`), so running it
- * from another worker or another thread is safe.  The trait is only needed
- * because the empty rule set is a shared constant.
- */
+// SAFETY: a compiled pattern is immutable; the engine allocates its match
+// state per call (`ngx_regex_exec()` creates a new `pcre2_match_data`), so the
+// handle can be shared between workers and threads.
 unsafe impl Send for PcreRegex {}
+// SAFETY: see above.
 unsafe impl Sync for PcreRegex {}

@@ -2183,6 +2183,8 @@ mod tests {
             alloc_locked: Some(no_alloc),
             ctx: std::ptr::null_mut(),
         };
+        // SAFETY: the leaked directory segment and the callbacks above stay
+        // alive for the test, and the handle is freed at its end.
         let handle = unsafe { cc::zone_init(0x1000, 1024 * 1024, std::ptr::null_mut(), ops) };
         assert!(
             !handle.is_null(),
@@ -2207,6 +2209,7 @@ mod tests {
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
+        // SAFETY: the handle came from `zone_init()` and is not used after.
         unsafe { cc::zone_free(handle) };
     }
 
@@ -2929,6 +2932,7 @@ mod tests {
         // from the beginning instead of being challenged again.
         assert!(cc::entry_flags(zone_ref, tag, &ip, false).is_none());
 
+        // SAFETY: the handle came from `zone_init()` and is not used after.
         unsafe { cc::zone_free(zone) };
     }
 
@@ -2956,6 +2960,7 @@ mod tests {
                 return std::ptr::null_mut();
             }
             self.offset = start + size;
+            // SAFETY: `start + size` was checked against the length above.
             unsafe { self.memory.as_mut_ptr().add(start) }
         }
     }
@@ -2967,7 +2972,8 @@ mod tests {
         if ctx.is_null() {
             return std::ptr::null_mut();
         }
-        (*(ctx as *mut FakeZone)).alloc(size) as *mut core::ffi::c_void
+        // SAFETY: the tests pass the live `FakeZone` of the zone as `ctx`.
+        unsafe { (*(ctx as *mut FakeZone)).alloc(size) as *mut core::ffi::c_void }
     }
 
     /// A shared memory zone for the captcha fail counters.  The allocation is
@@ -2981,6 +2987,8 @@ mod tests {
             alloc_locked: Some(fake_zone_alloc),
             ctx: &*shm as *const FakeZone as *mut core::ffi::c_void,
         };
+        // SAFETY: `shm` is returned to the caller and stays alive while the
+        // handle is used.
         let zone = unsafe { cc::zone_init(0x2000, 1024 * 1024, std::ptr::null_mut(), ops) };
         assert!(!zone.is_null(), "the zone header must be allocated");
         (zone, shm)
@@ -3046,6 +3054,7 @@ mod tests {
             }
         }
 
+        // SAFETY: the handle came from `zone_init()` and is not used after.
         unsafe { cc::zone_free(zone) };
     }
 
@@ -3071,6 +3080,7 @@ mod tests {
         assert_eq!(outcome.body, b"bad");
         assert_eq!(outcome.rule_details, b"bad");
 
+        // SAFETY: the handle came from `zone_init()` and is not used after.
         unsafe { cc::zone_free(zone) };
     }
 

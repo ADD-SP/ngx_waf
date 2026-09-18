@@ -51,6 +51,30 @@ up with the message of the C implementation.  The `regex` crate is only the
 fallback of a build without the glue (the unit tests of this crate); it accepts
 a subset of that syntax and is never the engine of the module inside nginx.
 
+## Unsafe boundaries
+
+Safe Rust is the default everywhere; `unsafe` exists in exactly four places,
+each one a boundary this port cannot remove:
+
+* `src/ffi.rs`: the `#[repr(C)]` types and `extern "C"` entry points.  The C
+  side owns the configurations, the request views and the step handle; the
+  module turns them into references once and keeps every raw pointer operation
+  in a documented block.
+* `src/cc.rs`: the `#[repr(C)]` layout of the shared memory zone and the
+  callback table of nginx.  The layout is frozen (a change means bumping
+  `VERSION`), the slot array is reached through the one `Table::from_raw()`
+  view, and the safe operations take `&ZoneHandle`.
+* `src/modsec.rs`: the hand written libmodsecurity C API bindings.  The
+  `Instance`/`Transaction` wrappers own the pointers and release them in
+  `Drop`.
+* `src/pcre.rs` and `src/rules.rs`: the PCRE callbacks of the glue, which are
+  only used through the safe `RegexOps`/`PcreRegex` wrappers.
+
+The crate enables `unsafe_op_in_unsafe_fn` and
+`clippy::undocumented_unsafe_blocks`; CI runs clippy with `-D warnings`, so an
+operation inside an `unsafe fn` needs its own `unsafe` block and every block
+and `unsafe impl` needs a `// SAFETY:` argument.
+
 ## Building
 
 The nginx `config` script drives cargo; `make build` at the repository root is

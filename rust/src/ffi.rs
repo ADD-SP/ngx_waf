@@ -37,7 +37,8 @@ impl NgxWafStr {
         if self.data.is_null() || self.len == 0 {
             &[]
         } else {
-            slice::from_raw_parts(self.data, self.len)
+            // SAFETY: the caller guarantees the pointer and the length.
+            unsafe { slice::from_raw_parts(self.data, self.len) }
         }
     }
 }
@@ -467,7 +468,9 @@ unsafe fn log_internal_error(log: *mut c_void, message: &str) {
     // The message is written with `ngx_log_error("%s")`, which stops at a NUL.
     let text: Vec<u8> = message.bytes().filter(|byte| *byte != 0).collect();
     if let Ok(text) = CString::new(text) {
-        ngx_http_waf_log_error(log, text.as_ptr());
+        // SAFETY: `log` is the log of the request or NULL (checked above) and
+        // `text` is a NUL terminated message for the duration of the call.
+        unsafe { ngx_http_waf_log_error(log, text.as_ptr()) };
     }
 }
 
@@ -479,6 +482,8 @@ pub extern "C" fn ngx_waf_version() -> *const c_char {
 #[no_mangle]
 pub extern "C" fn ngx_waf_string_free(text: *mut c_char) {
     if !text.is_null() {
+        // SAFETY: the pointer comes from `CString::into_raw()` in
+        // `error_string()` and is freed exactly once.
         unsafe { drop(CString::from_raw(text)) };
     }
 }
@@ -661,6 +666,7 @@ pub unsafe extern "C" fn ngx_waf_directive(
     guard_directive(|| {
         // SAFETY: the C side owns both configurations for this call.
         let main = unsafe { &mut *(main as *mut MainConf) };
+        // SAFETY: see above.
         let conf = unsafe { &mut *(conf as *mut LocConf) };
         // SAFETY: `name` is a view the C side keeps valid for this call.
         let name = unsafe { name.as_slice() };
@@ -676,11 +682,12 @@ pub unsafe extern "C" fn ngx_waf_directive(
             // SAFETY: every view of `args` is valid for this call.
             .map(|arg| unsafe { arg.as_slice() }.to_vec())
             .collect();
-        // SAFETY: the glue passes either NULL or a table that stays valid for
-        // the whole call (it lives on the stack of the directive handler).
         let ops = if regex_ops.is_null() {
             None
         } else {
+            // SAFETY: the glue passes either NULL or a table that stays valid
+            // for the whole call (it lives on the stack of the directive
+            // handler).
             Some(unsafe { &*regex_ops })
         };
         config::directive(main, conf, name, &args, ops)
@@ -741,6 +748,7 @@ pub unsafe extern "C" fn ngx_waf_conf_merge(
     guard_directive(|| {
         // SAFETY: the C side owns both configurations for this call.
         let child = unsafe { &mut *(child as *mut LocConf) };
+        // SAFETY: see above.
         let parent = unsafe { &mut *(parent as *mut LocConf) };
         config::merge(child, parent)
     })
@@ -821,6 +829,7 @@ pub unsafe extern "C" fn ngx_waf_check_resume(
     guard_with_log(log, -1, || {
         // SAFETY: the C side owns a live handle and event for this call.
         let handle = unsafe { &mut *(step as *mut StepHandle) };
+        // SAFETY: see above.
         let event = unsafe { &*event };
         let event = match event.kind {
             // SAFETY: every view of the event is valid for this call.
@@ -1094,6 +1103,8 @@ mod tests {
         let text = if message.is_null() {
             String::new()
         } else {
+            // SAFETY: the C side passes a NUL terminated message to the log
+            // callback for the duration of the call.
             unsafe { std::ffi::CStr::from_ptr(message) }
                 .to_string_lossy()
                 .into_owned()
@@ -1256,6 +1267,8 @@ mod tests {
         let _ = recorded();
         let log = 0x1234 as *mut c_void;
 
+        // SAFETY: `log` is opaque data for the test logger, which only records
+        // the address and never dereferences it.
         unsafe { log_internal_error(log, "ngx_waf: internal error: boom") };
 
         assert_eq!(
@@ -1269,6 +1282,7 @@ mod tests {
         let _guard = log_lock();
         let _ = recorded();
 
+        // SAFETY: a NULL log is explicitly allowed by `log_internal_error()`.
         unsafe { log_internal_error(std::ptr::null_mut(), "ngx_waf: internal error: boom") };
 
         assert!(recorded().is_empty());
@@ -1282,6 +1296,7 @@ mod tests {
         let _ = recorded();
         let log = std::ptr::dangling_mut::<c_void>();
 
+        // SAFETY: the test logger only records the address of `log`.
         unsafe { log_internal_error(log, "a\0b") };
 
         assert_eq!(recorded(), vec![(log as usize, "ab".to_string())]);

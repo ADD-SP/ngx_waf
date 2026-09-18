@@ -155,24 +155,32 @@ impl Instance {
     /// the `remote_key=`/`remote_url=` one, which the C implementation added
     /// after the files.
     pub fn create(files: &[&[u8]], remote: Option<(&[u8], &[u8])>) -> Result<Instance, String> {
+        // SAFETY: `msc_init()` takes no arguments and returns NULL or a live
+        // instance owned by this wrapper.
         let instance = unsafe { msc_init() };
         if instance.is_null() {
             return Err("ngx_waf: msc_init() failed".to_string());
         }
 
+        // SAFETY: the instance is live, the call returns NULL or a live rule
+        // set owned by this wrapper.
         let rules = unsafe { msc_create_rules_set() };
         if rules.is_null() {
+            // SAFETY: `instance` came from `msc_init()` and is not used again.
             unsafe { msc_cleanup(instance) };
             return Err("ngx_waf: msc_create_rules_set() failed".to_string());
         }
 
         let loaded = Instance { instance, rules };
+        // SAFETY: the instance is live and the callback has the C signature.
         unsafe { msc_set_log_cb(loaded.instance, Some(modsecurity_log)) };
 
         for file in files {
             let file = CString::new(*file)
                 .map_err(|_| "ngx_waf: the path of the rule file is invalid".to_string())?;
             let mut error: *const c_char = std::ptr::null();
+            // SAFETY: the rule set is live, `file` is NUL terminated for the
+            // call and `error` is a valid out-parameter.
             let result = unsafe { msc_rules_add_file(loaded.rules, file.as_ptr(), &mut error) };
             if result < 0 {
                 return Err(format!("ngx_waf: {}", take_error(error)));
@@ -185,6 +193,8 @@ impl Instance {
             let url =
                 CString::new(url).map_err(|_| "ngx_waf: remote_url is invalid".to_string())?;
             let mut error: *const c_char = std::ptr::null();
+            // SAFETY: the rule set is live and both strings are NUL terminated
+            // for the call; `error` is a valid out-parameter.
             let result = unsafe {
                 msc_rules_add_remote(loaded.rules, key.as_ptr(), url.as_ptr(), &mut error)
             };
@@ -213,8 +223,11 @@ impl Instance {
                     None => id,
                 };
                 let id = CString::new(id).ok()?;
+                // SAFETY: the instance and its rule set are alive, the id is
+                // NUL terminated for the call.
                 unsafe { msc_new_transaction_with_id(self.instance, self.rules, id.as_ptr(), log) }
             }
+            // SAFETY: the instance and its rule set are alive until `Drop`.
             None => unsafe { msc_new_transaction(self.instance, self.rules, log) },
         };
 
@@ -228,6 +241,8 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        // SAFETY: both pointers came from the library and the instance is not
+        // used after this call.
         unsafe {
             msc_rules_cleanup(self.rules);
             msc_cleanup(self.instance);
@@ -254,6 +269,8 @@ impl Transaction {
     ) -> Result<(), ModSecError> {
         let client = CString::new(client).map_err(|_| ModSecError)?;
         let server = CString::new(server).map_err(|_| ModSecError)?;
+        // SAFETY: the transaction is live until `Drop` and the two strings are
+        // NUL terminated for the call.
         let result = unsafe {
             msc_process_connection(
                 self.transaction,
@@ -276,6 +293,8 @@ impl Transaction {
         let uri = CString::new(uri).map_err(|_| ModSecError)?;
         let method = CString::new(method).map_err(|_| ModSecError)?;
         let http_version = CString::new(http_version).map_err(|_| ModSecError)?;
+        // SAFETY: the transaction is live until `Drop` and the three strings
+        // are NUL terminated for the call.
         let result = unsafe {
             msc_process_uri(
                 self.transaction,
@@ -292,6 +311,8 @@ impl Transaction {
         if key.is_empty() {
             return Ok(());
         }
+        // SAFETY: the transaction is live until `Drop`, and the key and value
+        // stay readable for the length the call is given.
         let result = unsafe {
             msc_add_n_request_header(
                 self.transaction,
@@ -306,11 +327,14 @@ impl Transaction {
 
     /// `msc_process_request_headers()`.
     pub fn process_request_headers(&mut self) -> Result<(), ModSecError> {
+        // SAFETY: the transaction is live until `Drop`.
         check_status(unsafe { msc_process_request_headers(self.transaction) })
     }
 
     /// `msc_append_request_body()`.
     pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), ModSecError> {
+        // SAFETY: the transaction is live until `Drop` and `body` stays
+        // readable for its length.
         check_status(unsafe {
             msc_append_request_body(self.transaction, body.as_ptr(), body.len())
         })
@@ -318,17 +342,21 @@ impl Transaction {
 
     /// `msc_process_request_body()`.
     pub fn process_request_body(&mut self) -> Result<(), ModSecError> {
+        // SAFETY: the transaction is live until `Drop`.
         check_status(unsafe { msc_process_request_body(self.transaction) })
     }
 
     /// `msc_update_status_code()`.
     pub fn update_status_code(&mut self, status: u32) -> Result<(), ModSecError> {
+        // SAFETY: the transaction is live until `Drop`.
         check_status(unsafe { msc_update_status_code(self.transaction, status as c_int) })
     }
 
     /// `msc_intervention()`, `None` when the library has nothing to ask for.
     pub fn intervention(&mut self) -> Option<Verdict> {
         let mut intervention = Intervention::empty();
+        // SAFETY: the transaction is live until `Drop` and `intervention` is a
+        // zeroed out-parameter of the C struct layout.
         if unsafe { msc_intervention(self.transaction, &mut intervention) } <= 0 {
             return None;
         }
@@ -347,6 +375,7 @@ impl Transaction {
     /// `msc_process_logging()`: let the library write its audit log.  Called
     /// from the log phase of nginx.
     pub fn process_logging(&mut self) {
+        // SAFETY: the transaction is live until `Drop`.
         unsafe {
             msc_process_logging(self.transaction);
         }
@@ -355,6 +384,8 @@ impl Transaction {
 
 impl Drop for Transaction {
     fn drop(&mut self) {
+        // SAFETY: `self.transaction` came from the library and is not used
+        // after this call.
         unsafe { msc_transaction_cleanup(self.transaction) };
     }
 }
@@ -374,7 +405,9 @@ unsafe extern "C" fn modsecurity_log(log: *mut c_void, message: *const c_char) {
     if log.is_null() || message.is_null() {
         return;
     }
-    ngx_http_waf_modsecurity_log(log, message);
+    // SAFETY: both pointers come from the library and stay valid for the
+    // duration of the callback.
+    unsafe { ngx_http_waf_modsecurity_log(log, message) };
 }
 
 /// Take the message of a failed `msc_rules_add_*()` call: it is allocated with
@@ -383,9 +416,13 @@ fn take_error(error: *const c_char) -> String {
     if error.is_null() {
         return "(no error message)".to_string();
     }
+    // SAFETY: the library promises a NUL terminated message it allocated with
+    // `strdup()`, which this function takes ownership of below.
     let message = unsafe { CStr::from_ptr(error) }
         .to_string_lossy()
         .into_owned();
+    // SAFETY: the message came from the library with `strdup()` and is not
+    // used after the copy above.
     unsafe { free(error as *mut c_void) };
     message
 }
@@ -395,7 +432,11 @@ fn copy_and_free(pointer: *mut c_char) -> Option<Vec<u8>> {
     if pointer.is_null() {
         return None;
     }
+    // SAFETY: the library promises a NUL terminated string it allocated and
+    // handed over to the caller, which owns it now.
     let text = unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec();
+    // SAFETY: the string came from the library and is not used after the copy
+    // above.
     unsafe { free(pointer as *mut c_void) };
     Some(text)
 }

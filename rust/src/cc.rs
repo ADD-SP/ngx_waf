@@ -149,20 +149,24 @@ pub struct ZoneHandle {
     ops: ShmOps,
 }
 
-// The handle is only touched by one worker process at a time and the shared
-// state it points at is protected by the zone mutex.
+// SAFETY: the handle is only touched by one worker process at a time and the
+// shared state it points at is protected by the zone mutex.
 unsafe impl Send for ZoneHandle {}
+// SAFETY: see above.
 unsafe impl Sync for ZoneHandle {}
 
 impl ZoneHandle {
     fn lock(&self) {
         if let Some(lock) = self.ops.lock {
+            // SAFETY: the callback comes from the C glue and `ctx` is the
+            // shared memory zone it was created with.
             unsafe { lock(self.ops.ctx) }
         }
     }
 
     fn unlock(&self) {
         if let Some(unlock) = self.ops.unlock {
+            // SAFETY: see `lock()`.
             unsafe { unlock(self.ops.ctx) }
         }
     }
@@ -171,6 +175,8 @@ impl ZoneHandle {
     /// the lock again, `ngx_shmtx` is not recursive.
     fn alloc_locked(&self, size: usize) -> *mut u8 {
         match self.ops.alloc_locked {
+            // SAFETY: the callback comes from the C glue, `ctx` is the zone,
+            // and the zone lock is held so the allocator is not re-entered.
             Some(alloc) => unsafe { alloc(self.ops.ctx, size) as *mut u8 },
             None => std::ptr::null_mut(),
         }
@@ -181,6 +187,7 @@ impl ZoneHandle {
         // one tag ~20k counters (650KB) and halves that per extra tag, so a
         // zone with many tags still fits.  `create_entry()` halves further
         // when the segment is tighter than expected.
+        // SAFETY: `self.header` points at the live zone header of this handle.
         let tags = (unsafe { (*self.header).tag_count } as usize) + 1;
         std::cmp::max(MIN_CAPACITY, (self.size / 512) / tags)
     }
@@ -332,31 +339,42 @@ pub unsafe fn zone_init(
     if addr == 0 || size == 0 {
         return std::ptr::null_mut();
     }
-    if let Some(old) = old.as_ref() {
+    // SAFETY: the C glue passes NULL or the handle it received from the
+    // previous cycle of the same shared memory zone.
+    if let Some(old) = unsafe { old.as_ref() } {
         // The segment is reused, `old.header` points at the directory written
         // by the previous cycle.  Only trust it when it is ours: a segment
         // written by another version of the core would be read as a directory
         // of tables (garbage pointers) otherwise.
         let header = old.header;
-        if !header.is_null() && (*header).magic == ZONE_MAGIC && (*header).version == VERSION {
-            return Box::into_raw(Box::new(ZoneHandle { header, size, ops }));
+        // SAFETY: `header` is the zone header of the previous cycle, kept
+        // alive by the shared memory segment nginx reuses.
+        if let Some(header_ref) = unsafe { header.as_ref() } {
+            if header_ref.magic == ZONE_MAGIC && header_ref.version == VERSION {
+                return Box::into_raw(Box::new(ZoneHandle { header, size, ops }));
+            }
         }
     }
 
     let memory = match ops.alloc {
-        Some(alloc) => alloc(ops.ctx, std::mem::size_of::<ZoneHeader>()) as *mut u8,
+        // SAFETY: the callback comes from the C glue and `ctx` is its zone;
+        // the requested size is the size of one zone header.
+        Some(alloc) => unsafe { alloc(ops.ctx, std::mem::size_of::<ZoneHeader>()) as *mut u8 },
         None => return std::ptr::null_mut(),
     };
     if memory.is_null() {
         return std::ptr::null_mut();
     }
-    std::ptr::write_bytes(memory, 0, std::mem::size_of::<ZoneHeader>());
-    let header = memory as *mut ZoneHeader;
-    (*header).magic = ZONE_MAGIC;
-    (*header).version = VERSION;
-    (*header).tag_count = 0;
+    // SAFETY: `memory` is a fresh allocation of the size of one zone header.
+    unsafe {
+        std::ptr::write_bytes(memory, 0, std::mem::size_of::<ZoneHeader>());
+        let header = memory as *mut ZoneHeader;
+        (*header).magic = ZONE_MAGIC;
+        (*header).version = VERSION;
+        (*header).tag_count = 0;
 
-    Box::into_raw(Box::new(ZoneHandle { header, size, ops }))
+        Box::into_raw(Box::new(ZoneHandle { header, size, ops }))
+    }
 }
 
 /// Release a handle created by [`zone_init`].  The shared memory itself is
@@ -366,7 +384,9 @@ pub unsafe fn zone_init(
 /// `handle` must come from [`zone_init`] and must not be used afterwards.
 pub unsafe fn zone_free(handle: *mut ZoneHandle) {
     if !handle.is_null() {
-        drop(Box::from_raw(handle));
+        // SAFETY: the caller guarantees the handle came from `zone_init()` and
+        // is not used afterwards.
+        unsafe { drop(Box::from_raw(handle)) };
     }
 }
 
@@ -763,12 +783,14 @@ mod tests {
     }
 
     unsafe extern "C" fn fake_lock(ctx: *mut core::ffi::c_void) {
-        let shm = &*(ctx as *const FakeShm);
+        // SAFETY: the tests pass the live `FakeShm` of the zone as `ctx`.
+        let shm = unsafe { &*(ctx as *const FakeShm) };
         shm.locked.fetch_add(1, Ordering::SeqCst);
     }
 
     unsafe extern "C" fn fake_unlock(ctx: *mut core::ffi::c_void) {
-        let shm = &*(ctx as *const FakeShm);
+        // SAFETY: see `fake_lock()`.
+        let shm = unsafe { &*(ctx as *const FakeShm) };
         shm.locked.fetch_sub(1, Ordering::SeqCst);
     }
 
@@ -776,21 +798,27 @@ mod tests {
         ctx: *mut core::ffi::c_void,
         size: usize,
     ) -> *mut core::ffi::c_void {
-        let shm = &mut *(ctx as *mut FakeShm);
+        // SAFETY: the allocation callbacks are serialised by the zone lock and
+        // `ctx` is the live `FakeShm` of the test.
+        let shm = unsafe { &mut *(ctx as *mut FakeShm) };
         let start = (shm.offset + 15) & !15;
         let end = start + size;
         if end > shm.memory.len() {
             return std::ptr::null_mut();
         }
         shm.offset = end;
-        shm.memory.as_mut_ptr().add(start) as *mut core::ffi::c_void
+        // SAFETY: `start` and `end` are inside the `memory` buffer, which was
+        // checked above.
+        unsafe { shm.memory.as_mut_ptr().add(start) as *mut core::ffi::c_void }
     }
 
     unsafe extern "C" fn fake_alloc_locked(
         ctx: *mut core::ffi::c_void,
         size: usize,
     ) -> *mut core::ffi::c_void {
-        fake_alloc(ctx, size)
+        // SAFETY: the caller of `alloc_locked` holds the zone lock, which is
+        // the same contract `fake_alloc()` has.
+        unsafe { fake_alloc(ctx, size) }
     }
 
     /// Returns the segment and the handle the C glue would keep.
@@ -809,6 +837,9 @@ mod tests {
             ctx,
         };
         let addr = shm.memory.as_ptr() as usize;
+        // SAFETY: the fake segment and its callbacks stay alive for the whole
+        // test and the handle is freed through `zone_free()` or dropped with
+        // the segment.
         let handle = unsafe { zone_init(addr, size, std::ptr::null_mut(), ops) };
         assert!(!handle.is_null(), "{name}: zone init failed");
         let _ = ctx;
@@ -951,16 +982,21 @@ mod tests {
             ctx,
         };
         let addr = shm.memory.as_ptr() as usize;
+        // SAFETY: the fake segment and its callbacks stay alive for the whole
+        // test.
         let first = unsafe { zone_init(addr, 1024 * 1024, std::ptr::null_mut(), ops) };
         assert!(!first.is_null());
         increment(zone(first), b"cc", &[7, 7, 7, 7], false, 5, 60, 60, 0).unwrap();
 
         // A reload re-runs the zone init handler with the very same segment.
+        // SAFETY: `first` is the live handle of the same fake segment.
         let second = unsafe { zone_init(addr, 1024 * 1024, first, ops) };
         assert!(!second.is_null());
         let after = increment(zone(second), b"cc", &[7, 7, 7, 7], false, 5, 60, 60, 1).unwrap();
         assert_eq!(after.rate, 2);
+        // SAFETY: both handles came from `zone_init()` and are not used after.
         unsafe { zone_free(first) };
+        // SAFETY: see above.
         unsafe { zone_free(second) };
     }
 
@@ -973,7 +1009,9 @@ mod tests {
         increment(zone(ctx), b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 0).unwrap();
 
         // Something else wrote over the header of the segment.
+        // SAFETY: `ctx` is the live handle of the fake segment.
         let header = unsafe { (*ctx).header };
+        // SAFETY: `header` points at the zone header of the live fake segment.
         unsafe {
             (*header).magic = 0xdead_beef;
             (*header).blocks = std::ptr::dangling_mut::<TagBlock>();
@@ -981,12 +1019,15 @@ mod tests {
         }
 
         // The reload reuses the segment and has to notice.
+        // SAFETY: the fake segment is still alive and `ctx` is its live handle.
         let rebuilt =
             unsafe { zone_init(shm.memory.as_ptr() as usize, 1024 * 1024, ctx, (*ctx).ops) };
         assert!(!rebuilt.is_null());
         let result = increment(zone(rebuilt), b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 0).unwrap();
         assert_eq!(result.rate, 1, "the counter table was rebuilt");
+        // SAFETY: both handles came from `zone_init()` and are not used after.
         unsafe { zone_free(ctx) };
+        // SAFETY: see above.
         unsafe { zone_free(rebuilt) };
     }
 
