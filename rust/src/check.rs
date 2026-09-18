@@ -258,57 +258,54 @@ struct State<'a, 'r> {
 }
 
 /// The response one matched inspection asks for.
-struct Decision {
-    status: u32,
-    content_type: u32,
-    /// `Some` means the body is written by the content handler.
-    body: Option<Rc<Vec<u8>>>,
-    /// The `Location` header of a redirect, `None` when there is none.
-    location: Option<Vec<u8>>,
-    cookies: Vec<(String, String)>,
+enum Decision {
+    /// Let the request through (the `DECLINE` action of the C implementation).
+    Allow,
+    /// Answer with a status only (the `RETURN` action of the C implementation).
+    Status(u32),
+    /// Answer with a status and the `Location` header of a redirect.
+    Redirect { status: u32, location: Vec<u8> },
+    /// Answer with an HTML page written by the content handler.
+    Page {
+        status: u32,
+        body: Rc<Vec<u8>>,
+        cookies: Vec<(String, String)>,
+    },
+    /// Answer with a plain text body written by the content handler.
+    Text {
+        status: u32,
+        body: Rc<Vec<u8>>,
+        cookies: Vec<(String, String)>,
+    },
 }
 
 impl Decision {
-    /// Let the request through (the `DECLINE` action of the C implementation).
     fn allow() -> Self {
-        Decision {
-            status: 0,
-            content_type: CT_HTML,
-            body: None,
-            location: None,
-            cookies: Vec::new(),
-        }
+        Decision::Allow
     }
 
-    /// Answer with a status only (the `RETURN` action of the C implementation).
     fn status(status: u32) -> Self {
-        Decision {
-            status,
-            content_type: CT_HTML,
-            body: None,
-            location: None,
-            cookies: Vec::new(),
-        }
+        Decision::Status(status)
     }
 
     fn page(status: u32, body: Rc<Vec<u8>>) -> Self {
-        Decision {
+        Decision::Page {
             status,
-            content_type: CT_HTML,
-            body: Some(body),
-            location: None,
+            body,
             cookies: Vec::new(),
         }
     }
 
     fn text(status: u32, text: Rc<Vec<u8>>) -> Self {
-        Decision {
+        Decision::Text {
             status,
-            content_type: CT_TEXT,
-            body: Some(text),
-            location: None,
+            body: text,
             cookies: Vec::new(),
         }
+    }
+
+    fn redirect(status: u32, location: Vec<u8>) -> Self {
+        Decision::Redirect { status, location }
     }
 }
 
@@ -1039,9 +1036,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     if let Some(url) = verdict.url {
         // A redirection ignores the configured policy, the C implementation
         // answered with the status of the intervention whatever it was.
-        let mut decision = Decision::status(verdict.status);
-        decision.location = Some(url);
-        *state.decision = Some(decision);
+        *state.decision = Some(Decision::redirect(verdict.status, url));
         return CheckResult::Matched;
     }
 
@@ -1260,15 +1255,15 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
             } else {
                 state.set_rule_info(b"CAPTCHA", b"PASS", true, true);
                 *state.decision = Some(match captcha_mint(state) {
-                    Some((time, uid, hmac)) => {
-                        let mut decision = Decision::text(HTTP_OK, Rc::new(b"good".to_vec()));
-                        decision.cookies = vec![
+                    Some((time, uid, hmac)) => Decision::Text {
+                        status: HTTP_OK,
+                        body: Rc::new(b"good".to_vec()),
+                        cookies: vec![
                             ("__waf_captcha_time".to_string(), time),
                             ("__waf_captcha_uid".to_string(), uid),
                             ("__waf_captcha_hmac".to_string(), hmac),
-                        ];
-                        decision
-                    }
+                        ],
+                    },
                     None => Decision::status(HTTP_INTERNAL_SERVER_ERROR),
                 });
             }
@@ -1574,20 +1569,23 @@ fn check_under_attack(state: &mut State) -> CheckResult {
 /// Answer 503 with the "under attack" page, minting a new cookie trio unless
 /// the visitor is simply still waiting.
 fn under_attack_hold(state: &mut State, mint: bool) -> CheckResult {
-    let mut decision = Decision::page(
-        HTTP_SERVICE_UNAVAILABLE,
-        Rc::clone(&state.conf.under_attack.html),
-    );
-    if mint {
+    let cookies = if mint {
         let time = state.req.now.to_string();
         let uid = String::from_utf8_lossy(&util::rand_letters(64)).into_owned();
         let hmac = cookie_hmac(state, time.as_bytes(), uid.as_bytes());
-        decision.cookies = vec![
+        vec![
             ("__waf_under_attack_time".to_string(), time),
             ("__waf_under_attack_uid".to_string(), uid),
             ("__waf_under_attack_hmac".to_string(), hmac),
-        ];
-    }
+        ]
+    } else {
+        Vec::new()
+    };
+    let decision = Decision::Page {
+        status: HTTP_SERVICE_UNAVAILABLE,
+        body: Rc::clone(&state.conf.under_attack.html),
+        cookies,
+    };
     state.set_rule_info(b"UNDER-ATTACK", b"", true, true);
     *state.decision = Some(decision);
     CheckResult::Matched
@@ -1920,22 +1918,42 @@ fn resolve(
         return outcome;
     };
 
-    outcome.location = decision.location.clone().unwrap_or_default();
-    match decision.body {
-        Some(body) => {
+    match decision {
+        Decision::Allow => {}
+        Decision::Status(status) => {
             outcome.kind = STEP_RESPONSE;
-            outcome.status = decision.status;
-            outcome.content_type = decision.content_type;
+            outcome.status = status;
+            outcome.retry_after = retry_after(meta, status).unwrap_or(-1);
+        }
+        Decision::Redirect { status, location } => {
+            outcome.kind = STEP_RESPONSE;
+            outcome.status = status;
+            outcome.location = location;
+            outcome.retry_after = retry_after(meta, status).unwrap_or(-1);
+        }
+        Decision::Page {
+            status,
+            body,
+            cookies,
+        } => {
+            outcome.kind = STEP_RESPONSE;
+            outcome.status = status;
+            outcome.content_type = CT_HTML;
             outcome.body = body.as_ref().clone();
             outcome.register_content_handler = true;
-            outcome.cookies = decision.cookies;
+            outcome.cookies = cookies;
         }
-        None if decision.status == 0 => {}
-        None => {
+        Decision::Text {
+            status,
+            body,
+            cookies,
+        } => {
             outcome.kind = STEP_RESPONSE;
-            outcome.status = decision.status;
-            outcome.retry_after = retry_after(meta, decision.status).unwrap_or(-1);
-            outcome.cookies = decision.cookies;
+            outcome.status = status;
+            outcome.content_type = CT_TEXT;
+            outcome.body = body.as_ref().clone();
+            outcome.register_content_handler = true;
+            outcome.cookies = cookies;
         }
     }
 
