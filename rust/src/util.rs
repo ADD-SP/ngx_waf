@@ -6,6 +6,7 @@
 
 use rand::rngs::OsRng;
 use rand::{Rng, TryRngCore};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// `time(NULL)`.
 pub fn now() -> i64 {
@@ -110,40 +111,20 @@ pub struct Cidr {
 
 /// Parse an IPv4 address or CIDR block.
 ///
-/// Mirrors `ngx_http_waf_parse_ipv4()`: the prefix must be an IPv4 address,
-/// the suffix (if any) is read as a decimal number, a missing suffix means
-/// `/32`, and the prefix must contain at least 7 characters when a `/` is
-/// present.
+/// The address is the one [`Ipv4Addr`] parses, which accepts exactly the texts
+/// the `inet_pton()` of the C implementation accepted: four dotted decimal
+/// parts and no leading zero in one of them ("010.1.1.1" is not 10.1.1.1 for
+/// either of them).
+///
+/// What `ngx_http_waf_parse_ipv4()` added on top stays here: a missing suffix
+/// means `/32`, an empty suffix does too (the C code used `UINT32_MAX` as "no
+/// suffix was given"), and a suffix that is not a decimal number or that
+/// exceeds 32 is refused (the C implementation wrapped it into the mask
+/// instead, see the Known differences of `rust/README.md`).
 pub fn parse_ipv4(text: &[u8]) -> Option<Cidr> {
-    let slash = text.iter().position(|&c| c == b'/');
-    let prefix_text = match slash {
-        None => text,
-        Some(index) if index >= 7 => &text[..index],
-        Some(_) => return None,
-    };
-    let addr4 = parse_ipv4_addr(prefix_text)?;
-
-    let depth = match slash {
-        None => 32,
-        Some(index) => {
-            let mut depth: u32 = 0;
-            let mut seen = false;
-            for &c in &text[index + 1..] {
-                if !c.is_ascii_digit() {
-                    return None;
-                }
-                depth = depth.checked_mul(10)?.checked_add((c - b'0') as u32)?;
-                seen = true;
-            }
-            if !seen {
-                // `ngx_http_waf_parse_ipv4()` used `UINT32_MAX` as "no suffix
-                // was given" and turned it into /32.
-                32
-            } else {
-                depth
-            }
-        }
-    };
+    let (prefix, suffix) = split_cidr(text)?;
+    let addr4 = prefix.parse::<Ipv4Addr>().ok()?.octets();
+    let depth = parse_depth(suffix, 32)?;
     if depth > 32 {
         return None;
     }
@@ -159,41 +140,19 @@ pub fn parse_ipv4(text: &[u8]) -> Option<Cidr> {
 
 /// Parse an IPv6 address or CIDR block.
 ///
-/// Mirrors `ngx_http_waf_parse_ipv6()`, including its empty suffix (`::1/` is
-/// `::1/128`, the C code used `UINT32_MAX` to mean "no suffix was given").
+/// The address is the one [`Ipv6Addr`] parses, which accepts exactly the texts
+/// the `inet_pton()` of the C implementation accepted: `::` compresses the zero
+/// groups once, a lone `:` is not a separator, and an embedded IPv4 address is
+/// only allowed as the last group.  The suffix rules are the ones of
+/// [`parse_ipv4()`], with 128 as the full length.
 pub fn parse_ipv6(text: &[u8]) -> Option<Cidr> {
-    let slash = text.iter().position(|&c| c == b'/');
-    let prefix_text = match slash {
-        None => text,
-        Some(index) => &text[..index],
-    };
-    let addr = parse_ipv6_addr(prefix_text)?;
-
-    let depth = match slash {
-        None => 128,
-        Some(index) => {
-            let mut depth: u32 = 0;
-            let mut seen = false;
-            for &c in &text[index + 1..] {
-                if !c.is_ascii_digit() {
-                    return None;
-                }
-                depth = depth.checked_mul(10)?.checked_add((c - b'0') as u32)?;
-                seen = true;
-            }
-            if !seen {
-                // See the IPv4 version: an empty suffix is the full length.
-                128
-            } else {
-                depth
-            }
-        }
-    };
+    let (prefix, suffix) = split_cidr(text)?;
+    let mut addr = prefix.parse::<Ipv6Addr>().ok()?.octets();
+    let depth = parse_depth(suffix, 128)?;
     if depth > 128 {
         return None;
     }
 
-    let mut addr = addr;
     mask(&mut addr, depth);
     Some(Cidr {
         addr,
@@ -215,132 +174,36 @@ fn mask(addr: &mut [u8], depth: u32) {
     }
 }
 
-fn parse_ipv4_addr(text: &[u8]) -> Option<[u8; 4]> {
-    let mut addr = [0u8; 4];
-    let mut parts = text.split(|&c| c == b'.');
-    for byte in addr.iter_mut() {
-        let part = parts.next()?;
-        if part.is_empty() || part.len() > 3 {
-            return None;
-        }
-        // `inet_pton()`, which the C implementation used, does not accept a
-        // leading zero: "010.1.1.1" is not 10.1.1.1 there either.
-        if part.len() > 1 && part[0] == b'0' {
-            return None;
-        }
-        let mut value: u32 = 0;
-        for &c in part {
-            if !c.is_ascii_digit() {
-                return None;
-            }
-            value = value * 10 + (c - b'0') as u32;
-        }
-        if value > 255 {
-            return None;
-        }
-        *byte = value as u8;
-    }
-    if parts.next().is_some() {
-        return None;
-    }
-    Some(addr)
+/// Split an address text at its first `/`, both sides as text.
+///
+/// The C implementation worked on the bytes of a rule line; the parsers of the
+/// standard library take text, and a line that is not UTF-8 is not an address.
+fn split_cidr(text: &[u8]) -> Option<(&str, &str)> {
+    let text = std::str::from_utf8(text).ok()?;
+    Some(match text.split_once('/') {
+        Some((prefix, suffix)) => (prefix, suffix),
+        None => (text, ""),
+    })
 }
 
-/// One side of an IPv6 address, the part before or after its `::`.  An empty
-/// side is the empty list, every group has to be 1..4 hexadecimal digits and
-/// the empty groups a `::` would leave behind are refused; `ipv4_tail` allows
-/// the last group to be the IPv4 form `inet_pton()` accepts at the end of an
-/// address (`::ffff:1.2.3.4`), which counts as two groups.
-fn parse_ipv6_side(side: &[u8], ipv4_tail: bool) -> Option<Vec<u16>> {
-    let mut words = Vec::new();
-    if side.is_empty() {
-        return Some(words);
-    }
-
-    let groups: Vec<&[u8]> = side.split(|&c| c == b':').collect();
-    for (index, group) in groups.iter().enumerate() {
-        let last = index + 1 == groups.len();
-
-        if group.contains(&b'.') {
-            // Only the end of the address may hold the IPv4 form.
-            if !ipv4_tail || !last {
-                return None;
-            }
-            let addr = parse_ipv4_addr(group)?;
-            words.push(((addr[0] as u16) << 8) | addr[1] as u16);
-            words.push(((addr[2] as u16) << 8) | addr[3] as u16);
-            continue;
-        }
-
-        if group.is_empty() || group.len() > 4 {
-            return None;
-        }
-        let mut value: u16 = 0;
-        for &c in group.iter() {
-            let digit = char::from(c).to_digit(16)?;
-            value = value.checked_mul(16)?.checked_add(digit as u16)?;
-        }
-        words.push(value);
-    }
-
-    Some(words)
-}
-
-/// The IPv6 text parser, the equivalent of the `inet_pton()` the C
-/// implementation used: `::` compresses the zero groups and may appear once,
-/// a lone `:` is not a separator `inet_pton()` accepts, and an embedded IPv4
-/// address is only allowed as the last group.
-fn parse_ipv6_addr(text: &[u8]) -> Option<[u8; 16]> {
+/// The number of significant bits of a CIDR expression.
+///
+/// An empty suffix is the length of a whole address; `ngx_http_waf_parse_ipv4()`
+/// used `UINT32_MAX` as "no suffix was given" and turned it into `/32` (`/128`
+/// for IPv6).  A suffix that is not a decimal number, or one the `u32` of the C
+/// implementation could not hold, is refused.
+fn parse_depth(text: &str, full: u32) -> Option<u32> {
     if text.is_empty() {
-        return None;
+        return Some(full);
     }
-
-    // Where the `::` is, if there is one.  A second `::` and a `:::` give an
-    // empty group on one of the two sides, which `parse_ipv6_side()` refuses.
-    let mut compressed: Option<usize> = None;
-    let mut index = 0;
-    while index + 1 < text.len() {
-        if text[index] == b':' && text[index + 1] == b':' {
-            if compressed.is_some() {
-                return None;
-            }
-            compressed = Some(index);
-            index += 2;
-        } else {
-            index += 1;
+    let mut depth: u32 = 0;
+    for c in text.bytes() {
+        if !c.is_ascii_digit() {
+            return None;
         }
+        depth = depth.checked_mul(10)?.checked_add((c - b'0') as u32)?;
     }
-
-    let (head, tail) = match compressed {
-        Some(position) => (&text[..position], &text[position + 2..]),
-        None => (text, &[][..]),
-    };
-    let head = parse_ipv6_side(head, compressed.is_none())?;
-    let tail = parse_ipv6_side(tail, compressed.is_some())?;
-
-    let total = head.len() + tail.len();
-    match compressed {
-        // The `::` stands for at least one zero group.
-        Some(_) if total > 7 => return None,
-        None if total != 8 => return None,
-        _ => {}
-    }
-
-    let mut words = [0u16; 8];
-    for (index, &value) in head.iter().enumerate() {
-        words[index] = value;
-    }
-    let tail_start = 8 - tail.len();
-    for (index, &value) in tail.iter().enumerate() {
-        words[tail_start + index] = value;
-    }
-
-    let mut addr = [0u8; 16];
-    for (index, &word) in words.iter().enumerate() {
-        addr[index * 2] = (word >> 8) as u8;
-        addr[index * 2 + 1] = (word & 0xff) as u8;
-    }
-    Some(addr)
+    Some(depth)
 }
 
 /// `ngx_http_waf_rand_str()`: `len` random ASCII letters.
@@ -481,6 +344,10 @@ mod tests {
         assert_eq!(parse_ipv4(b"1.1.1.1/x"), None);
         // `inet_pton()`, like the C implementation: no leading zeros.
         assert_eq!(parse_ipv4(b"010.1.1.1"), None);
+        // The parsers of the standard library take text, so a byte that is not
+        // UTF-8 and a digit that is not ASCII are refused.
+        assert_eq!(parse_ipv4(b"1.1.1.\xff"), None);
+        assert_eq!(parse_ipv4("１.1.1.1".as_bytes()), None);
         assert_eq!(
             parse_ipv4(b"0.0.0.0"),
             Some(Cidr {
@@ -542,6 +409,7 @@ mod tests {
             b"1::2::3",
             b"::ffff:01.2.3.4",
             b"1:2:3:4:5:6:7:8:9",
+            b"\xff::",
         ] {
             assert_eq!(
                 parse_ipv6(text),
