@@ -5,6 +5,7 @@
 use crate::cc::{self, ShmOps};
 use crate::check;
 use crate::config::{self, LocConf, MainConf};
+use crate::flags::WafMode;
 use crate::pcre::RegexOps;
 use crate::types::*;
 use crate::util;
@@ -49,6 +50,27 @@ pub struct NgxWafHeader {
     pub value: NgxWafStr,
 }
 
+/// One request header as a safe view over the ABI table.  `#[repr(transparent)]`
+/// makes a slice of these interchangeable with the `NgxWafHeader` slice the C
+/// side hands over.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub(crate) struct Header(NgxWafHeader);
+
+impl Header {
+    pub(crate) fn key(&self) -> &[u8] {
+        // SAFETY: the C side keeps the header views alive for the whole
+        // request, which is what `RawReq` documents.
+        unsafe { self.0.key.as_slice() }
+    }
+
+    pub(crate) fn value(&self) -> &[u8] {
+        // SAFETY: the C side keeps the header views alive for the whole
+        // request, which is what `RawReq` documents.
+        unsafe { self.0.value.as_slice() }
+    }
+}
+
 /// The request view the C glue fills in.
 #[repr(C)]
 pub struct NgxWafReq {
@@ -81,6 +103,168 @@ pub struct NgxWafReq {
     /// `r->connection->log`: the data of the ModSecurity log callback, and
     /// where a panic caught at this boundary is reported.
     pub log: *mut c_void,
+}
+
+/// A borrowed byte range that crosses a suspension: the C side owns the memory
+/// and keeps it alive until the request is finished.  nginx declares the length
+/// first, the field order matters (see the layout assertion in the C glue).
+#[derive(Clone, Copy)]
+pub(crate) struct RawStr {
+    pub(crate) len: usize,
+    pub(crate) data: *const u8,
+}
+
+impl RawStr {
+    /// An empty view, for the fields a request does not carry.
+    #[cfg(test)]
+    pub(crate) const EMPTY: RawStr = RawStr {
+        data: std::ptr::null(),
+        len: 0,
+    };
+
+    fn view(self) -> &'static [u8] {
+        if self.data.is_null() || self.len == 0 {
+            &[]
+        } else {
+            // SAFETY: the C side keeps every request view alive for the whole
+            // request, see the type documentation.
+            unsafe { slice::from_raw_parts(self.data, self.len) }
+        }
+    }
+}
+
+impl From<&NgxWafStr> for RawStr {
+    fn from(view: &NgxWafStr) -> Self {
+        RawStr {
+            len: view.len,
+            data: view.data,
+        }
+    }
+}
+
+/// Everything the C side knows about the request, kept by value so the machine
+/// can be resumed after the phase handler returned `NGX_DONE`.
+#[derive(Clone, Copy)]
+pub(crate) struct RawReq {
+    pub(crate) ip: *const u8,
+    pub(crate) ip_len: usize,
+    pub(crate) method: u64,
+    pub(crate) uri: RawStr,
+    pub(crate) args: RawStr,
+    pub(crate) user_agent: RawStr,
+    pub(crate) referer: RawStr,
+    pub(crate) body: RawStr,
+    pub(crate) has_body: bool,
+    pub(crate) now: i64,
+    /// The request headers, only `waf_modsecurity` reads them.
+    pub(crate) headers: *const NgxWafHeader,
+    pub(crate) header_count: usize,
+    /// The evaluated `waf_modsecurity_transaction_id`, `data` is NULL when the
+    /// directive is not configured.
+    pub(crate) trans_id: RawStr,
+    /// The rest of what ModSecurity reads: the URI as it was sent, the method
+    /// and protocol, and the endpoints of the connection.
+    pub(crate) unparsed_uri: RawStr,
+    pub(crate) method_name: RawStr,
+    pub(crate) http_version: RawStr,
+    pub(crate) client_addr: RawStr,
+    pub(crate) client_port: u32,
+    pub(crate) server_addr: RawStr,
+    pub(crate) server_port: u32,
+    /// `r->connection->log`, the data of the ModSecurity log callback.
+    pub(crate) log: *mut c_void,
+    pub(crate) cc_zone: *mut cc::ZoneHandle,
+    /// The shared memory zone of the captcha action table (`waf_action ... zone=`).
+    pub(crate) action_zone: *mut cc::ZoneHandle,
+    /// The shared memory zone of the captcha fail counters (`waf_captcha ... zone=`).
+    pub(crate) captcha_zone: *mut cc::ZoneHandle,
+}
+
+impl RawReq {
+    /// Build the ABI view of one request.  The three zone handles are separate
+    /// arguments of `ngx_waf_check_begin()`, they are not part of
+    /// [`NgxWafReq`].
+    fn new(
+        req: &NgxWafReq,
+        cc_zone: *mut cc::ZoneHandle,
+        action_zone: *mut cc::ZoneHandle,
+        captcha_zone: *mut cc::ZoneHandle,
+    ) -> Self {
+        RawReq {
+            ip: req.ip,
+            ip_len: req.ip_len,
+            method: req.method,
+            uri: RawStr::from(&req.uri),
+            args: RawStr::from(&req.args),
+            user_agent: RawStr::from(&req.user_agent),
+            referer: RawStr::from(&req.referer),
+            body: RawStr::from(&req.body),
+            has_body: req.has_body != 0,
+            now: req.now,
+            headers: req.headers,
+            header_count: req.header_count,
+            trans_id: RawStr::from(&req.trans_id),
+            unparsed_uri: RawStr::from(&req.unparsed_uri),
+            method_name: RawStr::from(&req.method_name),
+            http_version: RawStr::from(&req.http_version),
+            client_addr: RawStr::from(&req.client_addr),
+            client_port: req.client_port,
+            server_addr: RawStr::from(&req.server_addr),
+            server_port: req.server_port,
+            log: req.log,
+            cc_zone,
+            action_zone,
+            captcha_zone,
+        }
+    }
+
+    /// Rebuild the request view.  The returned references point into memory the
+    /// C side keeps alive for the whole request, which is what makes the
+    /// returned lifetimes sound.
+    pub(crate) fn view<'a>(&self, cookies: &'a [Vec<u8>]) -> check::Req<'a> {
+        check::Req {
+            ip: if self.ip.is_null() {
+                &[]
+            } else {
+                // SAFETY: the address view is alive for the whole request.
+                unsafe { slice::from_raw_parts(self.ip, self.ip_len) }
+            },
+            ipv6: self.ip_len == 16,
+            method: WafMode::from_bits_retain(self.method),
+            uri: self.uri.view(),
+            args: self.args.view(),
+            user_agent: self.user_agent.view(),
+            referer: self.referer.view(),
+            cookies,
+            body: self.body.view(),
+            has_body: self.has_body,
+            now: self.now,
+            headers: if self.headers.is_null() || self.header_count == 0 {
+                &[]
+            } else {
+                // SAFETY: `Header` is a transparent view of `NgxWafHeader`, and
+                // the C side keeps `header_count` of them alive for the whole
+                // request.
+                unsafe { slice::from_raw_parts(self.headers as *const Header, self.header_count) }
+            },
+            trans_id: if self.trans_id.data.is_null() {
+                None
+            } else {
+                Some(self.trans_id.view())
+            },
+            unparsed_uri: self.unparsed_uri.view(),
+            method_name: self.method_name.view(),
+            http_version: self.http_version.view(),
+            client_addr: self.client_addr.view(),
+            client_port: self.client_port,
+            server_addr: self.server_addr.view(),
+            server_port: self.server_port,
+            log: self.log,
+            cc_zone: self.cc_zone,
+            action_zone: self.action_zone,
+            captcha_zone: self.captcha_zone,
+        }
+    }
 }
 
 /// The result of one inspection.
@@ -592,68 +776,16 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
                 .map(|cookie| unsafe { cookie.as_slice() }.to_vec())
                 .collect()
         };
-        let raw = check::RawReq {
-            ip: req.ip,
-            ip_len: req.ip_len,
-            method: req.method,
-            uri: check::RawStr {
-                data: req.uri.data,
-                len: req.uri.len,
-            },
-            args: check::RawStr {
-                data: req.args.data,
-                len: req.args.len,
-            },
-            user_agent: check::RawStr {
-                data: req.user_agent.data,
-                len: req.user_agent.len,
-            },
-            referer: check::RawStr {
-                data: req.referer.data,
-                len: req.referer.len,
-            },
-            body: check::RawStr {
-                data: req.body.data,
-                len: req.body.len,
-            },
-            has_body: req.has_body != 0,
-            now: req.now,
-            headers: req.headers,
-            header_count: req.header_count,
-            trans_id: check::RawStr {
-                data: req.trans_id.data,
-                len: req.trans_id.len,
-            },
-            unparsed_uri: check::RawStr {
-                data: req.unparsed_uri.data,
-                len: req.unparsed_uri.len,
-            },
-            method_name: check::RawStr {
-                data: req.method_name.data,
-                len: req.method_name.len,
-            },
-            http_version: check::RawStr {
-                data: req.http_version.data,
-                len: req.http_version.len,
-            },
-            client_addr: check::RawStr {
-                data: req.client_addr.data,
-                len: req.client_addr.len,
-            },
-            client_port: req.client_port,
-            server_addr: check::RawStr {
-                data: req.server_addr.data,
-                len: req.server_addr.len,
-            },
-            server_port: req.server_port,
-            log: req.log,
-            cc_zone: cc_zone as *mut cc::ZoneHandle,
-            action_zone: action_zone as *mut cc::ZoneHandle,
-            captcha_zone: captcha_zone as *mut cc::ZoneHandle,
-        };
+        let raw = RawReq::new(
+            req,
+            cc_zone as *mut cc::ZoneHandle,
+            action_zone as *mut cc::ZoneHandle,
+            captcha_zone as *mut cc::ZoneHandle,
+        );
         // The C side passes whether it can perform the captcha provider request
         // (the subrequest fetch); until it can, the captcha checks stay inert.
-        let machine = check::Machine::new(conf as *mut LocConf, raw, cookies, http_transport != 0);
+        let conf = std::ptr::NonNull::new(conf as *mut LocConf).expect("checked above");
+        let machine = check::Machine::new(conf, raw, cookies, http_transport != 0);
         let mut handle = StepHandle {
             step: NgxWafStep::empty(),
             machine: Some(machine),
@@ -816,9 +948,16 @@ impl StepHandle {
         self.buffers.location = outcome.location;
 
         let mut step = NgxWafStep::empty();
-        step.kind = outcome.kind;
+        step.kind = match outcome.kind {
+            check::OutcomeKind::Allow => STEP_ALLOW,
+            check::OutcomeKind::Response => STEP_RESPONSE,
+            check::OutcomeKind::InternalError => STEP_INTERNAL_ERROR,
+        };
         step.status = outcome.status;
-        step.content_type = outcome.content_type;
+        step.content_type = match outcome.content_type {
+            check::ContentType::Html => CT_HTML,
+            check::ContentType::Text => CT_TEXT,
+        };
         step.retry_after = outcome.retry_after;
         step.body = self.buffers.body.as_mut_ptr();
         step.body_len = self.buffers.body.len();
@@ -1021,9 +1160,9 @@ mod tests {
         };
 
         let decision = |status: u32, body: &[u8], cookie: &str| check::Outcome {
-            kind: STEP_RESPONSE,
+            kind: check::OutcomeKind::Response,
             status,
-            content_type: CT_HTML,
+            content_type: check::ContentType::Html,
             body: body.to_vec(),
             register_content_handler: true,
             retry_after: -1,
@@ -1057,6 +1196,52 @@ mod tests {
         assert_eq!(cookies.len(), 1);
         // SAFETY: every view of `set_cookies` is valid while the handle lives.
         assert_eq!(unsafe { cookies[0].as_slice() }, b"__waf=2; Path=/");
+    }
+
+    /// The typed outcome maps back to the numeric contract of the C header.
+    #[test]
+    fn the_typed_outcome_maps_to_the_c_codes() {
+        let mut handle = StepHandle {
+            step: NgxWafStep::empty(),
+            machine: None,
+            buffers: StepBuffers::default(),
+        };
+        let outcome = |kind, content_type| check::Outcome {
+            kind,
+            status: HTTP_OK,
+            content_type,
+            body: Vec::new(),
+            register_content_handler: false,
+            retry_after: -1,
+            blocked: false,
+            checked: true,
+            general_log: false,
+            rule_type: Vec::new(),
+            rule_details: Vec::new(),
+            rate: 0,
+            spend: 0.0,
+            location: Vec::new(),
+            cookies: Vec::new(),
+        };
+
+        handle.publish(check::Step::Decision(outcome(
+            check::OutcomeKind::Allow,
+            check::ContentType::Html,
+        )));
+        assert_eq!(handle.step.kind, STEP_ALLOW);
+
+        handle.publish(check::Step::Decision(outcome(
+            check::OutcomeKind::Response,
+            check::ContentType::Text,
+        )));
+        assert_eq!(handle.step.kind, STEP_RESPONSE);
+        assert_eq!(handle.step.content_type, CT_TEXT);
+
+        handle.publish(check::Step::Decision(outcome(
+            check::OutcomeKind::InternalError,
+            check::ContentType::Html,
+        )));
+        assert_eq!(handle.step.kind, STEP_INTERNAL_ERROR);
     }
 
     #[test]

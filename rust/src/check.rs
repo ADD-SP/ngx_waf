@@ -7,6 +7,9 @@ use crate::config::{
     BotId, CaptchaProvider, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, VerifyBotMode,
     Waf, BOTS,
 };
+#[cfg(test)]
+use crate::ffi::RawStr;
+use crate::ffi::{Header, RawReq};
 use crate::flags::WafMode;
 use crate::modsec;
 use crate::rules::RuleKind;
@@ -14,121 +17,10 @@ use crate::types::*;
 use crate::util;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::time::Instant;
 use subtle::ConstantTimeEq;
-
-/// A borrowed byte range that crosses a suspension: the C side owns the memory
-/// and keeps it alive until the request is finished.  nginx declares the length
-/// first, the field order matters (see the layout assertion in the C glue).
-#[derive(Clone, Copy)]
-pub struct RawStr {
-    pub len: usize,
-    pub data: *const u8,
-}
-
-impl RawStr {
-    /// An empty view, for the fields a request does not carry.
-    #[cfg(test)]
-    const EMPTY: RawStr = RawStr {
-        data: std::ptr::null(),
-        len: 0,
-    };
-}
-
-impl RawStr {
-    fn view(self) -> &'static [u8] {
-        if self.data.is_null() || self.len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(self.data, self.len) }
-        }
-    }
-}
-
-/// Everything the C side knows about the request, kept by value so the machine
-/// can be resumed after the phase handler returned `NGX_DONE`.
-#[derive(Clone, Copy)]
-pub struct RawReq {
-    pub ip: *const u8,
-    pub ip_len: usize,
-    pub method: u64,
-    pub uri: RawStr,
-    pub args: RawStr,
-    pub user_agent: RawStr,
-    pub referer: RawStr,
-    pub body: RawStr,
-    pub has_body: bool,
-    pub now: i64,
-    /// The request headers, only `waf_modsecurity` reads them.
-    pub headers: *const crate::ffi::NgxWafHeader,
-    pub header_count: usize,
-    /// The evaluated `waf_modsecurity_transaction_id`; `data` is NULL when the
-    /// directive is not configured.
-    pub trans_id: RawStr,
-    /// The rest of what ModSecurity reads: the URI as it was sent, the method
-    /// and protocol, and the endpoints of the connection.
-    pub unparsed_uri: RawStr,
-    pub method_name: RawStr,
-    pub http_version: RawStr,
-    pub client_addr: RawStr,
-    pub client_port: u32,
-    pub server_addr: RawStr,
-    pub server_port: u32,
-    /// `r->connection->log`, the data of the ModSecurity log callback.
-    pub log: *mut std::os::raw::c_void,
-    pub cc_zone: *mut cc::ZoneHandle,
-    /// The shared memory zone of the captcha action table (`waf_action ... zone=`).
-    pub action_zone: *mut cc::ZoneHandle,
-    /// The shared memory zone of the captcha fail counters (`waf_captcha ... zone=`).
-    pub captcha_zone: *mut cc::ZoneHandle,
-}
-
-impl RawReq {
-    /// Rebuild the request view.  The returned references point into memory the
-    /// C side keeps alive for the whole request, which is what makes the
-    /// `'static` lifetime sound here.
-    fn view<'a>(&self, cookies: &'a [Vec<u8>]) -> Req<'a> {
-        Req {
-            ip: if self.ip.is_null() {
-                &[]
-            } else {
-                unsafe { std::slice::from_raw_parts(self.ip, self.ip_len) }
-            },
-            ipv6: self.ip_len == 16,
-            method: WafMode::from_bits_retain(self.method),
-            uri: self.uri.view(),
-            args: self.args.view(),
-            user_agent: self.user_agent.view(),
-            referer: self.referer.view(),
-            cookies,
-            body: self.body.view(),
-            has_body: self.has_body,
-            now: self.now,
-            headers: if self.headers.is_null() || self.header_count == 0 {
-                &[]
-            } else {
-                unsafe { std::slice::from_raw_parts(self.headers, self.header_count) }
-            },
-            trans_id: if self.trans_id.data.is_null() {
-                None
-            } else {
-                Some(self.trans_id.view())
-            },
-            unparsed_uri: self.unparsed_uri.view(),
-            method_name: self.method_name.view(),
-            http_version: self.http_version.view(),
-            client_addr: self.client_addr.view(),
-            client_port: self.client_port,
-            server_addr: self.server_addr.view(),
-            server_port: self.server_port,
-            log: self.log,
-            cc_zone: self.cc_zone,
-            action_zone: self.action_zone,
-            captcha_zone: self.captcha_zone,
-        }
-    }
-}
 
 /// The request data the C glue provides.
 pub struct Req<'a> {
@@ -145,7 +37,7 @@ pub struct Req<'a> {
     pub has_body: bool,
     pub now: i64,
     /// The request headers, in the order nginx parsed them.
-    pub headers: &'a [crate::ffi::NgxWafHeader],
+    pub headers: &'a [Header],
     /// The `waf_modsecurity_transaction_id` of this request, `None` when the
     /// directive is not configured.
     pub trans_id: Option<&'a [u8]>,
@@ -168,12 +60,34 @@ pub struct Req<'a> {
     pub captcha_zone: *mut cc::ZoneHandle,
 }
 
+/// The kind of response an [`Outcome`] asks the C side for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutcomeKind {
+    /// Let the request through.
+    Allow,
+    /// Answer with the status and body of the outcome.
+    Response,
+    /// The inspection could not run; answer 500.
+    ///
+    /// The C ABI reports this through `Step::InternalError` directly, only the
+    /// test helper [`check`] materialises it as an outcome.
+    #[cfg_attr(not(test), allow(dead_code))]
+    InternalError,
+}
+
+/// How the C side writes the body of a response.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContentType {
+    Html,
+    Text,
+}
+
 /// The outcome of one request inspection, everything the C side needs to
 /// produce the response and the `$waf_*` variables.
 pub struct Outcome {
-    pub kind: u32,
+    pub kind: OutcomeKind,
     pub status: u32,
-    pub content_type: u32,
+    pub content_type: ContentType,
     pub body: Vec<u8>,
     /// Whether a content handler must emit `body` with `status`.
     pub register_content_handler: bool,
@@ -196,9 +110,9 @@ pub struct Outcome {
 impl Outcome {
     fn allow(checked: bool, spend: f64) -> Self {
         Outcome {
-            kind: STEP_ALLOW,
+            kind: OutcomeKind::Allow,
             status: 0,
-            content_type: CT_HTML,
+            content_type: ContentType::Html,
             body: Vec::new(),
             register_content_handler: false,
             retry_after: -1,
@@ -516,10 +430,30 @@ pub enum Event<'a> {
     HttpFailed,
 }
 
+/// The configuration the C side owns for the whole worker.  The pointer is
+/// created while the configuration is read and every request borrows it; the
+/// two accessors are the only places that turn it back into a reference, which
+/// keeps the unsafe contract in one spot.
+struct ConfHandle(NonNull<LocConf>);
+
+impl ConfHandle {
+    fn get(&self) -> &LocConf {
+        // SAFETY: the configuration outlives every machine (the C side frees it
+        // only after the last request of the worker).
+        unsafe { self.0.as_ref() }
+    }
+
+    fn get_mut(&mut self) -> &mut LocConf {
+        // SAFETY: one worker process owns the configuration and drives one
+        // machine at a time, exactly like the C implementation did.
+        unsafe { self.0.as_mut() }
+    }
+}
+
 /// One request, checked possibly across several nginx event loop turns.
 pub struct Machine {
     /// Borrowed from the C side configuration, which outlives the request.
-    conf: *mut LocConf,
+    conf: ConfHandle,
     req: RawReq,
     cookies: Vec<Vec<u8>>,
     priority: Vec<CheckId>,
@@ -544,12 +478,16 @@ pub struct Machine {
 impl Machine {
     /// Start the inspection of one request.
     pub fn new(
-        conf: *mut LocConf,
+        conf: NonNull<LocConf>,
         req: RawReq,
         cookies: Vec<Vec<u8>>,
         http_transport: bool,
     ) -> Machine {
-        let priority = unsafe { (*conf).priority.clone() }
+        let conf = ConfHandle(conf);
+        let priority = conf
+            .get()
+            .priority
+            .clone()
             .unwrap_or_else(|| crate::config::DEFAULT_PRIORITY.to_vec());
         Machine {
             conf,
@@ -570,7 +508,7 @@ impl Machine {
 
     /// Run until the request is decided or an asynchronous operation is needed.
     pub fn step(&mut self) -> Step {
-        let conf = unsafe { &mut *self.conf };
+        let conf = self.conf.get_mut();
         if !matches!(conf.waf, Some(Waf::On | Waf::Bypass)) {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
@@ -677,7 +615,7 @@ impl Machine {
 
     /// The captcha provider answered, or could not be reached.
     fn resume_captcha(&mut self, path: CaptchaPath, event: Event<'_>) -> Step {
-        let conf = unsafe { &*self.conf };
+        let conf = self.conf.get();
         let is_v3 = conf.captcha.provider == Some(CaptchaProvider::RecaptchaV3);
         let threshold = conf.captcha.score;
 
@@ -702,7 +640,7 @@ impl Machine {
     /// Apply the verdict of one captcha attempt, the equivalent of the
     /// `NGX_HTTP_WAF_CAPTCHA_*` branches of the C implementation.
     fn finish_captcha(&mut self, path: CaptchaPath, verdict: CaptchaVerdict) -> Step {
-        let conf = unsafe { &mut *self.conf };
+        let conf = self.conf.get_mut();
         let req = self.req.view(&self.cookies);
         let mut decision = None;
         {
@@ -723,7 +661,7 @@ impl Machine {
     }
 
     fn resume_verify_bot(&mut self, bot: BotId, event: Event<'_>) -> Step {
-        let conf = unsafe { &mut *self.conf };
+        let conf = self.conf.get_mut();
         let name = match event {
             Event::ResolvedName(name) => name,
             _ => &[],
@@ -785,7 +723,7 @@ impl Machine {
 
     /// The outcome of a request that no longer needs to be inspected.
     fn finish(&mut self) -> Outcome {
-        let conf = unsafe { &*self.conf };
+        let conf = self.conf.get();
         let spend = self.start.elapsed().as_secs_f64() * 1000.0;
         let mut outcome = resolve(conf, &self.meta, &mut self.decision, spend, self.checked);
 
@@ -793,7 +731,7 @@ impl Machine {
         // filled in) but nothing is blocked and no content handler is
         // installed, exactly like `ngx_http_waf_perform_action_at_access_end()`.
         if conf.waf == Some(Waf::Bypass) {
-            outcome.kind = STEP_ALLOW;
+            outcome.kind = OutcomeKind::Allow;
             outcome.status = 0;
             outcome.body.clear();
             outcome.register_content_handler = false;
@@ -909,7 +847,7 @@ enum RunResult {
 #[cfg(test)]
 pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
     let mut machine = Machine::new(
-        conf as *mut LocConf,
+        NonNull::from(conf),
         RawReq {
             ip: req.ip.as_ptr(),
             ip_len: req.ip.len(),
@@ -961,7 +899,7 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
         Step::Pending(_) => panic!("the request needs an asynchronous step"),
         Step::InternalError => {
             let mut outcome = Outcome::allow(false, 0.0);
-            outcome.kind = STEP_INTERNAL_ERROR;
+            outcome.kind = OutcomeKind::InternalError;
             outcome.status = HTTP_INTERNAL_SERVER_ERROR;
             outcome
         }
@@ -1118,10 +1056,7 @@ fn run_modsecurity_request(
     }
 
     for header in req.headers {
-        // The C glue owns the header values and keeps them alive for the whole
-        // request, `NgxWafStr::as_slice()` explains the safety.
-        let (key, value) = unsafe { (header.key.as_slice(), header.value.as_slice()) };
-        transaction.add_request_header(key, value)?;
+        transaction.add_request_header(header.key(), header.value())?;
     }
     transaction.process_request_headers()?;
     if let Some(verdict) = take_intervention(state, transaction)? {
@@ -1921,12 +1856,12 @@ fn resolve(
     match decision {
         Decision::Allow => {}
         Decision::Status(status) => {
-            outcome.kind = STEP_RESPONSE;
+            outcome.kind = OutcomeKind::Response;
             outcome.status = status;
             outcome.retry_after = retry_after(meta, status).unwrap_or(-1);
         }
         Decision::Redirect { status, location } => {
-            outcome.kind = STEP_RESPONSE;
+            outcome.kind = OutcomeKind::Response;
             outcome.status = status;
             outcome.location = location;
             outcome.retry_after = retry_after(meta, status).unwrap_or(-1);
@@ -1936,9 +1871,9 @@ fn resolve(
             body,
             cookies,
         } => {
-            outcome.kind = STEP_RESPONSE;
+            outcome.kind = OutcomeKind::Response;
             outcome.status = status;
-            outcome.content_type = CT_HTML;
+            outcome.content_type = ContentType::Html;
             outcome.body = body.as_ref().clone();
             outcome.register_content_handler = true;
             outcome.cookies = cookies;
@@ -1948,9 +1883,9 @@ fn resolve(
             body,
             cookies,
         } => {
-            outcome.kind = STEP_RESPONSE;
+            outcome.kind = OutcomeKind::Response;
             outcome.status = status;
-            outcome.content_type = CT_TEXT;
+            outcome.content_type = ContentType::Text;
             outcome.body = body.as_ref().clone();
             outcome.register_content_handler = true;
             outcome.cookies = cookies;
@@ -2059,7 +1994,7 @@ mod tests {
         conf.waf = Some(Waf::Off);
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.checked);
         assert!(!outcome.blocked);
     }
@@ -2076,7 +2011,7 @@ mod tests {
         );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert_eq!(outcome.rule_type, b"BLACK-URL");
         assert_eq!(outcome.rule_details, b"/www\\.bak");
@@ -2103,10 +2038,10 @@ mod tests {
         );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert!(outcome.register_content_handler);
-        assert_eq!(outcome.content_type, CT_HTML);
+        assert_eq!(outcome.content_type, ContentType::Html);
         assert_eq!(outcome.body, HTML_BLOCK);
     }
 
@@ -2131,7 +2066,7 @@ mod tests {
         conf.priority = Some(vec![CheckId::WhiteUrl, CheckId::Url]);
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/white/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.checked);
         assert!(!outcome.blocked);
         assert_eq!(outcome.rule_type, b"WHITE-URL");
@@ -2153,7 +2088,7 @@ mod tests {
         );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"BLACK-URL");
         assert!(!outcome.register_content_handler);
@@ -2178,12 +2113,12 @@ mod tests {
         );
         let cookies = vec![b"a=1".to_vec(), b"s=../".to_vec()];
         let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.rule_type, b"BLACK-COOKIE");
 
         let cookies = vec![b"a=1".to_vec(), b"b=2".to_vec()];
         let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
     }
 
@@ -2198,7 +2133,7 @@ mod tests {
         // blocked instead of being served uninspected.
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_INTERNAL_SERVER_ERROR);
         assert!(outcome.blocked);
         assert!(outcome.checked);
@@ -2261,7 +2196,7 @@ mod tests {
         let mut view = request(b"/", &cookies);
         view.cc_zone = handle;
         let outcome = check(&mut conf, &view);
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
@@ -2288,7 +2223,7 @@ mod tests {
         let mut view = request(b"/", &cookies);
         view.ip = &[];
         let outcome = check(&mut conf, &view);
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
         assert!(outcome.rule_type.is_empty());
 
@@ -2296,7 +2231,7 @@ mod tests {
         // that has one.
         conf.cc_deny.enabled = Some(false);
         let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.rule_type, b"BLACK-IPV4");
     }
 
@@ -2306,7 +2241,7 @@ mod tests {
         conf.waf_mode = WafMode::GET; // URL inspection disabled
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
     }
 
@@ -2333,21 +2268,21 @@ mod tests {
 
         // The URL rule is skipped for a GET request without its mode bit.
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.checked);
 
         // The address list is not gated by the method.
         let mut view = request(b"/", &cookies);
         view.ip = &[9, 9, 9, 9];
         let outcome = check(&mut conf, &view);
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.rule_type, b"BLACK-IPV4");
 
         // A mode without any bit at all runs the inspections as well, every
         // one of them gated by its own bit; the request counts as inspected.
         conf.waf_mode = WafMode::empty();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.checked);
         assert!(!outcome.blocked);
     }
@@ -2408,7 +2343,7 @@ mod tests {
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
         };
-        Machine::new(conf as *mut LocConf, raw, Vec::new(), true)
+        Machine::new(NonNull::from(conf), raw, Vec::new(), true)
     }
 
     fn verify_bot_conf(mode: &str) -> LocConf {
@@ -2441,7 +2376,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("an unrelated user agent must not park the request"),
         };
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
     }
 
@@ -2457,7 +2392,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("the machine must decide after the lookup"),
         };
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert_eq!(outcome.rule_type, b"FAKE-BOT");
         assert_eq!(outcome.rule_details, b"example.com");
@@ -2477,7 +2412,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("the machine must decide after the lookup"),
         };
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
         assert_eq!(outcome.rule_type, b"FAKE-BOT");
         assert!(outcome.general_log);
@@ -2496,7 +2431,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("the machine must decide after the lookup"),
         };
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
         assert_eq!(outcome.rule_type, b"REAL-BOT");
     }
@@ -2513,7 +2448,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("the machine must decide after the lookup"),
         };
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert_eq!(outcome.rule_type, b"FAKE-BOT");
     }
@@ -2580,7 +2515,7 @@ mod tests {
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
         };
-        let mut machine = Machine::new(&mut conf as *mut LocConf, raw, Vec::new(), true);
+        let mut machine = Machine::new(NonNull::from(&mut conf), raw, Vec::new(), true);
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::ResolveAddr)
@@ -2589,7 +2524,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("the machine must decide after the lookup"),
         };
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert_eq!(outcome.rule_type, b"BLACK-URL");
     }
@@ -2668,7 +2603,7 @@ mod tests {
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
         };
-        Machine::new(conf as *mut LocConf, raw, cookies, true)
+        Machine::new(NonNull::from(conf), raw, cookies, true)
     }
 
     fn good_cookie(name: &str, value: &[u8]) -> Vec<u8> {
@@ -2688,7 +2623,7 @@ mod tests {
                 matches!(other, Step::Pending(_))
             ),
         };
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
         assert!(outcome.register_content_handler);
         assert_eq!(outcome.body, *conf.captcha.html);
@@ -2717,7 +2652,7 @@ mod tests {
             Step::Decision(outcome) => outcome,
             _ => panic!("the provider answer decides the request"),
         };
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_OK);
         assert_eq!(outcome.body, b"good");
         assert_eq!(outcome.cookies.len(), 3);
@@ -2750,7 +2685,7 @@ mod tests {
                 matches!(other, Step::Pending(_))
             ),
         };
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
 
         // ... but not with a cookie the server did not mint.
@@ -2929,7 +2864,7 @@ mod tests {
         let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", cookies);
         match machine.step() {
             Step::Decision(outcome) => {
-                assert_eq!(outcome.kind, STEP_ALLOW);
+                assert_eq!(outcome.kind, OutcomeKind::Allow);
                 assert!(!outcome.blocked);
             }
             other => panic!(
@@ -3193,7 +3128,7 @@ mod tests {
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
         };
-        Machine::new(conf as *mut LocConf, raw, cookies, true)
+        Machine::new(NonNull::from(conf), raw, cookies, true)
     }
 
     /// The `Cookie` header of a trio minted by the shield, the way the C glue
@@ -3223,7 +3158,7 @@ mod tests {
         // A first visit gets the page and a fresh cookie trio.
         let mut machine = under_attack_machine(&mut conf, 1_000, Vec::new());
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
         assert!(outcome.register_content_handler);
         assert_eq!(outcome.body, *conf.under_attack.html);
@@ -3245,7 +3180,7 @@ mod tests {
         // Six seconds after the first visit the visitor goes through.
         let mut machine = under_attack_machine(&mut conf, 1_006, vec![cookie.clone()]);
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.checked);
         assert!(outcome.cookies.is_empty());
 
@@ -3361,7 +3296,7 @@ mod tests {
             action_zone: std::ptr::null_mut(),
             captcha_zone: std::ptr::null_mut(),
         };
-        Machine::new(conf as *mut LocConf, raw, Vec::new(), true)
+        Machine::new(NonNull::from(conf), raw, Vec::new(), true)
     }
 
     #[test]
@@ -3374,7 +3309,7 @@ mod tests {
         // the rule that matched.
         let mut machine = modsecurity_machine(&mut conf, b"/blocked");
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         assert_eq!(outcome.rule_type, b"ModSecurity");
         assert!(outcome.blocked);
@@ -3388,7 +3323,7 @@ mod tests {
         // A request no rule matches is inspected and let through.
         let mut machine = modsecurity_machine(&mut conf, b"/");
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.rule_type.is_empty());
         machine.log_phase();
 
@@ -3415,7 +3350,7 @@ mod tests {
         let mut machine = modsecurity_machine(&mut conf, b"/");
         machine.req.trans_id = id;
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.kind, STEP_ALLOW);
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.rule_type.is_empty());
         machine.log_phase();
 
@@ -3423,7 +3358,7 @@ mod tests {
         let mut machine = modsecurity_machine(&mut conf, b"/blocked");
         machine.req.trans_id = id;
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.kind, STEP_RESPONSE);
+        assert_eq!(outcome.kind, OutcomeKind::Response);
         assert_eq!(outcome.status, HTTP_FORBIDDEN);
         machine.log_phase();
 
