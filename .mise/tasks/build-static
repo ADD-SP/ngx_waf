@@ -9,20 +9,28 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 : "${JOBS:=$(nproc 2> /dev/null || echo 2)}"
 
 dir="$root/test/nginx-$NGINX_VERSION"
-stamp="$dir/.ngx-waf-module-kind"
+stamp="$dir/.ngx-waf-configure"
 bin="$dir/objs/nginx"
+makefile="$dir/objs/Makefile"
 lib="$root/rust/target/release/libngx_waf_core.a"
 
-# `--add-module` and `--add-dynamic-module` replace the Makefile of the tree,
-# so a tree configured for the other kind has to be reconfigured.
-if [ "$(cat "$stamp" 2> /dev/null || true)" != static ] || [ ! -f "$bin" ]; then
+# What the configured tree depends on: the kind of module (`--add-module` and
+# `--add-dynamic-module` replace the Makefile of the tree), the arguments
+# below, and the `config` script of the module.  The script holds the list of
+# the sources of the module, and a file that was renamed or removed leaves the
+# `objs/Makefile` of the tree pointing at nothing until it is configured again.
+flags=(--with-http_ssl_module --with-http_realip_module)
+want="static ${flags[*]} $NGINX_PREFIX $root $(cksum "$root/config")"
+
+if [ "$(cat "$stamp" 2> /dev/null || true)" != "$want" ] || [ ! -f "$makefile" ] \
+    || [ ! -f "$bin" ]
+then
     echo " + configuring nginx (static module)"
     (cd "$dir" && ./auto/configure \
         --prefix="$NGINX_PREFIX" \
-        --with-http_ssl_module \
-        --with-http_realip_module \
+        "${flags[@]}" \
         --add-module="$root" > /dev/null)
-    echo static > "$stamp"
+    printf '%s\n' "$want" > "$stamp"
 fi
 
 if [ "$bin" -ot "$lib" ]; then
