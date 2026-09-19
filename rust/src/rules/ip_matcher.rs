@@ -59,18 +59,12 @@ impl IpCidr for Ipv6Cidr {
 
 /// Parse an IPv4 address or CIDR block.
 ///
-/// The address is the one [`Ipv4Addr`] parses, which accepts exactly the texts
-/// the `inet_pton()` of the C implementation accepted: four dotted decimal
-/// parts and no leading zero in one of them ("010.1.1.1" is not 10.1.1.1 for
-/// either of them).
+/// The address is four dotted decimal parts, and a part must not have a
+/// leading zero ("010.1.1.1" is not 10.1.1.1).
 ///
-/// What `ngx_http_waf_parse_ipv4()` added on top stays here: a missing suffix
-/// means `/32`, an empty suffix does too (the C code used `UINT32_MAX` as "no
-/// suffix was given"), and a suffix that is not a decimal number or that
-/// exceeds 32 is refused (the C implementation wrapped it into the mask
-/// instead, see the Known differences of `rust/README.md`).  The host bits of
-/// the address are cleared (`1.1.1.1/24` is the block `1.1.1.0/24`), like the
-/// masking of the C implementation did.
+/// A missing suffix means `/32`, an empty suffix does too, and a suffix that
+/// is not a decimal number or that exceeds 32 is refused.  The host bits of
+/// the address are cleared (`1.1.1.1/24` is the block `1.1.1.0/24`).
 pub fn parse_ipv4(text: &[u8]) -> Option<Ipv4Cidr> {
     let (prefix, suffix) = split_cidr(text)?;
     let addr = prefix.parse::<Ipv4Addr>().ok()?;
@@ -84,11 +78,10 @@ pub fn parse_ipv4(text: &[u8]) -> Option<Ipv4Cidr> {
 
 /// Parse an IPv6 address or CIDR block.
 ///
-/// The address is the one [`Ipv6Addr`] parses, which accepts exactly the texts
-/// the `inet_pton()` of the C implementation accepted: `::` compresses the zero
-/// groups once, a lone `:` is not a separator, and an embedded IPv4 address is
-/// only allowed as the last group.  The suffix rules are the ones of
-/// [`parse_ipv4()`], with 128 as the full length.
+/// [`Ipv6Addr`] requires `::` to compress the zero groups once, a lone `:` is
+/// not a separator, and an embedded IPv4 address is only allowed as the last
+/// group.  The suffix rules are the ones of [`parse_ipv4()`], with 128 as the
+/// full length.
 pub fn parse_ipv6(text: &[u8]) -> Option<Ipv6Cidr> {
     let (prefix, suffix) = split_cidr(text)?;
     let addr = prefix.parse::<Ipv6Addr>().ok()?;
@@ -102,8 +95,8 @@ pub fn parse_ipv6(text: &[u8]) -> Option<Ipv6Cidr> {
 
 /// Split an address text at its first `/`, both sides as text.
 ///
-/// The C implementation worked on the bytes of a rule line; the parsers of the
-/// standard library take text, and a line that is not UTF-8 is not an address.
+/// The parsers of the standard library take text, and a line that is not UTF-8
+/// is not an address.
 fn split_cidr(text: &[u8]) -> Option<(&str, &str)> {
     let text = std::str::from_utf8(text).ok()?;
     Some(match text.split_once('/') {
@@ -114,10 +107,8 @@ fn split_cidr(text: &[u8]) -> Option<(&str, &str)> {
 
 /// The number of significant bits of a CIDR expression.
 ///
-/// An empty suffix is the length of a whole address; `ngx_http_waf_parse_ipv4()`
-/// used `UINT32_MAX` as "no suffix was given" and turned it into `/32` (`/128`
-/// for IPv6).  A suffix that is not a decimal number, or one the `u32` of the C
-/// implementation could not hold, is refused.
+/// An empty suffix is the length of a whole address.  A suffix that is not a
+/// decimal number, or one that does not fit in a `u32`, is refused.
 fn parse_depth(text: &str, full: u32) -> Option<u32> {
     if text.is_empty() {
         return Some(full);
@@ -199,8 +190,7 @@ impl<C: IpCidr> Builder<C> {
     }
 
     /// Add one rule.  `Err` carries the text of the rule that already covers
-    /// the new block; that is the overlap the C implementation logged and
-    /// dropped the new block for.
+    /// the new block: the overlap is logged and the new block is dropped.
     pub fn add(&mut self, block: C, detail: &[u8]) -> Result<(), Vec<u8>> {
         let network = block.first_address();
         if let Some(index) = self.find_index(&network) {
@@ -229,10 +219,8 @@ impl<C: IpCidr> Builder<C> {
 
 /// One frozen IP list: the read-only type the request path queries.
 ///
-/// The shortest prefix wins, like the prefix trie of the C implementation
-/// (`ngx_http_waf_module_ip_trie.c`) did.  The segments are sorted by their
-/// start and cover `[start, end)`; `end == None` reaches the address of all
-/// ones.
+/// The shortest prefix wins.  The segments are sorted by their start and cover
+/// `[start, end)`; `end == None` reaches the address of all ones.
 #[derive(Debug)]
 pub struct IpMatcher<C: IpCidr> {
     segments: Vec<Segment<C>>,
@@ -380,8 +368,7 @@ mod tests {
     #[test]
     fn the_shortest_prefix_wins() {
         // A block that covers one read before it is not detected as an
-        // overlap, exactly like in the trie of the C implementation: the
-        // later, shorter block shadows the one below it.
+        // overlap: the later, shorter block shadows the one below it.
         let mut builder = Builder::new();
         builder.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
         builder.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
@@ -431,10 +418,10 @@ mod tests {
         assert_eq!(parse_ipv4(b"1.1.1/24"), None);
         assert_eq!(parse_ipv4(b"1.1.1.1/33"), None);
         assert_eq!(parse_ipv4(b"256.1.1.1"), None);
-        // An empty suffix is the full length, like `UINT32_MAX` in the C code.
+        // An empty suffix is the full length.
         assert_eq!(parse_ipv4(b"1.1.1.1/").unwrap().network_length(), 32);
         assert_eq!(parse_ipv4(b"1.1.1.1/x"), None);
-        // `inet_pton()`, like the C implementation: no leading zeros.
+        // No leading zeros.
         assert_eq!(parse_ipv4(b"010.1.1.1"), None);
         // The parsers of the standard library take text, so a byte that is not
         // UTF-8 and a digit that is not ASCII are refused.
@@ -467,8 +454,7 @@ mod tests {
         assert_eq!(parse_ipv6(b"::/129"), None);
         assert_eq!(parse_ipv6(b"AAAA::/").unwrap().network_length(), 128);
 
-        // The text forms `inet_pton()` accepts, which is what the C
-        // implementation parsed the rule lines with.
+        // The embedded IPv4 forms the parser accepts.
         assert_eq!(parse_ipv6(b"::").unwrap().first_address(), addr("::"));
         assert_eq!(parse_ipv6(b"1::").unwrap().first_address(), addr("1::"));
         assert_eq!(
@@ -488,10 +474,8 @@ mod tests {
             addr("::ffff:1.2.3.4")
         );
 
-        // The text forms `inet_pton()` refuses: an embedded IPv4 address that
-        // is not the last group, a lone `:` (an empty group) and a second
-        // `::`.  The C implementation refused the configuration for all of
-        // them, this parser accepts none of them either.
+        // The forms the parser refuses: an embedded IPv4 address that is not
+        // the last group, a lone `:` (an empty group) and a second `::`.
         for text in [
             &b"1.2.3.4::"[..],
             b"1.2.3.4::1",

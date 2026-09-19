@@ -1,18 +1,17 @@
 //! The typed view of `waf_mode` and `waf_verify_bot_type`.
 //!
 //! The bits are defined here, they are an implementation detail of the core
-//! and never cross the ABI.  [`WafMode::contains`] is the `mode & flag == flag`
-//! of the C implementation, `insert()` and `remove()` are its `|=` and
-//! `&= ~`.
+//! and never cross the ABI.  [`WafMode::contains`] means `mode & flag == flag`,
+//! `insert()` and `remove()` are `|=` and `&= ~`.
 
 use crate::abi::NgxWafMethod;
 
 bitflags::bitflags! {
     /// One bit of `waf_mode`: a request method or an inspection.
     ///
-    /// The method bits are the values of the C implementation, which were the
-    /// `NGX_HTTP_xxx` values of nginx; the glue maps the method of the request
-    /// onto [`NgxWafMethod`] and [`WafMode::for_method`] turns it into a bit.
+    /// The method bits are the `NGX_HTTP_xxx` values of nginx; the glue maps
+    /// the method of the request onto [`NgxWafMethod`] and
+    /// [`WafMode::for_method`] turns it into one of them.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct WafMode: u64 {
         /// The method nginx does not know.
@@ -129,8 +128,7 @@ impl WafMode {
 mod tests {
     use super::*;
 
-    /// The layout is the one the C implementation used; it is frozen here so a
-    /// reordering is a visible change.
+    /// The bit layout is frozen here so a reordering is a visible change.
     #[test]
     fn the_flag_layout_is_stable() {
         assert_eq!(WafMode::UNKNOWN.bits(), 0x0001);
@@ -199,8 +197,7 @@ mod tests {
         }
     }
 
-    /// The methods the core replaces by the flags behave like the `|`, `&` and
-    /// `&= !` of the C implementation.
+    /// The bit operations behave like the raw `|`, `&` and `&= !` arithmetic.
     #[test]
     fn the_operations_are_the_raw_bit_maths() {
         // `waf_mode FULL !GET`
@@ -215,8 +212,7 @@ mod tests {
         mode.insert(WafMode::CMN_METH);
         assert_eq!(mode.bits(), WafMode::IP.bits() | WafMode::CMN_METH.bits());
 
-        // `ngx_http_waf_check_flag(waf_mode, INSPECT_URL | r->method)`: every
-        // requested bit has to be a bit of the mode.
+        // Every requested bit has to be a bit of the mode.
         for (mode, requested) in [
             (WafMode::GET | WafMode::URL, WafMode::URL | WafMode::GET),
             (WafMode::GET | WafMode::URL, WafMode::URL | WafMode::POST),

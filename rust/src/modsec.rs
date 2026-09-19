@@ -1,11 +1,10 @@
 //! A thin wrapper over the C API of libmodsecurity.
 //!
-//! The C implementation of this module used the C++ API of libmodsecurity
-//! (`ModSecurity`, `RulesSet`, `Transaction`).  The same library is reachable
-//! through the C API (`msc_*` functions) of `<modsecurity/modsecurity.h>`,
-//! which is what a server connector needs: create an instance with a rule set,
-//! run the request phases of a transaction, look at the intervention and let
-//! the library write its own logs.
+//! The library is reachable through the C API (`msc_*` functions) of
+//! `<modsecurity/modsecurity.h>`, which is what a server connector needs:
+//! create an instance with a rule set, run the request phases of a
+//! transaction, look at the intervention and let the library write its own
+//! logs.
 //!
 //! The declarations below are written by hand instead of pulling a `-sys`
 //! crate: the module only calls a dozen functions and none of them ever
@@ -13,9 +12,8 @@
 //! dependency would be.  The library itself is linked by nginx, see
 //! `ngx_http_waf_module_libs` in `config`.
 //!
-//! There is no response phase wrapper: the C implementation inspected the
-//! response headers and body through nginx output filters, which this port
-//! does not do yet (see `rust/README.md`).
+//! There is no response phase wrapper: the response headers and body are not
+//! inspected yet (see `rust/README.md`).
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
@@ -83,11 +81,11 @@ extern "C" {
 
 extern "C" {
     /// `src/ngx_http_waf_module.c`: writes one message of the library to the
-    /// error log of the connection, the log callback of the C implementation.
+    /// error log of the connection.
     fn ngx_http_waf_modsecurity_log(log: *mut c_void, message: *const c_char);
 
-    /// The library hands the `url` and `log` of an intervention to the caller,
-    /// it does not own them anymore (the C implementation called `free()`).
+    /// The library hands the `url` and `log` of an intervention to the caller
+    /// and does not own them anymore.
     fn free(pointer: *mut c_void);
 }
 
@@ -140,9 +138,7 @@ impl std::fmt::Display for ModSecError {
 
 impl std::error::Error for ModSecError {}
 
-/// A `ModSecurity` instance and its rule set, the pair the C implementation
-/// kept in the location configuration (`modsecurity_instance` and
-/// `modsecurity_rules`).
+/// A `ModSecurity` instance and its rule set.
 pub struct Instance {
     instance: *mut c_void,
     rules: *mut c_void,
@@ -151,9 +147,8 @@ pub struct Instance {
 impl Instance {
     /// Create the instance and load the rules of one `waf_modsecurity`
     /// directive.  `files` are its `file=` arguments, in the order they were
-    /// written (the directive accepts more than one), and the optional pair is
-    /// the `remote_key=`/`remote_url=` one, which the C implementation added
-    /// after the files.
+    /// written (the directive accepts more than one), the optional pair is the
+    /// `remote_key=`/`remote_url=` one, added after the files.
     pub fn create(files: &[&[u8]], remote: Option<(&[u8], &[u8])>) -> Result<Instance, String> {
         // SAFETY: `msc_init()` takes no arguments and returns NULL or a live
         // instance owned by this wrapper.
@@ -215,9 +210,8 @@ impl Instance {
             Some(id) => {
                 // `waf_modsecurity_transaction_id` is compiled with
                 // `ngx_http_compile_complex_value_t::zero = 1`, so the length
-                // of the value nginx hands over counts the terminating NUL
-                // (the C implementation passed its pointer to the library,
-                // which read the text in front of it).  The id is that text.
+                // of the value nginx hands over counts the terminating NUL.
+                // The id is the text in front of that NUL.
                 let id = match id.iter().position(|&byte| byte == 0) {
                     Some(end) => &id[..end],
                     None => id,
@@ -257,9 +251,7 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    /// `msc_process_connection()`: the client and server endpoints, the
-    /// arguments are the ones `_process_connection()` of the C implementation
-    /// passed.
+    /// `msc_process_connection()`: the client and server endpoints.
     pub fn process_connection(
         &mut self,
         client: &[u8],
@@ -390,7 +382,7 @@ impl Drop for Transaction {
     }
 }
 
-/// The library and the C implementation both treat `1` as success.
+/// The library treats `1` as success.
 fn check_status(result: c_int) -> Result<(), ModSecError> {
     if result == 1 {
         Ok(())
@@ -399,8 +391,7 @@ fn check_status(result: c_int) -> Result<(), ModSecError> {
     }
 }
 
-/// The messages of the library go to the error log of the connection, the way
-/// `ngx_http_waf_modsecurity_handler_log()` of the C implementation did.
+/// The messages of the library go to the error log of the connection.
 unsafe extern "C" fn modsecurity_log(log: *mut c_void, message: *const c_char) {
     if log.is_null() || message.is_null() {
         return;

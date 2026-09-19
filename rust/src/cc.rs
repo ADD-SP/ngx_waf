@@ -6,12 +6,11 @@
 //! point into the Rust heap, and nothing the Rust heap allocates may be shared
 //! between workers.
 //!
-//! The C implementation keeps an LRU cache in the zone; a fixed size open
-//! addressing table is used here instead.  The observable behaviour (a per IP
-//! counter that stops counting one second after the configured cycle, blocked
-//! for `duration` once the limit is exceeded, `$waf_rate` being the counter) is
-//! the same: an entry of the LRU of the C implementation was expired only when
-//! `expire < time(NULL)`, so the second an entry expires in still counts.
+//! The counters live in a fixed size open addressing table.  An entry is
+//! expired only when `expire < now`, so the second an entry expires in still
+//! counts; a per IP counter stops counting one second after the configured
+//! cycle, a client is blocked for `duration` once the limit is exceeded, and
+//! `$waf_rate` is the counter.
 
 use crate::util::random_uniform;
 use std::ptr::NonNull;
@@ -45,11 +44,9 @@ const VERSION: u32 = 3;
 /// Tag entries per directory block; the directory grows by adding blocks, so a
 /// zone is not limited to a handful of tags any more.
 const TAGS_PER_BLOCK: usize = 8;
-/// Longest tag a configuration can produce.  `ngx_http_waf_str_split()` of the
-/// C implementation refused a segment of more than 256 bytes, and the suffixes
-/// this core appends to the tag of a `waf_zone` are at most `action_captcha`
-/// (14 bytes), so a tag is never longer than 270 bytes.  The C implementation
-/// kept the tag of an entry as it was, without a limit of its own.
+/// Longest tag a configuration can produce: a `waf_zone` tag segment is at
+/// most 256 bytes, and the suffixes this core appends are at most
+/// `action_captcha` (14 bytes), so a tag is never longer than 270 bytes.
 const TAG_LEN: usize = 288;
 
 /// One tag of one directory block.
@@ -327,8 +324,7 @@ fn new_entry(tag: &[u8], table: NonNull<TableHeader>) -> TagEntry {
 ///
 /// `old` is the handle of the previous cycle when nginx reuses the very same
 /// segment on a reload: the directory (and therefore the counters) is then
-/// kept, exactly like the C implementation keeps its LRU cache across a
-/// reload.  The returned handle is owned by the C glue, which passes it back on
+/// kept.  The returned handle is owned by the C glue, which passes it back on
 /// every request and on GC.
 pub unsafe fn zone_init(
     addr: usize,
@@ -400,8 +396,8 @@ pub struct CcResult {
     pub remain: i64,
 }
 
-/// Increment the counter of `addr` in `tag` and report whether the request must
-/// be blocked.  Equivalent to `ngx_http_waf_handler_check_cc()`.
+/// Increment the counter of `addr` in `tag` and report whether the request
+/// must be blocked.
 // The signature mirrors the fields the C side passes for one inspection.
 #[allow(clippy::too_many_arguments)]
 pub fn increment(
@@ -516,9 +512,8 @@ fn slot_for(
         probe = (probe + 1) % table_ref.slots.len();
     }
 
-    // An entry is expired only when `expire < now`: the C implementation's
-    // `lru_cache_find()` kept (and counted) an entry whose expire is the
-    // current second, `lru_cache_add()` treated it the same way.
+    // An entry is expired only when `expire < now`: an entry whose expire is
+    // the current second is still counted.
     let fresh = {
         let slot = &table_ref.slots[index];
         evicted
@@ -679,12 +674,9 @@ pub fn remove_entry(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) ->
 /// Reset the counter of one client (the captcha flow clears the CC counter of
 /// an address it challenges).
 ///
-/// `_perform_action_html()` of the C implementation only wrote `count`,
-/// `is_blocked`, `record_time` and `block_time` of the entry: the expiry the
-/// denial had just set (`now + duration`) stayed, so the address kept being
-/// counted in the window it was denied in.  `cycle` is only used for a slot
-/// that has to be created, the entry the C implementation dereferenced was
-/// always found (and the port must not fault when it is not).
+/// Only the counter is cleared: the expiry the denial had just set
+/// (`now + duration`) stays, so the address keeps being counted in the window
+/// it was denied in.  `cycle` is only used for a slot that has to be created.
 pub fn reset_counter(
     handle: &ZoneHandle,
     tag: &[u8],
@@ -747,8 +739,7 @@ pub fn gc(handle: &ZoneHandle, now: i64) {
                 continue;
             }
             for slot in table.slots.iter_mut() {
-                // `lru_cache_eliminate_expire()` of the C implementation swept
-                // the entries it found with `expire < now`.
+                // A sweep deletes the entries with `expire < now`.
                 if !matches!(slot.state(), SlotState::Empty | SlotState::Deleted)
                     && slot.expire < now
                 {
@@ -761,8 +752,8 @@ pub fn gc(handle: &ZoneHandle, now: i64) {
     handle.unlock();
 }
 
-/// The probability check used by the log phase garbage collector, equivalent to
-/// `randombytes_uniform(worker_processes) != 0`.
+/// The probability check used by the log phase garbage collector: a worker of
+/// a multi-process setup runs it with a probability of 1 / `worker_processes`.
 pub fn should_gc(worker_processes: i64) -> bool {
     if worker_processes <= 1 {
         return true;
@@ -894,12 +885,11 @@ mod tests {
         assert!(!after.blocked);
     }
 
-    /// The C implementation kept the entry of a client while
-    /// `expire >= time(NULL)`, so the counting window of a cycle of one second
-    /// covers the second the entry expires in as well: `waf_cc_deny on
-    /// rate=1r/s` counted the request that arrives one second after the first
-    /// one (and answered 429 for it), only the request after that started a
-    /// new window.
+    /// The entry of a client is kept while `expire >= now`, so the counting
+    /// window of a cycle of one second covers the second the entry expires in
+    /// as well: `waf_cc_deny on rate=1r/s` counts the request that arrives one
+    /// second after the first one (and answers 429 for it), only the request
+    /// after that starts a new window.
     #[test]
     fn the_window_covers_the_second_it_expires_in() {
         let (_shm, ctx) = setup("window", 1024 * 1024);
@@ -931,11 +921,10 @@ mod tests {
     }
 
     /// A `waf_action cc_deny=CAPTCHA` challenge zeroes the counter of the
-    /// address, and `_perform_action_html()` of the C implementation left the
-    /// expiry the denial had just set (`now + duration`) alone: the address
-    /// keeps being counted in that window, so the request after the next one is
-    /// denied again.  Only an entry that had to be created starts a window of
-    /// `cycle` seconds.
+    /// address but leaves the expiry the denial had just set
+    /// (`now + duration`) alone: the address keeps being counted in that
+    /// window, so the request after the next one is denied again.  Only an
+    /// entry that had to be created starts a window of `cycle` seconds.
     #[test]
     fn a_captcha_reset_keeps_the_window_of_the_denial() {
         let (_shm, ctx) = setup("reset", 1024 * 1024);
@@ -1033,8 +1022,8 @@ mod tests {
 
     #[test]
     fn many_tags_are_supported() {
-        // The directory used to be a fixed array of eight entries: a zone with
-        // more tags silently stopped counting.
+        // The directory grows by adding blocks, so a zone with many tags keeps
+        // counting.
         let (shm, ctx) = setup("many_tags", 4 * 1024 * 1024);
         for index in 0..20u32 {
             let tag = format!("cc{index}");
@@ -1070,7 +1059,7 @@ mod tests {
     }
 
     /// A single worker collects on every request, several workers spread the
-    /// work out: `_gc()` runs with a probability of one in `worker_processes`.
+    /// work out: the GC runs with a probability of one in `worker_processes`.
     #[test]
     fn should_gc_is_shared_between_the_workers() {
         assert!(should_gc(0));
@@ -1089,11 +1078,10 @@ mod tests {
     }
 
     /// The tag of a `waf_zone` is the text of `zone=name:tag` with a suffix of
-    /// this core (`cc_deny`, `captcha`, `action_captcha`), and the split of the
-    /// C implementation only refused a segment longer than 256 bytes: the C
-    /// counted the address of the longest tag a configuration can write, while
-    /// a shorter field here made every request of that configuration answer
-    /// 503.
+    /// this core (`cc_deny`, `captcha`, `action_captcha`): at most 256 bytes
+    /// of segment plus the longest suffix (`action_captcha`, 14 bytes), so a
+    /// tag of 270 bytes has to be counted, while a longer one is refused
+    /// instead of written over another tag.
     #[test]
     fn the_longest_tag_a_configuration_can_write_is_counted() {
         let (_shm, ctx) = setup("long_tag", 1024 * 1024);

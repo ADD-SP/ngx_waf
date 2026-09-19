@@ -1,5 +1,5 @@
-//! Rule file reading: the `fgets()` chunking, the NUL/CRLF stripping and the
-//! per-line errors of the C implementation.
+//! Rule file reading: the fixed-size chunking, the NUL/CRLF stripping and the
+//! per-line errors.
 
 use super::ip_matcher::{parse_ipv4, parse_ipv6};
 use super::regex::RegexRule;
@@ -9,12 +9,12 @@ use cidr::{Ipv4Cidr, Ipv6Cidr};
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// The loaded rules and the problems the C implementation only logged.
+/// The loaded rules and the problems reported while they are read.
 #[derive(Debug)]
 pub struct Loaded {
     pub rules: RuleSet,
-    /// Non fatal problems: the C implementation wrote them to the error log
-    /// and kept the configuration, the block they belong to is dropped.
+    /// Non fatal problems: they are logged and the configuration is kept, the
+    /// block they belong to is dropped.
     pub warnings: Vec<String>,
 }
 
@@ -38,9 +38,8 @@ impl Builders {
     }
 }
 
-/// Load every rule file of `dir` into a fresh container, mirroring
-/// `_load_all_rule()`.  On failure the returned message is what the C side logs
-/// with `ngx_conf_log_error()`.
+/// Load every rule file of `dir` into a fresh container.  On failure the
+/// returned message is what the C side logs with `ngx_conf_log_error()`.
 pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
     let mut rules = new_rule_set();
     let mut builders = Builders::new();
@@ -49,24 +48,21 @@ pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
         .map_err(|_| "ngx_waf: the rule path is not a valid UTF-8 string".to_string())?;
 
     for (file, kind) in RULE_FILES {
-        // The C implementation concatenates the file name to the configured
-        // path, so the path must end with '/'.
+        // The rule file name is concatenated to the configured path, so the
+        // path must end with '/'.
         let path = format!("{dir}{file}");
         let path_ref = Path::new(&path);
 
-        // `access(path, R_OK)` of the C implementation reported every failure
-        // it saw with the same hardcoded message, whether the file was missing
-        // or unreadable.
+        // Every failure is reported with the same message, whether the file is
+        // missing or unreadable.
         let mut file = match std::fs::File::open(path_ref) {
             Err(_) => return Err(format!("ngx_waf: {path}: No such file or directory")),
             Ok(file) => file,
         };
 
         let mut content = Vec::new();
-        // The C implementation read the file with `fgets()`, which reports a
-        // read error as the end of the file: a file it could open but not read
-        // (a directory in place of a rule file) was accepted with the rules it
-        // had read until then, which is a configuration error here.
+        // A file that can be opened but not read (a directory in place of a
+        // rule file) is a configuration error.
         std::io::Read::read_to_end(&mut file, &mut content)
             .map_err(|_| format!("ngx_waf: {path}: Cannot read configuration."))?;
 
@@ -91,8 +87,7 @@ pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
     Ok(Loaded { rules, warnings })
 }
 
-/// `fgets(str, NGX_HTTP_WAF_RULE_MAX_LEN - 16, fp)`: at most 8175 bytes are
-/// consumed per line, longer lines are split.
+/// At most 8175 bytes are consumed per line, longer lines are split.
 const FGETS_LIMIT: usize = 256 * 4 * 8 - 16;
 
 fn load_into_container(
@@ -112,8 +107,8 @@ fn load_into_container(
         let take = std::cmp::min(FGETS_LIMIT - 1, rest.len());
         let chunk = &rest[..take];
 
-        // What one `fgets()` stored: the bytes up to and including the newline,
-        // or the whole buffer when there is none.
+        // One chunk: the bytes up to and including the newline, or the whole
+        // buffer when there is none.
         let newline = chunk.iter().position(|&c| c == b'\n');
         rest = match newline {
             Some(index) => &rest[index + 1..],
@@ -124,15 +119,15 @@ fn load_into_container(
             None => chunk,
         };
 
-        // `strlen()` of that buffer: the line ends at its first NUL byte, the
-        // bytes after it (the newline included) are dropped.
+        // The line ends at its first NUL byte; the bytes after it (the newline
+        // included) are dropped.
         if let Some(index) = line.iter().position(|&c| c == 0) {
             line = &line[..index];
         }
 
-        // The newline, and the carriage return in front of it, are the only
-        // bytes the C implementation stripped: a carriage return that ends the
-        // file without a newline stayed part of the rule.
+        // The newline, and the carriage return in front of it, are stripped:
+        // a carriage return that ends the file without a newline stays part of
+        // the rule.
         if line.last() == Some(&b'\n') {
             line = &line[..line.len() - 1];
             if line.last() == Some(&b'\r') {
@@ -243,9 +238,8 @@ mod tests {
         );
     }
 
-    /// A file the module can open but cannot read (a directory) is refused: the
-    /// `fgets()` of the C implementation treated the read error as the end of
-    /// the file and accepted the configuration with an empty rule set.
+    /// A file the module can open but cannot read (a directory) is refused
+    /// instead of being accepted with an empty rule set.
     #[test]
     fn a_directory_in_place_of_a_file_is_refused() {
         let dir = temp_dir("is_dir");
@@ -303,9 +297,9 @@ mod tests {
         std::fs::write(dir.join("ipv4"), b"2.0.0.0/8\n2.1.0.0/16\n").unwrap();
         let path = format!("{}/", dir.display());
 
-        // The second block is covered by the first one: the C implementation
-        // logs the overlap and keeps the configuration, the redundant block is
-        // dropped (nothing is lost, the /8 is still in the trie).
+        // The second block is covered by the first one: the overlap is logged,
+        // the configuration is kept and the redundant block is dropped
+        // (nothing is lost, the /8 is still in the trie).
         let loaded = load_all(path.as_bytes(), None).unwrap();
         assert_eq!(loaded.warnings.len(), 1);
         let warning = &loaded.warnings[0];
@@ -360,9 +354,8 @@ mod tests {
         assert_eq!(rules.url[1].pattern, b"/b");
     }
 
-    /// `fgets()` filled the buffer and `strlen()` measured the line, so the C
-    /// implementation stopped a rule at its first NUL byte: the rest of the
-    /// line (up to the newline it had read) was dropped.
+    /// A rule ends at its first NUL byte: the rest of the line (up to the
+    /// newline it had read) is dropped.
     #[test]
     fn a_nul_byte_ends_the_line() {
         let dir = temp_dir("nul_byte");
@@ -377,8 +370,8 @@ mod tests {
         assert_eq!(rules.url[1].pattern, b"/next");
     }
 
-    /// The carriage return in front of a newline is stripped, a carriage return
-    /// that ends the file is not (`fgets()` never reported a newline for it).
+    /// The carriage return in front of a newline is stripped, a carriage
+    /// return that ends the file is not.
     #[test]
     fn a_carriage_return_without_a_newline_is_kept() {
         let dir = temp_dir("lone_carriage_return");
@@ -418,8 +411,8 @@ mod tests {
     }
 
     /// A pattern the `regex` crate refuses but PCRE accepts (a look around
-    /// assert) has to load when the glue hands its engine over: the C module
-    /// compiled the rule files with `ngx_regex_compile()`.
+    /// assert) has to load when the glue hands its engine over: the rule files
+    /// are compiled with `ngx_regex_compile()`.
     #[test]
     fn the_engine_of_the_glue_compiles_the_rules() {
         let dir = temp_dir("glue_engine");
@@ -452,7 +445,7 @@ mod tests {
     }
 
     /// A pattern the engine refuses is an error, whatever the `regex` crate
-    /// would have made of it: that is what the C implementation did.
+    /// would make of it.
     #[test]
     fn a_pattern_the_engine_refuses_is_reported() {
         unsafe extern "C" fn refuse(

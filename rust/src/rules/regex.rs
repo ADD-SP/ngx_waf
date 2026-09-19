@@ -13,9 +13,8 @@ pub struct RegexRule {
 /// How the patterns of a rule are matched.
 #[derive(Debug)]
 enum RegexEngine {
-    /// The engine the C module used: the PCRE of nginx, reached through the
-    /// callbacks of the glue.  It understands the whole syntax a rule file
-    /// could use before.
+    /// The PCRE of nginx, reached through the callbacks of the glue.  It
+    /// understands the whole syntax a rule file can use.
     Pcre(PcreRegex),
     /// The `regex` crate, which accepts a subset of the PCRE syntax.  It is the
     /// engine of the unit tests and of a build of the core outside nginx; the

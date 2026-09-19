@@ -141,8 +141,8 @@ impl Outcome {
 }
 
 /// What the inspections record about the request, independently of the
-/// decision.  It survives a "not matched" outcome (the C implementation keeps
-/// reporting `FAKE-BOT` while letting the request through) and a suspension.
+/// decision.  It survives a "not matched" outcome (a fake crawler is still
+/// reported while the request goes through) and a suspension.
 #[derive(Default)]
 pub struct Meta {
     pub blocked: bool,
@@ -184,9 +184,9 @@ struct State<'a, 'r> {
 
 /// The response one matched inspection asks for.
 enum Decision {
-    /// Let the request through (the `DECLINE` action of the C implementation).
+    /// Let the request through.
     Allow,
-    /// Answer with a status only (the `RETURN` action of the C implementation).
+    /// Answer with a status only.
     Status(u32),
     /// Answer with a status and the `Location` header of a redirect.
     Redirect { status: u32, location: Vec<u8> },
@@ -335,7 +335,7 @@ impl State<'_, '_> {
     }
 }
 
-/// Run the whole inspection, the equivalent of `ngx_http_waf_check_all()`.
+/// Run the whole inspection.
 /// The result of one inspection.
 enum CheckResult {
     NotMatched,
@@ -407,15 +407,13 @@ enum CaptchaVerdict {
     Fault,
 }
 
-/// The cookies a visitor has to present, `_info_t` of the C implementation.
-/// The captcha cookies and the cookies of the "under attack" page have the
-/// same field sizes.
+/// The cookies a visitor has to present.  The captcha cookies and the cookies
+/// of the "under attack" page have the same field sizes.
 const COOKIE_TIME_FIELD: usize = 21;
 const COOKIE_UID_FIELD: usize = 65;
 const COOKIE_HMAC_FIELD: usize = 65;
 
-/// `difftime(time(NULL), client_time) > 60 * 30`: the cookies of the "under
-/// attack" page expire after half an hour.
+/// The cookies of the "under attack" page expire after half an hour.
 const UNDER_ATTACK_EXPIRE: i64 = 60 * 30;
 /// The visitor is held back for five seconds.
 const UNDER_ATTACK_WAIT: i64 = 5;
@@ -456,7 +454,7 @@ impl ConfHandle {
 
     fn get_mut(&mut self) -> &mut LocConf {
         // SAFETY: one worker process owns the configuration and drives one
-        // machine at a time, exactly like the C implementation did.
+        // machine at a time.
         unsafe { self.0.as_mut() }
     }
 }
@@ -526,11 +524,10 @@ impl Machine {
 
         let req = self.req.view(&self.cookies);
 
-        // `ngx_http_waf_check_flag(!loc_conf->waf_mode, r->method)`: the `!` of
-        // C is the logical not, so the flag is `NGX_HTTP_UNKNOWN` when the
-        // configuration set no mode bit at all (`waf_mode !FULL`), and 0
-        // otherwise.  Every request whose method is known runs the
-        // inspections, each of them gated by its own method bit.
+        // A configuration that set no mode bit at all (`waf_mode !FULL`) lets a
+        // request whose method is unknown through.  Every request whose method
+        // is known runs the inspections, each of them gated by its own method
+        // bit.
         if conf.waf_mode.is_empty() && req.method == NgxWafMethod::Unknown {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
@@ -648,8 +645,7 @@ impl Machine {
         self.finish_captcha(path, verdict)
     }
 
-    /// Apply the verdict of one captcha attempt, the equivalent of the
-    /// `NGX_HTTP_WAF_CAPTCHA_*` branches of the C implementation.
+    /// Apply the verdict of one captcha attempt.
     fn finish_captcha(&mut self, path: CaptchaPath, verdict: CaptchaVerdict) -> Step {
         let conf = self.conf.get_mut();
         let req = self.req.view(&self.cookies);
@@ -740,7 +736,7 @@ impl Machine {
 
         // In bypass mode the inspections still run (so `$waf_*` and the log are
         // filled in) but nothing is blocked and no content handler is
-        // installed, exactly like `ngx_http_waf_perform_action_at_access_end()`.
+        // installed.
         if conf.waf == Some(Waf::Bypass) {
             outcome.kind = OutcomeKind::Allow;
             outcome.status = 0;
@@ -936,15 +932,12 @@ fn run_check(state: &mut State, id: CheckId) -> CheckResult {
 }
 
 /// `waf_modsecurity`: run the request phases of one transaction of the library
-/// and turn its intervention into a decision.  This is the port of
-/// `ngx_http_waf_handler_modsecurity()` and the `_process_*()` helpers of the
-/// C implementation, without the thread pool path
-/// (`NGX_HTTP_WAF_ASYNC_MODSECURITY`).
+/// and turn its intervention into a decision.
 fn check_modsecurity(state: &mut State) -> CheckResult {
     if state.conf.modsecurity.enabled != Some(true) {
         return CheckResult::NotMatched;
     }
-    // `ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)`
+    // The method bit of the request must be part of `waf_mode`.
     if !state.mode_enabled(WafMode::for_method(state.req.method)) {
         return CheckResult::NotMatched;
     }
@@ -971,10 +964,8 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         return CheckResult::Matched;
     };
 
-    // Every failed phase answers 500 in the C implementation, whatever the
-    // request looked like; the first intervention the library reports stops
-    // the phases (`_process_intervention()` was called after every one of
-    // them).
+    // Every failed phase answers 500, whatever the request looked like; the
+    // first intervention the library reports stops the phases.
     let verdict = match run_modsecurity_request(state, &mut transaction, modsec_req) {
         Ok(verdict) => verdict,
         Err(_) => {
@@ -990,8 +981,8 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     };
 
     if let Some(url) = verdict.url {
-        // A redirection ignores the configured policy, the C implementation
-        // answered with the status of the intervention whatever it was.
+        // A redirection ignores the configured policy and answers with the
+        // status of the intervention whatever it was.
         *state.decision = Some(Decision::redirect(verdict.status, url));
         return CheckResult::Matched;
     }
@@ -1023,11 +1014,9 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     CheckResult::Matched
 }
 
-/// Read the intervention of the transaction the way `_process_intervention()`
-/// did, with the side effects the C implementation applied, and report whether
-/// the phases stop here.  An intervention without a URL and with the status
-/// 200 is not one the C implementation answered with: it keeps the rule info
-/// the answer carried and runs the next phase.
+/// Read the intervention of the transaction, with its side effects, and report
+/// whether the phases stop here.  An intervention without a URL and with the
+/// status 200 keeps the rule info the answer carried and runs the next phase.
 fn take_intervention(
     state: &mut State,
     transaction: &mut modsec::Transaction,
@@ -1050,8 +1039,8 @@ fn take_intervention(
     Ok(None)
 }
 
-/// The request phases of one transaction, in the order the C implementation
-/// ran them.  The phases stop at the first intervention of the library.
+/// The request phases of one transaction, in the order they run.  The phases
+/// stop at the first intervention of the library.
 fn run_modsecurity_request(
     state: &mut State,
     transaction: &mut modsec::Transaction,
@@ -1097,7 +1086,7 @@ fn check_captcha(state: &mut State) -> CheckResult {
 
     match captcha_cookie_valid(state) {
         Err(()) => {
-            // The C implementation answers 500 when it cannot compute the HMAC.
+            // A failed HMAC computation answers 500.
             *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
             CheckResult::Matched
         }
@@ -1113,8 +1102,8 @@ fn check_captcha(state: &mut State) -> CheckResult {
     }
 }
 
-/// The entry point the C implementation runs before the priority list: an
-/// address that was challenged before has to pass the captcha first.
+/// The entry point that runs before the priority list: an address that was
+/// challenged before has to pass the captcha first.
 fn check_captcha_session(state: &mut State) -> CheckResult {
     if !state.http_transport {
         return CheckResult::NotMatched;
@@ -1242,7 +1231,7 @@ fn captcha_inc_fails(state: &mut State) -> bool {
     let (Some(max_fails), Some(duration)) =
         (state.conf.captcha.max_fails, state.conf.captcha.duration)
     else {
-        // Without `max_fails` the C implementation does not count at all.
+        // Without `max_fails` nothing is counted.
         return false;
     };
     if max_fails <= 0 || duration <= 0 {
@@ -1283,8 +1272,8 @@ fn captcha_is_verify_url(state: &State) -> bool {
     !state.conf.captcha.verify_url.is_empty() && state.req.uri == state.conf.captcha.verify_url
 }
 
-/// Verify the three cookies of a visitor.  `Err(())` is the internal fault of
-/// the C implementation, `Ok(false)` a visitor that has to be challenged.
+/// Verify the three cookies of a visitor.  `Err(())` is an internal fault,
+/// `Ok(false)` a visitor that has to be challenged.
 fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
     let Some(time) = cookie_value(state.req.cookies, "__waf_captcha_time") else {
         return Ok(false);
@@ -1300,8 +1289,8 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
         || uid.len() >= COOKIE_UID_FIELD
         || hmac.len() >= COOKIE_HMAC_FIELD
     {
-        // The C implementation copies into fixed size fields, a longer value is
-        // not a cookie it could have minted.
+        // A value longer than its fixed size field is not a cookie this module
+        // could have minted.
         return Ok(false);
     }
 
@@ -1315,7 +1304,7 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
     };
     let Some(expire) = state.conf.captcha.expire else {
         // Nothing was configured, no cookie of this configuration can be
-        // valid: the C implementation compared against its `-1`.
+        // valid.
         return Ok(false);
     };
     if state.req.now - client_time > expire {
@@ -1338,12 +1327,9 @@ fn captcha_mint(state: &State) -> Option<(String, String, String)> {
 /// encoded.  The captcha cookies and the cookies of the "under attack" page
 /// use the same field sizes, so both flows share this function.
 ///
-/// The C implementation hashed `sizeof()` of a struct that carried the salt as
-/// its last field, the padding of that layout included, with its hand written
-/// `ngx_http_waf_sha256()`; this is the standard HMAC over the same fields.
 /// The salt is random for every process, a cookie was therefore never handed
-/// from one process to another, and the new value only costs every visitor one
-/// more challenge at the upgrade.
+/// from one process to another, and a restart only costs every visitor one
+/// more challenge.
 fn cookie_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
     cookie_mac(&state.conf.random_str, state.req.ip, time, uid)
 }
@@ -1352,9 +1338,9 @@ fn cookie_hmac(state: &State, time: &[u8], uid: &[u8]) -> String {
 fn cookie_mac(key: &[u8], ip: &[u8], time: &[u8], uid: &[u8]) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC takes a key of any length");
 
-    // The fields are the ones the C implementation hashed: a fixed size
-    // buffer with the address (16 bytes, 4 of them for an IPv4 one), the time
-    // and the uid, every one of them zero padded.
+    // The fields are hashed in a fixed size buffer: the address (16 bytes, 4
+    // of them for an IPv4 one), the time and the uid, every one of them zero
+    // padded.
     let mut ip_field = [0u8; 16];
     let ip_len = std::cmp::min(ip.len(), ip_field.len());
     ip_field[..ip_len].copy_from_slice(&ip[..ip_len]);
@@ -1373,12 +1359,10 @@ fn cookie_mac(key: &[u8], ip: &[u8], time: &[u8], uid: &[u8]) -> String {
     util::hex(&mac.finalize().into_bytes())
 }
 
-/// The value of one cookie, the port of `ngx_http_parse_multi_header_lines()`
-/// of nginx which the C implementation used: the name is compared case
-/// insensitively at the start of a header value or right after a `;` or `,`
-/// separator, spaces are allowed around the `=`, and the value ends at the
-/// next `;`.  The glue hands one string per cookie header over, the raw header
-/// value (`a=1; b=2`).
+/// The value of one cookie: the name is compared case insensitively at the
+/// start of a header value or right after a `;` or `,` separator, spaces are
+/// allowed around the `=`, and the value ends at the next `;`.  The glue hands
+/// one string per cookie header over, the raw header value (`a=1; b=2`).
 fn cookie_value<'a>(cookies: &'a [Vec<u8>], name: &str) -> Option<&'a [u8]> {
     let name = name.as_bytes();
 
@@ -1473,10 +1457,9 @@ fn check_under_attack(state: &mut State) -> CheckResult {
     let uid = cookie_value(state.req.cookies, "__waf_under_attack_uid");
     let hmac = cookie_value(state.req.cookies, "__waf_under_attack_hmac");
 
-    // The C implementation copies the three cookies into a zeroed `_info_t`,
-    // recomputes the HMAC of the copy and memcmp()s both structs: only the HMAC
-    // field can differ, and a cookie longer than its field could not have been
-    // minted by this module.
+    // The three cookies are compared by recomputing the HMAC of a zero padded
+    // copy: only the HMAC field can differ, and a cookie longer than its field
+    // could not have been minted by this module.
     let mut client_time = None;
     let valid = match (time, uid, hmac) {
         (Some(time), Some(uid), Some(hmac)) => {
@@ -1559,8 +1542,8 @@ fn check_verify_bot(state: &mut State) -> CheckResult {
         if !enabled {
             continue;
         }
-        // The C implementation reports "not matched" for a user agent that does
-        // not look like this crawler and keeps looking at the next one.
+        // A user agent that does not look like this crawler is skipped and the
+        // next one is checked.
         let claims = rules.ua[bot.index()]
             .iter()
             .any(|re| re.is_match(&String::from_utf8_lossy(user_agent)));
@@ -1614,10 +1597,9 @@ fn lookup_regex(rules: &crate::rules::RuleSet, kind: RuleKind, value: &[u8]) -> 
         .map(|rule| rule.pattern.clone())
 }
 
-/// The cache one of the lists of `check_regex()` uses.  The C implementation
-/// built a cache for every list this function is called for (the white lists
-/// included); the cookie list has a cache of its own in `check_cookie()` and
-/// the post list has none at all.
+/// The cache one of the lists of `check_regex()` uses: every list this function
+/// is called with has one (the white lists included), the cookie list has a
+/// cache of its own in `check_cookie()` and the post list has none at all.
 fn cache_kind(kind: RuleKind) -> Option<CacheKind> {
     Some(match kind {
         RuleKind::Url => CacheKind::Url,
@@ -1727,7 +1709,7 @@ fn check_cookie(state: &mut State) -> bool {
             continue;
         }
         // The rule list matches the header line, `Cookie=<value>`, the shape
-        // nginx 1.23 and later hand over and the C implementation matched.
+        // nginx 1.23 and later hand over.
         let mut text = Vec::with_capacity(b"Cookie=".len() + cookie.len());
         text.extend_from_slice(b"Cookie=");
         text.extend_from_slice(cookie);
@@ -1764,9 +1746,7 @@ fn check_cookie(state: &mut State) -> bool {
             continue;
         };
         // The detail is the text of the rule that matched, like in every other
-        // list: the C implementation reported the `name` of the
-        // `ngx_regex_elt_t` its `ngx_regex_exec()` matched, which is the line
-        // of the rule file (`_load_into_container()`).
+        // list.
         state.set_rule_info(b"BLACK-COOKIE", &detail, true, true);
         state.trigger(TriggerKind::Blacklist);
         return true;
@@ -1794,9 +1774,8 @@ fn check_cc(state: &mut State) -> bool {
     if state.conf.cc_deny.enabled != Some(true) || state.req.ip.is_empty() {
         return false;
     }
-    // A CC protection that cannot count has to block: this used to be dropped
-    // by the "a check that did not match resets the chain" rule and the request
-    // was served uninspected.
+    // A CC protection that cannot count answers 500: letting the check "not
+    // match" would reset the chain and serve the request uninspected.
     if state.conf.cc_deny.cycle.is_none_or(|value| value <= 0)
         || state.conf.cc_deny.duration.is_none_or(|value| value <= 0)
         || state.conf.cc_deny.limit.is_none_or(|value| value <= 0)
@@ -1830,8 +1809,7 @@ fn check_cc(state: &mut State) -> bool {
         state.req.now,
     );
     let Some(result) = result else {
-        // The shared memory could not hold the counter, the C implementation
-        // answers 503 on this path.
+        // The shared memory could not hold the counter; this path answers 503.
         state.set_rule_info(b"CC-DENY", b"", true, true);
         *state.decision = Some(Decision::status(SERVICE_UNAVAILABLE));
         return true;
@@ -2785,9 +2763,7 @@ mod tests {
         assert_eq!(outcome.body, b"good");
     }
 
-    /// A form body whose token field appears twice is sent with the last one:
-    /// the lookup of the C implementation answers with the entry it added
-    /// last.
+    /// A form body whose token field appears twice is sent with the last one.
     #[test]
     fn captcha_posts_the_last_token_of_the_form() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
@@ -2802,10 +2778,9 @@ mod tests {
         assert_eq!(fetch_body, b"response=second&secret=secret");
     }
 
-    /// The cookie names are matched the way `ngx_http_parse_multi_header_lines()`
-    /// of nginx matched them: case insensitively, at the start of a header
-    /// value or after a `;` or `,` separator, with spaces allowed around the
-    /// `=`.
+    /// The cookie names are matched case insensitively, at the start of a
+    /// header value or after a `;` or `,` separator, with spaces allowed
+    /// around the `=`.
     #[test]
     fn captcha_cookie_names_are_matched_like_nginx() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
@@ -2858,9 +2833,9 @@ mod tests {
     }
 
     /// The session flow of `waf_action X=CAPTCHA`: the visitor posted a token
-    /// while its address was in the action table.  The C implementation
-    /// answered the "good" of the action chain of the policy (no action flag),
-    /// minted no cookies and reported no rule; it only dropped the address.
+    /// while its address was in the action table.  The answer is the "good" of
+    /// the action chain of the policy (no action flag), no cookies are minted
+    /// and no rule is reported; only the address is dropped.
     #[test]
     fn captcha_session_pass_answers_good_without_cookies() {
         let (zone, _shm) = captcha_counter_zone();
@@ -3322,9 +3297,7 @@ mod tests {
 
         // `waf_modsecurity_transaction_id $request_id` reaches the core the way
         // nginx compiled it: with `zero = 1`, so the length carries the
-        // terminating NUL.  The C implementation handed its pointer to
-        // libmodsecurity, which read the text in front of that NUL; the
-        // inspection has to run instead of answering 500.
+        // terminating NUL; the inspection has to run instead of answering 500.
         let (id, id_len) = leaked(b"0123456789abcdef0123456789abcdef\0");
         let id = RawStr {
             data: id,
@@ -3429,9 +3402,8 @@ mod tests {
         let rules = modsecurity_phase_rules();
         let mut conf = modsecurity_conf(&rules);
 
-        // Both rules match.  The C implementation read the intervention after
-        // every phase (`_process_intervention()`), so the phase 1 rule answers
-        // and the phase 2 rule never runs.
+        // Both rules match.  The intervention is read after every phase, so the
+        // phase 1 rule answers and the phase 2 rule never runs.
         let mut machine = modsecurity_machine(&mut conf, b"/both?a=1");
         let outcome = decide(&mut machine);
         assert_eq!(outcome.status, FORBIDDEN);

@@ -458,8 +458,8 @@ void ngx_waf_shm_zone_free(void *handle);
 void ngx_waf_shm_zone_gc(void *handle);
 
 /**
- * The probability check of `_gc()`, exposed so the C glue can gate the GC of
- * every zone of this worker.
+ * The probability check the glue uses to gate the GC of every zone of this
+ * worker.
  */
 bool ngx_waf_should_gc(uint32_t worker_processes);
 

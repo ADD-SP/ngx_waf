@@ -1,10 +1,9 @@
 //! The per-worker inspection caches used by the `url`/`args`/`ua`/`referer`/
 //! `cookie` inspections and their white lists when `waf_cache on` is set.
 //!
-//! The ordering and the eviction are the ones of the `lru` crate.  What the
-//! `lru_cache_t` of the C implementation added on top of them stays here: the
-//! expiration of every entry, the flag the garbage collector of `ngx_waf_gc()`
-//! reads, and the way a sweep walks the entries.
+//! The ordering and the eviction are the ones of the `lru` crate.  On top of
+//! them this cache keeps the expiration of every entry, the flag the garbage
+//! collector of `ngx_waf_gc()` reads, and the way a sweep walks the entries.
 
 use std::mem;
 use std::num::NonZeroUsize;
@@ -118,14 +117,13 @@ impl Caches {
         }
     }
 
-    /// `lru_cache_find()`: an entry that expired is dropped, a hit is promoted
-    /// to the most recently used entry and its result handed back.
+    /// An entry that expired is dropped, a hit is promoted to the most
+    /// recently used entry and its result handed back.
     pub fn find(&mut self, kind: CacheKind, key: &[u8], now: i64) -> Option<CachedResult> {
         let cache = self.slot(kind).as_mut()?;
         let expire = cache.peek(key)?.expire;
-        // `lru_cache_find()` of the C implementation deleted an entry only
-        // when `expire < time(NULL)`: an entry that expires in the current
-        // second is still a hit.
+        // An entry is deleted only when `expire < now`: an entry that expires
+        // in the current second is still a hit.
         if expire < now {
             cache.pop(key);
             return None;
@@ -133,9 +131,8 @@ impl Caches {
         cache.get(key).map(|item| item.result.clone())
     }
 
-    /// `lru_cache_add()`: the entry of the same key is taken over, a full
-    /// cache evicts its least recently used entry, and the garbage collector
-    /// is told when it had to.
+    /// The entry of the same key is taken over, a full cache evicts its least
+    /// recently used entry, and the garbage collector is told when it had to.
     pub fn insert(&mut self, kind: CacheKind, key: &[u8], expire: i64, result: CachedResult) {
         let index = kind.index();
         let Some(cache) = self.slot(kind).as_mut() else {
@@ -161,16 +158,15 @@ impl Caches {
                 continue;
             };
             if no_memory {
-                // `lru_cache_eliminate()`: the least recently used entries
-                // go, valid or not.
+                // The least recently used entries go, valid or not.
                 for _ in 0..5 {
                     if cache.pop_lru().is_none() {
                         break;
                     }
                 }
             } else {
-                // `lru_cache_eliminate_expire()`: a round has to drop at least
-                // three entries for another one to be worth it.
+                // A round has to drop at least three entries for another one
+                // to be worth it.
                 let mut rounds = 0;
                 while rounds < 10 && eliminate_expired(cache, 5, now) >= 3 {
                     rounds += 1;
@@ -196,7 +192,7 @@ impl Caches {
 
 /// Drop up to `limit` entries that expired, least recently used first, and
 /// return how many were dropped.  The entries that are still valid are walked
-/// past; the C implementation only looked at the tail of its chain.
+/// past.
 fn eliminate_expired(cache: &mut Cache, limit: usize, now: i64) -> usize {
     let victims: Vec<Vec<u8>> = cache
         .iter()

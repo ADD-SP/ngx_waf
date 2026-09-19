@@ -145,10 +145,10 @@ typedef char ngx_http_waf_str_layout_must_match[
 /*
  * nginx and libmodsecurity share the same libpcre when nginx is built with
  * PCRE1, and the library allocates through the global `pcre_malloc`/
- * `pcre_free` while it parses rules.  The C implementation routed those
- * allocations to the nginx pool of the configuration being read; the rule
- * loading happened inside the Rust core, this glue switches the callbacks
- * around the `waf_modsecurity` directive.
+ * `pcre_free` while it parses rules.  Those allocations are routed to the
+ * nginx pool of the configuration being read; the rule loading happens inside
+ * the Rust core, this glue switches the callbacks around the `waf_modsecurity`
+ * directive.
  */
 extern void *(*pcre_malloc)(size_t);
 extern void  (*pcre_free)(void *);
@@ -387,8 +387,7 @@ static ngx_int_t ngx_http_waf_var_rate(ngx_http_request_t* r, ngx_http_variable_
 /*
  * The `Location` header of a ModSecurity redirect.  `hash` stays 0: nginx
  * turns `r->headers_out.location` into the header and the body of a 3xx
- * response itself (see `ngx_http_special_response_handler()`), which is what
- * the C implementation relied on as well.
+ * response itself (see `ngx_http_special_response_handler()`).
  */
 static void ngx_http_waf_add_location(ngx_http_request_t* r, const ngx_waf_step_t* step) {
     ngx_table_elt_t* location;
@@ -815,9 +814,8 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
 
 /**
  * Whether the headers of the answer announce a chunked body.  The request is
- * HTTP/1.0, so a compliant provider does not use it, but curl did decode it for
- * the C implementation and a provider in front of a HTTP/1.1 back end may still
- * send it.
+ * HTTP/1.0, so a compliant provider does not use it, but a provider in front
+ * of a HTTP/1.1 back end may still send it.
  */
 static ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end) {
     u_char* p;
@@ -1657,7 +1655,7 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
     /*
      * Resolve the host here when possible; a host that cannot be resolved now
      * (no DNS at configuration time) is resolved per request with the resolver
-     * of the enclosing context, like the C implementation left it to curl.
+     * of the enclosing context.
      */
     if (!url.naddrs) {
         (void) ngx_inet_resolve_host(cf->pool, &url);
@@ -1850,12 +1848,12 @@ static char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* co
 
 
 /*
- * The regex engine of the rules.  The C implementation compiled every rule of
- * `waf_rule_path` with `ngx_regex_compile()` and matched it with
- * `ngx_regex_exec()`, so a rule file may use the whole PCRE syntax; the core
- * uses these two callbacks for the same engine instead of a regex library of
- * its own.  They are handed to the core with the directive that needs them, and
- * `ctx` is the pool the compiled patterns live in.
+ * The regex engine of the rules.  Every rule of `waf_rule_path` is compiled
+ * with `ngx_regex_compile()` and matched with `ngx_regex_exec()`, so a rule
+ * file may use the whole PCRE syntax; the core uses these two callbacks for the
+ * same engine instead of a regex library of its own.  They are handed to the
+ * core with the directive that needs them, and `ctx` is the pool the compiled
+ * patterns live in.
  */
 static void* ngx_http_waf_regex_compile(void* ctx, const uint8_t* pattern, size_t len) {
     ngx_regex_compile_t  rc;
@@ -1926,7 +1924,7 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     /*
      * libmodsecurity parses the rules while this directive is handled and it
      * allocates through the globals of libpcre: with PCRE1 let those come from
-     * the configuration pool, like the C implementation did.
+     * the configuration pool.
      */
     if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
         old_pcre_pool = ngx_http_waf_modsecurity_pcre_acquire(cf->pool);
@@ -1957,9 +1955,9 @@ static char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, voi
     }
 
     /*
-     * Problems the C implementation only logged, e.g. an address block that is
-     * already covered by one read before it: nginx keeps the configuration and
-     * the block is dropped.
+     * Problems that are only logged, e.g. an address block that is already
+     * covered by one read before it: nginx keeps the configuration and the
+     * block is dropped.
      */
     for ( ;; ) {
         char* warning = ngx_waf_conf_take_warning(loc_conf->core);

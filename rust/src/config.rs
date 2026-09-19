@@ -16,10 +16,10 @@ use crate::util;
 use regex::Regex;
 use std::rc::Rc;
 
-/// The salt of the captcha cookie HMAC.  The C implementation keeps it in a
-/// function static of `create_loc_conf`, so every configuration of a worker
-/// shares it and it survives a fork; the same value has to reach every worker
-/// or the cookies minted by one would not validate on another.
+/// The salt of the captcha cookie HMAC.  It is generated once per process, so
+/// every configuration of a worker shares it and it survives a fork; the same
+/// value has to reach every worker or the cookies minted by one would not
+/// validate on another.
 fn captcha_salt() -> Vec<u8> {
     static SALT: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
     SALT.get_or_init(|| util::rand_letters(128)).clone()
@@ -115,8 +115,7 @@ pub const DEFAULT_PRIORITY: [CheckId; 15] = [
 ///
 /// A policy is always concrete: a configuration that does not set one inherits
 /// it, and a configuration nothing is inherited from gets the built in default
-/// of the trigger.  "Matched, do nothing" cannot be expressed, which is what
-/// used to make `waf_action cc_deny=400;` serve blacklisted requests.
+/// of the trigger.  "Matched, do nothing" cannot be expressed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Policy {
     /// Answer with this status, without a body.
@@ -129,9 +128,8 @@ pub enum Policy {
     Captcha { source: CaptchaSource },
 }
 
-/// Which trigger asked for a captcha, the C implementation distinguishes the CC
-/// one (the page is a 503 and the CC counter is reset) from the others (403
-/// with the block page).
+/// Which trigger asked for a captcha: the CC one shows a 503 and resets the CC
+/// counter, the others answer 403 with the block page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptchaSource {
     Blacklist,
@@ -165,8 +163,7 @@ impl TriggerKind {
         }
     }
 
-    /// The built in policy, the defaults of the C implementation for a trigger
-    /// no `waf_action` sets.
+    /// The built in policy of a trigger no `waf_action` sets.
     pub fn default_policy(self) -> Policy {
         match self {
             TriggerKind::Blacklist => Policy::Return { status: FORBIDDEN },
@@ -239,7 +236,7 @@ impl BotId {
         }
     }
 
-    /// The user agent patterns of the bot, copied from the C implementation.
+    /// The user agent patterns of the bot.
     fn ua_patterns(self) -> &'static [&'static str] {
         match self {
             BotId::Google => &[
@@ -348,8 +345,8 @@ impl BotRules {
     }
 }
 
-/// The `waf` switch: the `0`/`1`/`2` of the C implementation, `None` where it
-/// was unset (`-1`) and the merge resolves the inheritance.
+/// The `waf` switch: `None` where the directive is unset, the merge resolves
+/// the inheritance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Waf {
     Off = 0,
@@ -357,7 +354,7 @@ pub enum Waf {
     Bypass = 2,
 }
 
-/// The mode of `waf_verify_bot`, the `1`/`2` of the C implementation.
+/// The mode of `waf_verify_bot`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VerifyBotMode {
     Off,
@@ -365,7 +362,7 @@ pub enum VerifyBotMode {
     Strict,
 }
 
-/// The `prov=` of `waf_captcha`, the `1..=4` the C implementation stored.
+/// The `prov=` of `waf_captcha`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptchaProvider {
     HCaptcha,
@@ -376,7 +373,7 @@ pub enum CaptchaProvider {
 
 /// The shared memory zone a directive writes through: the name `waf_zone`
 /// declared and the tag its entries are stored under.  Both are set and
-/// inherited together, the C implementation merged the tag with the zone.
+/// inherited together.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneRef {
     pub name: Vec<u8>,
@@ -556,14 +553,13 @@ pub struct LocConf {
     /// configured here", which the merge resolves by inheriting from the parent
     /// and the request path by falling back to [`DEFAULT_PRIORITY`].
     pub priority: Option<Vec<CheckId>>,
-    /// A random string generated once per configuration, the salt of the
-    /// captcha cookie HMAC (the C implementation keeps the same value in a
-    /// function static so every worker agrees on it).
+    /// A random string generated once per process, the salt of the captcha
+    /// cookie HMAC, so every worker agrees on it.
     pub random_str: Vec<u8>,
     pub rules: Option<Rc<RuleSet>>,
     /// Messages the core wants nginx to log while it keeps the configuration
-    /// (the C implementation logged an overlapping address block and dropped
-    /// it, it did not fail).  The C side drains them after every directive.
+    /// (an overlapping address block is logged and dropped, it does not fail
+    /// the configuration).  The C side drains them after every directive.
     pub warnings: Vec<String>,
     pub caches: Caches,
 }
@@ -601,7 +597,7 @@ impl Default for LocConf {
     }
 }
 
-/// Split like `ngx_http_waf_str_split()`, including the per token length limit.
+/// Split at `sep`, refusing a token longer than `max_len`.
 fn split(text: &[u8], sep: u8, max_len: usize) -> Option<Vec<Vec<u8>>> {
     let mut out = Vec::new();
     let mut current = Vec::new();
@@ -634,16 +630,14 @@ fn eq_ci(a: &[u8], b: &str) -> bool {
     a.eq_ignore_ascii_case(b.as_bytes())
 }
 
-/// nginx' `ngx_strncmp(x, "on", ngx_min(len, 2)) == 0`: the value starts with
-/// the keyword and is not shorter than it.
+/// The value starts with the keyword and is not shorter than it.
 fn starts_with_keyword(value: &[u8], keyword: &str) -> bool {
     let len = std::cmp::min(value.len(), keyword.len());
     value[..len] == keyword.as_bytes()[..len]
 }
 
 impl LocConf {
-    /// Ensure the rule containers exist, the equivalent of
-    /// `_init_rule_containers()`.
+    /// Ensure the rule containers exist.
     pub fn ensure_rules(&mut self) {
         if self.rules.is_none() {
             self.rules = Some(Rc::new(rules::new_rule_set()));
@@ -670,17 +664,10 @@ impl LocConf {
 
     /// Whether the inspections may use their cache.
     ///
-    /// This is the gate the inspections of the C implementation used:
-    ///
-    /// ```c
-    /// if (loc_conf->waf_cache == 1
-    ///     && loc_conf->waf_cache_capacity != NGX_CONF_UNSET
-    ///     && cache != NULL) {
-    /// ```
-    ///
-    /// `waf_cache == 1` is what makes a `waf_cache off` of a context below a
-    /// `waf_cache on` one stop the caching there, although that context still
-    /// inherits the caches of its parent (the pointer of the C implementation).
+    /// Whether the inspections may use their cache: `waf_cache on` in this
+    /// context and caches in the merged configuration.  A `waf_cache off` of a
+    /// context below a `waf_cache on` one stops the caching there, although
+    /// that context still inherits the caches of its parent.
     pub fn caching(&self) -> bool {
         self.cache.enabled == Some(true) && self.caches.enabled
     }
@@ -727,8 +714,7 @@ pub fn zone_directive(main: &mut MainConf, args: &[Vec<u8>]) -> Result<(Vec<u8>,
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         match key.as_slice() {
             b"name" => name = value,
-            // The C implementation used nginx' `ngx_parse_size()`, which also
-            // accepts a bare byte count and upper case units.
+            // A bare byte count and upper case units are accepted.
             b"size" => match util::parse_ngx_size(&value) {
                 Some(parsed) if parsed > 0 => {
                     size = std::cmp::max(parsed, 5 * 1024 * 1024);
@@ -765,7 +751,6 @@ fn directive_waf(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
         conf.ensure_rules();
         return Ok(());
     }
-    // `ngx_http_waf_conf()` returns NGX_CONF_ERROR without logging.
     Err(INVALID.to_string())
 }
 
@@ -850,9 +835,8 @@ fn directive_mode(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
         } else if eq_ci(keyword, "FULL") {
             WafMode::FULL
         } else if value == b"NICO" {
-            // The easter egg of the C implementation prints ASCII art to
-            // stderr; the value is accepted but the art is not ported, see
-            // rust/README.md.
+            // The NICO easter egg is accepted, but its ASCII art is not
+            // printed (see rust/README.md).
             continue;
         } else {
             return Err("ngx_waf: invalid value.".to_string());
@@ -872,8 +856,7 @@ fn directive_cc_deny(
     conf: &mut LocConf,
     args: &[Vec<u8>],
 ) -> Result<(), String> {
-    // The C implementation resets the duration to one hour for every use of
-    // the directive.
+    // Every use of the directive resets the duration to one hour.
     conf.cc_deny.duration = Some(60 * 60);
 
     let first = args.first().map(Vec::as_slice).unwrap_or(b"");
@@ -1001,8 +984,8 @@ fn directive_priority(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String
 
 fn read_file(path: &[u8]) -> Result<Vec<u8>, String> {
     let text = String::from_utf8_lossy(path).into_owned();
-    // The C implementation opened the file with `fopen()`: a file it cannot
-    // open and a file it can open but cannot read are two different failures.
+    // A file that cannot be opened and a file that can be opened but not read
+    // are two different failures.
     let mut file = match std::fs::File::open(&text) {
         Err(_) => return Err(format!("ngx_waf: Unable to open file {text}.")),
         Ok(file) => file,
@@ -1114,7 +1097,7 @@ fn directive_captcha(
                 if value.is_empty() {
                     return Err(INVALID.to_string());
                 }
-                // The C implementation uses the same secret for all providers.
+                // The same secret is used for all providers.
                 conf.captcha.secret = value;
             }
             b"sitekey" => {
@@ -1279,9 +1262,9 @@ fn directive_action(
     conf: &mut LocConf,
     args: &[Vec<u8>],
 ) -> Result<(), String> {
-    // The C implementation re-initialises every trigger when `waf_action` is
-    // used, so the ones this directive does not mention fall back to their
-    // built in default instead of inheriting from the parent context.
+    // Using `waf_action` re-initialises every trigger, so the ones this
+    // directive does not mention fall back to their built in default instead
+    // of inheriting from the parent context.
     for kind in TRIGGER_KINDS {
         conf.set_policy(kind, kind.default_policy());
     }
@@ -1385,8 +1368,7 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         match key.as_slice() {
             // The file is handed to the library as it is: a path the library
-            // cannot open is reported with its own message, the one the C
-            // implementation printed.
+            // cannot open is reported with its own message.
             b"file" => files.push(value),
             b"remote_key" => remote_key = Some(value),
             b"remote_url" => remote_url = Some(value),
@@ -1395,9 +1377,9 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
     }
 
     // The rules are loaded here, while nginx reads the configuration: a rule
-    // file the library cannot parse aborts the start up, exactly like the C
-    // implementation.  A second `waf_modsecurity` directive in the same
-    // context replaces the instance of the first one.
+    // file the library cannot parse aborts the start up.  A second
+    // `waf_modsecurity` directive in the same context replaces the instance of
+    // the first one.
     let remote = match (remote_key.as_deref(), remote_url.as_deref()) {
         (Some(key), Some(url)) => Some((key, url)),
         _ => None,
@@ -1409,8 +1391,7 @@ fn directive_modsecurity(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), Str
     Ok(())
 }
 
-/// Merge `child` into the values of `parent`, mirroring
-/// `ngx_http_waf_merge_loc_conf()`.
+/// Merge `child` into the values of `parent`.
 pub fn merge(child: &mut LocConf, parent: &mut LocConf) -> Result<(), String> {
     child.waf = child.waf.or(parent.waf);
 
@@ -1539,8 +1520,8 @@ mod tests {
         assert!(dir(&mut conf, "waf", &["bad"]).is_err());
     }
 
-    /// The `on`/`off` head is compared with `ngx_strncmp()` and `ngx_min()`,
-    /// i.e. a prefix of the keyword is enough; `waf` itself is exact.
+    /// The `on`/`off` head is compared by prefix, i.e. a prefix of the keyword
+    /// is enough; `waf` itself is exact.
     #[test]
     fn the_on_off_head_is_a_prefix() {
         let mut conf = LocConf::default();
@@ -1678,9 +1659,7 @@ mod tests {
     }
 
     /// `waf_cache off` below a `waf_cache on` stops the caching of that
-    /// context: the C implementation gated every cached inspection on
-    /// `waf_cache == 1`, a context that inherits the caches of its parent
-    /// included.
+    /// context, a context that inherits the caches of its parent included.
     #[test]
     fn a_waf_cache_off_below_an_on_disables_the_caching() {
         let mut parent = LocConf::default();
@@ -1694,8 +1673,8 @@ mod tests {
         assert_eq!(inherits.cache.enabled, Some(true));
         assert!(inherits.caching());
 
-        // A context that turns it off keeps the caches of its parent (like the
-        // pointer the C implementation inherits) but must not use them.
+        // A context that turns it off keeps the caches of its parent but must
+        // not use them.
         let mut off = LocConf::default();
         dir(&mut off, "waf_cache", &["off"]).unwrap();
         merge(&mut off, &mut parent).unwrap();
@@ -1783,8 +1762,8 @@ mod tests {
         let mut conf = LocConf::default();
         assert!(dir(&mut conf, "waf_modsecurity", &["bad"]).is_err());
         assert!(dir(&mut conf, "waf_modsecurity", &["on", "bad"]).is_err());
-        // The library reports a rule file it cannot open itself, the message
-        // the C implementation printed, so the path is handed over as it is.
+        // The library reports a rule file it cannot open itself, so the path
+        // is handed over as it is.
         let error = dir(
             &mut conf,
             "waf_modsecurity",
@@ -1990,8 +1969,8 @@ mod tests {
         assert_eq!(conf.block_page.as_slice(), embedded_page(HTML_BLOCK));
         assert!(dir(&mut conf, "waf_block_page", &["/nonexistent/file"]).is_err());
 
-        // A file that can be opened but not read (a directory) is the read
-        // failure of the C implementation (`fopen()` succeeded there too).
+        // A file that can be opened but not read (a directory) is a read
+        // failure.
         let dir_path = std::env::temp_dir().join(format!("ngx_waf_page_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir_path);
         std::fs::create_dir_all(&dir_path).unwrap();
@@ -2000,11 +1979,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir_path);
     }
 
-    /// The C implementation set the length of its embedded pages with
-    /// `ngx_str_set()`, that is `sizeof(array) - 1`: the last byte of the page
-    /// was never part of a response, and the port serves the same prefix so the
-    /// pages stay byte for byte the ones of the C implementation.  A page read
-    /// from a file was served complete.
+    /// The last byte of an embedded page is not part of a response, so the
+    /// pages stay byte for byte the ones of existing deployments.  A page read
+    /// from a file is served complete.
     #[test]
     fn the_embedded_pages_are_served_without_their_last_byte() {
         assert!(HTML_BLOCK.ends_with(b"</html>"));
@@ -2076,8 +2053,7 @@ mod tests {
     }
 
     /// A group inherits every field the child did not set, and only those; the
-    /// zone and its tag follow the index like the C implementation copied the
-    /// two together.
+    /// zone and its tag are inherited together.
     #[test]
     fn merge_inherits_the_cc_deny_fields() {
         let mut parent = LocConf {
@@ -2259,7 +2235,7 @@ mod tests {
         );
 
         // ... but a `waf_action` in the child resets the triggers it does not
-        // mention, like the C implementation does.
+        // mention.
         let mut other = LocConf::default();
         dir(&mut other, "waf_action", &["cc_deny=400"]).unwrap();
         merge(&mut other, &mut parent).unwrap();

@@ -67,7 +67,7 @@ pub struct RuleSet {
     pub ipv6_white: Option<IpMatcher<Ipv6Cidr>>,
 }
 
-/// Initialise the empty containers, the equivalent of `_init_rule_containers()`.
+/// Initialise the empty containers.
 pub fn new_rule_set() -> RuleSet {
     RuleSet {
         ipv4_black: Some(Builder::new().freeze()),

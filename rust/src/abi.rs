@@ -118,7 +118,7 @@ pub enum NgxWafHttpVersion {
 }
 
 impl NgxWafHttpVersion {
-    /// The text libmodsecurity sees, the strings the C implementation built.
+    /// The protocol text libmodsecurity sees.
     pub(crate) fn as_str(self) -> &'static [u8] {
         match self {
             NgxWafHttpVersion::Http09 => b"0.9",

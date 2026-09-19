@@ -864,8 +864,8 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_gc(handle: *mut c_void) {
     });
 }
 
-/// The probability check of `_gc()`, exposed so the C glue can gate the GC of
-/// every zone of this worker.
+/// The probability check the glue uses to gate the GC of every zone of this
+/// worker.
 #[no_mangle]
 pub extern "C" fn ngx_waf_should_gc(worker_processes: u32) -> bool {
     guard(false, || cc::should_gc(i64::from(worker_processes)))

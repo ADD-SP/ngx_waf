@@ -37,15 +37,15 @@ exported, and the glue only reads the memory this crate owns.
 | `data/` | the pages and captcha templates the module ships, edit them here |
 
 The files of `data/` are byte for byte the pages the C implementation embedded
-as `ngx_http_waf_module_data.c`: they were extracted from it when the port
-landed, and that file was removed together with the rest of the C code.  There
-is no generator anymore, a page is changed by editing it in `data/`.  `assets/`
-is *not* the same thing — it is the upstream directory the test suite copies
-(the rule files and the pages some templates point `waf_block_page` at), and its
-captcha templates differ from the embedded ones.  The last revision of the C
-file is in the git history (the commit before the one that removed it), which
-is where a byte level comparison can still be made.  `data.rs` hands out the
-prefix of those pages the C module actually served (see the known differences
+in its data file: they were extracted from it when the port landed, and that
+file was removed together with the rest of the C code.  There is no generator
+anymore, a page is changed by editing it in `data/`.  `assets/` is *not* the
+same thing — it is the upstream directory the test suite copies (the rule files
+and the pages some templates point `waf_block_page` at), and its captcha
+templates differ from the embedded ones.  The last revision of the data file is
+in the git history (the commit before the one that removed it), which is where
+a byte level comparison can still be made.  `data.rs` hands out the prefix of
+those pages the C implementation actually served (see the known differences
 below).
 
 The rules of `waf_rule_path` are compiled and matched with the PCRE engine of
@@ -176,18 +176,17 @@ stderr is not ported.
   address: the address lists, the CC counters and the captcha fail counters see
   nothing and none of them matches or counts.  The C implementation read the
   bytes of another address family out of the `sockaddr` (the family and the path
-  of the socket, or the uninitialized memory `ngx_http_waf_make_inx_addr()` left
-  behind), so a block could match such a connection by accident.
+  of the socket, or the uninitialized memory its address reader left behind), so
+  a block could match such a connection by accident.
 * `waf_zone size=` follows `ngx_parse_size()` (a bare byte count, `k`/`K`,
   `m`/`M`), the same syntax the C implementation accepted.
 * `waf_captcha ... score=` has to be a number: the C implementation ran
   `atof()` over it, a non numeric value silently became `0.0`.  The lower bound
   is compared as the number it is, where the C implementation narrowed it to an
-  `ngx_int_t` on the way into `_verfiy_reCAPTCHA_compatible()`, so a fractional
-  `score` (0.5, the documented example) compared like `0` there and every answer
-  whose score was not negative passed.  The value is not range checked, like in
-  the C implementation whose check (`score < 0.0 && score > 1.0`) can never be
-  true.
+  `ngx_int_t` on the way into its score check, so a fractional `score` (0.5,
+  the documented example) compared like `0` there and every answer whose score
+  was not negative passed.  The value is not range checked, like in the C
+  implementation whose check (`score < 0.0 && score > 1.0`) can never be true.
 * The captcha provider is reached with a small non blocking client of the
   module itself (connect, send the POST, read the answer: it ends at the length
   the headers announce, at the end of a chunked body, or when the provider
@@ -220,8 +219,8 @@ stderr is not ported.
   which hold at most 20, 64 and 64 bytes (the time, the uid and the hmac
   cookie) plus a NUL; a longer value is not a cookie the module minted and is
   refused.  The C implementation `memcpy()`ed the header value into those
-  fields whatever its length, which writes outside the `_info_t` it allocated
-  from the request pool.
+  fields whatever its length, which writes outside the struct it allocated from
+  the request pool.
 * The captcha and the under attack cookies are signed with HMAC-SHA256 of the
   zero padded `{address, time, uid}` fields, with the salt of the process as
   the key.  The C implementation hashed a struct that carried the salt as its
@@ -280,9 +279,9 @@ stderr is not ported.
   same way, including when the value is empty.
 * A request body above `client_body_buffer_size` is written to a temporary file
   by nginx; the module reads it back so the POST list and ModSecurity still see
-  it.  The C implementation gave up on those requests (`_read_request_body()`
-  returned `NGX_HTTP_WAF_FAIL` for `r->request_body->temp_file`), so a POST
-  larger than that buffer was never inspected.
+  it.  The C implementation gave up on those requests (its body reader reported
+  a failure for `r->request_body->temp_file`), so a POST larger than that buffer
+  was never inspected.
 * The cookie rules are matched against `Cookie=<value>` on every nginx version,
   the shape 1.23 and later hand over.  The C implementation matched the raw
   header value on older versions (which is also why the cookies of the captcha

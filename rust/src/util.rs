@@ -1,4 +1,4 @@
-//! Small helpers ported from `ngx_http_waf_module_util.c`.
+//! Small helpers shared by the configuration and the checks.
 //!
 //! `rand_letters()` feeds the salt and the cookies of the captcha support and
 //! of the under attack page.
@@ -7,7 +7,7 @@
 use rand::rngs::OsRng;
 use rand::{Rng, TryRngCore};
 
-/// `time(NULL)`.
+/// Wall clock seconds.
 pub fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -17,10 +17,9 @@ pub fn now() -> i64 {
 
 /// Parse `10s`, `10m`, `10h`, `10d` into seconds.
 ///
-/// Mirrors `ngx_http_waf_parse_time()` including its quirks: a bare unit
-/// character means "1 unit", and the number in front of the unit is read with
-/// nginx' `ngx_atoi()`, which accepts a leading zero (`030s` is 30 seconds)
-/// but nothing that is not a decimal digit.
+/// A bare unit character means "1 unit", and the number in front of the unit
+/// is read as a decimal integer: a leading zero is accepted (`030s` is 30
+/// seconds) but nothing that is not a decimal digit.
 pub fn parse_time(text: &[u8]) -> Option<i64> {
     if text.len() == 1 {
         return match text[0] {
@@ -47,7 +46,7 @@ pub fn parse_time(text: &[u8]) -> Option<i64> {
     }
 }
 
-/// Parse `10k`, `10m`, `10g` into bytes.  Mirrors `ngx_http_waf_parse_size()`.
+/// Parse `10k`, `10m`, `10g` into bytes.
 pub fn parse_size(text: &[u8]) -> Option<i64> {
     if text.len() < 2 {
         return None;
@@ -64,8 +63,8 @@ pub fn parse_size(text: &[u8]) -> Option<i64> {
     }
 }
 
-/// nginx' `ngx_parse_size()`: a bare number is a byte count, `K`/`k` and
-/// `M`/`m` suffixes are binary multiples (nginx has no `G` suffix).
+/// A bare number is a byte count, `K`/`k` and `M`/`m` suffixes are binary
+/// multiples; there is no `G` suffix.
 pub fn parse_ngx_size(text: &[u8]) -> Option<usize> {
     if text.is_empty() {
         return None;
@@ -82,9 +81,8 @@ pub fn parse_ngx_size(text: &[u8]) -> Option<usize> {
     usize::try_from(value).ok()?.checked_mul(scale)
 }
 
-/// `ngx_atoi()`: a non negative decimal number, an empty string, a non digit
-/// and an overflow are rejected.  A leading zero is accepted (`0100` is 100),
-/// nginx does not reject it either.
+/// A non negative decimal number; an empty string, a non digit and an overflow
+/// are rejected.  A leading zero is accepted (`0100` is 100).
 pub fn atoi(text: &[u8]) -> Option<i64> {
     if text.is_empty() {
         return None;
@@ -99,15 +97,15 @@ pub fn atoi(text: &[u8]) -> Option<i64> {
     Some(value)
 }
 
-/// `ngx_http_waf_rand_str()`: `len` random ASCII letters.
+/// `len` random ASCII letters.
 ///
-/// Every letter is drawn from the operating system generator, uniformly like
-/// the `randombytes_uniform(52)` of the C implementation.  `OsRng` is
-/// stateless, which is what the module needs: nginx forks its workers from the
-/// master, and the userspace generator of the `rand` crate would hand every
-/// worker the same sequence.  A failure of the system generator panics; every
-/// caller runs behind a `catch_unwind()` that answers the internal error of
-/// the module, so a predictable letter is never handed out.
+/// Every letter is drawn from the operating system generator, uniformly over
+/// the 52 letters.  `OsRng` is stateless, which is what the module needs: nginx
+/// forks its workers from the master, and the userspace generator of the
+/// `rand` crate would hand every worker the same sequence.  A failure of the
+/// system generator panics; every caller runs behind a `catch_unwind()` that
+/// answers the internal error of the module, so a predictable letter is never
+/// handed out.
 pub fn rand_letters(len: usize) -> Vec<u8> {
     let mut rng = OsRng.unwrap_err();
     (0..len)
@@ -123,8 +121,7 @@ pub fn rand_letters(len: usize) -> Vec<u8> {
         .collect()
 }
 
-/// Uniform value in `[0, upper)`, the `randombytes_uniform()` of the C
-/// implementation.
+/// Uniform value in `[0, upper)`.
 pub fn random_uniform(upper: u32) -> u32 {
     if upper < 2 {
         return 0;
@@ -132,7 +129,7 @@ pub fn random_uniform(upper: u32) -> u32 {
     OsRng.unwrap_err().random_range(0..upper)
 }
 
-/// Lower case hex of `bytes`, the `sodium_bin2hex()` of the C implementation.
+/// Lower case hex of `bytes`.
 pub fn hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for &byte in bytes {
@@ -144,13 +141,12 @@ pub fn hex(bytes: &[u8]) -> String {
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-/// Hex encoded SHA-256, matching `ngx_http_waf_sha256()`.
+/// Hex encoded SHA-256.
 pub fn sha256_hex(data: &[u8]) -> String {
     hex(&sha256(data))
 }
 
-/// SHA-256, the digest the hand written `ngx_http_waf_sha256()` of the C
-/// implementation produced.
+/// SHA-256 digest of `data`.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     Sha256::digest(data).into()
@@ -169,7 +165,7 @@ mod tests {
         assert_eq!(parse_time(b"s"), Some(1));
         assert_eq!(parse_time(b"1"), None);
         assert_eq!(parse_time(b"1b"), None);
-        // `ngx_atoi()` accepts a leading zero, so "01s" is one second.
+        // A leading zero is accepted, so "01s" is one second.
         assert_eq!(parse_time(b"01s"), Some(1));
         assert_eq!(parse_time(b"010m"), Some(600));
         assert_eq!(parse_time(b"-1r"), None);
@@ -194,13 +190,13 @@ mod tests {
         assert_eq!(parse_size(b"10g"), Some(10 * 1024 * 1024 * 1024));
         assert_eq!(parse_size(b"10"), None);
         assert_eq!(parse_size(b"10z"), None);
-        // `ngx_http_waf_parse_size()` used `ngx_atoi()` as well.
+        // A leading zero is just another decimal digit.
         assert_eq!(parse_size(b"010k"), Some(10240));
     }
 
     #[test]
     fn nginx_size_parsing() {
-        // `ngx_parse_size()`: bare bytes and both cases of the units.
+        // Bare bytes and both cases of the units.
         assert_eq!(parse_ngx_size(b"10485760"), Some(10485760));
         assert_eq!(parse_ngx_size(b"010485760"), Some(10485760));
         assert_eq!(parse_ngx_size(b"10k"), Some(10240));

@@ -1,11 +1,10 @@
 //! Rule matching through the regular expression engine of nginx.
 //!
-//! The C implementation compiled every rule of `waf_rule_path` with
-//! `ngx_regex_compile()` and matched it with `ngx_regex_exec()`, so a rule file
-//! may use the whole PCRE syntax: look around asserts, back references, atomic
-//! groups, `\K`, ...  The glue hands the core a table of two callbacks and the
-//! rules are compiled and run with the very engine the C module used, whatever
-//! nginx was linked with (PCRE1 or PCRE2).
+//! Every rule of `waf_rule_path` is compiled with `ngx_regex_compile()` and
+//! matched with `ngx_regex_exec()`, so a rule file may use the whole PCRE
+//! syntax: look around asserts, back references, atomic groups, `\K`, ...
+//! The glue hands the core a table of two callbacks and the rules run with the
+//! very engine nginx was linked with (PCRE1 or PCRE2).
 //!
 //! Without that table — the unit tests of this crate, or a build of
 //! `libngx_waf_core.a` outside nginx — the rules fall back to the `regex`
