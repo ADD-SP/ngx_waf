@@ -7,10 +7,10 @@ use crate::abi::{
     NgxWafHttpVersion, NgxWafMain, NgxWafMethod, NgxWafReq, NgxWafStep, NgxWafStepKind, NgxWafStr,
     NgxWafZoneHandles, NgxWafZoneRefs,
 };
-use crate::cc::{self, ShmOps};
 use crate::check;
 use crate::config::{self, LocConf, MainConf, Waf};
 use crate::pcre::RegexOps;
+use crate::shm::{self, ShmOps};
 use crate::util;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
@@ -99,11 +99,11 @@ pub(crate) struct RawReq {
     pub(crate) modsec: Option<RawModsecReq>,
     /// `r->connection->log`, the data of the ModSecurity log callback.
     pub(crate) log: *mut c_void,
-    pub(crate) cc_zone: *const cc::ZoneHandle,
+    pub(crate) cc_zone: *const shm::ZoneHandle,
     /// The shared memory zone of the captcha action table (`waf_action ... zone=`).
-    pub(crate) action_zone: *const cc::ZoneHandle,
+    pub(crate) action_zone: *const shm::ZoneHandle,
     /// The shared memory zone of the captcha fail counters (`waf_captcha ... zone=`).
-    pub(crate) captcha_zone: *const cc::ZoneHandle,
+    pub(crate) captcha_zone: *const shm::ZoneHandle,
 }
 
 impl RawReq {
@@ -141,9 +141,9 @@ impl RawReq {
             now: req.now,
             modsec,
             log: req.log,
-            cc_zone: zones.cc as *const cc::ZoneHandle,
-            action_zone: zones.action as *const cc::ZoneHandle,
-            captcha_zone: zones.captcha as *const cc::ZoneHandle,
+            cc_zone: zones.cc as *const shm::ZoneHandle,
+            action_zone: zones.action as *const shm::ZoneHandle,
+            captcha_zone: zones.captcha as *const shm::ZoneHandle,
         }
     }
 
@@ -839,7 +839,7 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_init(
     guard(std::ptr::null_mut(), || {
         // SAFETY: the C side passes the segment and the optional previous
         // handle exactly as `zone_init()` documents.
-        (unsafe { cc::zone_init(addr as usize, size, old as *mut cc::ZoneHandle, ops) })
+        (unsafe { shm::zone_init(addr as usize, size, old as *mut shm::ZoneHandle, ops) })
             as *mut c_void
     })
 }
@@ -850,7 +850,7 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_free(handle: *mut c_void) {
     guard((), || {
         // SAFETY: the handle comes from `ngx_waf_shm_zone_init()` and is
         // freed exactly once; a NULL handle is accepted.
-        unsafe { cc::zone_free(handle as *mut cc::ZoneHandle) };
+        unsafe { shm::zone_free(handle as *mut shm::ZoneHandle) };
     });
 }
 
@@ -863,8 +863,8 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_gc(handle: *mut c_void) {
         }
         // SAFETY: the handle is live until `ngx_waf_shm_zone_free()`, and the
         // core only ever reads it.
-        let handle = unsafe { &*(handle as *const cc::ZoneHandle) };
-        cc::gc(handle, util::now());
+        let handle = unsafe { &*(handle as *const shm::ZoneHandle) };
+        shm::gc(handle, util::now());
     });
 }
 
@@ -872,7 +872,7 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_gc(handle: *mut c_void) {
 /// worker.
 #[no_mangle]
 pub extern "C" fn ngx_waf_should_gc(worker_processes: u32) -> bool {
-    guard(false, || cc::should_gc(i64::from(worker_processes)))
+    guard(false, || shm::should_gc(i64::from(worker_processes)))
 }
 
 /// Garbage collect the per-worker inspection caches.

@@ -2,6 +2,7 @@
 //! order and resolves the resulting action chain into a response.
 
 use crate::abi::{Header, NgxWafHttpVersion, NgxWafMethod};
+use crate::action;
 use crate::cache::{CacheKind, CachedResult};
 use crate::cc;
 use crate::config::{
@@ -18,6 +19,7 @@ use crate::http::{FORBIDDEN, INTERNAL_SERVER_ERROR, OK, SERVICE_UNAVAILABLE, TOO
 use crate::http_response::{self, Response};
 use crate::modsec;
 use crate::rules::RuleKind;
+use crate::shm;
 use crate::util;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -47,11 +49,11 @@ pub struct Req<'a> {
     pub log: *mut std::os::raw::c_void,
     /// The handle of the CC zone, `None` when the configuration does not use
     /// one.
-    pub cc_zone: Option<&'a cc::ZoneHandle>,
+    pub cc_zone: Option<&'a shm::ZoneHandle>,
     /// The handle of the captcha action table (`waf_action ... zone=...`).
-    pub action_zone: Option<&'a cc::ZoneHandle>,
+    pub action_zone: Option<&'a shm::ZoneHandle>,
     /// The handle of the captcha fail counters (`waf_captcha ... zone=...`).
-    pub captcha_zone: Option<&'a cc::ZoneHandle>,
+    pub captcha_zone: Option<&'a shm::ZoneHandle>,
 }
 
 /// Everything libmodsecurity reads beyond the common request view.
@@ -283,7 +285,7 @@ impl State<'_, '_> {
             {
                 let expire = 60 * 45 + util::random_uniform(60 * 15) as i64;
                 let tag = action_zone.tag.clone();
-                if let Some(entry) = cc::action_entry(
+                if let Some(entry) = action::action_entry(
                     zone,
                     &tag,
                     self.req.ip,
@@ -294,7 +296,7 @@ impl State<'_, '_> {
                 ) {
                     if source != CaptchaSource::CcDeny {
                         let flags = u32::from(entry.created);
-                        cc::set_entry_flags(zone, &tag, self.req.ip, self.req.ipv6, flags);
+                        action::set_entry_flags(zone, &tag, self.req.ip, self.req.ipv6, flags);
                         error_page = flags == 1;
                     }
                 }
@@ -586,14 +588,14 @@ impl Machine {
 
     /// Let a test inject the shared memory handle of the fail counters.
     #[cfg(test)]
-    pub fn set_captcha_zone(&mut self, zone: *mut cc::ZoneHandle) {
-        self.req.captcha_zone = zone as *const cc::ZoneHandle;
+    pub fn set_captcha_zone(&mut self, zone: *mut shm::ZoneHandle) {
+        self.req.captcha_zone = zone as *const shm::ZoneHandle;
     }
 
     /// Let a test inject the shared memory handle of the captcha action table.
     #[cfg(test)]
-    pub fn set_action_zone(&mut self, zone: *mut cc::ZoneHandle) {
-        self.req.action_zone = zone as *const cc::ZoneHandle;
+    pub fn set_action_zone(&mut self, zone: *mut shm::ZoneHandle) {
+        self.req.action_zone = zone as *const shm::ZoneHandle;
     }
 
     /// The HTTP request of a parked step, `(url, body)`.
@@ -900,13 +902,13 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
             log: std::ptr::null_mut(),
             cc_zone: req
                 .cc_zone
-                .map_or(std::ptr::null(), |zone| zone as *const cc::ZoneHandle),
+                .map_or(std::ptr::null(), |zone| zone as *const shm::ZoneHandle),
             action_zone: req
                 .action_zone
-                .map_or(std::ptr::null(), |zone| zone as *const cc::ZoneHandle),
+                .map_or(std::ptr::null(), |zone| zone as *const shm::ZoneHandle),
             captcha_zone: req
                 .captcha_zone
-                .map_or(std::ptr::null(), |zone| zone as *const cc::ZoneHandle),
+                .map_or(std::ptr::null(), |zone| zone as *const shm::ZoneHandle),
         },
         req.cookies.to_vec(),
         true,
@@ -1134,7 +1136,7 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
         return CheckResult::NotMatched;
     };
     let tag = action.tag.clone();
-    let flags = cc::entry_flags(action_zone, &tag, state.req.ip, state.req.ipv6);
+    let flags = action::entry_flags(action_zone, &tag, state.req.ip, state.req.ipv6);
     if flags.is_none() {
         // This address is not in the middle of a captcha challenge.
         return CheckResult::NotMatched;
@@ -1204,7 +1206,7 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
                     (state.req.action_zone, &state.conf.action.captcha_zone)
                 {
                     let tag = action.tag.clone();
-                    cc::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
+                    action::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
                 }
                 *state.decision = Some(Decision::text(OK, Rc::new(b"good".to_vec())));
             } else {
@@ -2156,7 +2158,7 @@ mod tests {
 
         let directory = Box::leak(vec![0u8; 4096].into_boxed_slice());
         DIRECTORY.store(directory.as_mut_ptr() as usize, Ordering::SeqCst);
-        let ops = cc::ShmOps {
+        let ops = shm::ShmOps {
             lock: None,
             unlock: None,
             alloc_locked: Some(directory_alloc),
@@ -2164,7 +2166,7 @@ mod tests {
         };
         // SAFETY: the leaked directory segment and the callbacks above stay
         // alive for the test, and the handle is freed at its end.
-        let handle = unsafe { cc::zone_init(0x1000, 1024 * 1024, std::ptr::null_mut(), ops) };
+        let handle = unsafe { shm::zone_init(0x1000, 1024 * 1024, std::ptr::null_mut(), ops) };
         assert!(
             !handle.is_null(),
             "the tag directory allocation must succeed"
@@ -2189,7 +2191,7 @@ mod tests {
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { cc::zone_free(handle) };
+        unsafe { shm::zone_free(handle) };
     }
 
     #[test]
@@ -2914,7 +2916,7 @@ mod tests {
         let ip = [1u8, 2, 3, 4];
         // SAFETY: the zone of `captcha_counter_zone()` outlives this test.
         let zone_ref = unsafe { &*zone };
-        assert!(cc::action_entry(zone_ref, tag, &ip, false, 999, 600, 1).is_some());
+        assert!(action::action_entry(zone_ref, tag, &ip, false, 999, 600, 1).is_some());
 
         let body = b"g-recaptcha-response=token";
         let mut machine =
@@ -2946,10 +2948,10 @@ mod tests {
         assert!(!outcome.blocked);
         // The address left the action table, the next request is inspected
         // from the beginning instead of being challenged again.
-        assert!(cc::entry_flags(zone_ref, tag, &ip, false).is_none());
+        assert!(action::entry_flags(zone_ref, tag, &ip, false).is_none());
 
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { cc::zone_free(zone) };
+        unsafe { shm::zone_free(zone) };
     }
 
     /// A plain allocation the zone callbacks hand out, so the tests do not need
@@ -2994,9 +2996,9 @@ mod tests {
 
     /// A shared memory zone for the captcha fail counters.  The allocation is
     /// owned by the caller, it has to outlive the zone.
-    fn captcha_counter_zone() -> (*mut cc::ZoneHandle, Box<FakeZone>) {
+    fn captcha_counter_zone() -> (*mut shm::ZoneHandle, Box<FakeZone>) {
         let shm = FakeZone::new(1024 * 1024);
-        let ops = cc::ShmOps {
+        let ops = shm::ShmOps {
             lock: None,
             unlock: None,
             alloc_locked: Some(fake_zone_alloc_locked),
@@ -3004,7 +3006,7 @@ mod tests {
         };
         // SAFETY: `shm` is returned to the caller and stays alive while the
         // handle is used.
-        let zone = unsafe { cc::zone_init(0x2000, 1024 * 1024, std::ptr::null_mut(), ops) };
+        let zone = unsafe { shm::zone_init(0x2000, 1024 * 1024, std::ptr::null_mut(), ops) };
         assert!(!zone.is_null(), "the zone header must be allocated");
         (zone, shm)
     }
@@ -3022,7 +3024,7 @@ mod tests {
     }
 
     /// Drive one verify request through the provider answer.
-    fn captcha_verify(conf: &mut LocConf, zone: *mut cc::ZoneHandle, answer: &[u8]) -> Outcome {
+    fn captcha_verify(conf: &mut LocConf, zone: *mut shm::ZoneHandle, answer: &[u8]) -> Outcome {
         let body = b"g-recaptcha-response=token";
         let answer = provider_answer("200 OK", answer);
         let mut machine = captcha_machine(conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
@@ -3072,7 +3074,7 @@ mod tests {
         }
 
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { cc::zone_free(zone) };
+        unsafe { shm::zone_free(zone) };
     }
 
     /// A token the provider accepted must not count as a failure: with the
@@ -3098,7 +3100,7 @@ mod tests {
         assert_eq!(outcome.rule_details, b"bad");
 
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { cc::zone_free(zone) };
+        unsafe { shm::zone_free(zone) };
     }
 
     /// A configuration with `waf_under_attack on`.

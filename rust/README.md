@@ -29,7 +29,9 @@ exported, and the glue only reads the memory this crate owns.
 | `src/rules/load.rs` | rule-file reading/parsing, warnings and errors |
 | `src/pcre.rs` | rule matching through the PCRE engine of nginx |
 | `src/cache.rs` | per-worker inspection caches, an `lru` cache plus expiration |
-| `src/cc.rs` | shared memory CC counters |
+| `src/shm.rs` | the shared memory zone: the frozen layout, the lock guard and the tables |
+| `src/cc.rs` | the CC counters of `waf_cc_deny` (rate, cycle, duration) |
+| `src/action.rs` | the client entries of the captcha action table |
 | `src/config.rs` | directive parsing/validation, conf creation and merging |
 | `src/check.rs` | the detection chain and the action chain |
 | `src/modsec.rs` | the raw bindings and the thin wrapper around libmodsecurity |
@@ -67,15 +69,18 @@ this port cannot remove:
   entry points.  The C side owns the configurations, the request views and the
   check handle; the module turns them into references once and keeps every raw
   pointer operation in a documented block.
-* `src/cc.rs`: the `#[repr(C)]` layout of the shared memory zone and the
+* `src/shm.rs`: the `#[repr(C)]` layout of the shared memory zone and the
   callback table of nginx.  The layout is frozen (a change means bumping
-  `VERSION`), the slot array is reached through the one `Table::from_raw()`
-  view, and the safe operations take `&ZoneHandle`.  The zone lock is a guard
-  (`ZoneLock`): the allocator and every pointer into the segment are only
-  reachable through it, so an operation cannot allocate without the lock and
-  cannot leave the zone locked on an early return or a panic.  The glue
-  therefore only carries `lock`, `unlock` and an allocation that expects the
-  caller to hold the lock.
+  `VERSION`); the tables of the segment are reached through the view the zone
+  lock hands out, and the operations of the other modules run inside the
+  closure of `ZoneHandle::with_entry()`/`with_present_entry()`, so no slot can
+  be touched once the lock is gone.  The zone lock is a guard (`ZoneLock`): the
+  allocator and every pointer into the segment are only reachable through it,
+  so an operation cannot allocate without the lock and cannot leave the zone
+  locked on an early return or a panic.  The glue therefore only carries
+  `lock`, `unlock` and an allocation that expects the caller to hold the lock.
+  `src/cc.rs` and `src/action.rs` are safe code on top of it: they see one
+  address entry at a time, never the pointers of the segment.
 * `src/modsec.rs`: the hand written libmodsecurity C API bindings.  The
   `Instance`/`Transaction` wrappers own the pointers and release them in
   `Drop`.
