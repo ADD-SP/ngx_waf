@@ -117,8 +117,16 @@ jobs:
 
       - name: Download the nginx sources
         run: |
-          sudo pip install lastversion
-          lastversion download nginx:${{ matrix.nginx-version }}
+          # A `sudo pip install` fails on a runner whose python3 carries the
+          # Debian packages: pip tries to replace urllib3 and cannot uninstall
+          # a package of the distribution.  `lastversion` lives in a virtual
+          # environment of its own, its dependencies never meet the ones of
+          # the system.
+          sudo apt-get install --yes python3-venv
+          python3 -m venv /tmp/lastversion
+          /tmp/lastversion/bin/pip install --quiet lastversion
+          /tmp/lastversion/bin/lastversion download nginx:${{ matrix.nginx-version }}
+
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
 
