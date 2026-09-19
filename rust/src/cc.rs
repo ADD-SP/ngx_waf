@@ -294,34 +294,13 @@ impl ZoneLock<'_> {
         }
     }
 
-    /// Look up the counter table of `tag`, creating it on first use.
-    fn table(&self, tag: &[u8]) -> Option<NonNull<TableHeader>> {
-        if tag.len() > TAG_LEN || tag.is_empty() {
-            return None;
-        }
-        if let Some(table) = self.find_entry(tag) {
-            // SAFETY: a directory entry only points at a table of this zone.
-            let header = unsafe { &*table.as_ptr() };
-            if header.magic == TABLE_MAGIC && header.version == VERSION {
-                return Some(table);
-            }
-        }
-        self.create_entry(tag)
-    }
-}
-
-/// The header and the slot array of one counter table, borrowed together while
-/// the zone lock is held.
-struct Table<'a> {
-    header: &'a mut TableHeader,
-    slots: &'a mut [Slot],
-}
-
-impl<'a> Table<'a> {
+    /// The view of one table the directory of this zone points at.
+    ///
     /// # Safety
-    /// `table` must point at a live table of a zone whose lock is held, and the
-    /// returned borrow must not outlive the lock.
-    unsafe fn from_raw(table: NonNull<TableHeader>) -> Table<'a> {
+    /// `table` must be a live table of this zone.  Only a caller that holds
+    /// the lock can know that, and the returned view borrows the guard, so it
+    /// cannot be kept after the lock is released.
+    unsafe fn view(&self, table: NonNull<TableHeader>) -> Table<'_> {
         // SAFETY: the caller guarantees the table is live and locked.
         let header = unsafe { &mut *table.as_ptr() };
         // SAFETY: `create_entry()` allocated `capacity` slots right behind the
@@ -330,8 +309,45 @@ impl<'a> Table<'a> {
         let slots = unsafe {
             std::slice::from_raw_parts_mut(header.slots.as_mut_ptr(), header.capacity as usize)
         };
+
         Table { header, slots }
     }
+
+    /// Look up the counter table of `tag`, creating it on first use.  The view
+    /// borrows the guard: a table can only be reached while the lock is held.
+    fn table<'a>(&'a self, tag: &[u8]) -> Option<Table<'a>> {
+        if tag.len() > TAG_LEN || tag.is_empty() {
+            return None;
+        }
+
+        let table = match self.find_entry(tag) {
+            // SAFETY: a directory entry only points at a table of this zone,
+            // and the guard holds its lock.
+            Some(table) if unsafe { is_live_table(table) } => table,
+            _ => self.create_entry(tag)?,
+        };
+
+        // SAFETY: `table` is a live table of the zone the guard locks.
+        Some(unsafe { self.view(table) })
+    }
+}
+
+/// Whether the directory entry points at a table of this layout.
+///
+/// # Safety
+/// `table` must point at a table of a zone whose lock is held.
+unsafe fn is_live_table(table: NonNull<TableHeader>) -> bool {
+    // SAFETY: the caller guarantees the pointer is a table of a locked zone.
+    let header = unsafe { &*table.as_ptr() };
+
+    header.magic == TABLE_MAGIC && header.version == VERSION
+}
+
+/// The header and the slot array of one counter table, borrowed together while
+/// the zone lock is held.
+struct Table<'a> {
+    header: &'a mut TableHeader,
+    slots: &'a mut [Slot],
 }
 
 /// A directory entry for `tag` pointing at `table`.
@@ -469,8 +485,6 @@ fn increment_locked(
     now: i64,
 ) -> Option<CcResult> {
     let (table, index, fresh) = slot_for(zone, tag, addr, ipv6, now)?;
-    // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
-    let table = unsafe { Table::from_raw(table) };
     let slot = &mut table.slots[index];
 
     if fresh {
@@ -507,37 +521,34 @@ fn increment_locked(
 
 /// Find the slot of `addr`, creating (or evicting) one when asked for.
 /// Returns the index and whether the slot has to be treated as new.
-fn slot_for(
-    zone: &ZoneLock<'_>,
+fn slot_for<'a>(
+    zone: &'a ZoneLock<'_>,
     tag: &[u8],
     addr: &[u8],
     ipv6: bool,
     now: i64,
-) -> Option<(NonNull<TableHeader>, usize, bool)> {
+) -> Option<(Table<'a>, usize, bool)> {
     let table = zone.table(tag)?;
-    // SAFETY: `zone.table()` returned a table of the zone whose lock is held.
-    let table_ref = unsafe { Table::from_raw(table) };
     let kind = used_state(ipv6);
 
-    let mut probe = slot_index(addr) % table_ref.slots.len();
+    let mut probe = slot_index(addr) % table.slots.len();
     let mut first_free: Option<usize> = None;
     let mut iterations = 0;
     let mut evicted = false;
     let index;
     loop {
-        if iterations > table_ref.slots.len() {
+        if iterations > table.slots.len() {
             // The table is full of live entries: drop the rotating victim and
             // keep counting for the new client instead of losing the
             // protection for the rest of the cycle.
-            let victim = (table_ref.header.cursor as usize) % table_ref.slots.len();
-            table_ref.header.cursor =
-                (table_ref.header.cursor + 1) % (table_ref.slots.len() as u32);
+            let victim = (table.header.cursor as usize) % table.slots.len();
+            table.header.cursor = (table.header.cursor + 1) % (table.slots.len() as u32);
             index = victim;
             evicted = true;
             break;
         }
         iterations += 1;
-        let slot = &mut table_ref.slots[probe];
+        let slot = &mut table.slots[probe];
         if slot.state() == SlotState::Empty {
             index = first_free.unwrap_or(probe);
             break;
@@ -550,13 +561,13 @@ fn slot_for(
             index = probe;
             break;
         }
-        probe = (probe + 1) % table_ref.slots.len();
+        probe = (probe + 1) % table.slots.len();
     }
 
     // An entry is expired only when `expire < now`: an entry whose expire is
     // the current second is still counted.
     let fresh = {
-        let slot = &table_ref.slots[index];
+        let slot = &table.slots[index];
         evicted
             || matches!(slot.state(), SlotState::Empty | SlotState::Deleted)
             || slot.expire < now
@@ -586,8 +597,6 @@ pub fn entry_flags(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> 
 
 fn entry_flags_locked(zone: &ZoneLock<'_>, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<u32> {
     let table = zone.table(tag)?;
-    // SAFETY: `zone.table()` returned a table of the zone whose lock is held.
-    let table = unsafe { Table::from_raw(table) };
     let kind = used_state(ipv6);
 
     let mut probe = slot_index(addr) % table.slots.len();
@@ -634,8 +643,6 @@ fn action_entry_locked(
     initial_flags: u32,
 ) -> Option<ActionEntry> {
     let (table, index, fresh) = slot_for(zone, tag, addr, ipv6, now)?;
-    // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
-    let table = unsafe { Table::from_raw(table) };
     let slot = &mut table.slots[index];
 
     if fresh {
@@ -657,8 +664,6 @@ pub fn set_entry_flags(
 ) -> Option<()> {
     let zone = handle.lock();
     let table = zone.table(tag)?;
-    // SAFETY: `zone.table()` returned a table of the locked zone.
-    let table = unsafe { Table::from_raw(table) };
     let kind = used_state(ipv6);
     let mut probe = slot_index(addr) % table.slots.len();
     let mut found = None;
@@ -681,8 +686,6 @@ pub fn set_entry_flags(
 pub fn remove_entry(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<()> {
     let zone = handle.lock();
     let table = zone.table(tag)?;
-    // SAFETY: `zone.table()` returned a table of the locked zone.
-    let table = unsafe { Table::from_raw(table) };
     let kind = used_state(ipv6);
     let mut probe = slot_index(addr) % table.slots.len();
     let mut found = None;
@@ -716,8 +719,6 @@ pub fn reset_counter(
 ) -> Option<()> {
     let zone = handle.lock();
     let (table, index, fresh) = slot_for(&zone, tag, addr, ipv6, now)?;
-    // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
-    let table = unsafe { Table::from_raw(table) };
     let expire = if fresh {
         now + cycle
     } else {
@@ -745,7 +746,7 @@ fn slot_index(addr: &[u8]) -> usize {
 
 /// Sweep the expired entries of every table of one zone.
 pub fn gc(handle: &ZoneHandle, now: i64) {
-    let _zone = handle.lock();
+    let zone = handle.lock();
     // SAFETY: the header points at the live zone header of the locked zone.
     let header = unsafe { &*handle.header };
     let mut block = header.blocks;
@@ -759,7 +760,7 @@ pub fn gc(handle: &ZoneHandle, now: i64) {
             };
             // SAFETY: a directory entry only points at a table of this zone,
             // whose lock is held.
-            let table = unsafe { Table::from_raw(table) };
+            let table = unsafe { zone.view(table) };
             if table.header.magic != TABLE_MAGIC || table.header.version != VERSION {
                 continue;
             }
