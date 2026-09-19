@@ -79,8 +79,23 @@ fi
 # counters and the action table of the shared memory matter.  `@PREFIX@` is
 # substituted so that the configuration can point at the files of this run.
 workers=${E2E_WORKERS:-1}
+
+# A provider addressed by name can resolve to both families (`localhost` is
+# named twice on a runner whose hosts file carries the IPv6 line), and the
+# module takes the first address: the TLS provider stub listens on the IPv6
+# loopback as well, or the name based checks would reach a family that nothing
+# serves.  A machine without IPv6 keeps the IPv4 listener alone.  The content
+# of the file is read: procfs reports a size of zero for it, `-s` would always
+# be false.
+if [ -r /proc/net/if_inet6 ] && [ -n "$(cat /proc/net/if_inet6)" ]; then
+    provider_ipv6="listen [::1]:18443 ssl;"
+else
+    provider_ipv6=""
+fi
+
 sed -e "s/^worker_processes .*/worker_processes  $workers;/" \
     -e "s|@PREFIX@|$prefix|g" \
+    -e "s|@PROVIDER_IPV6@|$provider_ipv6|" \
     "$prefix/conf/nginx.conf" > "$prefix/conf/nginx.conf.tmp"
 mv "$prefix/conf/nginx.conf.tmp" "$prefix/conf/nginx.conf"
 
