@@ -6,5 +6,20 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$root"
 
 cbindgen="${CBINDGEN:-cbindgen}"
+header="include/ngx_http_waf_ffi.h"
+
+# cbindgen writes the file it is given as it goes, so a failure in the middle
+# leaves a half written header behind.  It writes a temporary file of the same
+# directory instead, which is moved over the header once it is complete; the
+# trap removes it when cbindgen fails, and the mode of the header it replaces
+# is kept.
+tmp=$(mktemp "$(dirname "$header")/.$(basename "$header").XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+
 "$cbindgen" --config rust/cbindgen.toml --only-target-dependencies \
-    --output include/ngx_http_waf_ffi.h rust
+    --output "$tmp" rust
+
+chmod --reference="$header" "$tmp"
+mv "$tmp" "$header"
+
+trap - EXIT
