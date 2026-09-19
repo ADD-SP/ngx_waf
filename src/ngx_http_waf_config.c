@@ -333,6 +333,39 @@ static ptrdiff_t ngx_http_waf_regex_exec(void* regex, const uint8_t* value, size
 }
 
 
+/*
+ * Call one directive of the core.  With PCRE1 the allocator globals of libpcre
+ * point at the pool of the configuration for the call: libmodsecurity parses
+ * the rules while a `waf_modsecurity` directive is handled and allocates
+ * through them.  Taking the hooks and giving them back inside this one
+ * function is what keeps the pair together: a handler that returns early, or
+ * throws, cannot leave libpcre with the allocator of a pool the cycle
+ * destroys.  PCRE2 has no such globals, the helper is the plain call then.
+ */
+static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
+    ngx_waf_main_t* main, ngx_waf_conf_t* conf, ngx_waf_str_t name,
+    const ngx_waf_str_t* args, size_t nargs, ngx_waf_regex_ops_t* regex_ops)
+{
+#if !(NGX_PCRE2)
+    ngx_pool_t* old_pcre_pool = NULL;
+
+    if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
+        old_pcre_pool = ngx_http_waf_modsecurity_pcre_acquire(cf->pool);
+    }
+
+    char* error = ngx_waf_directive(main, conf, name, args, nargs, regex_ops);
+
+    if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
+        ngx_http_waf_modsecurity_pcre_release(old_pcre_pool);
+    }
+
+    return error;
+#else
+    return ngx_waf_directive(main, conf, name, args, nargs, regex_ops);
+#endif
+}
+
+
 char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_main_conf_t* mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
     ngx_http_waf_loc_conf_t* loc_conf = conf;
@@ -356,38 +389,12 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
         args = (const ngx_waf_str_t*) &expanded;
     }
 
-#if !(NGX_PCRE2)
-    ngx_pool_t* old_pcre_pool = NULL;
-    unsigned pcre_hooked = 0;
-
-    /*
-     * libmodsecurity parses the rules while this directive is handled and it
-     * allocates through the globals of libpcre: with PCRE1 let those come from
-     * the configuration pool.
-     */
-    if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
-        old_pcre_pool = ngx_http_waf_modsecurity_pcre_acquire(cf->pool);
-        pcre_hooked = 1;
-    }
-#endif
-
     regex_ops.compile = ngx_http_waf_regex_compile;
     regex_ops.exec = ngx_http_waf_regex_exec;
     regex_ops.ctx = cf->pool;
 
-    char* error = ngx_waf_directive(
-        mcf->core,
-        loc_conf->core,
-        *(const ngx_waf_str_t*)(elts),
-        args,
-        nargs,
-        &regex_ops);
-
-#if !(NGX_PCRE2)
-    if (pcre_hooked) {
-        ngx_http_waf_modsecurity_pcre_release(old_pcre_pool);
-    }
-#endif
+    char* error = ngx_http_waf_directive_call(cf, cmd, mcf->core, loc_conf->core,
+        *(const ngx_waf_str_t*)(elts), args, nargs, &regex_ops);
 
     if (error != NULL) {
         return ngx_http_waf_report(cf, error);
