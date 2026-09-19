@@ -19,7 +19,7 @@ use std::os::raw::c_void;
 /// * `exec(handle, value, len)` returns 1 when the value matches, 0 when it
 ///   does not, and -1 when the engine failed.
 ///
-/// Both callbacks are provided by `src/ngx_http_waf_module.c`, and `ctx` is the
+/// Both callbacks are provided by `src/ngx_http_waf_config.c`, and `ctx` is the
 /// configuration pool the compiled patterns live in.
 #[repr(C)]
 #[derive(Clone, Copy)]

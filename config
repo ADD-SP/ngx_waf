@@ -2,8 +2,15 @@ ngx_addon_name=ngx_http_waf_module
 
 ngx_http_waf_rust_dir="$ngx_addon_dir/rust"
 ngx_http_waf_include="$ngx_addon_dir/include"
-ngx_http_waf_srcs="$ngx_addon_dir/src/ngx_http_waf_module.c"
-ngx_http_waf_deps="$ngx_addon_dir/include/ngx_http_waf_ffi.h"
+ngx_http_waf_srcs="$ngx_addon_dir/src/ngx_http_waf_module.c \
+    $ngx_addon_dir/src/ngx_http_waf_config.c \
+    $ngx_addon_dir/src/ngx_http_waf_shm.c \
+    $ngx_addon_dir/src/ngx_http_waf_request.c \
+    $ngx_addon_dir/src/ngx_http_waf_variables.c \
+    $ngx_addon_dir/src/ngx_http_waf_fetch.c \
+    $ngx_addon_dir/src/ngx_http_waf_fetch_parse.c"
+ngx_http_waf_deps="$ngx_addon_dir/include/ngx_http_waf_ffi.h \
+    $ngx_addon_dir/src/ngx_http_waf_module.h"
 
 #
 # The business logic lives in the Rust crate, the C file above is only glue.

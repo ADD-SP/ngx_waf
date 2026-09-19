@@ -3,8 +3,7 @@
 //! Everything that crosses the boundary between the nginx glue and this crate
 //! is declared here.  `cbindgen` reads this module to generate
 //! `include/ngx_http_waf_ffi.h`; no constant or type of the implementation is
-//! exported, and `src/ngx_http_waf_module.c` only ever reads the memory this
-//! crate owns.
+//! exported, and the C glue only ever reads the memory this crate owns.
 
 // The glue constructs the enums from the values of nginx and the events; the
 // core only reads them, so most variants have no Rust-side constructor.

@@ -142,7 +142,7 @@ typedef struct ngx_waf_zone_refs_t {
  * * `exec(handle, value, len)` returns 1 when the value matches, 0 when it
  *   does not, and -1 when the engine failed.
  *
- * Both callbacks are provided by `src/ngx_http_waf_module.c`, and `ctx` is the
+ * Both callbacks are provided by `src/ngx_http_waf_config.c`, and `ctx` is the
  * configuration pool the compiled patterns live in.
  */
 typedef struct ngx_waf_regex_ops_t {
