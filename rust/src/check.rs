@@ -2282,11 +2282,11 @@ mod tests {
     /// The raw request buffers have to outlive the machine, exactly like the
     /// connection address and the request pool do in nginx.
     fn leaked(bytes: &[u8]) -> (*const u8, usize) {
-        let boxed = bytes.to_vec().into_boxed_slice();
-        let pointer = boxed.as_ptr();
-        let len = boxed.len();
-        std::mem::forget(boxed);
-        (pointer, len)
+        // The buffer is never released: the machine borrows it, exactly like
+        // it borrows the buffers of the request of nginx.
+        let leaked: &'static mut [u8] = Box::leak(bytes.to_vec().into_boxed_slice());
+
+        (leaked.as_ptr(), leaked.len())
     }
 
     /// Build a machine for a request that only carries a user agent.
