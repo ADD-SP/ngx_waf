@@ -401,35 +401,69 @@ unsafe extern "C" fn modsecurity_log(log: *mut c_void, message: *const c_char) {
     unsafe { ngx_http_waf_modsecurity_log(log, message) };
 }
 
+/// A string the library handed over and expects `free()` on.
+///
+/// The library allocates these with `strdup()`, so the caller owns them: the
+/// guard is what says so, and it releases the string on every path out of the
+/// function that took it.
+struct OwnedCStr(*mut c_char);
+
+impl OwnedCStr {
+    /// Take the ownership of `pointer`, `None` when the library returned
+    /// nothing.
+    ///
+    /// # Safety
+    /// `pointer` must be NULL or a NUL terminated string the library
+    /// allocated and handed over to the caller.
+    unsafe fn new(pointer: *mut c_char) -> Option<OwnedCStr> {
+        if pointer.is_null() {
+            None
+        } else {
+            Some(OwnedCStr(pointer))
+        }
+    }
+
+    /// The text of the string, without the terminating NUL.
+    fn to_bytes(&self) -> &[u8] {
+        // SAFETY: the guard only exists for a live string of the library.
+        unsafe { CStr::from_ptr(self.0) }.to_bytes()
+    }
+
+    /// The text of the string as an owned `String`, invalid bytes included.
+    fn to_text(&self) -> String {
+        // SAFETY: see `to_bytes()`.
+        unsafe { CStr::from_ptr(self.0) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+impl Drop for OwnedCStr {
+    fn drop(&mut self) {
+        // SAFETY: the pointer came from the library, which allocates these
+        // strings with `strdup()` and expects the caller to `free()` them.
+        unsafe { free(self.0 as *mut c_void) };
+    }
+}
+
 /// Take the message of a failed `msc_rules_add_*()` call: it is allocated with
 /// `strdup()` by the library, the caller frees it.
 fn take_error(error: *const c_char) -> String {
-    if error.is_null() {
-        return "(no error message)".to_string();
-    }
     // SAFETY: the library promises a NUL terminated message it allocated with
-    // `strdup()`, which this function takes ownership of below.
-    let message = unsafe { CStr::from_ptr(error) }
-        .to_string_lossy()
-        .into_owned();
-    // SAFETY: the message came from the library with `strdup()` and is not
-    // used after the copy above.
-    unsafe { free(error as *mut c_void) };
-    message
+    // `strdup()`, which the guard takes over.
+    match unsafe { OwnedCStr::new(error as *mut c_char) } {
+        Some(message) => message.to_text(),
+        None => "(no error message)".to_string(),
+    }
 }
 
 /// Copy the string of an intervention, then release it (the caller owns it).
 fn copy_and_free(pointer: *mut c_char) -> Option<Vec<u8>> {
-    if pointer.is_null() {
-        return None;
-    }
     // SAFETY: the library promises a NUL terminated string it allocated and
     // handed over to the caller, which owns it now.
-    let text = unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec();
-    // SAFETY: the string came from the library and is not used after the copy
-    // above.
-    unsafe { free(pointer as *mut c_void) };
-    Some(text)
+    let text = unsafe { OwnedCStr::new(pointer) }?;
+
+    Some(text.to_bytes().to_vec())
 }
 
 /// Serialise the tests that use libmodsecurity.
