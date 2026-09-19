@@ -1,4 +1,4 @@
-# Configuration of the header generator (`make header`).
+# Configuration of the header generator (`mise run header`).
 #
 # cbindgen is pinned to 0.29.4 by the Makefile; CI regenerates the header and
 # fails when `include/ngx_http_waf_ffi.h` is out of date.

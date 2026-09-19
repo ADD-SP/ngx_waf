@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Build the Rust core"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+
+cd "$root/rust"
+
+# NGX_WAF_CARGO_FLAGS is a list of extra cargo flags, splitting is intended.
+# shellcheck disable=SC2086
+"$cargo" build --profile release ${NGX_WAF_CARGO_FLAGS:-}

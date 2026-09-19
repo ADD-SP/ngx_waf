@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate include/ngx_http_waf_ffi.h with cbindgen"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cd "$root"
+
+cbindgen="${CBINDGEN:-cbindgen}"
+"$cbindgen" --config rust/cbindgen.toml --only-target-dependencies \
+    --output include/ngx_http_waf_ffi.h rust

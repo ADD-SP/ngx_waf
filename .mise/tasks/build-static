@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#MISE description="Build nginx with the static module"
+#MISE depends=["rust-core", "nginx-src"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_PREFIX:=$root/test/nginx-install}"
+: "${JOBS:=$(nproc 2> /dev/null || echo 2)}"
+
+dir="$root/test/nginx-$NGINX_VERSION"
+stamp="$dir/.ngx-waf-module-kind"
+bin="$dir/objs/nginx"
+lib="$root/rust/target/release/libngx_waf_core.a"
+
+# `--add-module` and `--add-dynamic-module` replace the Makefile of the tree,
+# so a tree configured for the other kind has to be reconfigured.
+if [ "$(cat "$stamp" 2> /dev/null || true)" != static ] || [ ! -f "$bin" ]; then
+    echo " + configuring nginx (static module)"
+    (cd "$dir" && ./auto/configure \
+        --prefix="$NGINX_PREFIX" \
+        --with-http_ssl_module \
+        --with-http_realip_module \
+        --add-module="$root" > /dev/null)
+    echo static > "$stamp"
+fi
+
+if [ "$bin" -ot "$lib" ]; then
+    echo " + the Rust core changed, relinking nginx"
+    rm -f "$bin"
+fi
+
+echo " + building nginx"
+make -C "$dir" -j"$JOBS"

@@ -84,10 +84,12 @@ and `unsafe impl` needs a `// SAFETY:` argument.
 
 ## Building
 
-The nginx `config` script drives cargo; `make build` at the repository root is
-the supported entry point.  `rust-toolchain.toml` in the repository root pins
-the stable toolchain (with rustfmt and clippy) for every cargo invocation of the
-repository.  The crate builds offline as long as the cargo registry cache
+The nginx `config` script drives cargo; `mise run build` at the repository root
+is the supported entry point (the tasks live in `.mise/tasks/`, the tools and
+the system packages in `mise.toml`).  The Rust toolchain itself is not managed
+by mise: `rust-toolchain.toml` in the repository root pins the stable toolchain
+(with rustfmt and clippy) for every cargo invocation of the repository.  The
+crate builds offline as long as the cargo registry cache
 already contains `regex`, `serde_json`, `bitflags`, `sha2`, `lru`, `hmac`,
 `rand`, `subtle` and `cidr`.  nginx
 links the crate against libmodsecurity, whose C API the `waf_modsecurity`
@@ -299,9 +301,9 @@ stderr is not ported.
 ## Verifying
 
 ```sh
-make build              # nginx with the static module
-make test-rust          # the unit tests
-make test-e2e           # the end to end checks, one worker and four
+mise run build              # nginx with the static module
+mise run test-rust          # the unit tests
+mise run test-e2e           # the end to end checks, one worker and four
 ```
 
 `test/e2e/run.sh` starts a real nginx and checks the black/white lists, the
@@ -314,7 +316,6 @@ upstream `Test::Nginx` templates remain the
 acceptance baseline, see `test/test-nginx/run.sh`.
 
 ```sh
-cd test/test-nginx
-MODULE_TEST_PATH=/tmp/waf-test-path sh ./run.sh           # every template
-MODULE_TEST_PATH=/tmp/waf-test-path sh ./run.sh t/modsecurity.t
+MODULE_TEST_PATH=/tmp/waf-test-path mise run test-nginx               # every template
+MODULE_TEST_PATH=/tmp/waf-test-path mise run test-nginx t/modsecurity.t
 ```

@@ -43,30 +43,35 @@ jobs:
             rust/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
 
+      # The action installs mise and the tools of mise.toml (cbindgen); the
+      # cache above lets the cargo backend reuse the crate sources.
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
+
       # The crate is linked against libmodsecurity, `cargo test` therefore needs
-      # the library even when no inspection runs.
-      - name: Install libmodsecurity
+      # the library even when no inspection runs; `mise bootstrap` installs it
+      # with the rest of `[bootstrap.packages]`.
+      - name: Install the system packages
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libmodsecurity-dev
+          mise bootstrap -y
 
       - name: Format
-        run: cargo fmt --manifest-path rust/Cargo.toml --check
+        run: mise run fmt-check
 
       - name: Lint
-        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+        run: mise run clippy
 
       - name: Test
-        run: cargo test --manifest-path rust/Cargo.toml
-
-      - name: Install cbindgen
-        run: cargo install cbindgen --version 0.29.4 --locked
+        run: mise run test-rust
 
       # The header is generated from rust/src/ffi.rs, a stale one would be a
       # trap for everyone building the module.
       - name: Check the FFI header is up to date
         run: |
-          make header
+          mise run header
           git diff --exit-code -- include/ngx_http_waf_ffi.h
 
 
@@ -86,6 +91,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
+
       - name: Install pre-requirements
         run: |
           sudo apt-get --yes update
@@ -95,15 +105,8 @@ jobs:
             nginx-light \
             nginx-extras \
             libgd3
-          sudo apt-get install --yes \
-            build-essential \
-            zlib1g-dev \
-            libpcre2-dev \
-            libssl-dev \
-            libmodsecurity-dev \
-            libperl-dev \
-            cpanminus
-          sudo cpanm --notest Test::Nginx
+          mise bootstrap -y
+          mise run test-nginx-deps
 
       - name: Download the nginx sources
         run: |
@@ -148,4 +151,4 @@ jobs:
           # module, like the integration tests above.
           cd "${{ github.workspace }}"
           MODULE_PATH="${MODULE_PATH:-}" \
-            NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" make test-e2e
+            NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" mise run test-e2e

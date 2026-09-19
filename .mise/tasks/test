@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Run the Rust unit tests and the nginx integration tests"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cd "$root"
+
+# Sequentially, like the Makefile did: the captcha templates of the
+# integration suite reach the real provider and a parallel cargo test run is
+# enough load to push them past the five second timeout of the module.
+mise run test-rust
+mise run test-nginx

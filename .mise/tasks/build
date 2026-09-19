@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Build nginx with the static module"
+#MISE depends=["build-static"]
+set -euo pipefail
+
+exit 0

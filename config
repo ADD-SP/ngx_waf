@@ -7,8 +7,8 @@ ngx_http_waf_deps="$ngx_addon_dir/include/ngx_http_waf_ffi.h"
 
 #
 # The business logic lives in the Rust crate, the C file above is only glue.
-# Build the static library here, at configure time, so that `make` and the
-# dynamic module link step can just pick it up.
+# Build the static library here, at configure time, so that nginx's `make` and
+# the dynamic module link step can just pick it up.
 #
 
 if [ -z "$ngx_http_waf_cargo" ]; then

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#MISE description="Build the dynamic module"
+#MISE depends=["rust-core", "nginx-src"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_PREFIX:=$root/test/nginx-install}"
+: "${JOBS:=$(nproc 2> /dev/null || echo 2)}"
+
+dir="$root/test/nginx-$NGINX_VERSION"
+stamp="$dir/.ngx-waf-module-kind"
+bin="$dir/objs/nginx"
+module="$dir/objs/ngx_http_waf_module.so"
+lib="$root/rust/target/release/libngx_waf_core.a"
+
+if [ "$(cat "$stamp" 2> /dev/null || true)" != dynamic ]; then
+    echo " + configuring nginx (dynamic module)"
+    (cd "$dir" && ./auto/configure \
+        --prefix="$NGINX_PREFIX" \
+        --with-http_ssl_module \
+        --with-http_realip_module \
+        --add-dynamic-module="$root" > /dev/null)
+    echo dynamic > "$stamp"
+    rm -f "$bin"
+fi
+
+if [ "$module" -ot "$lib" ]; then
+    echo " + the Rust core changed, relinking the module"
+    rm -f "$module"
+fi
+
+echo " + building nginx and the dynamic module"
+make -C "$dir" -j"$JOBS"

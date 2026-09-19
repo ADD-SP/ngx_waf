@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Check cargo, rustc and cbindgen"
+set -euo pipefail
+
+status=0
+
+if ! command -v rustc > /dev/null 2>&1 || ! command -v cargo > /dev/null 2>&1; then
+    echo "ngx_waf: rustc/cargo not found on PATH" >&2
+    echo "         install rustup from https://rustup.rs; rust-toolchain.toml pins the toolchain" >&2
+    status=1
+fi
+
+if ! command -v cbindgen > /dev/null 2>&1; then
+    echo "ngx_waf: cbindgen not found on PATH" >&2
+    echo "         run 'mise install', or 'mise bootstrap -y' for the system packages too" >&2
+    status=1
+fi
+
+exit "$status"

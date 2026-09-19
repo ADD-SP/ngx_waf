@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Install Test::Nginx when it is missing"
+set -euo pipefail
+
+if perl -MTest::Nginx -e1 > /dev/null 2>&1; then
+    echo " + Test::Nginx is installed"
+    exit 0
+fi
+
+# A system perl usually needs root for the install step; retry with sudo, which
+# the CI runner and a developer with a password can both do.
+if ! cpanm --notest Test::Nginx; then
+    echo " + the install step needs more privileges, retrying with sudo"
+    sudo cpanm --notest Test::Nginx
+fi

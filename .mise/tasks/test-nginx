@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Run the nginx integration suite"
+#MISE depends=["test-nginx-deps"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+
+cd "$root/test/test-nginx"
+./run.sh "$@"

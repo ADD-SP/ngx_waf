@@ -1,0 +1,18 @@
+# Tooling and system packages of the repository.
+#
+# The Rust toolchain is not declared here: rustup and `rust-toolchain.toml`
+# pin rustc and cargo, and `mise run doctor` checks that they are on PATH.
+# The tasks live in `.mise/tasks/`, `mise run <task>` is the only entry point.
+
+[tools]
+"cargo:cbindgen" = "0.29.4"
+
+# Debian/Ubuntu only; see README.md for the packages of other distributions.
+[bootstrap.packages]
+"apt:build-essential" = "latest"
+"apt:zlib1g-dev" = "latest"
+"apt:libpcre2-dev" = "latest"
+"apt:libssl-dev" = "latest"
+"apt:libmodsecurity-dev" = "latest"
+"apt:libperl-dev" = "latest"
+"apt:cpanminus" = "latest"
