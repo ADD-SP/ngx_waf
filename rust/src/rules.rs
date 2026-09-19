@@ -128,4 +128,21 @@ impl RuleSet {
             _ => None,
         }
     }
+
+    /// Freeze the IP lists into their binary-search match tables; see
+    /// [`IpList::freeze`].
+    fn freeze(&mut self) {
+        if let Some(list) = &mut self.ipv4_black {
+            list.freeze();
+        }
+        if let Some(list) = &mut self.ipv6_black {
+            list.freeze();
+        }
+        if let Some(list) = &mut self.ipv4_white {
+            list.freeze();
+        }
+        if let Some(list) = &mut self.ipv6_white {
+            list.freeze();
+        }
+    }
 }

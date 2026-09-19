@@ -1,11 +1,12 @@
-//! IP text parsing and the prefix-bucket IP lists.
+//! IP text parsing and the frozen-segment IP lists.
 //!
-//! `IpCidr` is the two-operation view of the `cidr` crate an `IpList` needs;
+//! `IpCidr` is the three-operation view of the `cidr` crate an `IpList` needs;
 //! `parse_ipv4()`/`parse_ipv6()` are the rule-file parsers, which mask the host
 //! bits with the same helper.
 
 use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
-use std::collections::HashMap;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// What an IP list needs on top of [`cidr::Cidr`]: the number of bits of an
@@ -16,6 +17,10 @@ pub trait IpCidr: Cidr {
 
     /// The network address `addr` belongs to at `depth`.
     fn masked(addr: Self::Address, depth: u8) -> Self::Address;
+
+    /// The address after `addr`, `None` for the address of all ones.  The
+    /// frozen list uses it for the exclusive end of the block boundaries.
+    fn successor(addr: Self::Address) -> Option<Self::Address>;
 }
 
 impl IpCidr for Ipv4Cidr {
@@ -28,6 +33,10 @@ impl IpCidr for Ipv4Cidr {
             Ipv4Addr::from(u32::from(addr) & (u32::MAX << (32 - depth)))
         }
     }
+
+    fn successor(addr: Ipv4Addr) -> Option<Ipv4Addr> {
+        u32::from(addr).checked_add(1).map(Ipv4Addr::from)
+    }
 }
 
 impl IpCidr for Ipv6Cidr {
@@ -39,6 +48,10 @@ impl IpCidr for Ipv6Cidr {
         } else {
             Ipv6Addr::from(u128::from(addr) & (u128::MAX << (128 - depth)))
         }
+    }
+
+    fn successor(addr: Ipv6Addr) -> Option<Ipv6Addr> {
+        u128::from(addr).checked_add(1).map(Ipv6Addr::from)
     }
 }
 
@@ -117,17 +130,56 @@ fn parse_depth(text: &str, full: u32) -> Option<u32> {
     Some(depth)
 }
 
-/// One IP list: a hash table per prefix length, keyed by the network address.
+/// One accepted block of an [`IpList`].
+#[derive(Debug, Clone, Copy)]
+struct Block<C: IpCidr> {
+    /// First address of the block, its network address.
+    first: C::Address,
+    /// Last address of the block.
+    last: C::Address,
+    /// Prefix length, the key of the shortest-prefix rule.
+    prefix: u8,
+    /// Index into [`IpList::details`].
+    detail: usize,
+}
+
+/// One piece of the frozen match table: `detail` wins on `[start, end)`.
 ///
-/// The shortest prefix wins, like the prefix trie of the C implementation
-/// (`ngx_http_waf_module_ip_trie.c`) did: the buckets are probed from the
-/// shortest one and the first hit is the answer.
+/// `end == None` means the segment reaches the address of all ones, which is
+/// what a `/0` block (or a block that ends there) produces.
+#[derive(Debug, Clone, Copy)]
+struct Segment<C: IpCidr> {
+    start: C::Address,
+    end: Option<C::Address>,
+    detail: usize,
+}
+
+/// The matching index of an [`IpList`].
+#[derive(Debug)]
+enum Index<C: IpCidr> {
+    /// Rules are still being added: a hash table per prefix length, probed
+    /// from the shortest prefix, which is what keeps the overlap check of
+    /// `add()` cheap and mirrors the trie of the C implementation.
+    Building(Vec<HashMap<C::Address, usize>>),
+    /// [`IpList::freeze`] ran: a sorted array of disjoint segments, queried
+    /// with one binary search.
+    Frozen(Vec<Segment<C>>),
+}
+
+/// One IP list.
+///
+/// Rules are added through [`IpList::add()`]; [`IpList::freeze()`] turns the
+/// accepted blocks into a sorted array of disjoint segments, which is what the
+/// request path queries.  The shortest prefix wins, like the prefix trie of
+/// the C implementation (`ngx_http_waf_module_ip_trie.c`) did.
 #[derive(Debug)]
 pub struct IpList<C: IpCidr> {
-    /// `buckets[depth]` holds the rules whose prefix is that long.
-    buckets: Vec<HashMap<C::Address, usize>>,
-    /// The text of every rule, indexed by the value stored in a bucket.
+    /// Every accepted block, in insertion order; the freeze and a later
+    /// `add()` rebuild from it.
+    blocks: Vec<Block<C>>,
+    /// The text of every rule, indexed by [`Block::detail`].
     details: Vec<Vec<u8>>,
+    index: Index<C>,
 }
 
 impl<C: IpCidr> Default for IpList<C> {
@@ -139,8 +191,9 @@ impl<C: IpCidr> Default for IpList<C> {
 impl<C: IpCidr> IpList<C> {
     pub fn new() -> Self {
         IpList {
-            buckets: (0..=C::BITS).map(|_| HashMap::new()).collect(),
+            blocks: Vec::new(),
             details: Vec::new(),
+            index: Index::Building((0..=C::BITS).map(|_| HashMap::new()).collect()),
         }
     }
 
@@ -151,13 +204,29 @@ impl<C: IpCidr> IpList<C> {
 
     /// The index of the rule that covers `addr`, the shortest prefix first.
     fn find_index(&self, addr: &C::Address) -> Option<usize> {
-        for (depth, bucket) in self.buckets.iter().enumerate() {
-            let network = C::masked(*addr, depth as u8);
-            if let Some(&index) = bucket.get(&network) {
-                return Some(index);
+        match &self.index {
+            Index::Building(buckets) => {
+                for (depth, bucket) in buckets.iter().enumerate() {
+                    let network = C::masked(*addr, depth as u8);
+                    if let Some(&index) = bucket.get(&network) {
+                        return Some(index);
+                    }
+                }
+                None
+            }
+            Index::Frozen(segments) => {
+                let position = match segments.binary_search_by(|segment| segment.start.cmp(addr)) {
+                    Ok(index) => index,
+                    Err(0) => return None,
+                    Err(index) => index - 1,
+                };
+                let segment = &segments[position];
+                match segment.end {
+                    Some(end) if *addr >= end => None,
+                    _ => Some(segment.detail),
+                }
             }
         }
-        None
     }
 
     /// The text of the rule that covers `addr`.
@@ -169,15 +238,108 @@ impl<C: IpCidr> IpList<C> {
     /// the new block; that is the overlap the C implementation logged and
     /// dropped the new block for.
     pub fn add(&mut self, block: C, detail: &[u8]) -> Result<(), Vec<u8>> {
+        if matches!(&self.index, Index::Frozen(_)) {
+            self.rebuild_building();
+        }
         let network = block.first_address();
         if let Some(index) = self.find_index(&network) {
             return Err(self.details[index].clone());
         }
         self.details.push(detail.to_vec());
         let index = self.details.len() - 1;
-        self.buckets[block.network_length() as usize].insert(network, index);
+        self.blocks.push(Block {
+            first: network,
+            last: block.last_address(),
+            prefix: block.network_length(),
+            detail: index,
+        });
+        match &mut self.index {
+            Index::Building(buckets) => {
+                buckets[block.network_length() as usize].insert(network, index);
+            }
+            Index::Frozen(_) => unreachable!("rebuilt above"),
+        }
         Ok(())
     }
+
+    /// Turn the accepted blocks into the frozen match table.  Idempotent; the
+    /// building buckets are dropped.
+    pub(super) fn freeze(&mut self) {
+        if matches!(&self.index, Index::Frozen(_)) {
+            return;
+        }
+        self.index = Index::Frozen(build_segments(&self.blocks));
+    }
+
+    /// Recreate the building buckets from the accepted blocks; an `add()`
+    /// after a freeze needs them for the overlap check.
+    fn rebuild_building(&mut self) {
+        let mut buckets: Vec<HashMap<C::Address, usize>> =
+            (0..=C::BITS).map(|_| HashMap::new()).collect();
+        for block in &self.blocks {
+            buckets[block.prefix as usize].insert(block.first, block.detail);
+        }
+        self.index = Index::Building(buckets);
+    }
+}
+
+/// Build the frozen match table.
+///
+/// Every block boundary (`first`, and the address after `last`) is a point
+/// where the winner can change; the points are sorted and swept with a
+/// min-prefix heap.  The winner between two points becomes the segment
+/// `[point, next_point)`, and adjacent segments with the same detail merge.
+/// Points where no block is active produce no segment, which is how the gaps
+/// between blocks survive into the array.
+fn build_segments<C: IpCidr>(blocks: &[Block<C>]) -> Vec<Segment<C>> {
+    let mut points = Vec::with_capacity(blocks.len() * 2);
+    for block in blocks {
+        points.push(block.first);
+        if let Some(next) = C::successor(block.last) {
+            points.push(next);
+        }
+    }
+    points.sort_unstable();
+    points.dedup();
+
+    let mut ordered: Vec<&Block<C>> = blocks.iter().collect();
+    ordered.sort_by_key(|block| block.first);
+    // (prefix, last, detail): the shortest prefix wins, the rest keeps the
+    // entries and the pop check deterministic.
+    let mut active: BinaryHeap<Reverse<(u8, C::Address, usize)>> = BinaryHeap::new();
+    let mut cursor = 0;
+    let mut segments: Vec<Segment<C>> = Vec::new();
+
+    for (index, &point) in points.iter().enumerate() {
+        while cursor < ordered.len() && ordered[cursor].first <= point {
+            let block = ordered[cursor];
+            active.push(Reverse((block.prefix, block.last, block.detail)));
+            cursor += 1;
+        }
+        while let Some(&Reverse((_, last, _))) = active.peek() {
+            if last < point {
+                active.pop();
+            } else {
+                break;
+            }
+        }
+        let Some(&Reverse((_, _, detail))) = active.peek() else {
+            continue;
+        };
+        let end = points.get(index + 1).copied();
+        if let Some(previous) = segments.last_mut() {
+            if previous.detail == detail && previous.end == Some(point) {
+                previous.end = end;
+                continue;
+            }
+        }
+        segments.push(Segment {
+            start: point,
+            end,
+            detail,
+        });
+    }
+    segments
 }
 
 #[cfg(test)]
@@ -373,6 +535,161 @@ mod tests {
                 "{:?}",
                 String::from_utf8_lossy(text)
             );
+        }
+    }
+
+    /// Freezing must not change a single answer, including the gaps between
+    /// blocks and the "a later shorter block shadows the one below it" rule.
+    #[test]
+    fn freezing_keeps_the_matching_results() {
+        let mut list = IpList::new();
+        list.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
+        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        list.add(ipv4("9.9.9.0/24"), b"9.9.9.0/24").unwrap();
+
+        let probes = [
+            "0.0.0.0",
+            "1.2.3.4",
+            "2.0.0.0",
+            "2.1.0.0",
+            "2.1.0.1",
+            "2.255.255.255",
+            "3.0.0.0",
+            "9.9.8.255",
+            "9.9.9.0",
+            "9.9.9.255",
+            "9.9.10.0",
+            "255.255.255.255",
+        ];
+        let lookup = |list: &IpList<Ipv4Cidr>| {
+            probes
+                .iter()
+                .map(|text| list.find(&address4(text)).map(<[u8]>::to_vec))
+                .collect::<Vec<_>>()
+        };
+
+        let before = lookup(&list);
+        list.freeze();
+        let after = lookup(&list);
+
+        assert_eq!(before, after);
+        assert_eq!(after[1], None);
+        assert_eq!(after[4].as_deref(), Some(&b"2.0.0.0/8"[..]));
+        assert_eq!(after[7], None);
+        assert_eq!(after[9].as_deref(), Some(&b"9.9.9.0/24"[..]));
+    }
+
+    #[test]
+    fn a_frozen_whole_space_matches_everything() {
+        let mut list = IpList::new();
+        list.add(ipv4("0.0.0.0/0"), b"0.0.0.0/0").unwrap();
+        list.freeze();
+        for text in ["0.0.0.0", "8.8.8.8", "255.255.255.255"] {
+            assert_eq!(
+                list.find(&address4(text)),
+                Some(&b"0.0.0.0/0"[..]),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_block_that_ends_at_the_last_address_is_frozen() {
+        let mut list = IpList::new();
+        list.add(ipv4("255.255.255.0/24"), b"255.255.255.0/24")
+            .unwrap();
+        list.freeze();
+        assert_eq!(
+            list.find(&address4("255.255.255.255")),
+            Some(&b"255.255.255.0/24"[..])
+        );
+        assert_eq!(list.find(&address4("255.255.254.255")), None);
+    }
+
+    #[test]
+    fn a_frozen_ipv6_list_matches_too() {
+        let mut list = IpList::new();
+        list.add(parse_ipv6(b"2001:db8::/32").unwrap(), b"2001:db8::/32")
+            .unwrap();
+        list.freeze();
+        assert_eq!(
+            list.find(&"2001:db8::1".parse::<Ipv6Addr>().unwrap()),
+            Some(&b"2001:db8::/32"[..])
+        );
+        assert_eq!(list.find(&"2001:db9::1".parse::<Ipv6Addr>().unwrap()), None);
+        assert_eq!(
+            list.find(&"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff".parse().unwrap()),
+            None
+        );
+    }
+
+    #[test]
+    fn an_empty_list_freezes_to_no_matches() {
+        let mut list: IpList<Ipv4Cidr> = IpList::new();
+        list.freeze();
+        list.freeze();
+        assert_eq!(list.find(&Ipv4Addr::LOCALHOST), None);
+    }
+
+    #[test]
+    fn a_frozen_list_can_be_extended() {
+        let mut list = IpList::new();
+        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        list.freeze();
+        assert_eq!(list.find(&address4("9.9.9.9")), None);
+
+        list.add(ipv4("9.9.9.0/24"), b"9.9.9.0/24").unwrap();
+        assert_eq!(list.find(&address4("9.9.9.9")), Some(&b"9.9.9.0/24"[..]));
+        assert_eq!(list.find(&address4("2.1.0.1")), Some(&b"2.0.0.0/8"[..]));
+        assert_eq!(
+            list.add(ipv4("9.9.9.128/25"), b"9.9.9.128/25"),
+            Err(b"9.9.9.0/24".to_vec())
+        );
+    }
+
+    /// A std-only micro-benchmark of the building and the frozen state.
+    /// Ignored by default; reproduce it with
+    /// `cargo test --release ip_list_microbenchmark -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn ip_list_microbenchmark() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+
+        for blocks in [4usize, 1024] {
+            let mut list = IpList::new();
+            for index in 0..blocks {
+                let prefix = 24 + (next() % 9) as u8;
+                let addr = Ipv4Addr::from((next() as u32) & (u32::MAX << (32 - prefix)));
+                let block = Ipv4Cidr::new(addr, prefix).unwrap();
+                let _ = list.add(block, format!("rule-{index}").as_bytes());
+            }
+            let queries: Vec<Ipv4Addr> = (0..100_000)
+                .map(|_| Ipv4Addr::from(next() as u32))
+                .collect();
+            let time = |list: &IpList<Ipv4Cidr>| {
+                let start = Instant::now();
+                let mut hits = 0usize;
+                for query in &queries {
+                    if list.find(query).is_some() {
+                        hits += 1;
+                    }
+                }
+                black_box(hits);
+                start.elapsed().as_nanos() as f64 / queries.len() as f64
+            };
+            let building = time(&list);
+            list.freeze();
+            let frozen = time(&list);
+            println!("{blocks} rules: building {building:.1}ns/query, frozen {frozen:.1}ns/query");
         }
     }
 }

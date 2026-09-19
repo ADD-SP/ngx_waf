@@ -51,6 +51,10 @@ pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
         load_into_container(&content, &path, kind, &mut rules, &mut warnings, ops)?;
     }
 
+    // The request path only reads the lists; the flat segment array is built
+    // once, after every file was added.
+    rules.freeze();
+
     Ok(Loaded { rules, warnings })
 }
 
