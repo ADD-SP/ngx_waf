@@ -307,6 +307,7 @@ mise run test-rust          # the unit tests
 mise run test-e2e           # the end to end checks, one worker and four
 mise run coverage           # the unit tests with coverage, one row per module
 mise run coverage-e2e       # the same plus the nginx suites, instrumented
+mise run test-valgrind      # the templates and the end to end checks, under valgrind
 ```
 
 `mise run coverage` builds the unit tests with `-C instrument-coverage` in a
@@ -317,6 +318,13 @@ runs `test/e2e/run.sh` and the `Test::Nginx` templates on it, and prints the
 union of both runs; the profile runtime of the toolchain has to be on the link
 line for the processes to write a profile at all.  Both tasks need the
 `llvm-tools-preview` component (`rustup component add llvm-tools-preview`).
+
+`mise run test-valgrind` wraps the nginx of the Test::Nginx templates
+(`TEST_NGINX_USE_VALGRIND`) and of the end to end suite
+(`test/e2e/valgrind-nginx.sh`) in valgrind, and fails when valgrind reports
+anything.  The records of the nginx core and of the PCRE2 JIT in libmodsecurity
+are suppressed by `test/test-nginx/valgrind.suppress`; naming templates checks
+only those and leaves the end to end half out.
 
 `test/e2e/run.sh` starts a real nginx and checks the black/white lists, the
 block page, the variables, the CC protection and the `waf off` / `waf bypass` /

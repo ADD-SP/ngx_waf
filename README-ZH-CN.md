@@ -62,6 +62,7 @@ mise run build     # 在 test/nginx-<version> 中构建带静态模块的 nginx
 mise run test      # Rust 单元测试与 nginx 集成测试
 mise run test-e2e  # 自研端到端检查，单 worker 与四 worker 各跑一轮
 mise run coverage  # Rust 单元测试的覆盖率，每个模块一行
+mise run test-valgrind  # 在 valgrind 下跑模板套件与端到端检查
 ```
 
 `mise run doctor` 检查 cargo、rustc 与 cbindgen 是否在 PATH 上。需要 stable
@@ -79,6 +80,13 @@ libmodsecurity 3、perl）。`NGINX_SRC` 指定要复制的 nginx 源码目录�
 nginx，在其上运行自研端到端检查与 Test::Nginx 套件，并打印两次运行的并集。
 两个任务都需要工具链的 `llvm-tools-preview` 组件（缺失时任务会提示执行
 `rustup component add llvm-tools-preview`）。
+
+`mise run test-valgrind` 在 valgrind 下运行 Test::Nginx 模板与自研端到端检查，
+一旦 valgrind 报告任何内容就判失败；nginx 自身与 libmodsecurity 里 PCRE2 JIT
+的记录由 `test/test-nginx/valgrind.suppress` 抑制。请先安装 valgrind
+（Debian/Ubuntu：`apt-get install valgrind`）；传入模板名可只跑指定文件
+（`mise run test-valgrind t/captcha.t`）。CI 在 stable 分支的静态模块组合上
+运行它。
 
 ## 联系方式
 

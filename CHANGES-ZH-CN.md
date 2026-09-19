@@ -16,5 +16,9 @@
 * 覆盖率只需一条命令：`mise run coverage` 打印单元测试的每模块覆盖率，
   `mise run coverage-e2e` 额外构建插桩 nginx 并跑自研端到端与 `Test::Nginx`
   套件。
+* 验证码端点（`waf_captcha api=https://...`）的 SSL 上下文现在随配置释放，
+  此前每次配置加载都会泄漏一份。
+* `mise run test-valgrind` 在 valgrind 下运行 `Test::Nginx` 模板与自研端到端
+  检查；CI 在 stable 分支的静态模块组合上运行它。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

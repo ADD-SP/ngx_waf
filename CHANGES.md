@@ -24,5 +24,10 @@
 * The coverage of the core is one command: `mise run coverage` reports the
   unit tests per module, `mise run coverage-e2e` adds an instrumented nginx
   running the end to end and `Test::Nginx` suites.
+* The SSL context of the captcha endpoint (`waf_captcha api=https://...`) is
+  released with the configuration: every configuration load leaked it before.
+* `mise run test-valgrind` runs the `Test::Nginx` templates and the end to end
+  checks under valgrind, and CI runs it for the static module of the stable
+  nginx branch.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

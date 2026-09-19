@@ -159,3 +159,18 @@ jobs:
           cd "${{ github.workspace }}"
           MODULE_PATH="${MODULE_PATH:-}" \
             NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" mise run test-e2e
+
+      # One combination of the matrix is enough for the memory checks: they run
+      # the suites of the step above again, under valgrind, on the same build.
+      - name: Run the memory checks
+        if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
+        run: |
+          sudo apt-get install --yes valgrind
+
+          # The paths of the integration tests above: the templates live in
+          # /tmp/module_test and the ModSecurity repositories of their cases in
+          # /tmp/ngx-waf-test-deps, which `init.sh` reuses instead of cloning.
+          export MODULE_TEST_PATH=/tmp/module_test
+          export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
+          export NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx"
+          mise run test-valgrind

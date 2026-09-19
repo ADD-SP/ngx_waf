@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#MISE description="Run the Test::Nginx templates and the end to end checks under valgrind"
+#MISE depends=["test-nginx-deps"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+valgrind="${VALGRIND:-valgrind}"
+log_dir="${VALGRIND_DIR:-$root/rust/target/valgrind}"
+nginx="${NGINX_BIN:-$root/test/nginx-$NGINX_VERSION/objs/nginx}"
+
+if ! command -v "$valgrind" > /dev/null 2>&1; then
+    cat << END
+$(basename "$0"): error: [$valgrind] was not found, install valgrind first
+(Debian/Ubuntu: apt-get install valgrind) or set VALGRIND to its path.
+END
+    exit 1
+fi
+
+# `NGINX_BIN` names the binary the suites run, the same variable `test-e2e`
+# uses, so a build outside `test/nginx-<version>` (the one of CI, for instance)
+# works as well.
+if [ ! -x "$nginx" ]; then
+    cat << END
+$(basename "$0"): error: [$nginx] is missing, build the module first
+(mise run build) or set NGINX_BIN to the binary the suites should test.
+END
+    exit 1
+fi
+
+rm -rf "$log_dir"
+mkdir -p "$log_dir"
+
+template_log="$log_dir/templates.log"
+e2e_log="$log_dir/e2e.log"
+e2e_prefix="$log_dir/e2e"
+
+status=0
+
+echo " + running the Test::Nginx templates under valgrind"
+(
+    cd "$root/test/test-nginx"
+    TEST_NGINX_USE_VALGRIND=1 ./run.sh "$@"
+) 2>&1 | tee "$template_log" || status=$?
+
+# Naming templates picks a subset of that half, the end to end checks are the
+# whole suite or nothing.
+if [ "$#" -gt 0 ]; then
+    echo
+    echo " + the end to end half is left out when template files are named"
+else
+echo
+echo " + running the end to end checks under valgrind"
+(
+    export NGX_WAF_NGINX="$nginx"
+    export NGINX_BIN="$root/test/e2e/valgrind-nginx.sh"
+    export E2E_PREFIX="$e2e_prefix"
+
+    "$root/test/e2e/run.sh"
+) 2>&1 | tee "$e2e_log" || status=$?
+fi
+
+# The end to end suite stops its nginx while it exits: wait for the processes
+# to go, valgrind writes the report of a process when it ends.
+for _ in $(seq 1 100); do
+    pgrep -f "$root/test/e2e/valgrind-nginx.sh" > /dev/null 2>&1 || break
+    sleep 0.1
+done
+
+# `-q` keeps valgrind quiet unless it found something, and a finding is what
+# this task is for: the suppressions of the harness cover the records of nginx
+# and of libmodsecurity that are not ours, everything else fails the run.
+findings=()
+for log in "$template_log" "$e2e_log" "$e2e_prefix/logs/stdout.log"; do
+    [ -f "$log" ] || continue
+
+    while IFS= read -r line; do
+        findings+=("$log: $line")
+    done < <(grep -E '^==[0-9]+==' "$log" || true)
+done
+
+if [ "${#findings[@]}" -gt 0 ]; then
+    cat << END
+
+$(basename "$0"): error: valgrind reported ${#findings[@]} lines, the first ones:
+END
+    printf '  %s\n' "${findings[@]:0:10}"
+    echo "  the logs are in $log_dir"
+    exit 1
+fi
+
+if [ "$status" -ne 0 ]; then
+    echo "$(basename "$0"): error: a suite failed, the logs are in $log_dir" >&2
+    exit "$status"
+fi
+
+echo
+echo " + valgrind found nothing, the logs are in $log_dir"

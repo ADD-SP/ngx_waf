@@ -38,6 +38,7 @@ static void        *ngx_http_waf_modsecurity_pcre_free_old;
 static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
     ngx_str_t value)
 {
+    ngx_pool_cleanup_t* cln;
     ngx_url_t url;
     ngx_str_t rest = value;
     ngx_str_t ciphers;
@@ -88,6 +89,23 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
         if (ngx_ssl_create(&conf->captcha_api.ssl, NGX_SSL_TLSv1_2, NULL) != NGX_OK) {
             return NGX_ERROR;
         }
+
+        /*
+         * `ngx_ssl_create()` only builds the context: the caller owns it and
+         * hands it to a cleanup of the pool the configuration lives in, the
+         * way the nginx modules do.  The merge copies the context into the
+         * contexts below, the cleanup stays registered once.
+         */
+        cln = ngx_pool_cleanup_add(cf->pool, 0);
+
+        if (cln == NULL) {
+            ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
+            return NGX_ERROR;
+        }
+
+        cln->handler = ngx_ssl_cleanup_ctx;
+        cln->data = &conf->captcha_api.ssl;
+
         ciphers.data = (u_char*) "HIGH:!aNULL:!MD5";
         ciphers.len = sizeof("HIGH:!aNULL:!MD5") - 1;
         if (ngx_ssl_ciphers(cf, &conf->captcha_api.ssl, &ciphers, 0) != NGX_OK) {
@@ -516,7 +534,8 @@ char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
     /*
      * A location that does not configure `waf_captcha` itself uses the one of
      * the context above, and with it the endpoint that was parsed there.  The
-     * `ngx_ssl_t` inside is shared, nginx owns it for the life of the cycle.
+     * `ngx_ssl_t` inside is shared, the cleanup of the configuration pool
+     * releases it at the end of the cycle.
      */
     if (!child->captcha_api.configured && parent->captcha_api.configured) {
         child->captcha_api = parent->captcha_api;

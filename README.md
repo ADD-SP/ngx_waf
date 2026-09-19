@@ -64,6 +64,7 @@ mise run build     # build nginx with the static module in test/nginx-<version>
 mise run test      # the Rust unit tests and the nginx integration tests
 mise run test-e2e  # the end to end checks, with one worker and with four
 mise run coverage  # the Rust unit tests with coverage, one row per module
+mise run test-valgrind  # the templates and the end to end checks under valgrind
 ```
 
 `mise run doctor` checks that cargo, rustc and cbindgen are on PATH.  A stable
@@ -85,6 +86,14 @@ goes further: it builds an instrumented nginx, runs the end to end checks and
 the Test::Nginx suite on it, and prints the union of both runs.  Both tasks
 need the `llvm-tools-preview` component of the toolchain (the task prints
 `rustup component add llvm-tools-preview` when it is missing).
+
+`mise run test-valgrind` runs the Test::Nginx templates and the end to end
+checks under valgrind and fails when it reports anything; the records of nginx
+and of the PCRE2 JIT inside libmodsecurity are suppressed by
+`test/test-nginx/valgrind.suppress`.  Install valgrind first (Debian/Ubuntu:
+`apt-get install valgrind`), name templates to check only those
+(`mise run test-valgrind t/captcha.t`), and note that CI runs it for the static
+module of the stable nginx branch.
 
 ## Contact
 

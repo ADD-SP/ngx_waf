@@ -1,0 +1,62 @@
+# Valgrind suppressions of the upstream noise the suites meet.
+#
+# The nginx of the suites is stopped with a signal, so a few allocations of the
+# nginx core are reported as lost: the environment and the event module of the
+# process, and the pools of the cycle and of the configuration.  Those are the
+# records below:
+#
+#     ngx_set_environment()       24 bytes
+#     ngx_event_process_init()    27,136 bytes
+#     ngx_create_pool()           the cycle pool (ngx_init_cycle) and the
+#                                 temporary pool of main()
+#
+# The frames under the ones written in each block depend on the process: the
+# Test::Nginx templates run nginx with `master_process off`, the end to end
+# suite runs a master with workers, and both were seen to end without the
+# allocation of the other.  The blocks therefore match the top of the stack
+# only, which is what identifies the record.
+#
+# The other two are the JIT of PCRE2 inside libmodsecurity: valgrind cannot
+# follow code it did not generate itself, and every rule that reads a string
+# reports an "Invalid read of size 16" or a conditional jump on a value it
+# cannot track, both with their first frames in unknown code.  The
+# suppressions valgrind proposes for those records are `obj:* obj:*`, which is
+# what is written below; they hide every record whose first frames are in JIT
+# or unknown code, not only the ones of libmodsecurity.  That is the price of
+# running the ModSecurity cases under valgrind at all.
+{
+   ngx_waf_nginx_set_environment
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:ngx_alloc
+   fun:ngx_set_environment
+}
+{
+   ngx_waf_nginx_event_process_init
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:ngx_alloc
+   fun:ngx_event_process_init
+}
+{
+   ngx_waf_nginx_pool
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:posix_memalign
+   fun:ngx_memalign
+   fun:ngx_create_pool
+}
+{
+   ngx_waf_libmodsecurity_pcre2_jit_read
+   Memcheck:Addr16
+   obj:*
+   obj:*
+}
+{
+   ngx_waf_libmodsecurity_pcre2_jit_cond
+   Memcheck:Cond
+   obj:*
+   obj:*
+}
