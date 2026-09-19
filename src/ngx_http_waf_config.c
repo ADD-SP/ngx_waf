@@ -298,10 +298,27 @@ static void* ngx_http_waf_regex_compile(void* ctx, const uint8_t* pattern, size_
     ngx_regex_compile_t  rc;
     u_char               errstr[NGX_MAX_CONF_ERRSTR];
     ngx_pool_t*          pool = ctx;
+    u_char*              terminated;
+
+    /*
+     * The core hands the pattern over as a slice of a rule file, and the
+     * engine of nginx expects a NUL terminated string with PCRE1 (its
+     * `ngx_regex_compile()` passes `rc.pattern.data` to `pcre_compile()`,
+     * which has no length): without the copy PCRE1 reads whatever follows the
+     * pattern in the file, and a rule is refused, or compiled with the bytes
+     * behind it.  The copy lives in the configuration pool, which is also the
+     * lifetime `ngx_regex_studies` keeps for its name.
+     */
+    terminated = ngx_pnalloc(pool, len + 1);
+    if (terminated == NULL) {
+        return NULL;
+    }
+    ngx_memcpy(terminated, pattern, len);
+    terminated[len] = '\0';
 
     ngx_memzero(&rc, sizeof(ngx_regex_compile_t));
 
-    rc.pattern.data = (u_char*) pattern;
+    rc.pattern.data = terminated;
     rc.pattern.len = len;
     rc.pool = pool;
     rc.options = 0;
@@ -309,6 +326,9 @@ static void* ngx_http_waf_regex_compile(void* ctx, const uint8_t* pattern, size_
     rc.err.len = NGX_MAX_CONF_ERRSTR;
 
     if (ngx_regex_compile(&rc) != NGX_OK) {
+        /* `rc.err` carries the reason of the engine, the core only sees that
+         * the pattern was refused. */
+        ngx_log_error(NGX_LOG_EMERG, pool->log, 0, "%V", &rc.err);
         return NULL;
     }
 
