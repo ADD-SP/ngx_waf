@@ -10,7 +10,17 @@ set -u
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-prefix=${E2E_PREFIX:-$(mktemp -d)}
+
+# The fixtures are removed again when this script made the directory: a caller
+# that names it (`E2E_PREFIX=/tmp/waf-e2e test/e2e/run.sh`) keeps them, which is
+# what looking into a failure wants.
+prefix=${E2E_PREFIX:-}
+prefix_created=0
+if [ -z "$prefix" ]; then
+    prefix=$(mktemp -d)
+    prefix_created=1
+fi
+
 nginx_bin=${NGINX_BIN:-$root/test/nginx-1.27.2/objs/nginx}
 port=18080
 # The provider stub that accepts a connection and never answers.
@@ -35,6 +45,9 @@ cleanup() {
     fi
     if [ -f "$prefix/logs/nginx.pid" ]; then
         kill "$(cat "$prefix/logs/nginx.pid")" 2>/dev/null || true
+    fi
+    if [ "$prefix_created" = 1 ]; then
+        rm -rf "$prefix"
     fi
 }
 trap cleanup EXIT

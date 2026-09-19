@@ -8,8 +8,14 @@ set -e
 
 here=$(cd "$(dirname "$0")" && pwd)
 
+# The fixtures are removed again when this script made the directory: a caller
+# that names it (`MODULE_TEST_PATH=/tmp/waf-test-path ./run.sh`) keeps them,
+# which is what looking into a failure wants.
+module_test_path_created=0
+
 if [ -z "$MODULE_TEST_PATH" ]; then
     MODULE_TEST_PATH=$(mktemp -d)
+    module_test_path_created=1
     export MODULE_TEST_PATH
 fi
 
@@ -29,4 +35,16 @@ if [ -z "$TEST_NGINX_BINARY" ]; then
 fi
 
 "$here/init.sh"
-exec "$here/start.sh" "$@"
+
+# The suite runs without `exec` so the fixtures can be removed and its exit
+# status survives, one of the tests failing has to stay visible to the caller.
+set +e
+"$here/start.sh" "$@"
+status=$?
+set -e
+
+if [ "$module_test_path_created" = 1 ]; then
+    rm -rf "$MODULE_TEST_PATH"
+fi
+
+exit "$status"
