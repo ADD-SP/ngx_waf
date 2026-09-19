@@ -1,4 +1,5 @@
 .vscode
+__pycache__/
 test/test-nginx/t/servroot
 test/test-nginx/t/*.t
 test/test-nginx/gmon.out

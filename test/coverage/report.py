@@ -94,12 +94,20 @@ def collect(lines, definitions, calls, include_tests):
         module[0] += 1 if hits else 0
         module[1] += 1
 
+    # A function is the same function in both binaries, but its mangled name is
+    # not: the crate hash of a test build and of the one nginx links differ.
+    # The definition line is what identifies it.
+    functions = {}
     for (path, name), number in definitions.items():
         if path not in modules or not is_code(path, number, include_tests):
             continue
 
+        key = (path, number)
+        functions[key] = max(functions.get(key, 0), 1 if calls.get((path, name), 0) else 0)
+
+    for (path, _), hit in functions.items():
         module = modules[path]
-        module[2] += 1 if calls.get((path, name), 0) else 0
+        module[2] += hit
         module[3] += 1
 
     rows = []
