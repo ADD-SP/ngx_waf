@@ -106,20 +106,16 @@ mise run build           # or: mise run build-dynamic
 mise run test-nginx
 ```
 
-`mise run test-nginx` runs every template; the arguments are forwarded to
-`test/test-nginx/run.sh`, so a single template is one:
+`mise run test-nginx` runs every template; pass one or more test files to run
+only those:
 
 ```shell
 mise run test-nginx t/modsecurity.t
 ```
 
-`run.sh` creates a temporary directory for the rendered templates when
-`MODULE_TEST_PATH` is not set, and wipes it on every run; the two upstream
-ModSecurity repositories are cached in `MODULE_TEST_DEPS` (`ngx-waf-test-deps`
-next to `$MODULE_TEST_PATH` by default).  Export
-`MODULE_PATH=/path/to/ngx_http_waf_module.so` when the module is built
-dynamically, and `TEST_NGINX_BINARY=/path/to/nginx` to test another nginx
-binary.
+Export `MODULE_PATH=/path/to/ngx_http_waf_module.so` when the module is built
+dynamically, and `TEST_NGINX_BINARY=/path/to/nginx` to test a binary other than
+the one `mise run build` produced.
 
 Some templates reach the real captcha providers, so the suite needs network
 access.

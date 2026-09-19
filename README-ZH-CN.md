@@ -102,17 +102,14 @@ mise run build           # 或：mise run build-dynamic
 mise run test-nginx
 ```
 
-`mise run test-nginx` 运行全部模板；参数会原样传给 `test/test-nginx/run.sh`，
-所以只跑一个模板就是：
+`mise run test-nginx` 运行全部模板；传入一个或多个测试文件则只跑这些：
 
 ```shell
 mise run test-nginx t/modsecurity.t
 ```
 
-未设置 `MODULE_TEST_PATH` 时，`run.sh` 会为渲染后的模板创建一个临时目录，并在
-每次运行时清空它；ModSecurity 的两个上游仓库缓存到 `MODULE_TEST_DEPS`（默认是
-`$MODULE_TEST_PATH` 同级的 `ngx-waf-test-deps`）。动态构建时导出
-`MODULE_PATH=/path/to/ngx_http_waf_module.so`，需要测试其他 nginx 二进制时导出
+动态构建时导出 `MODULE_PATH=/path/to/ngx_http_waf_module.so`；需要测试
+`mise run build` 之外的其他 nginx 二进制时导出
 `TEST_NGINX_BINARY=/path/to/nginx`。
 
 部分模板会访问真实的验证码服务商，因此测试需要网络。
