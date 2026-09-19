@@ -182,3 +182,34 @@ jobs:
           export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
           export NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx"
           mise run test-valgrind
+
+      # The rest of the matrix builds nginx with PCRE2, so the `#if
+      # !(NGX_PCRE2)` half of the glue is never compiled there: a pattern that
+      # is a slice of a rule file (the engine expects a NUL terminated string
+      # with PCRE1, `pcre2_compile()` takes a length) only breaks in a tree
+      # like this one.  The suites load the configuration over and over, which
+      # is what compiles the rules.
+      # Reproduce it locally with a tree of your own:
+      #   ./configure --without-pcre2 --with-http_ssl_module \
+      #     --with-http_realip_module --add-module=$PWD
+      #   TEST_NGINX_BINARY=<tree>/objs/nginx mise run test-nginx
+      - name: Run the integration tests of a PCRE1 build
+        if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
+        run: |
+          sudo apt-get install --yes libpcre3-dev
+
+          mkdir -p nginx-pcre1
+          tar zxf nginx-*.tar.gz --directory nginx-pcre1 --strip-components=1
+
+          cd nginx-pcre1
+          ./configure --without-pcre2 \
+            --with-http_ssl_module \
+            --with-http_realip_module \
+            --add-module="${{ github.workspace }}" \
+            --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
+          make -j"$(nproc)"
+
+          cd "${{ github.workspace }}"
+          TEST_NGINX_BINARY="${{ github.workspace }}/nginx-pcre1/objs/nginx" \
+            MODULE_TEST_PATH=/tmp/module_test_pcre1 mise run test-nginx
+          NGINX_BIN="${{ github.workspace }}/nginx-pcre1/objs/nginx" mise run test-e2e
