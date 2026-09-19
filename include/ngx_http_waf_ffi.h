@@ -317,11 +317,8 @@ typedef struct ngx_waf_shm_ops_t {
     void (*lock)(void*);
     void (*unlock)(void*);
     /**
-     * Allocates from the zone, taking the zone lock.
-     */
-    void *(*alloc)(void*, size_t);
-    /**
-     * Allocates from the zone, the caller already holds the zone lock.
+     * Allocates from the zone: the caller holds the zone lock (the guard of
+     * this module), so the callback must not take it again.
      */
     void *(*alloc_locked)(void*, size_t);
     /**

@@ -15,20 +15,12 @@ static void ngx_http_waf_shm_unlock(void* ctx) {
 }
 
 
-static void *ngx_http_waf_shm_alloc(void* ctx, size_t size) {
-    ngx_slab_pool_t* pool = ctx;
-    void* p;
-
-    ngx_shmtx_lock(&pool->mutex);
-    p = ngx_slab_alloc_locked(pool, size);
-    ngx_shmtx_unlock(&pool->mutex);
-
-    return p;
-}
-
-
 static void *ngx_http_waf_shm_alloc_locked(void* ctx, size_t size) {
-    /* the caller already holds the zone lock */
+    /*
+     * The Rust core only allocates while it holds the zone lock: `ZoneLock` is
+     * the guard that says so, which is why the callback does not take the lock
+     * itself.
+     */
     return ngx_slab_alloc_locked((ngx_slab_pool_t *) ctx, size);
 }
 
@@ -41,7 +33,6 @@ ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data) {
 
     ops.lock = ngx_http_waf_shm_lock;
     ops.unlock = ngx_http_waf_shm_unlock;
-    ops.alloc = ngx_http_waf_shm_alloc;
     ops.alloc_locked = ngx_http_waf_shm_alloc_locked;
     ops.ctx = pool;
 

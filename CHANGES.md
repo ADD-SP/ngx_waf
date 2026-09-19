@@ -29,5 +29,9 @@
 * `mise run test-valgrind` runs the `Test::Nginx` templates and the end to end
   checks under valgrind, and CI runs it for the static module of the stable
   nginx branch.
+* The shared memory of the core is only reached through a guard that holds the
+  zone lock: the glue no longer offers an allocation that takes the lock
+  itself, and an operation that leaves early (or panics) cannot keep the zone
+  locked.  Three of those early returns were fixed.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

@@ -20,5 +20,8 @@
   此前每次配置加载都会泄漏一份。
 * `mise run test-valgrind` 在 valgrind 下运行 `Test::Nginx` 模板与自研端到端
   检查；CI 在 stable 分支的静态模块组合上运行它。
+* 核心对共享内存的访问统一经过持有 zone 锁的守卫：胶水不再提供"自己加锁"的
+  分配入口，操作提前返回（或 panic）也不会把 zone 锁死；顺带修掉三处提前返回
+  未解锁的路径。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

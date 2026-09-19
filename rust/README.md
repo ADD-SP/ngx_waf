@@ -70,7 +70,12 @@ this port cannot remove:
 * `src/cc.rs`: the `#[repr(C)]` layout of the shared memory zone and the
   callback table of nginx.  The layout is frozen (a change means bumping
   `VERSION`), the slot array is reached through the one `Table::from_raw()`
-  view, and the safe operations take `&ZoneHandle`.
+  view, and the safe operations take `&ZoneHandle`.  The zone lock is a guard
+  (`ZoneLock`): the allocator and every pointer into the segment are only
+  reachable through it, so an operation cannot allocate without the lock and
+  cannot leave the zone locked on an early return or a panic.  The glue
+  therefore only carries `lock`, `unlock` and an allocation that expects the
+  caller to hold the lock.
 * `src/modsec.rs`: the hand written libmodsecurity C API bindings.  The
   `Instance`/`Transaction` wrappers own the pointers and release them in
   `Drop`.

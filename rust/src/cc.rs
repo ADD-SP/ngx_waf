@@ -13,6 +13,7 @@
 //! `$waf_rate` is the counter.
 
 use crate::util::random_uniform;
+use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 /// The smallest useful counter table, and the point at which a zone is really
@@ -25,10 +26,8 @@ const MIN_CAPACITY: usize = 64;
 pub struct ShmOps {
     pub lock: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     pub unlock: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
-    /// Allocates from the zone, taking the zone lock.
-    pub alloc:
-        Option<unsafe extern "C" fn(*mut core::ffi::c_void, usize) -> *mut core::ffi::c_void>,
-    /// Allocates from the zone, the caller already holds the zone lock.
+    /// Allocates from the zone: the caller holds the zone lock (the guard of
+    /// this module), so the callback must not take it again.
     pub alloc_locked:
         Option<unsafe extern "C" fn(*mut core::ffi::c_void, usize) -> *mut core::ffi::c_void>,
     /// Opaque C pointer handed to every callback (the `ngx_slab_pool_t`).
@@ -153,28 +152,55 @@ unsafe impl Send for ZoneHandle {}
 unsafe impl Sync for ZoneHandle {}
 
 impl ZoneHandle {
-    fn lock(&self) {
+    /// Take the zone lock.
+    ///
+    /// Private: every operation of this module takes the lock itself, and the
+    /// helpers below only run with the guard in hand.  The guard is the only
+    /// way to reach the allocator or the structures of the segment, so an
+    /// allocation without the lock does not compile, and dropping it releases
+    /// the lock on every path an operation can take.
+    fn lock(&self) -> ZoneLock<'_> {
         if let Some(lock) = self.ops.lock {
             // SAFETY: the callback comes from the C glue and `ctx` is the
             // shared memory zone it was created with.
             unsafe { lock(self.ops.ctx) }
         }
-    }
 
-    fn unlock(&self) {
-        if let Some(unlock) = self.ops.unlock {
-            // SAFETY: see `lock()`.
-            unsafe { unlock(self.ops.ctx) }
+        ZoneLock {
+            handle: self,
+            marker: PhantomData,
         }
     }
+}
 
-    /// Allocation used while the zone lock is held: the callback must not take
-    /// the lock again, `ngx_shmtx` is not recursive.
-    fn alloc_locked(&self, size: usize) -> *mut u8 {
-        match self.ops.alloc_locked {
+/// The zone lock, held: the only way to allocate from the segment or to touch
+/// what is written in it.  Dropping the guard unlocks, so an early return (or
+/// a panic) cannot leave the zone locked for every worker.
+struct ZoneLock<'a> {
+    handle: &'a ZoneHandle,
+    /// The guard belongs to the thread that took the lock: `ngx_shmtx` is a
+    /// cross process lock and is not recursive.
+    marker: PhantomData<*const ()>,
+}
+
+impl Drop for ZoneLock<'_> {
+    fn drop(&mut self) {
+        if let Some(unlock) = self.handle.ops.unlock {
+            // SAFETY: the matching callback of the lock this guard took, on
+            // the zone of the handle it borrowed.
+            unsafe { unlock(self.handle.ops.ctx) }
+        }
+    }
+}
+
+impl ZoneLock<'_> {
+    /// Allocate from the zone: the guard is what says the lock is held, the
+    /// callback must not take it again.
+    fn alloc(&self, size: usize) -> *mut u8 {
+        match self.handle.ops.alloc_locked {
             // SAFETY: the callback comes from the C glue, `ctx` is the zone,
             // and the zone lock is held so the allocator is not re-entered.
-            Some(alloc) => unsafe { alloc(self.ops.ctx, size) as *mut u8 },
+            Some(alloc) => unsafe { alloc(self.handle.ops.ctx, size) as *mut u8 },
             None => std::ptr::null_mut(),
         }
     }
@@ -184,14 +210,14 @@ impl ZoneHandle {
         // one tag ~20k counters (650KB) and halves that per extra tag, so a
         // zone with many tags still fits.  `create_entry()` halves further
         // when the segment is tighter than expected.
-        // SAFETY: `self.header` points at the live zone header of this handle.
-        let tags = (unsafe { (*self.header).tag_count } as usize) + 1;
-        std::cmp::max(MIN_CAPACITY, (self.size / 512) / tags)
+        // SAFETY: the header points at the live zone header of the locked zone.
+        let tags = (unsafe { (*self.handle.header).tag_count } as usize) + 1;
+        std::cmp::max(MIN_CAPACITY, (self.handle.size / 512) / tags)
     }
 
     fn find_entry(&self, tag: &[u8]) -> Option<NonNull<TableHeader>> {
-        // SAFETY: `self.header` points at the live zone header of this handle.
-        let mut block = unsafe { (*self.header).blocks };
+        // SAFETY: the header points at the live zone header of the locked zone.
+        let mut block = unsafe { (*self.handle.header).blocks };
         while !block.is_null() {
             // SAFETY: every directory block lives in the zone and is valid
             // while the zone is.
@@ -214,7 +240,7 @@ impl ZoneHandle {
         let mut capacity = self.table_capacity();
         let memory = loop {
             let size = std::mem::size_of::<TableHeader>() + capacity * std::mem::size_of::<Slot>();
-            let memory = self.alloc_locked(size);
+            let memory = self.alloc(size);
             if !memory.is_null() {
                 break memory;
             }
@@ -224,7 +250,7 @@ impl ZoneHandle {
             capacity /= 2;
         };
         let size = std::mem::size_of::<TableHeader>() + capacity * std::mem::size_of::<Slot>();
-        // `alloc_locked()` hands out zeroed-or-fresh memory of `size` bytes.
+        // `alloc()` hands out zeroed-or-fresh memory of `size` bytes.
         let table = NonNull::new(memory as *mut TableHeader).expect("alloc() is non-null");
         // SAFETY: the allocation is `size` bytes, which is the header plus
         // `capacity` slots; the directory and every table live in the zone.
@@ -236,7 +262,7 @@ impl ZoneHandle {
             table_ref.capacity = capacity as u32;
             table_ref.cursor = 0;
 
-            let header = &mut *self.header;
+            let header = &mut *self.handle.header;
 
             // Reuse a free entry of an existing block ...
             let mut block = header.blocks;
@@ -254,7 +280,7 @@ impl ZoneHandle {
 
             // ... or add a block to the directory.
             let block_size = std::mem::size_of::<TagBlock>();
-            let memory = self.alloc_locked(block_size);
+            let memory = self.alloc(block_size);
             if memory.is_null() {
                 return None;
             }
@@ -269,7 +295,6 @@ impl ZoneHandle {
     }
 
     /// Look up the counter table of `tag`, creating it on first use.
-    /// Must be called with the zone lock held.
     fn table(&self, tag: &[u8]) -> Option<NonNull<TableHeader>> {
         if tag.len() > TAG_LEN || tag.is_empty() {
             return None;
@@ -352,25 +377,43 @@ pub unsafe fn zone_init(
         }
     }
 
-    let memory = match ops.alloc {
-        // SAFETY: the callback comes from the C glue and `ctx` is its zone;
-        // the requested size is the size of one zone header.
-        Some(alloc) => unsafe { alloc(ops.ctx, std::mem::size_of::<ZoneHeader>()) as *mut u8 },
-        None => return std::ptr::null_mut(),
+    /*
+     * A fresh segment: the header is its first allocation and goes through the
+     * zone lock like everything else.  The lock of a zone that was just
+     * created is free, nginx initialized the pool (`ngx_init_zone_pool()`) and
+     * with it the mutex before this callback ran.
+     */
+    let mut handle = ZoneHandle {
+        header: std::ptr::null_mut(),
+        size,
+        ops,
     };
-    if memory.is_null() {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: `memory` is a fresh allocation of the size of one zone header.
-    unsafe {
-        std::ptr::write_bytes(memory, 0, std::mem::size_of::<ZoneHeader>());
-        let header = memory as *mut ZoneHeader;
-        (*header).magic = ZONE_MAGIC;
-        (*header).version = VERSION;
-        (*header).tag_count = 0;
 
-        Box::into_raw(Box::new(ZoneHandle { header, size, ops }))
-    }
+    let memory = {
+        let zone = handle.lock();
+        let memory = zone.alloc(std::mem::size_of::<ZoneHeader>());
+
+        if memory.is_null() {
+            // The guard releases the lock on the way out.
+            return std::ptr::null_mut();
+        }
+
+        // SAFETY: `memory` is a fresh allocation of the size of one zone
+        // header, which nothing else points at yet.
+        unsafe {
+            std::ptr::write_bytes(memory, 0, std::mem::size_of::<ZoneHeader>());
+            let header = memory as *mut ZoneHeader;
+            (*header).magic = ZONE_MAGIC;
+            (*header).version = VERSION;
+            (*header).tag_count = 0;
+        }
+
+        memory
+    };
+
+    handle.header = memory as *mut ZoneHeader;
+
+    Box::into_raw(Box::new(handle))
 }
 
 /// Release a handle created by [`zone_init`].  The shared memory itself is
@@ -410,15 +453,13 @@ pub fn increment(
     duration: i64,
     now: i64,
 ) -> Option<CcResult> {
-    handle.lock();
-    let result = increment_locked(handle, tag, addr, ipv6, limit, cycle, duration, now);
-    handle.unlock();
-    result
+    let zone = handle.lock();
+    increment_locked(&zone, tag, addr, ipv6, limit, cycle, duration, now)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn increment_locked(
-    handle: &ZoneHandle,
+    zone: &ZoneLock<'_>,
     tag: &[u8],
     addr: &[u8],
     ipv6: bool,
@@ -427,7 +468,7 @@ fn increment_locked(
     duration: i64,
     now: i64,
 ) -> Option<CcResult> {
-    let (table, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
+    let (table, index, fresh) = slot_for(zone, tag, addr, ipv6, now)?;
     // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
     let table = unsafe { Table::from_raw(table) };
     let slot = &mut table.slots[index];
@@ -467,14 +508,14 @@ fn increment_locked(
 /// Find the slot of `addr`, creating (or evicting) one when asked for.
 /// Returns the index and whether the slot has to be treated as new.
 fn slot_for(
-    handle: &ZoneHandle,
+    zone: &ZoneLock<'_>,
     tag: &[u8],
     addr: &[u8],
     ipv6: bool,
     now: i64,
 ) -> Option<(NonNull<TableHeader>, usize, bool)> {
-    let table = handle.table(tag)?;
-    // SAFETY: `handle.table()` returned a table of the zone whose lock is held.
+    let table = zone.table(tag)?;
+    // SAFETY: `zone.table()` returned a table of the zone whose lock is held.
     let table_ref = unsafe { Table::from_raw(table) };
     let kind = used_state(ipv6);
 
@@ -539,15 +580,13 @@ fn reset_slot(slot: &mut Slot, addr: &[u8], ipv6: bool, expire: i64) {
 
 /// Look up the extra state of `addr`, if it has an entry.
 pub fn entry_flags(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<u32> {
-    handle.lock();
-    let result = entry_flags_locked(handle, tag, addr, ipv6);
-    handle.unlock();
-    result
+    let zone = handle.lock();
+    entry_flags_locked(&zone, tag, addr, ipv6)
 }
 
-fn entry_flags_locked(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<u32> {
-    let table = handle.table(tag)?;
-    // SAFETY: `handle.table()` returned a table of the zone whose lock is held.
+fn entry_flags_locked(zone: &ZoneLock<'_>, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<u32> {
+    let table = zone.table(tag)?;
+    // SAFETY: `zone.table()` returned a table of the zone whose lock is held.
     let table = unsafe { Table::from_raw(table) };
     let kind = used_state(ipv6);
 
@@ -581,14 +620,12 @@ pub fn action_entry(
     expire: i64,
     initial_flags: u32,
 ) -> Option<ActionEntry> {
-    handle.lock();
-    let result = action_entry_locked(handle, tag, addr, ipv6, now, expire, initial_flags);
-    handle.unlock();
-    result
+    let zone = handle.lock();
+    action_entry_locked(&zone, tag, addr, ipv6, now, expire, initial_flags)
 }
 
 fn action_entry_locked(
-    handle: &ZoneHandle,
+    zone: &ZoneLock<'_>,
     tag: &[u8],
     addr: &[u8],
     ipv6: bool,
@@ -596,7 +633,7 @@ fn action_entry_locked(
     expire: i64,
     initial_flags: u32,
 ) -> Option<ActionEntry> {
-    let (table, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
+    let (table, index, fresh) = slot_for(zone, tag, addr, ipv6, now)?;
     // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
     let table = unsafe { Table::from_raw(table) };
     let slot = &mut table.slots[index];
@@ -618,57 +655,49 @@ pub fn set_entry_flags(
     ipv6: bool,
     flags: u32,
 ) -> Option<()> {
-    handle.lock();
-    let result = {
-        let table = handle.table(tag)?;
-        // SAFETY: `handle.table()` returned a table of the locked zone.
-        let table = unsafe { Table::from_raw(table) };
-        let kind = used_state(ipv6);
-        let mut probe = slot_index(addr) % table.slots.len();
-        let mut found = None;
-        for _ in 0..=table.slots.len() {
-            let slot = &table.slots[probe];
-            if slot.state() == SlotState::Empty {
-                break;
-            }
-            if slot.state() == kind && same_addr(slot, addr, ipv6) {
-                found = Some(probe);
-                break;
-            }
-            probe = (probe + 1) % table.slots.len();
+    let zone = handle.lock();
+    let table = zone.table(tag)?;
+    // SAFETY: `zone.table()` returned a table of the locked zone.
+    let table = unsafe { Table::from_raw(table) };
+    let kind = used_state(ipv6);
+    let mut probe = slot_index(addr) % table.slots.len();
+    let mut found = None;
+    for _ in 0..=table.slots.len() {
+        let slot = &table.slots[probe];
+        if slot.state() == SlotState::Empty {
+            break;
         }
-        found.map(|index| table.slots[index].flags = flags)
-    };
-    handle.unlock();
-    result
+        if slot.state() == kind && same_addr(slot, addr, ipv6) {
+            found = Some(probe);
+            break;
+        }
+        probe = (probe + 1) % table.slots.len();
+    }
+    found.map(|index| table.slots[index].flags = flags)
 }
 
 /// Forget the entry of one client (the captcha flow does this once a visitor
 /// passed the challenge).
 pub fn remove_entry(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) -> Option<()> {
-    handle.lock();
-    let result = {
-        let table = handle.table(tag)?;
-        // SAFETY: `handle.table()` returned a table of the locked zone.
-        let table = unsafe { Table::from_raw(table) };
-        let kind = used_state(ipv6);
-        let mut probe = slot_index(addr) % table.slots.len();
-        let mut found = None;
-        for _ in 0..=table.slots.len() {
-            let slot = &table.slots[probe];
-            if slot.state() == SlotState::Empty {
-                break;
-            }
-            if slot.state() == kind && same_addr(slot, addr, ipv6) {
-                found = Some(probe);
-                break;
-            }
-            probe = (probe + 1) % table.slots.len();
+    let zone = handle.lock();
+    let table = zone.table(tag)?;
+    // SAFETY: `zone.table()` returned a table of the locked zone.
+    let table = unsafe { Table::from_raw(table) };
+    let kind = used_state(ipv6);
+    let mut probe = slot_index(addr) % table.slots.len();
+    let mut found = None;
+    for _ in 0..=table.slots.len() {
+        let slot = &table.slots[probe];
+        if slot.state() == SlotState::Empty {
+            break;
         }
-        found.map(|index| table.slots[index].kind = SLOT_DELETED)
-    };
-    handle.unlock();
-    result
+        if slot.state() == kind && same_addr(slot, addr, ipv6) {
+            found = Some(probe);
+            break;
+        }
+        probe = (probe + 1) % table.slots.len();
+    }
+    found.map(|index| table.slots[index].kind = SLOT_DELETED)
 }
 
 /// Reset the counter of one client (the captcha flow clears the CC counter of
@@ -685,21 +714,17 @@ pub fn reset_counter(
     now: i64,
     cycle: i64,
 ) -> Option<()> {
-    handle.lock();
-    let result = {
-        let (table, index, fresh) = slot_for(handle, tag, addr, ipv6, now)?;
-        // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
-        let table = unsafe { Table::from_raw(table) };
-        let expire = if fresh {
-            now + cycle
-        } else {
-            table.slots[index].expire
-        };
-        reset_slot(&mut table.slots[index], addr, ipv6, expire);
-        Some(())
+    let zone = handle.lock();
+    let (table, index, fresh) = slot_for(&zone, tag, addr, ipv6, now)?;
+    // SAFETY: `slot_for()` returned a table of the zone whose lock is held.
+    let table = unsafe { Table::from_raw(table) };
+    let expire = if fresh {
+        now + cycle
+    } else {
+        table.slots[index].expire
     };
-    handle.unlock();
-    result
+    reset_slot(&mut table.slots[index], addr, ipv6, expire);
+    Some(())
 }
 
 fn same_addr(slot: &Slot, addr: &[u8], ipv6: bool) -> bool {
@@ -720,8 +745,8 @@ fn slot_index(addr: &[u8]) -> usize {
 
 /// Sweep the expired entries of every table of one zone.
 pub fn gc(handle: &ZoneHandle, now: i64) {
-    handle.lock();
-    // SAFETY: `self.header` points at the live zone header of this handle.
+    let _zone = handle.lock();
+    // SAFETY: the header points at the live zone header of the locked zone.
     let header = unsafe { &*handle.header };
     let mut block = header.blocks;
     while !block.is_null() {
@@ -749,7 +774,6 @@ pub fn gc(handle: &ZoneHandle, now: i64) {
         }
         block = block_ref.next;
     }
-    handle.unlock();
 }
 
 /// The probability check used by the log phase garbage collector: a worker of
@@ -771,6 +795,9 @@ mod tests {
         memory: Vec<u8>,
         offset: usize,
         locked: AtomicUsize,
+        /// Allocations that arrived while no lock was held: the module must
+        /// never do that, the slab allocator is not re-entrant.
+        without_lock: AtomicUsize,
     }
 
     unsafe extern "C" fn fake_lock(ctx: *mut core::ffi::c_void) {
@@ -785,13 +812,19 @@ mod tests {
         shm.locked.fetch_sub(1, Ordering::SeqCst);
     }
 
-    unsafe extern "C" fn fake_alloc(
+    unsafe extern "C" fn fake_alloc_locked(
         ctx: *mut core::ffi::c_void,
         size: usize,
     ) -> *mut core::ffi::c_void {
-        // SAFETY: the allocation callbacks are serialised by the zone lock and
-        // `ctx` is the live `FakeShm` of the test.
+        // SAFETY: `ctx` is the live `FakeShm` of the test.
         let shm = unsafe { &mut *(ctx as *mut FakeShm) };
+
+        if shm.locked.load(Ordering::SeqCst) == 0 {
+            // A record instead of a panic: unwinding out of an `extern "C"`
+            // function aborts the test process.
+            shm.without_lock.fetch_add(1, Ordering::SeqCst);
+        }
+
         let start = (shm.offset + 15) & !15;
         let end = start + size;
         if end > shm.memory.len() {
@@ -803,27 +836,18 @@ mod tests {
         unsafe { shm.memory.as_mut_ptr().add(start) as *mut core::ffi::c_void }
     }
 
-    unsafe extern "C" fn fake_alloc_locked(
-        ctx: *mut core::ffi::c_void,
-        size: usize,
-    ) -> *mut core::ffi::c_void {
-        // SAFETY: the caller of `alloc_locked` holds the zone lock, which is
-        // the same contract `fake_alloc()` has.
-        unsafe { fake_alloc(ctx, size) }
-    }
-
     /// Returns the segment and the handle the C glue would keep.
     fn setup(name: &str, size: usize) -> (Box<FakeShm>, *mut ZoneHandle) {
         let shm = Box::new(FakeShm {
             memory: vec![0u8; size],
             offset: 0,
             locked: AtomicUsize::new(0),
+            without_lock: AtomicUsize::new(0),
         });
         let ctx = shm.as_ref() as *const FakeShm as *mut core::ffi::c_void;
         let ops = ShmOps {
             lock: Some(fake_lock),
             unlock: Some(fake_unlock),
-            alloc: Some(fake_alloc),
             alloc_locked: Some(fake_alloc_locked),
             ctx,
         };
@@ -842,6 +866,93 @@ mod tests {
         // SAFETY: `setup()` keeps the segment (and with it the handle) alive
         // for the whole test, and the operations only read the handle.
         unsafe { &*handle }
+    }
+
+    /// Every operation takes the zone lock and gives it back, whatever path it
+    /// leaves through.
+    #[test]
+    fn the_operations_release_the_zone_lock() {
+        let (shm, ctx) = setup("lock-balance", 1024 * 1024);
+        let handle = zone(ctx);
+        let addr = [7u8, 7, 7, 7];
+
+        increment(handle, b"cc", &addr, false, 10, 60, 60, 1000);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "increment");
+
+        entry_flags(handle, b"cc", &addr, false);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "entry_flags");
+
+        action_entry(handle, b"cc", &addr, false, 1000, 60, 0);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "action_entry");
+
+        set_entry_flags(handle, b"cc", &addr, false, 1);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "set_entry_flags");
+
+        remove_entry(handle, b"cc", &addr, false);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "remove_entry");
+
+        reset_counter(handle, b"cc", &addr, false, 1000, 60);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "reset_counter");
+
+        gc(handle, 2000);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "gc");
+    }
+
+    /// The allocator is only reached through the guard: the fake counts an
+    /// allocation that arrives without the lock, and the module must never
+    /// leave one.
+    #[test]
+    fn the_allocator_only_runs_with_the_zone_lock() {
+        let (shm, ctx) = setup("alloc-locked", 1024 * 1024);
+        let handle = zone(ctx);
+
+        // The first counter of a tag creates its table, and every extra tag
+        // creates (or reuses) a directory block: both allocate.
+        for tag in [&b"cc"[..], b"action", b"captcha"] {
+            increment(handle, tag, &[1, 2, 3, 4], false, 10, 60, 60, 1000);
+            action_entry(handle, tag, &[1, 2, 3, 4], false, 1000, 60, 0);
+        }
+
+        assert_eq!(shm.without_lock.load(Ordering::SeqCst), 0);
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0);
+    }
+
+    /// An operation that leaves early (the segment is too small for its table)
+    /// must not keep the zone locked: the guard releases it on the way out.
+    #[test]
+    fn an_early_return_does_not_keep_the_zone_locked() {
+        // The segment holds the zone header but not one table.
+        let (shm, ctx) = setup("early-return", 512);
+        let handle = zone(ctx);
+        let addr = [8u8, 8, 8, 8];
+
+        assert!(reset_counter(handle, b"cc", &addr, false, 1000, 60).is_none());
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "reset_counter");
+
+        assert!(remove_entry(handle, b"cc", &addr, false).is_none());
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "remove_entry");
+
+        assert!(set_entry_flags(handle, b"cc", &addr, false, 1).is_none());
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "set_entry_flags");
+
+        assert!(increment(handle, b"cc", &addr, false, 10, 60, 60, 1000).is_none());
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "increment");
+    }
+
+    /// The guard is what unlocks: a panic inside an operation must not leave
+    /// the zone locked for every worker.
+    #[test]
+    fn a_panic_inside_the_zone_releases_the_lock() {
+        let (shm, ctx) = setup("panic", 1024 * 1024);
+        let handle = zone(ctx);
+
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _zone = handle.lock();
+            panic!("the operation panicked");
+        }));
+
+        assert!(panicked.is_err(), "the panic went through");
+        assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "the guard unlocked");
     }
 
     #[test]
@@ -961,12 +1072,12 @@ mod tests {
             memory: vec![0u8; 1024 * 1024],
             offset: 0,
             locked: AtomicUsize::new(0),
+            without_lock: AtomicUsize::new(0),
         });
         let ctx = shm.as_ref() as *const FakeShm as *mut core::ffi::c_void;
         let ops = ShmOps {
             lock: Some(fake_lock),
             unlock: Some(fake_unlock),
-            alloc: Some(fake_alloc),
             alloc_locked: Some(fake_alloc_locked),
             ctx,
         };

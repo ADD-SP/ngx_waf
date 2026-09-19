@@ -2154,20 +2154,12 @@ mod tests {
             }
         }
 
-        unsafe extern "C" fn no_alloc(
-            _ctx: *mut core::ffi::c_void,
-            _size: usize,
-        ) -> *mut core::ffi::c_void {
-            std::ptr::null_mut()
-        }
-
         let directory = Box::leak(vec![0u8; 4096].into_boxed_slice());
         DIRECTORY.store(directory.as_mut_ptr() as usize, Ordering::SeqCst);
         let ops = cc::ShmOps {
             lock: None,
             unlock: None,
-            alloc: Some(directory_alloc),
-            alloc_locked: Some(no_alloc),
+            alloc_locked: Some(directory_alloc),
             ctx: std::ptr::null_mut(),
         };
         // SAFETY: the leaked directory segment and the callbacks above stay
@@ -2989,7 +2981,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn fake_zone_alloc(
+    unsafe extern "C" fn fake_zone_alloc_locked(
         ctx: *mut core::ffi::c_void,
         size: usize,
     ) -> *mut core::ffi::c_void {
@@ -3007,8 +2999,7 @@ mod tests {
         let ops = cc::ShmOps {
             lock: None,
             unlock: None,
-            alloc: Some(fake_zone_alloc),
-            alloc_locked: Some(fake_zone_alloc),
+            alloc_locked: Some(fake_zone_alloc_locked),
             ctx: &*shm as *const FakeZone as *mut core::ffi::c_void,
         };
         // SAFETY: `shm` is returned to the caller and stays alive while the
