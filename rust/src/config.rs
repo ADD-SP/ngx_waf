@@ -3,10 +3,15 @@
 //! through `ngx_conf_log_error()`.
 
 use crate::cache::Caches;
+use crate::data::{
+    embedded_page, HTML_BLOCK, HTML_CAPTCHA_HCAPTCHA, HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX,
+    HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE, HTML_CAPTCHA_RECAPTCHA_V3, HTML_SPONGE_BOB,
+    HTML_UNDER_ATTACK,
+};
 use crate::flags::{BotTypes, WafMode};
+use crate::http::{FORBIDDEN, SERVICE_UNAVAILABLE};
 use crate::modsec;
 use crate::rules::{self, RuleSet};
-use crate::types::*;
 use crate::util;
 use regex::Regex;
 use std::rc::Rc;
@@ -23,15 +28,17 @@ fn captcha_salt() -> Vec<u8> {
 /// The `http` level configuration: the zone registry and the used tags.
 #[derive(Default)]
 pub struct MainConf {
-    /// Zone names, the index is what a location configuration stores.
+    /// The names of the zones `waf_zone` declared, the identity a location
+    /// configuration refers to.
     pub zones: Vec<Vec<u8>>,
     /// `(zone name, tag)` pairs, a tag can only be used once per zone.
     pub tags: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl MainConf {
-    pub fn zone_index(&self, name: &[u8]) -> Option<usize> {
-        self.zones.iter().position(|zone| zone == name)
+    /// Whether `waf_zone` declared a zone of that name.
+    pub fn has_zone(&self, name: &[u8]) -> bool {
+        self.zones.iter().any(|zone| zone == name)
     }
 
     pub fn tag_used(&self, name: &[u8], tag: &[u8]) -> bool {
@@ -162,16 +169,12 @@ impl TriggerKind {
     /// no `waf_action` sets.
     pub fn default_policy(self) -> Policy {
         match self {
-            TriggerKind::Blacklist => Policy::Return {
-                status: HTTP_FORBIDDEN,
-            },
+            TriggerKind::Blacklist => Policy::Return { status: FORBIDDEN },
             TriggerKind::CcDeny => Policy::Return {
-                status: HTTP_SERVICE_UNAVAILABLE,
+                status: SERVICE_UNAVAILABLE,
             },
             TriggerKind::Modsecurity => Policy::Follow,
-            TriggerKind::VerifyBot => Policy::Return {
-                status: HTTP_FORBIDDEN,
-            },
+            TriggerKind::VerifyBot => Policy::Return { status: FORBIDDEN },
         }
     }
 
@@ -371,12 +374,12 @@ pub enum CaptchaProvider {
     RecaptchaV3,
 }
 
-/// The shared memory zone a directive writes through: the index of the zone in
-/// [`MainConf::zones`] and the tag its entries are stored under.  Both are set
-/// and inherited together, the C implementation merged the tag with the index.
+/// The shared memory zone a directive writes through: the name `waf_zone`
+/// declared and the tag its entries are stored under.  Both are set and
+/// inherited together, the C implementation merged the tag with the zone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneRef {
-    pub index: usize,
+    pub name: Vec<u8>,
     pub tag: Vec<u8>,
 }
 
@@ -739,7 +742,7 @@ pub fn zone_directive(main: &mut MainConf, args: &[Vec<u8>]) -> Result<(Vec<u8>,
     if name.is_empty() {
         return Err(INVALID.to_string());
     }
-    if main.zone_index(&name).is_some() {
+    if main.has_zone(&name) {
         return Err("ngx_waf: duplicate zone names".to_string());
     }
     main.zones.push(name.clone());
@@ -918,14 +921,17 @@ fn directive_cc_deny(
                 let (zone_name, zone_tag) = (&parts[0], &parts[1]);
                 let mut tag = zone_tag.clone();
                 tag.extend_from_slice(b"cc_deny");
-                let index = main
-                    .zone_index(zone_name)
-                    .ok_or_else(|| "ngx_waf: zone name does not exists".to_string())?;
+                if !main.has_zone(zone_name) {
+                    return Err("ngx_waf: zone name does not exists".to_string());
+                }
                 if main.tag_used(zone_name, &tag) {
                     return Err("ngx_waf: each tag of a zone can only be used once".to_string());
                 }
                 main.tags.push((zone_name.clone(), tag.clone()));
-                conf.cc_deny.zone = Some(ZoneRef { index, tag });
+                conf.cc_deny.zone = Some(ZoneRef {
+                    name: zone_name.to_vec(),
+                    tag,
+                });
             }
             _ => return Err(INVALID.to_string()),
         }
@@ -1150,14 +1156,17 @@ fn directive_captcha(
                 let (zone_name, zone_tag) = (&parts[0], &parts[1]);
                 let mut tag = zone_tag.clone();
                 tag.extend_from_slice(b"captcha");
-                let index = main
-                    .zone_index(zone_name)
-                    .ok_or_else(|| "ngx_waf: zone name does not exists".to_string())?;
+                if !main.has_zone(zone_name) {
+                    return Err("ngx_waf: zone name does not exists".to_string());
+                }
                 if main.tag_used(zone_name, &tag) {
                     return Err("ngx_waf: each tag of a zone can only be used once".to_string());
                 }
                 main.tags.push((zone_name.clone(), tag.clone()));
-                conf.captcha.zone = Some(ZoneRef { index, tag });
+                conf.captcha.zone = Some(ZoneRef {
+                    name: zone_name.to_vec(),
+                    tag,
+                });
             }
             _ => return Err(INVALID.to_string()),
         }
@@ -1319,14 +1328,17 @@ fn directive_action(
             let (zone_name, zone_tag) = (&parts[0], &parts[1]);
             let mut tag = zone_tag.clone();
             tag.extend_from_slice(b"action_captcha");
-            let index = main
-                .zone_index(zone_name)
-                .ok_or_else(|| "ngx_waf: zone name does not exists".to_string())?;
+            if !main.has_zone(zone_name) {
+                return Err("ngx_waf: zone name does not exists".to_string());
+            }
             if main.tag_used(zone_name, &tag) {
                 return Err("ngx_waf: each tag of a zone can only be used once".to_string());
             }
             main.tags.push((zone_name.clone(), tag.clone()));
-            conf.action.captcha_zone = Some(ZoneRef { index, tag });
+            conf.action.captcha_zone = Some(ZoneRef {
+                name: zone_name.to_vec(),
+                tag,
+            });
             continue;
         }
 
@@ -1616,7 +1628,10 @@ mod tests {
             &["on", "rate=1r/h", "zone=test:cc"],
         )
         .unwrap();
-        assert_eq!(conf.cc_deny.zone.as_ref().map(|zone| zone.index), Some(0));
+        assert_eq!(
+            conf.cc_deny.zone.as_ref().map(|zone| zone.name.as_slice()),
+            Some(b"test".as_slice())
+        );
         // The tag is the user supplied one with the "cc_deny" suffix, exactly
         // like `ngx_sprintf(tag, "%s%s", zone_tag, "cc_deny")` in C.  Note
         // that "tag=cc" therefore yields "cccc_deny".
@@ -1923,7 +1938,7 @@ mod tests {
         assert_eq!(
             conf.policy(TriggerKind::CcDeny),
             Policy::Return {
-                status: HTTP_SERVICE_UNAVAILABLE
+                status: SERVICE_UNAVAILABLE
             }
         );
         assert_eq!(conf.policy(TriggerKind::Modsecurity), Policy::Follow);
@@ -1934,9 +1949,7 @@ mod tests {
         assert_eq!(conf.policy(TriggerKind::Modsecurity), Policy::Follow);
         assert_eq!(
             conf.policy(TriggerKind::Blacklist),
-            Policy::Return {
-                status: HTTP_FORBIDDEN
-            }
+            Policy::Return { status: FORBIDDEN }
         );
 
         let mut conf = LocConf::default();
@@ -1955,22 +1968,18 @@ mod tests {
         dir_main(&mut main, &mut conf, "waf_action", &["zone=test:tag"]).unwrap();
         assert_eq!(
             conf.policy(TriggerKind::Blacklist),
-            Policy::Return {
-                status: HTTP_FORBIDDEN
-            }
+            Policy::Return { status: FORBIDDEN }
         );
         assert_eq!(
             conf.policy(TriggerKind::CcDeny),
             Policy::Return {
-                status: HTTP_SERVICE_UNAVAILABLE
+                status: SERVICE_UNAVAILABLE
             }
         );
         assert_eq!(conf.policy(TriggerKind::Modsecurity), Policy::Follow);
         assert_eq!(
             conf.policy(TriggerKind::VerifyBot),
-            Policy::Return {
-                status: HTTP_FORBIDDEN
-            }
+            Policy::Return { status: FORBIDDEN }
         );
     }
 
@@ -2038,9 +2047,7 @@ mod tests {
         assert_eq!(child.waf_mode, WafMode::FULL);
         assert_eq!(
             child.policy(TriggerKind::Blacklist),
-            Policy::Return {
-                status: HTTP_FORBIDDEN
-            }
+            Policy::Return { status: FORBIDDEN }
         );
     }
 
@@ -2054,7 +2061,7 @@ mod tests {
         assert_eq!(child.block_page.as_slice(), embedded_page(HTML_BLOCK));
         match child.policy(TriggerKind::Blacklist) {
             Policy::Page { status, body } => {
-                assert_eq!(status, HTTP_FORBIDDEN);
+                assert_eq!(status, FORBIDDEN);
                 assert_eq!(body.as_slice(), embedded_page(HTML_BLOCK));
             }
             other => panic!("unexpected policy {other:?}"),
@@ -2062,7 +2069,7 @@ mod tests {
         // The CC trigger of the same context is converted as well, the
         // modsecurity one keeps its `FOLLOW` policy.
         match child.policy(TriggerKind::CcDeny) {
-            Policy::Page { status, .. } => assert_eq!(status, HTTP_SERVICE_UNAVAILABLE),
+            Policy::Page { status, .. } => assert_eq!(status, SERVICE_UNAVAILABLE),
             other => panic!("unexpected policy {other:?}"),
         }
         assert_eq!(child.policy(TriggerKind::Modsecurity), Policy::Follow);
@@ -2080,7 +2087,7 @@ mod tests {
                 cycle: Some(60),
                 duration: Some(3600),
                 zone: Some(ZoneRef {
-                    index: 1,
+                    name: b"parent".to_vec(),
                     tag: b"parent_cc".to_vec(),
                 }),
             },
@@ -2117,7 +2124,7 @@ mod tests {
                 api: b"api".to_vec(),
                 verify_url: b"/verify".to_vec(),
                 zone: Some(ZoneRef {
-                    index: 2,
+                    name: b"parent".to_vec(),
                     tag: b"captcha".to_vec(),
                 }),
                 ..Captcha::default()
@@ -2169,7 +2176,7 @@ mod tests {
             },
             action: Action {
                 captcha_zone: Some(ZoneRef {
-                    index: 3,
+                    name: b"parent".to_vec(),
                     tag: b"action".to_vec(),
                 }),
                 ..Action::default()
@@ -2231,9 +2238,7 @@ mod tests {
         // Only the context that configured the page answers with it.
         assert_eq!(
             parent.policy(TriggerKind::Blacklist),
-            Policy::Return {
-                status: HTTP_FORBIDDEN
-            }
+            Policy::Return { status: FORBIDDEN }
         );
         assert!(matches!(
             child.policy(TriggerKind::Blacklist),
@@ -2260,9 +2265,7 @@ mod tests {
         merge(&mut other, &mut parent).unwrap();
         assert_eq!(
             other.policy(TriggerKind::Blacklist),
-            Policy::Return {
-                status: HTTP_FORBIDDEN
-            }
+            Policy::Return { status: FORBIDDEN }
         );
         assert_eq!(
             other.policy(TriggerKind::CcDeny),

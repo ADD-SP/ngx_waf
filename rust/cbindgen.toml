@@ -11,30 +11,15 @@ style = "both"
 documentation = true
 usize_is_size_t = true
 
-header = """
-/* The `kind` values of `ngx_waf_step_t`, mirrored from rust/src/types.rs. */
-#define NGX_WAF_STEP_ALLOW          0
-#define NGX_WAF_STEP_RESPONSE       1
-#define NGX_WAF_STEP_INTERNAL_ERROR 2
-#define NGX_WAF_STEP_RESOLVE_ADDR   3
-#define NGX_WAF_STEP_HTTP_REQUEST   4
-
-/* The `kind` values of `ngx_waf_event_t`. */
-#define NGX_WAF_EVENT_RESOLVED_NAME  0
-#define NGX_WAF_EVENT_RESOLVE_FAILED 1
-#define NGX_WAF_EVENT_HTTP_RESPONSE  2
-#define NGX_WAF_EVENT_HTTP_FAILED    3
-
-/* The `content_type` values of `ngx_waf_step_t`. */
-#define NGX_WAF_CT_HTML 0
-#define NGX_WAF_CT_TEXT 1
-"""
-
 [export]
 prefix = ""
+# Only the vocabulary of `rust/src/abi.rs` crosses the boundary: the
+# constants, globals and typedefs of the implementation are never exported.
+item_types = ["enums", "structs", "opaque", "functions"]
 # cbindgen exports every function of an `extern "C"` block, whatever the
 # `include` list says, so the raw bindings of libmodsecurity (see
-# rust/src/modsec.rs) are excluded by name here.
+# rust/src/modsec.rs) are excluded by name here.  The internal types the crate
+# still declares `pub` are excluded as well, they are not part of the ABI.
 exclude = [
     "msc_init",
     "msc_set_log_cb",
@@ -58,13 +43,21 @@ exclude = [
     "ngx_http_waf_modsecurity_log",
     "ngx_http_waf_log_error",
     "free",
+    "BotId",
+    "CheckId",
+    "TriggerKind",
 ]
 include = [
     "NgxWafStr",
     "NgxWafHeader",
+    "NgxWafModsecReq",
     "NgxWafReq",
     "NgxWafStep",
+    "NgxWafDecision",
+    "NgxWafPending",
     "NgxWafEvent",
+    "NgxWafZoneRefs",
+    "NgxWafZoneHandles",
     "ShmOps",
     "RegexOps",
     "ngx_waf_version",
@@ -73,18 +66,19 @@ include = [
     "ngx_waf_main_free",
     "ngx_waf_conf_create",
     "ngx_waf_conf_free",
-    "ngx_waf_conf_cc_zone",
-    "ngx_waf_conf_waf",
-    "ngx_waf_conf_modsecurity",
+    "ngx_waf_conf_enabled",
+    "ngx_waf_conf_modsecurity_enabled",
+    "ngx_waf_conf_zone_refs",
     "ngx_waf_conf_captcha_api",
     "ngx_waf_conf_take_warning",
     "ngx_waf_directive",
     "ngx_waf_zone_directive",
     "ngx_waf_conf_merge",
     "ngx_waf_check_begin",
+    "ngx_waf_check_step",
     "ngx_waf_check_resume",
     "ngx_waf_check_log",
-    "ngx_waf_step_free",
+    "ngx_waf_check_free",
     "ngx_waf_shm_zone_init",
     "ngx_waf_shm_zone_free",
     "ngx_waf_shm_zone_gc",
@@ -95,11 +89,29 @@ include = [
 [export.rename]
 "NgxWafStr" = "ngx_waf_str_t"
 "NgxWafHeader" = "ngx_waf_header_t"
+"NgxWafModsecReq" = "ngx_waf_modsec_req_t"
 "NgxWafReq" = "ngx_waf_req_t"
 "NgxWafStep" = "ngx_waf_step_t"
+"NgxWafDecision" = "ngx_waf_decision_t"
+"NgxWafPending" = "ngx_waf_pending_t"
 "NgxWafEvent" = "ngx_waf_event_t"
+"NgxWafZoneRefs" = "ngx_waf_zone_refs_t"
+"NgxWafZoneHandles" = "ngx_waf_zone_handles_t"
+"NgxWafMethod" = "ngx_waf_method"
+"NgxWafHttpVersion" = "ngx_waf_http_version"
+"NgxWafStepKind" = "ngx_waf_step_kind"
+"NgxWafEventKind" = "ngx_waf_event_kind"
+"NgxWafContentType" = "ngx_waf_content_type"
+"NgxWafMain" = "ngx_waf_main_t"
+"NgxWafConf" = "ngx_waf_conf_t"
+"NgxWafCheck" = "ngx_waf_check_t"
 "ShmOps" = "ngx_waf_shm_ops_t"
 "RegexOps" = "ngx_waf_regex_ops_t"
+
+[enum]
+# `NGX_WAF_STEP_KIND_ALLOW`, the spelling the C glue uses for the values that
+# used to be hand written macros.
+rename_variants = "QualifiedScreamingSnakeCase"
 
 [fn]
 args = "auto"
@@ -112,7 +124,7 @@ parse_deps = false
 crates = []
 all_features = false
 
-# The flags of `rust/src/flags.rs` are the typed view of the plain constants of
-# `types.rs`: the header keeps the constants, it never sees the macro.
+# The flags of `rust/src/flags.rs` are an implementation detail, the header
+# never sees the macro.
 [macro_expansion]
 bitflags = false

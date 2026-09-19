@@ -2,12 +2,15 @@
 //! never take an nginx worker down, it becomes an error result plus a loggable
 //! message instead.
 
+use crate::abi::{
+    Header, NgxWafCheck, NgxWafConf, NgxWafContentType, NgxWafEvent, NgxWafEventKind, NgxWafHeader,
+    NgxWafHttpVersion, NgxWafMain, NgxWafMethod, NgxWafReq, NgxWafStep, NgxWafStepKind, NgxWafStr,
+    NgxWafZoneHandles, NgxWafZoneRefs,
+};
 use crate::cc::{self, ShmOps};
 use crate::check;
-use crate::config::{self, LocConf, MainConf};
-use crate::flags::WafMode;
+use crate::config::{self, LocConf, MainConf, Waf};
 use crate::pcre::RegexOps;
-use crate::types::*;
 use crate::util;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
@@ -19,91 +22,6 @@ extern "C" {
     /// connection (`log` is the `r->connection->log` of the request view).
     /// The core calls it for the panics it caught at this boundary.
     fn ngx_http_waf_log_error(log: *mut c_void, message: *const c_char);
-}
-
-/// `ngx_str_t` compatible string view: nginx declares the length first, so the
-/// field order matters (see the layout assertion in the C glue).
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct NgxWafStr {
-    pub len: usize,
-    pub data: *const u8,
-}
-
-impl NgxWafStr {
-    /// # Safety
-    /// `data` must point to `len` readable bytes.
-    pub unsafe fn as_slice(&self) -> &[u8] {
-        if self.data.is_null() || self.len == 0 {
-            &[]
-        } else {
-            // SAFETY: the caller guarantees the pointer and the length.
-            unsafe { slice::from_raw_parts(self.data, self.len) }
-        }
-    }
-}
-
-/// One request header, the `ngx_table_elt_t` list of nginx.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct NgxWafHeader {
-    pub key: NgxWafStr,
-    pub value: NgxWafStr,
-}
-
-/// One request header as a safe view over the ABI table.  `#[repr(transparent)]`
-/// makes a slice of these interchangeable with the `NgxWafHeader` slice the C
-/// side hands over.
-#[repr(transparent)]
-#[derive(Clone, Copy)]
-pub(crate) struct Header(NgxWafHeader);
-
-impl Header {
-    pub(crate) fn key(&self) -> &[u8] {
-        // SAFETY: the C side keeps the header views alive for the whole
-        // request, which is what `RawReq` documents.
-        unsafe { self.0.key.as_slice() }
-    }
-
-    pub(crate) fn value(&self) -> &[u8] {
-        // SAFETY: the C side keeps the header views alive for the whole
-        // request, which is what `RawReq` documents.
-        unsafe { self.0.value.as_slice() }
-    }
-}
-
-/// The request view the C glue fills in.
-#[repr(C)]
-pub struct NgxWafReq {
-    pub ip: *const u8,
-    pub ip_len: usize,
-    pub method: u64,
-    pub uri: NgxWafStr,
-    pub args: NgxWafStr,
-    pub user_agent: NgxWafStr,
-    pub referer: NgxWafStr,
-    pub cookies: *const NgxWafStr,
-    pub cookie_count: usize,
-    pub body: NgxWafStr,
-    pub has_body: u8,
-    pub now: i64,
-    /// The request headers, only `waf_modsecurity` reads them.
-    pub headers: *const NgxWafHeader,
-    pub header_count: usize,
-    /// The evaluated `waf_modsecurity_transaction_id`, its `data` is NULL when
-    /// the directive is not configured.
-    pub trans_id: NgxWafStr,
-    /// The rest of what ModSecurity reads.
-    pub unparsed_uri: NgxWafStr,
-    pub method_name: NgxWafStr,
-    pub http_version: NgxWafStr,
-    pub client_addr: NgxWafStr,
-    pub client_port: u32,
-    pub server_addr: NgxWafStr,
-    pub server_port: u32,
-    /// `r->connection->log`: the data of the ModSecurity log callback, and
-    /// where a panic caught at this boundary is reported.
-    pub log: *mut c_void,
 }
 
 /// A borrowed byte range that crosses a suspension: the C side owns the memory
@@ -123,6 +41,20 @@ impl RawStr {
         len: 0,
     };
 
+    pub(crate) fn from_view(view: &NgxWafStr) -> Self {
+        RawStr {
+            len: view.len,
+            data: view.data,
+        }
+    }
+
+    pub(crate) fn as_view(self) -> NgxWafStr {
+        NgxWafStr {
+            len: self.len,
+            data: self.data,
+        }
+    }
+
     fn view(self) -> &'static [u8] {
         if self.data.is_null() || self.len == 0 {
             &[]
@@ -134,44 +66,37 @@ impl RawStr {
     }
 }
 
-impl From<&NgxWafStr> for RawStr {
-    fn from(view: &NgxWafStr) -> Self {
-        RawStr {
-            len: view.len,
-            data: view.data,
-        }
-    }
+/// The fields of a request that only `waf_modsecurity` reads, copied out of
+/// [`NgxWafModsecReq`] while the C side keeps it alive.
+#[derive(Clone, Copy)]
+pub(crate) struct RawModsecReq {
+    pub(crate) headers: *const NgxWafHeader,
+    pub(crate) header_count: usize,
+    pub(crate) trans_id: Option<RawStr>,
+    pub(crate) unparsed_uri: RawStr,
+    pub(crate) method_name: RawStr,
+    pub(crate) http_version: NgxWafHttpVersion,
+    pub(crate) client_addr: RawStr,
+    pub(crate) client_port: u32,
+    pub(crate) server_addr: RawStr,
+    pub(crate) server_port: u32,
 }
 
 /// Everything the C side knows about the request, kept by value so the machine
 /// can be resumed after the phase handler returned `NGX_DONE`.
 #[derive(Clone, Copy)]
 pub(crate) struct RawReq {
-    pub(crate) ip: *const u8,
-    pub(crate) ip_len: usize,
-    pub(crate) method: u64,
+    pub(crate) ip: RawStr,
+    pub(crate) method: NgxWafMethod,
     pub(crate) uri: RawStr,
     pub(crate) args: RawStr,
     pub(crate) user_agent: RawStr,
     pub(crate) referer: RawStr,
     pub(crate) body: RawStr,
-    pub(crate) has_body: bool,
     pub(crate) now: i64,
-    /// The request headers, only `waf_modsecurity` reads them.
-    pub(crate) headers: *const NgxWafHeader,
-    pub(crate) header_count: usize,
-    /// The evaluated `waf_modsecurity_transaction_id`, `data` is NULL when the
-    /// directive is not configured.
-    pub(crate) trans_id: RawStr,
-    /// The rest of what ModSecurity reads: the URI as it was sent, the method
-    /// and protocol, and the endpoints of the connection.
-    pub(crate) unparsed_uri: RawStr,
-    pub(crate) method_name: RawStr,
-    pub(crate) http_version: RawStr,
-    pub(crate) client_addr: RawStr,
-    pub(crate) client_port: u32,
-    pub(crate) server_addr: RawStr,
-    pub(crate) server_port: u32,
+    /// The view `waf_modsecurity` reads, `None` when the inspection cannot
+    /// run.
+    pub(crate) modsec: Option<RawModsecReq>,
     /// `r->connection->log`, the data of the ModSecurity log callback.
     pub(crate) log: *mut c_void,
     pub(crate) cc_zone: *const cc::ZoneHandle,
@@ -182,40 +107,43 @@ pub(crate) struct RawReq {
 }
 
 impl RawReq {
-    /// Build the ABI view of one request.  The three zone handles are separate
+    /// Build the ABI view of one request.  The zone handles are separate
     /// arguments of `ngx_waf_check_begin()`, they are not part of
     /// [`NgxWafReq`].
-    fn new(
-        req: &NgxWafReq,
-        cc_zone: *const cc::ZoneHandle,
-        action_zone: *const cc::ZoneHandle,
-        captcha_zone: *const cc::ZoneHandle,
-    ) -> Self {
+    fn new(req: &NgxWafReq, zones: NgxWafZoneHandles) -> Self {
+        // SAFETY: when the pointer is not NULL the C side passes a live view
+        // for the duration of `ngx_waf_check_begin()`.
+        let modsec = unsafe { req.modsec.as_ref() }.map(|modsec| RawModsecReq {
+            headers: modsec.headers,
+            header_count: modsec.header_count,
+            trans_id: if modsec.has_trans_id {
+                Some(RawStr::from_view(&modsec.trans_id))
+            } else {
+                None
+            },
+            unparsed_uri: RawStr::from_view(&modsec.unparsed_uri),
+            method_name: RawStr::from_view(&modsec.method_name),
+            http_version: modsec.http_version,
+            client_addr: RawStr::from_view(&modsec.client_addr),
+            client_port: modsec.client_port,
+            server_addr: RawStr::from_view(&modsec.server_addr),
+            server_port: modsec.server_port,
+        });
+
         RawReq {
-            ip: req.ip,
-            ip_len: req.ip_len,
+            ip: RawStr::from_view(&req.ip),
             method: req.method,
-            uri: RawStr::from(&req.uri),
-            args: RawStr::from(&req.args),
-            user_agent: RawStr::from(&req.user_agent),
-            referer: RawStr::from(&req.referer),
-            body: RawStr::from(&req.body),
-            has_body: req.has_body != 0,
+            uri: RawStr::from_view(&req.uri),
+            args: RawStr::from_view(&req.args),
+            user_agent: RawStr::from_view(&req.user_agent),
+            referer: RawStr::from_view(&req.referer),
+            body: RawStr::from_view(&req.body),
             now: req.now,
-            headers: req.headers,
-            header_count: req.header_count,
-            trans_id: RawStr::from(&req.trans_id),
-            unparsed_uri: RawStr::from(&req.unparsed_uri),
-            method_name: RawStr::from(&req.method_name),
-            http_version: RawStr::from(&req.http_version),
-            client_addr: RawStr::from(&req.client_addr),
-            client_port: req.client_port,
-            server_addr: RawStr::from(&req.server_addr),
-            server_port: req.server_port,
+            modsec,
             log: req.log,
-            cc_zone,
-            action_zone,
-            captcha_zone,
+            cc_zone: zones.cc as *const cc::ZoneHandle,
+            action_zone: zones.action as *const cc::ZoneHandle,
+            captcha_zone: zones.captcha as *const cc::ZoneHandle,
         }
     }
 
@@ -224,42 +152,36 @@ impl RawReq {
     /// returned lifetimes sound.
     pub(crate) fn view<'a>(&self, cookies: &'a [Vec<u8>]) -> check::Req<'a> {
         check::Req {
-            ip: if self.ip.is_null() {
-                &[]
-            } else {
-                // SAFETY: the address view is alive for the whole request.
-                unsafe { slice::from_raw_parts(self.ip, self.ip_len) }
-            },
-            ipv6: self.ip_len == 16,
-            method: WafMode::from_bits_retain(self.method),
+            ip: self.ip.view(),
+            ipv6: self.ip.len == 16,
+            method: self.method,
             uri: self.uri.view(),
             args: self.args.view(),
             user_agent: self.user_agent.view(),
             referer: self.referer.view(),
             cookies,
             body: self.body.view(),
-            has_body: self.has_body,
             now: self.now,
-            headers: if self.headers.is_null() || self.header_count == 0 {
-                &[]
-            } else {
-                // SAFETY: `Header` is a transparent view of `NgxWafHeader`, and
-                // the C side keeps `header_count` of them alive for the whole
-                // request.
-                unsafe { slice::from_raw_parts(self.headers as *const Header, self.header_count) }
-            },
-            trans_id: if self.trans_id.data.is_null() {
-                None
-            } else {
-                Some(self.trans_id.view())
-            },
-            unparsed_uri: self.unparsed_uri.view(),
-            method_name: self.method_name.view(),
-            http_version: self.http_version.view(),
-            client_addr: self.client_addr.view(),
-            client_port: self.client_port,
-            server_addr: self.server_addr.view(),
-            server_port: self.server_port,
+            modsec: self.modsec.as_ref().map(|modsec| check::ModsecReq {
+                headers: if modsec.headers.is_null() || modsec.header_count == 0 {
+                    &[]
+                } else {
+                    // SAFETY: `Header` is a transparent view of `NgxWafHeader`,
+                    // and the C side keeps `header_count` of them alive for the
+                    // whole request.
+                    unsafe {
+                        slice::from_raw_parts(modsec.headers as *const Header, modsec.header_count)
+                    }
+                },
+                trans_id: modsec.trans_id.map(RawStr::view),
+                unparsed_uri: modsec.unparsed_uri.view(),
+                method_name: modsec.method_name.view(),
+                http_version: modsec.http_version,
+                client_addr: modsec.client_addr.view(),
+                client_port: modsec.client_port,
+                server_addr: modsec.server_addr.view(),
+                server_port: modsec.server_port,
+            }),
             log: self.log,
             // SAFETY: the C side owns every zone handle for the life of the
             // worker, which outlives the request; a NULL handle is `None`.
@@ -272,102 +194,9 @@ impl RawReq {
     }
 }
 
-/// The result of one inspection.
-#[repr(C)]
-pub struct NgxWafStep {
-    pub kind: u32,
-    pub status: u32,
-    pub content_type: u32,
-    pub retry_after: i64,
-    pub body: *mut u8,
-    pub body_len: usize,
-    pub log: *mut u8,
-    pub log_len: usize,
-    pub rule_type: *mut u8,
-    pub rule_type_len: usize,
-    pub rule_details: *mut u8,
-    pub rule_details_len: usize,
-    pub blocked: u8,
-    pub checked: u8,
-    pub general_log: u8,
-    pub register_content_handler: u8,
-    pub rate: i64,
-    pub spend: f64,
-    /// `Set-Cookie` values for a decision that mints them (captcha).
-    pub set_cookies: *const NgxWafStr,
-    pub set_cookie_count: usize,
-    /// The `Location` header of a decision (the redirect of ModSecurity).
-    pub location: NgxWafStr,
-    /// `RESOLVE_ADDR`: the address to reverse resolve.
-    pub ip: *const u8,
-    pub ip_len: usize,
-    /// `HTTP_REQUEST`: the request the C side has to perform.
-    pub url: NgxWafStr,
-    pub http_body: NgxWafStr,
-    pub timeout_ms: i64,
-}
-
-impl NgxWafStep {
-    fn empty() -> NgxWafStep {
-        NgxWafStep {
-            kind: STEP_INTERNAL_ERROR,
-            status: 0,
-            content_type: CT_HTML,
-            retry_after: -1,
-            body: std::ptr::null_mut(),
-            body_len: 0,
-            log: std::ptr::null_mut(),
-            log_len: 0,
-            rule_type: std::ptr::null_mut(),
-            rule_type_len: 0,
-            rule_details: std::ptr::null_mut(),
-            rule_details_len: 0,
-            blocked: 0,
-            checked: 0,
-            general_log: 0,
-            register_content_handler: 0,
-            rate: 0,
-            spend: 0.0,
-            set_cookies: std::ptr::null(),
-            set_cookie_count: 0,
-            location: NgxWafStr {
-                len: 0,
-                data: std::ptr::null(),
-            },
-            ip: std::ptr::null(),
-            ip_len: 0,
-            url: NgxWafStr {
-                len: 0,
-                data: std::ptr::null(),
-            },
-            http_body: NgxWafStr {
-                len: 0,
-                data: std::ptr::null(),
-            },
-            timeout_ms: DEFAULT_HTTP_TIMEOUT_MS,
-        }
-    }
-}
-
-/// The event that wakes a parked inspection up.
-#[repr(C)]
-pub struct NgxWafEvent {
-    pub kind: u32,
-    /// `RESOLVED_NAME`: the host name the address resolves to.
-    pub name: NgxWafStr,
-    /// `HTTP_RESPONSE`: the status code of the provider.
-    pub status: u32,
-    /// `HTTP_RESPONSE`: its body.
-    pub body: NgxWafStr,
-}
-
-/// How long the C side waits for the captcha provider.
-const DEFAULT_HTTP_TIMEOUT_MS: i64 = 5000;
-
-/// The handle the C side owns: the machine lives as long as the request does.
-#[repr(C)]
-struct StepHandle {
-    /// Must stay the first field: C receives a pointer to it.
+/// The handle behind the opaque `ngx_waf_check_t` the C side owns: the machine
+/// lives as long as the request does.
+struct CheckHandle {
     step: NgxWafStep,
     machine: Option<check::Machine>,
     buffers: StepBuffers,
@@ -489,14 +318,14 @@ pub extern "C" fn ngx_waf_string_free(text: *mut c_char) {
 }
 
 #[no_mangle]
-pub extern "C" fn ngx_waf_main_create() -> *mut c_void {
+pub extern "C" fn ngx_waf_main_create() -> *mut NgxWafMain {
     guard(std::ptr::null_mut(), || {
-        Box::into_raw(Box::new(MainConf::default())) as *mut c_void
+        Box::into_raw(Box::new(MainConf::default())) as *mut c_void as *mut NgxWafMain
     })
 }
 
 #[no_mangle]
-pub extern "C" fn ngx_waf_main_free(main: *mut c_void) {
+pub extern "C" fn ngx_waf_main_free(main: *mut NgxWafMain) {
     if main.is_null() {
         return;
     }
@@ -507,14 +336,14 @@ pub extern "C" fn ngx_waf_main_free(main: *mut c_void) {
 }
 
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_create() -> *mut c_void {
+pub extern "C" fn ngx_waf_conf_create() -> *mut NgxWafConf {
     guard(std::ptr::null_mut(), || {
-        Box::into_raw(Box::new(LocConf::new())) as *mut c_void
+        Box::into_raw(Box::new(LocConf::new())) as *mut c_void as *mut NgxWafConf
     })
 }
 
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_free(conf: *mut c_void) {
+pub extern "C" fn ngx_waf_conf_free(conf: *mut NgxWafConf) {
     if conf.is_null() {
         return;
     }
@@ -524,78 +353,54 @@ pub extern "C" fn ngx_waf_conf_free(conf: *mut c_void) {
     });
 }
 
-/// The zone index the configuration uses for `waf_cc_deny`, or `-1`.
+/// Whether the inspection of a request runs with this configuration:
+/// `waf on` or `waf bypass`.  The C side skips the access and log phases of
+/// `waf off` and of a context that never set the directive.
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_cc_zone(conf: *mut c_void) -> i64 {
+pub extern "C" fn ngx_waf_conf_enabled(conf: *const NgxWafConf) -> bool {
     if conf.is_null() {
-        return -1;
+        return false;
     }
-    guard(-1, || {
+    guard(false, || {
         // SAFETY: the C side owns a live configuration for this call.
         let conf = unsafe { &*(conf as *const LocConf) };
-        conf.cc_deny
-            .zone
-            .as_ref()
-            .map_or(-1, |zone| zone.index as i64)
+        matches!(conf.waf, Some(Waf::On | Waf::Bypass))
     })
 }
 
-/// The zone index of the captcha action table, `-1` when there is none.
+/// Whether the `waf_modsecurity` inspection can run; the C side only packs the
+/// `ngx_waf_modsec_req_t` view when it does.
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_action_zone(conf: *mut c_void) -> i64 {
+pub extern "C" fn ngx_waf_conf_modsecurity_enabled(conf: *const NgxWafConf) -> bool {
     if conf.is_null() {
-        return -1;
+        return false;
     }
-    guard(-1, || {
+    guard(false, || {
         // SAFETY: the C side owns a live configuration for this call.
         let conf = unsafe { &*(conf as *const LocConf) };
-        conf.action
-            .captcha_zone
-            .as_ref()
-            .map_or(-1, |zone| zone.index as i64)
+        conf.modsecurity.enabled == Some(true)
     })
 }
 
-/// The zone index of the captcha fail counters, `-1` when there is none.
+/// The shared memory zone of every use of this configuration, by name; an
+/// empty view means the configuration does not use that zone.  The C side owns
+/// the zones and looks the handles up.
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_captcha_zone(conf: *mut c_void) -> i64 {
+pub extern "C" fn ngx_waf_conf_zone_refs(conf: *const NgxWafConf) -> NgxWafZoneRefs {
     if conf.is_null() {
-        return -1;
+        return NgxWafZoneRefs::empty();
     }
-    guard(-1, || {
+    guard(NgxWafZoneRefs::empty(), || {
         // SAFETY: the C side owns a live configuration for this call.
         let conf = unsafe { &*(conf as *const LocConf) };
-        conf.captcha
-            .zone
-            .as_ref()
-            .map_or(-1, |zone| zone.index as i64)
-    })
-}
-
-/// The `waf` value of the configuration: `-1` unset, 0 off, 1 on, 2 bypass.
-#[no_mangle]
-pub extern "C" fn ngx_waf_conf_waf(conf: *mut c_void) -> i64 {
-    if conf.is_null() {
-        return -1;
-    }
-    guard(-1, || {
-        // SAFETY: the C side owns a live configuration for this call.
-        let conf = unsafe { &*(conf as *const LocConf) };
-        conf.waf.map_or(WAF_UNSET, |waf| waf as i64)
-    })
-}
-
-/// The `waf_modsecurity` value of the configuration: `-1` unset, 0 off, 1 on.
-/// The C glue only packs the request headers when the inspection can run.
-#[no_mangle]
-pub extern "C" fn ngx_waf_conf_modsecurity(conf: *mut c_void) -> i64 {
-    if conf.is_null() {
-        return -1;
-    }
-    guard(-1, || {
-        // SAFETY: the C side owns a live configuration for this call.
-        let conf = unsafe { &*(conf as *const LocConf) };
-        conf.modsecurity.enabled.map_or(-1, i64::from)
+        let zone = |zone: Option<&crate::config::ZoneRef>| {
+            zone.map_or(NgxWafStr::EMPTY, |zone| NgxWafStr::from_slice(&zone.name))
+        };
+        NgxWafZoneRefs {
+            cc: zone(conf.cc_deny.zone.as_ref()),
+            captcha: zone(conf.captcha.zone.as_ref()),
+            action: zone(conf.action.captcha_zone.as_ref()),
+        }
     })
 }
 
@@ -604,7 +409,7 @@ pub extern "C" fn ngx_waf_conf_modsecurity(conf: *mut c_void) -> i64 {
 /// The C side drains the list after every directive and frees the message with
 /// [`ngx_waf_string_free`].
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_take_warning(conf: *mut c_void) -> *mut c_char {
+pub extern "C" fn ngx_waf_conf_take_warning(conf: *mut NgxWafConf) -> *mut c_char {
     if conf.is_null() {
         return std::ptr::null_mut();
     }
@@ -632,29 +437,23 @@ pub extern "C" fn ngx_waf_conf_take_warning(conf: *mut c_void) -> *mut c_char {
 /// The returned view points into the configuration, which outlives every
 /// request; it is empty when no `waf_captcha` was configured.
 #[no_mangle]
-pub extern "C" fn ngx_waf_conf_captcha_api(conf: *mut c_void) -> NgxWafStr {
-    let empty = NgxWafStr {
-        len: 0,
-        data: std::ptr::null(),
-    };
+pub extern "C" fn ngx_waf_conf_captcha_api(conf: *const NgxWafConf) -> NgxWafStr {
+    let empty = NgxWafStr::EMPTY;
     if conf.is_null() {
         return empty;
     }
     guard(empty, || {
         // SAFETY: the C side owns a live configuration for this call.
         let api = unsafe { &(*(conf as *const LocConf)).captcha.api };
-        NgxWafStr {
-            len: api.len(),
-            data: api.as_ptr(),
-        }
+        NgxWafStr::from_slice(api)
     })
 }
 
 /// Apply one directive, returns NULL on success or an error message.
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_directive(
-    main: *mut c_void,
-    conf: *mut c_void,
+    main: *mut NgxWafMain,
+    conf: *mut NgxWafConf,
     name: NgxWafStr,
     args: *const NgxWafStr,
     nargs: usize,
@@ -698,7 +497,7 @@ pub unsafe extern "C" fn ngx_waf_directive(
 /// valid as long as the main configuration does.
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_zone_directive(
-    main: *mut c_void,
+    main: *mut NgxWafMain,
     args: *const NgxWafStr,
     nargs: usize,
     out_name: *mut *const u8,
@@ -739,8 +538,8 @@ pub unsafe extern "C" fn ngx_waf_zone_directive(
 /// Merge a child configuration into its parent.
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_conf_merge(
-    child: *mut c_void,
-    parent: *mut c_void,
+    child: *mut NgxWafConf,
+    parent: *mut NgxWafConf,
 ) -> *mut c_char {
     if child.is_null() || parent.is_null() {
         return std::ptr::null_mut();
@@ -755,17 +554,15 @@ pub unsafe extern "C" fn ngx_waf_conf_merge(
 }
 
 /// Start the inspection of one request.  The returned handle is owned by the C
-/// side and must be freed with `ngx_waf_step_free()` once the request is done,
+/// side and must be freed with `ngx_waf_check_free()` once the request is done,
 /// which is also what keeps the machine of a parked request alive.
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_check_begin(
-    conf: *mut c_void,
+    conf: *mut NgxWafConf,
     req: *const NgxWafReq,
-    cc_zone: *mut c_void,
-    action_zone: *mut c_void,
-    captcha_zone: *mut c_void,
-    http_transport: i32,
-) -> *mut NgxWafStep {
+    zones: NgxWafZoneHandles,
+    http_transport: bool,
+) -> *mut NgxWafCheck {
     if conf.is_null() || req.is_null() {
         return std::ptr::null_mut();
     }
@@ -788,91 +585,100 @@ pub unsafe extern "C" fn ngx_waf_check_begin(
                 .map(|cookie| unsafe { cookie.as_slice() }.to_vec())
                 .collect()
         };
-        let raw = RawReq::new(
-            req,
-            cc_zone as *const cc::ZoneHandle,
-            action_zone as *const cc::ZoneHandle,
-            captcha_zone as *const cc::ZoneHandle,
-        );
+        let raw = RawReq::new(req, zones);
         // The C side passes whether it can perform the captcha provider request
         // (the subrequest fetch); until it can, the captcha checks stay inert.
         let conf = std::ptr::NonNull::new(conf as *mut LocConf).expect("checked above");
-        let machine = check::Machine::new(conf, raw, cookies, http_transport != 0);
-        let mut handle = StepHandle {
+        let machine = check::Machine::new(conf, raw, cookies, http_transport);
+        let mut handle = CheckHandle {
             step: NgxWafStep::empty(),
             machine: Some(machine),
             buffers: StepBuffers::default(),
         };
         handle.advance();
-        Box::into_raw(Box::new(handle)) as *mut NgxWafStep
+        Box::into_raw(Box::new(handle)) as *mut c_void as *mut NgxWafCheck
     })
 }
 
-/// Feed the result of an asynchronous operation back into the machine, then
-/// report the next step in the same handle.  Returns 0 on success.
+/// The step of one inspection, read-only for the C side.  The pointer stays
+/// valid until the next `ngx_waf_check_resume()` or `ngx_waf_check_free()`.
 #[no_mangle]
-pub unsafe extern "C" fn ngx_waf_check_resume(
-    step: *mut NgxWafStep,
-    event: *const NgxWafEvent,
-) -> i32 {
-    if step.is_null() || event.is_null() {
-        return -1;
+pub unsafe extern "C" fn ngx_waf_check_step(check: *const NgxWafCheck) -> *const NgxWafStep {
+    if check.is_null() {
+        return std::ptr::null();
     }
     // SAFETY: the C side owns a live handle for this call.
-    let log = unsafe {
-        (*(step as *mut StepHandle))
-            .machine
-            .as_ref()
-            .map(|machine| machine.log())
-            .unwrap_or(std::ptr::null_mut())
-    };
-    guard_with_log(log, -1, || {
-        // SAFETY: the C side owns a live handle and event for this call.
-        let handle = unsafe { &mut *(step as *mut StepHandle) };
-        // SAFETY: see above.
+    unsafe { &(*(check as *const CheckHandle)).step }
+}
+
+/// Feed the result of an asynchronous operation back into the machine and
+/// publish the next step in the same handle.  A panic is reported to the error
+/// log and published as the internal error step, so the C side never has to
+/// write to the memory this crate owns.
+#[no_mangle]
+pub unsafe extern "C" fn ngx_waf_check_resume(check: *mut NgxWafCheck, event: *const NgxWafEvent) {
+    if check.is_null() || event.is_null() {
+        return;
+    }
+    // SAFETY: the C side owns a live handle for this call.
+    let handle = unsafe { &mut *(check as *mut CheckHandle) };
+    let log = handle
+        .machine
+        .as_ref()
+        .map(|machine| machine.log())
+        .unwrap_or(std::ptr::null_mut());
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: the C side owns a live event for this call, and every view of
+        // it is valid for this call.
         let event = unsafe { &*event };
         let event = match event.kind {
-            // SAFETY: every view of the event is valid for this call.
-            EVENT_RESOLVED_NAME => check::Event::ResolvedName(unsafe { event.name.as_slice() }),
-            EVENT_HTTP_RESPONSE => check::Event::HttpResponse {
+            NgxWafEventKind::ResolvedName => {
+                // SAFETY: the name view is valid for this call.
+                check::Event::ResolvedName(unsafe { event.name.as_slice() })
+            }
+            NgxWafEventKind::HttpResponse => check::Event::HttpResponse {
                 status: event.status,
                 // SAFETY: the body view is valid for this call.
                 body: unsafe { event.body.as_slice() },
             },
-            EVENT_HTTP_FAILED => check::Event::HttpFailed,
-            _ => check::Event::ResolveFailed,
+            NgxWafEventKind::HttpFailed => check::Event::HttpFailed,
+            NgxWafEventKind::ResolveFailed => check::Event::ResolveFailed,
         };
         handle.resume(event);
-        0
-    })
+    }));
+
+    if let Err(payload) = result {
+        let message = panic_message(payload);
+        // SAFETY: `log` is the log of the request the handle was built for.
+        unsafe { log_internal_error(log, &message) };
+        handle.publish_internal_error();
+    }
 }
 
 /// Run the log phase of one request: the audit log of the ModSecurity
 /// transaction, when the inspection created one.  nginx runs the log phase
 /// before the request pool (and with it the machine) is released.
 #[no_mangle]
-pub unsafe extern "C" fn ngx_waf_check_log(step: *mut NgxWafStep) {
-    if step.is_null() {
+pub unsafe extern "C" fn ngx_waf_check_log(check: *mut NgxWafCheck) {
+    if check.is_null() {
         return;
     }
     // SAFETY: the C side owns a live handle for this call.
-    let log = unsafe {
-        (*(step as *mut StepHandle))
-            .machine
-            .as_ref()
-            .map(|machine| machine.log())
-            .unwrap_or(std::ptr::null_mut())
-    };
+    let handle = unsafe { &mut *(check as *mut CheckHandle) };
+    let log = handle
+        .machine
+        .as_ref()
+        .map(|machine| machine.log())
+        .unwrap_or(std::ptr::null_mut());
     guard_with_log(log, (), || {
-        // SAFETY: the C side owns a live handle for this call.
-        let handle = unsafe { &mut *(step as *mut StepHandle) };
         if let Some(machine) = handle.machine.as_mut() {
             machine.log_phase();
         }
     });
 }
 
-impl StepHandle {
+impl CheckHandle {
     /// Run the machine once and publish the result into the C visible step.
     fn advance(&mut self) {
         let step = match self.machine.as_mut() {
@@ -901,31 +707,39 @@ impl StepHandle {
             check::Step::Decision(outcome) => self.publish_decision(outcome),
             check::Step::Pending(pending) => match pending {
                 check::Pending::ResolveAddr => {
-                    self.step.kind = STEP_RESOLVE_ADDR;
+                    self.step.kind = NgxWafStepKind::ResolveAddr;
                     if let Some(machine) = self.machine.as_ref() {
-                        let raw = machine.raw();
-                        self.step.ip = raw.ip;
-                        self.step.ip_len = raw.ip_len;
+                        self.step.pending.ip = machine.raw().ip.as_view();
                     }
                 }
                 check::Pending::HttpRequest => {
-                    self.step.kind = STEP_HTTP_REQUEST;
-                    self.step.timeout_ms = DEFAULT_HTTP_TIMEOUT_MS;
+                    self.step.kind = NgxWafStepKind::HttpRequest;
                     if let Some(machine) = self.machine.as_ref() {
                         if let Some((url, body)) = machine.fetch() {
-                            self.step.url.len = url.len();
-                            self.step.url.data = url.as_ptr();
-                            self.step.http_body.len = body.len();
-                            self.step.http_body.data = body.as_ptr();
+                            self.step.pending.url = NgxWafStr {
+                                len: url.len(),
+                                data: url.as_ptr(),
+                            };
+                            self.step.pending.body = NgxWafStr {
+                                len: body.len(),
+                                data: body.as_ptr(),
+                            };
                         }
                     }
                 }
             },
-            check::Step::InternalError => {
-                self.step.kind = STEP_INTERNAL_ERROR;
-                self.step.status = 500;
-            }
+            check::Step::InternalError => self.publish_internal_error(),
         }
+    }
+
+    /// Publish the step of an inspection that could not run, the answer of a
+    /// panic caught at the boundary.
+    fn publish_internal_error(&mut self) {
+        self.buffers.clear();
+        let mut step = NgxWafStep::empty();
+        step.kind = NgxWafStepKind::InternalError;
+        step.decision.status = 500;
+        self.step = step;
     }
 
     /// Move the buffers of one decision into the handle, then point the step
@@ -949,10 +763,7 @@ impl StepHandle {
             .buffers
             .cookie_text
             .iter()
-            .map(|text| NgxWafStr {
-                len: text.len(),
-                data: text.as_ptr(),
-            })
+            .map(|text| NgxWafStr::from_slice(text))
             .collect();
         self.buffers.body = outcome.body;
         self.buffers.log = log;
@@ -962,54 +773,48 @@ impl StepHandle {
 
         let mut step = NgxWafStep::empty();
         step.kind = match outcome.kind {
-            check::OutcomeKind::Allow => STEP_ALLOW,
-            check::OutcomeKind::Response => STEP_RESPONSE,
-            check::OutcomeKind::InternalError => STEP_INTERNAL_ERROR,
+            check::OutcomeKind::Allow => NgxWafStepKind::Allow,
+            check::OutcomeKind::Response => NgxWafStepKind::Response,
+            check::OutcomeKind::InternalError => NgxWafStepKind::InternalError,
         };
-        step.status = outcome.status;
-        step.content_type = match outcome.content_type {
-            check::ContentType::Html => CT_HTML,
-            check::ContentType::Text => CT_TEXT,
+        step.decision.status = outcome.status;
+        step.decision.content_type = match outcome.content_type {
+            check::ContentType::Html => NgxWafContentType::Html,
+            check::ContentType::Text => NgxWafContentType::Text,
         };
-        step.retry_after = outcome.retry_after;
-        step.body = self.buffers.body.as_mut_ptr();
-        step.body_len = self.buffers.body.len();
-        if outcome.general_log {
-            step.log = self.buffers.log.as_mut_ptr();
-            step.log_len = self.buffers.log.len();
-        }
-        step.rule_type = self.buffers.rule_type.as_mut_ptr();
-        step.rule_type_len = self.buffers.rule_type.len();
-        step.rule_details = self.buffers.rule_details.as_mut_ptr();
-        step.rule_details_len = self.buffers.rule_details.len();
-        step.blocked = outcome.blocked as u8;
-        step.checked = outcome.checked as u8;
-        step.general_log = outcome.general_log as u8;
-        step.register_content_handler = outcome.register_content_handler as u8;
-        step.rate = outcome.rate;
-        step.spend = outcome.spend;
-        step.set_cookies = self.buffers.cookie_views.as_ptr();
-        step.set_cookie_count = self.buffers.cookie_views.len();
-        if !self.buffers.location.is_empty() {
-            step.location = NgxWafStr {
-                len: self.buffers.location.len(),
-                data: self.buffers.location.as_ptr(),
-            };
-        }
+        step.decision.has_retry_after = outcome.retry_after >= 0;
+        step.decision.retry_after = outcome.retry_after;
+        step.decision.body = NgxWafStr::from_slice(&self.buffers.body);
+        step.decision.log = if outcome.general_log {
+            NgxWafStr::from_slice(&self.buffers.log)
+        } else {
+            NgxWafStr::EMPTY
+        };
+        step.decision.rule_type = NgxWafStr::from_slice(&self.buffers.rule_type);
+        step.decision.rule_details = NgxWafStr::from_slice(&self.buffers.rule_details);
+        step.decision.location = NgxWafStr::from_slice(&self.buffers.location);
+        step.decision.blocked = outcome.blocked;
+        step.decision.checked = outcome.checked;
+        step.decision.general_log = outcome.general_log;
+        step.decision.register_content_handler = outcome.register_content_handler;
+        step.decision.rate = outcome.rate;
+        step.decision.spend = outcome.spend;
+        step.decision.set_cookies = self.buffers.cookie_views.as_ptr();
+        step.decision.set_cookie_count = self.buffers.cookie_views.len();
         self.step = step;
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ngx_waf_step_free(step: *mut NgxWafStep) {
-    if step.is_null() {
+pub unsafe extern "C" fn ngx_waf_check_free(check: *mut NgxWafCheck) {
+    if check.is_null() {
         return;
     }
     guard((), || {
-        // SAFETY: the pointer the C side holds points at the first field of a
-        // handle created by `ngx_waf_check_begin()`, and the C side frees it
-        // exactly once.  Dropping the handle releases every buffer it owns.
-        unsafe { drop(Box::from_raw(step as *mut StepHandle)) };
+        // SAFETY: the pointer comes from `ngx_waf_check_begin()` and the C side
+        // frees it exactly once.  Dropping the handle releases every buffer it
+        // owns.
+        unsafe { drop(Box::from_raw(check as *mut CheckHandle)) };
     });
 }
 
@@ -1062,17 +867,13 @@ pub unsafe extern "C" fn ngx_waf_shm_zone_gc(handle: *mut c_void) {
 /// The probability check of `_gc()`, exposed so the C glue can gate the GC of
 /// every zone of this worker.
 #[no_mangle]
-pub extern "C" fn ngx_waf_should_gc(worker_processes: i64) -> i32 {
-    if guard(false, || cc::should_gc(worker_processes)) {
-        1
-    } else {
-        0
-    }
+pub extern "C" fn ngx_waf_should_gc(worker_processes: u32) -> bool {
+    guard(false, || cc::should_gc(i64::from(worker_processes)))
 }
 
 /// Garbage collect the per-worker inspection caches.
 #[no_mangle]
-pub unsafe extern "C" fn ngx_waf_gc(conf: *mut c_void) {
+pub unsafe extern "C" fn ngx_waf_gc(conf: *mut NgxWafConf) {
     guard((), || {
         let now = util::now();
         if conf.is_null() {
@@ -1087,6 +888,7 @@ pub unsafe extern "C" fn ngx_waf_gc(conf: *mut c_void) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::OK;
     use std::mem::{offset_of, size_of};
     use std::sync::Mutex;
 
@@ -1129,40 +931,53 @@ mod tests {
         assert_eq!(offset_of!(NgxWafStr, data), size_of::<usize>());
     }
 
-    /// The C side holds a `struct ngx_waf_step_t *` and hands it back, the step
-    /// has to stay the first field of the handle it points at.
+    /// The values of the protocol enums are the contract of the generated
+    /// header; they are frozen here so a reordering is a visible change.
     #[test]
-    fn the_step_is_the_first_field_of_the_handle() {
-        assert_eq!(offset_of!(NgxWafStep, kind), 0);
-        assert_eq!(offset_of!(StepHandle, step), 0);
-    }
-
-    /// The header the C side compiles against declares the same kinds twice:
-    /// the `NGX_WAF_*` macros of the cbindgen template and the names cbindgen
-    /// generates from these constants.  The C glue asserts that they agree (see
-    /// `ngx_http_waf_kinds_must_match`); this test freezes their values.
-    #[test]
-    fn the_step_kinds_are_stable() {
+    fn the_protocol_values_are_stable() {
         assert_eq!(
             [
-                STEP_ALLOW,
-                STEP_RESPONSE,
-                STEP_INTERNAL_ERROR,
-                STEP_RESOLVE_ADDR,
-                STEP_HTTP_REQUEST
+                NgxWafStepKind::Allow as u32,
+                NgxWafStepKind::Response as u32,
+                NgxWafStepKind::InternalError as u32,
+                NgxWafStepKind::ResolveAddr as u32,
+                NgxWafStepKind::HttpRequest as u32
             ],
             [0, 1, 2, 3, 4]
         );
         assert_eq!(
             [
-                EVENT_RESOLVED_NAME,
-                EVENT_RESOLVE_FAILED,
-                EVENT_HTTP_RESPONSE,
-                EVENT_HTTP_FAILED
+                NgxWafEventKind::ResolvedName as u32,
+                NgxWafEventKind::ResolveFailed as u32,
+                NgxWafEventKind::HttpResponse as u32,
+                NgxWafEventKind::HttpFailed as u32
             ],
             [0, 1, 2, 3]
         );
-        assert_eq!([CT_HTML, CT_TEXT], [0, 1]);
+        assert_eq!(
+            [
+                NgxWafContentType::Html as u32,
+                NgxWafContentType::Text as u32
+            ],
+            [0, 1]
+        );
+        assert_eq!(
+            [
+                NgxWafMethod::Unknown as u32,
+                NgxWafMethod::Get as u32,
+                NgxWafMethod::Trace as u32
+            ],
+            [0, 1, 15]
+        );
+        assert_eq!(
+            [
+                NgxWafHttpVersion::Http09 as u32,
+                NgxWafHttpVersion::Http10 as u32,
+                NgxWafHttpVersion::Http11 as u32,
+                NgxWafHttpVersion::Http20 as u32
+            ],
+            [0, 1, 2, 3]
+        );
     }
 
     /// The views of a published step point into buffers the handle owns: a
@@ -1170,7 +985,7 @@ mod tests {
     /// buffer without the manual free the old leak-based scheme needed.
     #[test]
     fn a_republished_step_points_into_the_owned_buffers() {
-        let mut handle = StepHandle {
+        let mut handle = CheckHandle {
             step: NgxWafStep::empty(),
             machine: None,
             buffers: StepBuffers::default(),
@@ -1196,20 +1011,24 @@ mod tests {
 
         handle.publish(check::Step::Decision(decision(403, b"first", "1")));
         // SAFETY: the views point into the buffers of the live handle.
-        let body = unsafe { slice::from_raw_parts(handle.step.body, handle.step.body_len) };
+        let body = unsafe { handle.step.decision.body.as_slice() };
         assert_eq!(body, b"first");
-        assert_eq!(handle.step.status, 403);
-        assert_eq!(handle.buffers.body.as_ptr(), handle.step.body);
+        assert_eq!(handle.step.decision.status, 403);
+        assert_eq!(handle.buffers.body.as_ptr(), handle.step.decision.body.data);
 
         handle.publish(check::Step::Decision(decision(200, b"second", "2")));
         // SAFETY: same contract, the second publish rebuilt the buffers.
-        let body = unsafe { slice::from_raw_parts(handle.step.body, handle.step.body_len) };
+        let body = unsafe { handle.step.decision.body.as_slice() };
         assert_eq!(body, b"second");
-        assert_eq!(handle.step.status, 200);
-        assert_eq!(handle.buffers.body.as_ptr(), handle.step.body);
+        assert_eq!(handle.step.decision.status, 200);
+        assert_eq!(handle.buffers.body.as_ptr(), handle.step.decision.body.data);
         // SAFETY: the cookie views point into the `cookie_text` of the handle.
-        let cookies =
-            unsafe { slice::from_raw_parts(handle.step.set_cookies, handle.step.set_cookie_count) };
+        let cookies = unsafe {
+            slice::from_raw_parts(
+                handle.step.decision.set_cookies,
+                handle.step.decision.set_cookie_count,
+            )
+        };
         assert_eq!(cookies.len(), 1);
         // SAFETY: every view of `set_cookies` is valid while the handle lives.
         assert_eq!(unsafe { cookies[0].as_slice() }, b"__waf=2; Path=/");
@@ -1218,14 +1037,14 @@ mod tests {
     /// The typed outcome maps back to the numeric contract of the C header.
     #[test]
     fn the_typed_outcome_maps_to_the_c_codes() {
-        let mut handle = StepHandle {
+        let mut handle = CheckHandle {
             step: NgxWafStep::empty(),
             machine: None,
             buffers: StepBuffers::default(),
         };
         let outcome = |kind, content_type| check::Outcome {
             kind,
-            status: HTTP_OK,
+            status: OK,
             content_type,
             body: Vec::new(),
             register_content_handler: false,
@@ -1245,20 +1064,20 @@ mod tests {
             check::OutcomeKind::Allow,
             check::ContentType::Html,
         )));
-        assert_eq!(handle.step.kind, STEP_ALLOW);
+        assert_eq!(handle.step.kind, NgxWafStepKind::Allow);
 
         handle.publish(check::Step::Decision(outcome(
             check::OutcomeKind::Response,
             check::ContentType::Text,
         )));
-        assert_eq!(handle.step.kind, STEP_RESPONSE);
-        assert_eq!(handle.step.content_type, CT_TEXT);
+        assert_eq!(handle.step.kind, NgxWafStepKind::Response);
+        assert_eq!(handle.step.decision.content_type, NgxWafContentType::Text);
 
         handle.publish(check::Step::Decision(outcome(
             check::OutcomeKind::InternalError,
             check::ContentType::Html,
         )));
-        assert_eq!(handle.step.kind, STEP_INTERNAL_ERROR);
+        assert_eq!(handle.step.kind, NgxWafStepKind::InternalError);
     }
 
     #[test]

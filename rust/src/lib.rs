@@ -13,14 +13,16 @@
 
 // The crate is only reachable through the C ABI of `ffi`, everything else is
 // internal.
+mod abi;
 mod cache;
 mod cc;
 mod check;
 mod config;
+mod data;
 mod ffi;
 mod flags;
+mod http;
 mod modsec;
 mod pcre;
 mod rules;
-mod types;
 mod util;

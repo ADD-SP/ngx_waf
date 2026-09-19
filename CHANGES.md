@@ -6,6 +6,11 @@
 * Bazel has been replaced by the nginx `config` script, cargo and a `Makefile`.
 * The FFI header `include/ngx_http_waf_ffi.h` is generated with cbindgen and
   checked in.
+* The C ABI only carries the vocabulary of the boundary: typed enums for the
+  step, the events, the methods and the protocol, opaque handles for the
+  configurations and the inspection, and semantic queries for the
+  configuration.  The constants and the types of the implementation no longer
+  cross it.
 * Every inspection is ported, including the asynchronous ones: the captcha and
   the friendly crawler verification use reverse DNS through the nginx resolver
   and a non blocking request to the captcha provider.  The response phases of

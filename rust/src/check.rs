@@ -1,6 +1,7 @@
 //! The detection chain: it runs the inspections in the configured priority
 //! order and resolves the resulting action chain into a response.
 
+use crate::abi::{Header, NgxWafHttpVersion, NgxWafMethod};
 use crate::cache::{CacheKind, CachedResult};
 use crate::cc;
 use crate::config::{
@@ -8,12 +9,14 @@ use crate::config::{
     Waf, BOTS,
 };
 #[cfg(test)]
-use crate::ffi::RawStr;
-use crate::ffi::{Header, RawReq};
+use crate::data::HTML_BLOCK;
+use crate::ffi::RawReq;
+#[cfg(test)]
+use crate::ffi::{RawModsecReq, RawStr};
 use crate::flags::WafMode;
+use crate::http::{FORBIDDEN, INTERNAL_SERVER_ERROR, OK, SERVICE_UNAVAILABLE, TOO_MANY_REQUESTS};
 use crate::modsec;
 use crate::rules::RuleKind;
-use crate::types::*;
 use crate::util;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -27,29 +30,18 @@ pub struct Req<'a> {
     /// Network order address, 4 or 16 bytes.
     pub ip: &'a [u8],
     pub ipv6: bool,
-    pub method: WafMode,
+    pub method: NgxWafMethod,
     pub uri: &'a [u8],
     pub args: &'a [u8],
     pub user_agent: &'a [u8],
     pub referer: &'a [u8],
+    /// One entry per `Cookie` header, the raw header values.
     pub cookies: &'a [Vec<u8>],
     pub body: &'a [u8],
-    pub has_body: bool,
     pub now: i64,
-    /// The request headers, in the order nginx parsed them.
-    pub headers: &'a [Header],
-    /// The `waf_modsecurity_transaction_id` of this request, `None` when the
-    /// directive is not configured.
-    pub trans_id: Option<&'a [u8]>,
-    /// `r->unparsed_uri`, the URI ModSecurity inspects (the other inspections
-    /// use the decoded `uri`).
-    pub unparsed_uri: &'a [u8],
-    pub method_name: &'a [u8],
-    pub http_version: &'a [u8],
-    pub client_addr: &'a [u8],
-    pub client_port: u32,
-    pub server_addr: &'a [u8],
-    pub server_port: u32,
+    /// The view `waf_modsecurity` reads, `None` when the inspection cannot
+    /// run.
+    pub modsec: Option<ModsecReq<'a>>,
     /// `r->connection->log`.
     pub log: *mut std::os::raw::c_void,
     /// The handle of the CC zone, `None` when the configuration does not use
@@ -59,6 +51,24 @@ pub struct Req<'a> {
     pub action_zone: Option<&'a cc::ZoneHandle>,
     /// The handle of the captcha fail counters (`waf_captcha ... zone=...`).
     pub captcha_zone: Option<&'a cc::ZoneHandle>,
+}
+
+/// Everything libmodsecurity reads beyond the common request view.
+pub struct ModsecReq<'a> {
+    /// The request headers, in the order nginx parsed them.
+    pub headers: &'a [Header],
+    /// The `waf_modsecurity_transaction_id` of this request, `None` when the
+    /// directive is not configured.
+    pub trans_id: Option<&'a [u8]>,
+    /// `r->unparsed_uri`, the URI ModSecurity inspects (the other inspections
+    /// use the decoded `uri`).
+    pub unparsed_uri: &'a [u8],
+    pub method_name: &'a [u8],
+    pub http_version: NgxWafHttpVersion,
+    pub client_addr: &'a [u8],
+    pub client_port: u32,
+    pub server_addr: &'a [u8],
+    pub server_port: u32,
 }
 
 /// The kind of response an [`Outcome`] asks the C side for.
@@ -302,12 +312,12 @@ impl State<'_, '_> {
 
         if error_page {
             return match self.conf.block_page.is_empty() {
-                true => Decision::status(HTTP_FORBIDDEN),
-                false => Decision::page(HTTP_FORBIDDEN, Rc::clone(&self.conf.block_page)),
+                true => Decision::status(FORBIDDEN),
+                false => Decision::page(FORBIDDEN, Rc::clone(&self.conf.block_page)),
             };
         }
 
-        Decision::page(HTTP_SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha.html))
+        Decision::page(SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha.html))
     }
 
     /// Let the request through, used by the white lists.
@@ -320,7 +330,7 @@ impl State<'_, '_> {
     }
 
     fn method_enabled(&self, flag: WafMode) -> bool {
-        let requested = flag | self.req.method;
+        let requested = flag | WafMode::for_method(self.req.method);
         self.conf.waf_mode.contains(requested)
     }
 }
@@ -521,7 +531,7 @@ impl Machine {
         // configuration set no mode bit at all (`waf_mode !FULL`), and 0
         // otherwise.  Every request whose method is known runs the
         // inspections, each of them gated by its own method bit.
-        if conf.waf_mode.is_empty() && req.method == WafMode::UNKNOWN {
+        if conf.waf_mode.is_empty() && req.method == NgxWafMethod::Unknown {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -850,9 +860,11 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
     let mut machine = Machine::new(
         NonNull::from(conf),
         RawReq {
-            ip: req.ip.as_ptr(),
-            ip_len: req.ip.len(),
-            method: req.method.bits(),
+            ip: RawStr {
+                data: req.ip.as_ptr(),
+                len: req.ip.len(),
+            },
+            method: req.method,
             uri: RawStr {
                 data: req.uri.as_ptr(),
                 len: req.uri.len(),
@@ -873,18 +885,8 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
                 data: req.body.as_ptr(),
                 len: req.body.len(),
             },
-            has_body: req.has_body,
             now: req.now,
-            headers: std::ptr::null(),
-            header_count: 0,
-            trans_id: RawStr::EMPTY,
-            unparsed_uri: RawStr::EMPTY,
-            method_name: RawStr::EMPTY,
-            http_version: RawStr::EMPTY,
-            client_addr: RawStr::EMPTY,
-            client_port: 0,
-            server_addr: RawStr::EMPTY,
-            server_port: 0,
+            modsec: None,
             log: std::ptr::null_mut(),
             cc_zone: req
                 .cc_zone
@@ -907,7 +909,7 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
         Step::InternalError => {
             let mut outcome = Outcome::allow(false, 0.0);
             outcome.kind = OutcomeKind::InternalError;
-            outcome.status = HTTP_INTERNAL_SERVER_ERROR;
+            outcome.status = INTERNAL_SERVER_ERROR;
             outcome
         }
     }
@@ -943,9 +945,18 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         return CheckResult::NotMatched;
     }
     // `ngx_http_waf_check_flag(loc_conf->waf_mode, r->method)`
-    if !state.mode_enabled(state.req.method) {
+    if !state.mode_enabled(WafMode::for_method(state.req.method)) {
         return CheckResult::NotMatched;
     }
+
+    // The glue only leaves the view out when the inspection cannot run; an
+    // enabled inspection without it is a bug at the boundary, answer like
+    // every other inspection that cannot run.
+    let req = state.req;
+    let Some(modsec_req) = req.modsec.as_ref() else {
+        *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
+        return CheckResult::Matched;
+    };
 
     let Some(instance) = state.conf.modsecurity.instance.clone() else {
         // The directive loads the rules while nginx reads the configuration, so
@@ -955,8 +966,8 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         return CheckResult::NotMatched;
     };
 
-    let Some(mut transaction) = instance.transaction(state.req.trans_id, state.req.log) else {
-        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+    let Some(mut transaction) = instance.transaction(modsec_req.trans_id, req.log) else {
+        *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
         return CheckResult::Matched;
     };
 
@@ -964,11 +975,11 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     // request looked like; the first intervention the library reports stops
     // the phases (`_process_intervention()` was called after every one of
     // them).
-    let verdict = match run_modsecurity_request(state, &mut transaction) {
+    let verdict = match run_modsecurity_request(state, &mut transaction, modsec_req) {
         Ok(verdict) => verdict,
         Err(_) => {
             *state.modsec = Some(transaction);
-            *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+            *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
             return CheckResult::Matched;
         }
     };
@@ -992,7 +1003,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         .update_status_code(verdict.status)
         .is_err()
     {
-        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
         return CheckResult::Matched;
     }
 
@@ -1032,7 +1043,7 @@ fn take_intervention(
         state.meta.blocked = true;
     }
 
-    if verdict.url.is_some() || verdict.status != HTTP_OK {
+    if verdict.url.is_some() || verdict.status != OK {
         return Ok(Some(verdict));
     }
 
@@ -1044,9 +1055,8 @@ fn take_intervention(
 fn run_modsecurity_request(
     state: &mut State,
     transaction: &mut modsec::Transaction,
+    req: &ModsecReq<'_>,
 ) -> Result<Option<modsec::Verdict>, modsec::ModSecError> {
-    let req = state.req;
-
     transaction.process_connection(
         req.client_addr,
         req.client_port,
@@ -1057,7 +1067,7 @@ fn run_modsecurity_request(
         return Ok(Some(verdict));
     }
 
-    transaction.process_uri(req.unparsed_uri, req.method_name, req.http_version)?;
+    transaction.process_uri(req.unparsed_uri, req.method_name, req.http_version.as_str())?;
     if let Some(verdict) = take_intervention(state, transaction)? {
         return Ok(Some(verdict));
     }
@@ -1070,8 +1080,8 @@ fn run_modsecurity_request(
         return Ok(Some(verdict));
     }
 
-    if req.has_body {
-        transaction.append_request_body(req.body)?;
+    if !state.req.body.is_empty() {
+        transaction.append_request_body(state.req.body)?;
     }
     transaction.process_request_body()?;
 
@@ -1088,12 +1098,12 @@ fn check_captcha(state: &mut State) -> CheckResult {
     match captcha_cookie_valid(state) {
         Err(()) => {
             // The C implementation answers 500 when it cannot compute the HMAC.
-            *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+            *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
             CheckResult::Matched
         }
         Ok(true) => {
             if captcha_is_verify_url(state) {
-                *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"good".to_vec())));
+                *state.decision = Some(Decision::text(OK, Rc::new(b"good".to_vec())));
                 CheckResult::Matched
             } else {
                 CheckResult::NotMatched
@@ -1139,7 +1149,7 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
         None => return captcha_apply(state, path, CaptchaVerdict::Fault),
     };
 
-    if !captcha_is_verify_url(state) || !state.req.method.contains(WafMode::POST) {
+    if !captcha_is_verify_url(state) || state.req.method != NgxWafMethod::Post {
         return captcha_apply(state, path, CaptchaVerdict::Challenge);
     }
 
@@ -1163,7 +1173,7 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
 /// challenge the visitor again.
 fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) -> CheckResult {
     if verdict == CaptchaVerdict::Fault {
-        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
         return CheckResult::Matched;
     }
 
@@ -1173,8 +1183,8 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
     if verdict != CaptchaVerdict::Pass && captcha_inc_fails(state) {
         state.set_rule_info(b"CAPTCHA", b"TO MANY FAILS", true, true);
         *state.decision = Some(match state.conf.block_page.is_empty() {
-            true => Decision::status(HTTP_TOO_MANY_REQUESTS),
-            false => Decision::page(HTTP_TOO_MANY_REQUESTS, Rc::clone(&state.conf.block_page)),
+            true => Decision::status(TOO_MANY_REQUESTS),
+            false => Decision::page(TOO_MANY_REQUESTS, Rc::clone(&state.conf.block_page)),
         });
         return CheckResult::Matched;
     }
@@ -1193,12 +1203,12 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
                     let tag = action.tag.clone();
                     cc::remove_entry(zone, &tag, state.req.ip, state.req.ipv6);
                 }
-                *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"good".to_vec())));
+                *state.decision = Some(Decision::text(OK, Rc::new(b"good".to_vec())));
             } else {
                 state.set_rule_info(b"CAPTCHA", b"PASS", true, true);
                 *state.decision = Some(match captcha_mint(state) {
                     Some((time, uid, hmac)) => Decision::Text {
-                        status: HTTP_OK,
+                        status: OK,
                         body: Rc::new(b"good".to_vec()),
                         cookies: vec![
                             ("__waf_captcha_time".to_string(), time),
@@ -1206,18 +1216,18 @@ fn captcha_apply(state: &mut State, path: CaptchaPath, verdict: CaptchaVerdict) 
                             ("__waf_captcha_hmac".to_string(), hmac),
                         ],
                     },
-                    None => Decision::status(HTTP_INTERNAL_SERVER_ERROR),
+                    None => Decision::status(INTERNAL_SERVER_ERROR),
                 });
             }
         }
         CaptchaVerdict::Bad => {
             state.set_rule_info(b"CAPTCHA", b"bad", true, true);
-            *state.decision = Some(Decision::text(HTTP_OK, Rc::new(b"bad".to_vec())));
+            *state.decision = Some(Decision::text(OK, Rc::new(b"bad".to_vec())));
         }
         CaptchaVerdict::Challenge => {
             state.set_rule_info(b"CAPTCHA", b"CHALLENGE", true, true);
             *state.decision = Some(Decision::page(
-                HTTP_SERVICE_UNAVAILABLE,
+                SERVICE_UNAVAILABLE,
                 Rc::clone(&state.conf.captcha.html),
             ));
         }
@@ -1367,17 +1377,12 @@ fn cookie_mac(key: &[u8], ip: &[u8], time: &[u8], uid: &[u8]) -> String {
 /// of nginx which the C implementation used: the name is compared case
 /// insensitively at the start of a header value or right after a `;` or `,`
 /// separator, spaces are allowed around the `=`, and the value ends at the
-/// next `;`.  The glue hands one string per cookie header over, the header
-/// values prefixed with the header name (`Cookie=a=1; b=2`).
+/// next `;`.  The glue hands one string per cookie header over, the raw header
+/// value (`a=1; b=2`).
 fn cookie_value<'a>(cookies: &'a [Vec<u8>], name: &str) -> Option<&'a [u8]> {
     let name = name.as_bytes();
 
-    for cookie in cookies {
-        let value = match cookie.iter().position(|&byte| byte == b'=') {
-            Some(index) => &cookie[index + 1..],
-            None => continue,
-        };
-
+    for value in cookies {
         let mut start = 0;
         while start < value.len() {
             if value.len() - start >= name.len()
@@ -1523,7 +1528,7 @@ fn under_attack_hold(state: &mut State, mint: bool) -> CheckResult {
         Vec::new()
     };
     let decision = Decision::Page {
-        status: HTTP_SERVICE_UNAVAILABLE,
+        status: SERVICE_UNAVAILABLE,
         body: Rc::clone(&state.conf.under_attack.html),
         cookies,
     };
@@ -1721,6 +1726,11 @@ fn check_cookie(state: &mut State) -> bool {
         if cookie.is_empty() {
             continue;
         }
+        // The rule list matches the header line, `Cookie=<value>`, the shape
+        // nginx 1.23 and later hand over and the C implementation matched.
+        let mut text = Vec::with_capacity(b"Cookie=".len() + cookie.len());
+        text.extend_from_slice(b"Cookie=");
+        text.extend_from_slice(cookie);
         let cached = state.conf.caching();
         let mut matched_detail: Option<Vec<u8>> = None;
         let mut cache_miss = true;
@@ -1728,7 +1738,7 @@ fn check_cookie(state: &mut State) -> bool {
             if let Some(hit) = state
                 .conf
                 .caches
-                .find(CacheKind::Cookie, cookie, state.req.now)
+                .find(CacheKind::Cookie, &text, state.req.now)
             {
                 cache_miss = false;
                 if hit.matched {
@@ -1737,7 +1747,7 @@ fn check_cookie(state: &mut State) -> bool {
             }
         }
         if cache_miss {
-            matched_detail = lookup_regex(state.conf.rules(), RuleKind::Cookie, cookie);
+            matched_detail = lookup_regex(state.conf.rules(), RuleKind::Cookie, &text);
             if cached {
                 let expire = state.req.now + 60 * 5 + util::random_uniform(60 * 5) as i64;
                 let result = CachedResult {
@@ -1747,7 +1757,7 @@ fn check_cookie(state: &mut State) -> bool {
                 state
                     .conf
                     .caches
-                    .insert(CacheKind::Cookie, cookie, expire, result);
+                    .insert(CacheKind::Cookie, &text, expire, result);
             }
         }
         let Some(detail) = matched_detail else {
@@ -1768,7 +1778,7 @@ fn check_post(state: &mut State) -> bool {
     if !state.mode_enabled(WafMode::RBODY) {
         return false;
     }
-    if !state.req.has_body || state.req.body.is_empty() {
+    if state.req.body.is_empty() {
         return false;
     }
     let Some(detail) = lookup_regex(state.conf.rules(), RuleKind::Post, state.req.body) else {
@@ -1794,7 +1804,7 @@ fn check_cc(state: &mut State) -> bool {
         || state.req.cc_zone.is_none()
     {
         state.set_rule_info(b"CC-DENY", b"", true, true);
-        *state.decision = Some(Decision::status(HTTP_INTERNAL_SERVER_ERROR));
+        *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
         return true;
     }
 
@@ -1823,7 +1833,7 @@ fn check_cc(state: &mut State) -> bool {
         // The shared memory could not hold the counter, the C implementation
         // answers 503 on this path.
         state.set_rule_info(b"CC-DENY", b"", true, true);
-        *state.decision = Some(Decision::status(HTTP_SERVICE_UNAVAILABLE));
+        *state.decision = Some(Decision::status(SERVICE_UNAVAILABLE));
         return true;
     };
 
@@ -1969,24 +1979,15 @@ mod tests {
         Req {
             ip: &[1, 2, 3, 4],
             ipv6: false,
-            method: WafMode::GET,
+            method: NgxWafMethod::Get,
             uri,
             args: b"",
             user_agent: b"",
             referer: b"",
             cookies,
             body: b"",
-            has_body: false,
             now: 1_000,
-            headers: &[],
-            trans_id: None,
-            unparsed_uri: b"",
-            method_name: b"GET",
-            http_version: b"1.1",
-            client_addr: b"127.0.0.1",
-            client_port: 1234,
-            server_addr: b"127.0.0.1",
-            server_port: 80,
+            modsec: None,
             log: std::ptr::null_mut(),
             cc_zone: None,
             action_zone: None,
@@ -2011,14 +2012,12 @@ mod tests {
         set_policy(
             &mut conf,
             TriggerKind::Blacklist,
-            Policy::Return {
-                status: HTTP_FORBIDDEN,
-            },
+            Policy::Return { status: FORBIDDEN },
         );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert_eq!(outcome.rule_type, b"BLACK-URL");
         assert_eq!(outcome.rule_details, b"/www\\.bak");
         assert!(outcome.blocked);
@@ -2038,14 +2037,14 @@ mod tests {
             &mut conf,
             TriggerKind::Blacklist,
             Policy::Page {
-                status: HTTP_FORBIDDEN,
+                status: FORBIDDEN,
                 body: page,
             },
         );
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert!(outcome.register_content_handler);
         assert_eq!(outcome.content_type, ContentType::Html);
         assert_eq!(outcome.body, HTML_BLOCK);
@@ -2057,9 +2056,7 @@ mod tests {
         set_policy(
             &mut conf,
             TriggerKind::Blacklist,
-            Policy::Return {
-                status: HTTP_FORBIDDEN,
-            },
+            Policy::Return { status: FORBIDDEN },
         );
         // A whitelisted URL wins before the blacklist is inspected.
         conf.rules = Some(Rc::new({
@@ -2088,7 +2085,7 @@ mod tests {
             &mut conf,
             TriggerKind::Blacklist,
             Policy::Page {
-                status: HTTP_FORBIDDEN,
+                status: FORBIDDEN,
                 body: page,
             },
         );
@@ -2113,9 +2110,7 @@ mod tests {
         set_policy(
             &mut conf,
             TriggerKind::Blacklist,
-            Policy::Return {
-                status: HTTP_FORBIDDEN,
-            },
+            Policy::Return { status: FORBIDDEN },
         );
         let cookies = vec![b"a=1".to_vec(), b"s=../".to_vec()];
         let outcome = check(&mut conf, &request(b"/", &cookies));
@@ -2140,7 +2135,7 @@ mod tests {
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_INTERNAL_SERVER_ERROR);
+        assert_eq!(outcome.status, INTERNAL_SERVER_ERROR);
         assert!(outcome.blocked);
         assert!(outcome.checked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
@@ -2197,7 +2192,7 @@ mod tests {
         conf.cc_deny.cycle = Some(60);
         conf.cc_deny.duration = Some(60);
         conf.cc_deny.zone = Some(crate::config::ZoneRef {
-            index: 0,
+            name: b"any".to_vec(),
             tag: b"cc_deny".to_vec(),
         });
         let cookies = Vec::new();
@@ -2206,7 +2201,7 @@ mod tests {
         view.cc_zone = Some(unsafe { &*handle });
         let outcome = check(&mut conf, &view);
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
         // SAFETY: the handle came from `zone_init()` and is not used after.
@@ -2316,9 +2311,11 @@ mod tests {
         let (uri, uri_len) = leaked(b"/");
         let (user_agent, user_agent_len) = leaked(user_agent);
         let raw = RawReq {
-            ip,
-            ip_len,
-            method: M_INSPECT_GET,
+            ip: RawStr {
+                data: ip,
+                len: ip_len,
+            },
+            method: NgxWafMethod::Get,
             uri: RawStr {
                 data: uri,
                 len: uri_len,
@@ -2339,18 +2336,8 @@ mod tests {
                 data: std::ptr::null(),
                 len: 0,
             },
-            has_body: false,
             now: 1_000,
-            headers: std::ptr::null(),
-            header_count: 0,
-            trans_id: RawStr::EMPTY,
-            unparsed_uri: RawStr::EMPTY,
-            method_name: RawStr::EMPTY,
-            http_version: RawStr::EMPTY,
-            client_addr: RawStr::EMPTY,
-            client_port: 0,
-            server_addr: RawStr::EMPTY,
-            server_port: 0,
+            modsec: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -2406,7 +2393,7 @@ mod tests {
             _ => panic!("the machine must decide after the lookup"),
         };
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert_eq!(outcome.rule_type, b"FAKE-BOT");
         assert_eq!(outcome.rule_details, b"example.com");
         assert!(outcome.blocked);
@@ -2462,7 +2449,7 @@ mod tests {
             _ => panic!("the machine must decide after the lookup"),
         };
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert_eq!(outcome.rule_type, b"FAKE-BOT");
     }
 
@@ -2488,9 +2475,11 @@ mod tests {
         let uri = b"/www.bak";
         let ip = [1u8, 2, 3, 4];
         let raw = RawReq {
-            ip: ip.as_ptr(),
-            ip_len: ip.len(),
-            method: M_INSPECT_GET,
+            ip: RawStr {
+                data: ip.as_ptr(),
+                len: ip.len(),
+            },
+            method: NgxWafMethod::Get,
             uri: RawStr {
                 data: uri.as_ptr(),
                 len: uri.len(),
@@ -2511,18 +2500,8 @@ mod tests {
                 data: std::ptr::null(),
                 len: 0,
             },
-            has_body: false,
             now: 1_000,
-            headers: std::ptr::null(),
-            header_count: 0,
-            trans_id: RawStr::EMPTY,
-            unparsed_uri: RawStr::EMPTY,
-            method_name: RawStr::EMPTY,
-            http_version: RawStr::EMPTY,
-            client_addr: RawStr::EMPTY,
-            client_port: 0,
-            server_addr: RawStr::EMPTY,
-            server_port: 0,
+            modsec: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -2538,7 +2517,7 @@ mod tests {
             _ => panic!("the machine must decide after the lookup"),
         };
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert_eq!(outcome.rule_type, b"BLACK-URL");
     }
 
@@ -2567,7 +2546,7 @@ mod tests {
 
     fn captcha_machine(
         conf: &mut LocConf,
-        method: u64,
+        method: NgxWafMethod,
         uri: &[u8],
         body: &[u8],
         cookies: Vec<Vec<u8>>,
@@ -2576,8 +2555,10 @@ mod tests {
         let (uri, uri_len) = leaked(uri);
         let (body, body_len) = leaked(body);
         let raw = RawReq {
-            ip,
-            ip_len,
+            ip: RawStr {
+                data: ip,
+                len: ip_len,
+            },
             method,
             uri: RawStr {
                 data: uri,
@@ -2599,18 +2580,8 @@ mod tests {
                 data: body,
                 len: body_len,
             },
-            has_body: body_len != 0,
             now: 1_000,
-            headers: std::ptr::null(),
-            header_count: 0,
-            trans_id: RawStr::EMPTY,
-            unparsed_uri: RawStr::EMPTY,
-            method_name: RawStr::EMPTY,
-            http_version: RawStr::EMPTY,
-            client_addr: RawStr::EMPTY,
-            client_port: 0,
-            server_addr: RawStr::EMPTY,
-            server_port: 0,
+            modsec: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -2620,7 +2591,7 @@ mod tests {
     }
 
     fn good_cookie(name: &str, value: &[u8]) -> Vec<u8> {
-        let mut cookie = format!("Cookie={name}=").into_bytes();
+        let mut cookie = format!("{name}=").into_bytes();
         cookie.extend_from_slice(value);
         cookie
     }
@@ -2628,7 +2599,7 @@ mod tests {
     #[test]
     fn captcha_challenges_a_visitor_without_cookies() {
         let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
-        let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", Vec::new());
+        let mut machine = captcha_machine(&mut conf, NgxWafMethod::Get, b"/", b"", Vec::new());
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             other => panic!(
@@ -2637,7 +2608,7 @@ mod tests {
             ),
         };
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
         assert!(outcome.register_content_handler);
         assert_eq!(outcome.body, *conf.captcha.html);
         assert_eq!(outcome.rule_type, b"CAPTCHA");
@@ -2648,7 +2619,8 @@ mod tests {
     fn captcha_posts_the_token_to_the_provider_and_mints_cookies() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let body = b"g-recaptcha-response=token";
-        let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
 
         assert!(matches!(
             machine.step(),
@@ -2666,7 +2638,7 @@ mod tests {
             _ => panic!("the provider answer decides the request"),
         };
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.status, OK);
         assert_eq!(outcome.body, b"good");
         assert_eq!(outcome.cookies.len(), 3);
         assert_eq!(outcome.cookies[0].0, "__waf_captcha_time");
@@ -2690,7 +2662,8 @@ mod tests {
             good_cookie("__waf_captcha_hmac", hmac.as_bytes()),
         ];
         let mut conf2 = captcha_conf("reCAPTCHAv2:checkbox", &[]);
-        let mut machine = captcha_machine(&mut conf2, M_INSPECT_GET, b"/", b"", cookies.clone());
+        let mut machine =
+            captcha_machine(&mut conf2, NgxWafMethod::Get, b"/", b"", cookies.clone());
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             other => panic!(
@@ -2704,7 +2677,7 @@ mod tests {
         // ... but not with a cookie the server did not mint.
         let mut broken = cookies;
         broken[2] = good_cookie("__waf_captcha_hmac", b"deadbeef");
-        let mut machine = captcha_machine(&mut conf2, M_INSPECT_GET, b"/", b"", broken);
+        let mut machine = captcha_machine(&mut conf2, NgxWafMethod::Get, b"/", b"", broken);
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             other => panic!(
@@ -2712,7 +2685,7 @@ mod tests {
                 matches!(other, Step::Pending(_))
             ),
         };
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
     }
 
     #[test]
@@ -2735,7 +2708,7 @@ mod tests {
             let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
             let body = b"g-recaptcha-response=token";
             let mut machine =
-                captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
             assert!(matches!(
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
@@ -2744,7 +2717,7 @@ mod tests {
                 Step::Decision(outcome) => outcome,
                 _ => panic!("the provider answer decides the request"),
             };
-            assert_eq!(outcome.status, HTTP_OK);
+            assert_eq!(outcome.status, OK);
             assert_eq!(outcome.body, b"bad");
             assert_eq!(outcome.rule_type, b"CAPTCHA");
         }
@@ -2756,7 +2729,7 @@ mod tests {
             let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
             let body = b"g-recaptcha-response=token";
             let mut machine =
-                captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
             assert!(matches!(
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
@@ -2769,7 +2742,7 @@ mod tests {
                 Step::Decision(outcome) => outcome,
                 _ => panic!("the provider answer decides the request"),
             };
-            assert_eq!(outcome.status, HTTP_OK);
+            assert_eq!(outcome.status, OK);
             assert_eq!(outcome.body, expected_body, "score {score}");
         }
     }
@@ -2781,7 +2754,7 @@ mod tests {
         // that it may continue.
         let mut machine = captcha_machine(
             &mut conf,
-            M_INSPECT_POST,
+            NgxWafMethod::Post,
             b"/captcha",
             b"g-recaptcha-response=t",
             Vec::new(),
@@ -2803,12 +2776,12 @@ mod tests {
             .map(|(name, value)| good_cookie(name, value.as_bytes()))
             .collect();
 
-        let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/captcha", b"", cookies);
+        let mut machine = captcha_machine(&mut conf, NgxWafMethod::Get, b"/captcha", b"", cookies);
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             _ => panic!("decided"),
         };
-        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.status, OK);
         assert_eq!(outcome.body, b"good");
     }
 
@@ -2819,7 +2792,8 @@ mod tests {
     fn captcha_posts_the_last_token_of_the_form() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let body = b"g-recaptcha-response=first&g-recaptcha-response=second";
-        let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::HttpRequest)
@@ -2837,7 +2811,7 @@ mod tests {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let mut machine = captcha_machine(
             &mut conf,
-            M_INSPECT_POST,
+            NgxWafMethod::Post,
             b"/captcha",
             b"g-recaptcha-response=t",
             Vec::new(),
@@ -2864,17 +2838,13 @@ mod tests {
         };
 
         let cookies = vec![
-            format!(
-                "Cookie=a=1, __WAF_CAPTCHA_TIME = {}",
-                value("__waf_captcha_time")
-            )
-            .into_bytes(),
-            format!("Cookie=__WAF_CAPTCHA_UID={}; x", value("__waf_captcha_uid")).into_bytes(),
-            format!("Cookie=__waf_captcha_hmac={}", value("__waf_captcha_hmac")).into_bytes(),
+            format!("a=1, __WAF_CAPTCHA_TIME = {}", value("__waf_captcha_time")).into_bytes(),
+            format!("__WAF_CAPTCHA_UID={}; x", value("__waf_captcha_uid")).into_bytes(),
+            format!("__waf_captcha_hmac={}", value("__waf_captcha_hmac")).into_bytes(),
         ];
 
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
-        let mut machine = captcha_machine(&mut conf, M_INSPECT_GET, b"/", b"", cookies);
+        let mut machine = captcha_machine(&mut conf, NgxWafMethod::Get, b"/", b"", cookies);
         match machine.step() {
             Step::Decision(outcome) => {
                 assert_eq!(outcome.kind, OutcomeKind::Allow);
@@ -2897,7 +2867,7 @@ mod tests {
         let tag = b"anyaction_captcha";
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         conf.action.captcha_zone = Some(crate::config::ZoneRef {
-            index: 0,
+            name: b"any".to_vec(),
             tag: tag.to_vec(),
         });
         let ip = [1u8, 2, 3, 4];
@@ -2906,7 +2876,8 @@ mod tests {
         assert!(cc::action_entry(zone_ref, tag, &ip, false, 999, 600, 1).is_some());
 
         let body = b"g-recaptcha-response=token";
-        let mut machine = captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
         machine.set_action_zone(zone);
         assert!(matches!(
             machine.step(),
@@ -2920,7 +2891,7 @@ mod tests {
             _ => panic!("the provider answer decides the request"),
         };
 
-        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.status, OK);
         assert_eq!(outcome.body, b"good");
         assert!(
             outcome.cookies.is_empty(),
@@ -3003,7 +2974,7 @@ mod tests {
         // The zone lookup needs a zone in the main configuration; patch the two
         // fields the checks read.
         conf.captcha.zone = Some(crate::config::ZoneRef {
-            index: 0,
+            name: b"any".to_vec(),
             tag: b"captchatag".to_vec(),
         });
         conf
@@ -3012,7 +2983,7 @@ mod tests {
     /// Drive one verify request through the provider answer.
     fn captcha_verify(conf: &mut LocConf, zone: *mut cc::ZoneHandle, answer: &[u8]) -> Outcome {
         let body = b"g-recaptcha-response=token";
-        let mut machine = captcha_machine(conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
         machine.set_captcha_zone(zone);
         assert!(
             matches!(machine.step(), Step::Pending(Pending::HttpRequest)),
@@ -3036,7 +3007,7 @@ mod tests {
         for attempt in 1..=21 {
             let body = b"g-recaptcha-response=token";
             let mut machine =
-                captcha_machine(&mut conf, M_INSPECT_POST, b"/captcha", body, Vec::new());
+                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
             machine.set_captcha_zone(zone);
             assert!(matches!(
                 machine.step(),
@@ -3052,7 +3023,7 @@ mod tests {
             if attempt <= 20 {
                 assert_eq!(outcome.body, b"bad", "attempt {attempt}");
             } else {
-                assert_eq!(outcome.status, HTTP_TOO_MANY_REQUESTS, "attempt {attempt}");
+                assert_eq!(outcome.status, TOO_MANY_REQUESTS, "attempt {attempt}");
                 assert_eq!(outcome.rule_details, b"TO MANY FAILS");
             }
         }
@@ -3071,7 +3042,7 @@ mod tests {
 
         for attempt in 1..=25 {
             let outcome = captcha_verify(&mut conf, zone, br#"{"success":true}"#);
-            assert_eq!(outcome.status, HTTP_OK, "attempt {attempt}");
+            assert_eq!(outcome.status, OK, "attempt {attempt}");
             assert_eq!(outcome.body, b"good", "attempt {attempt}");
             assert_eq!(outcome.cookies.len(), 3, "attempt {attempt}");
             assert_eq!(outcome.rule_details, b"PASS", "attempt {attempt}");
@@ -3079,7 +3050,7 @@ mod tests {
 
         // The counter never moved, a bad answer is still a plain "bad".
         let outcome = captcha_verify(&mut conf, zone, br#"{"success":false}"#);
-        assert_eq!(outcome.status, HTTP_OK);
+        assert_eq!(outcome.status, OK);
         assert_eq!(outcome.body, b"bad");
         assert_eq!(outcome.rule_details, b"bad");
 
@@ -3110,9 +3081,11 @@ mod tests {
         let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
         let (uri, uri_len) = leaked(b"/");
         let raw = RawReq {
-            ip,
-            ip_len,
-            method: M_INSPECT_GET,
+            ip: RawStr {
+                data: ip,
+                len: ip_len,
+            },
+            method: NgxWafMethod::Get,
             uri: RawStr {
                 data: uri,
                 len: uri_len,
@@ -3133,18 +3106,8 @@ mod tests {
                 data: std::ptr::null(),
                 len: 0,
             },
-            has_body: false,
             now,
-            headers: std::ptr::null(),
-            header_count: 0,
-            trans_id: RawStr::EMPTY,
-            unparsed_uri: RawStr::EMPTY,
-            method_name: RawStr::EMPTY,
-            http_version: RawStr::EMPTY,
-            client_addr: RawStr::EMPTY,
-            client_port: 0,
-            server_addr: RawStr::EMPTY,
-            server_port: 0,
+            modsec: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -3154,9 +3117,9 @@ mod tests {
     }
 
     /// The `Cookie` header of a trio minted by the shield, the way the C glue
-    /// hands it over (`Cookie=a=1; b=2`).
+    /// hands it over (`a=1; b=2`).
     fn cookie_header(cookies: &[(String, String)]) -> Vec<u8> {
-        let mut header = b"Cookie=".to_vec();
+        let mut header = Vec::new();
         for (index, (name, value)) in cookies.iter().enumerate() {
             if index != 0 {
                 header.extend_from_slice(b"; ");
@@ -3181,7 +3144,7 @@ mod tests {
         let mut machine = under_attack_machine(&mut conf, 1_000, Vec::new());
         let outcome = decide(&mut machine);
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
         assert!(outcome.register_content_handler);
         assert_eq!(outcome.body, *conf.under_attack.html);
         assert_eq!(outcome.rule_type, b"UNDER-ATTACK");
@@ -3196,7 +3159,7 @@ mod tests {
         // without minting another trio.
         let mut machine = under_attack_machine(&mut conf, 1_004, vec![cookie.clone()]);
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
         assert!(outcome.cookies.is_empty());
 
         // Six seconds after the first visit the visitor goes through.
@@ -3209,16 +3172,16 @@ mod tests {
         // A trio older than half an hour is replaced.
         let mut machine = under_attack_machine(&mut conf, 1_000 + 60 * 31, vec![cookie.clone()]);
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
         assert_eq!(outcome.cookies[0].1, (1_000 + 60 * 31).to_string());
 
         // So is a forged one.
-        let forged = b"Cookie=__waf_under_attack_time=1000; \
+        let forged = b"__waf_under_attack_time=1000; \
             __waf_under_attack_uid=deadbeef; __waf_under_attack_hmac=deadbeef"
             .to_vec();
         let mut machine = under_attack_machine(&mut conf, 1_007, vec![forged]);
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
         assert_eq!(outcome.cookies[0].1, "1007");
         assert_eq!(outcome.cookies[1].0, "__waf_under_attack_uid");
         assert_eq!(outcome.cookies[1].1.len(), 64);
@@ -3271,13 +3234,14 @@ mod tests {
         let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
         let (uri, uri_len) = leaked(uri);
         let (method, method_len) = leaked(b"GET");
-        let (version, version_len) = leaked(b"1.1");
         let (client, client_len) = leaked(b"127.0.0.1");
         let (server, server_len) = leaked(b"127.0.0.1");
         let raw = RawReq {
-            ip,
-            ip_len,
-            method: M_INSPECT_GET,
+            ip: RawStr {
+                data: ip,
+                len: ip_len,
+            },
+            method: NgxWafMethod::Get,
             uri: RawStr {
                 data: uri,
                 len: uri_len,
@@ -3286,33 +3250,31 @@ mod tests {
             user_agent: RawStr::EMPTY,
             referer: RawStr::EMPTY,
             body: RawStr::EMPTY,
-            has_body: false,
             now: 1_000,
-            headers: std::ptr::null(),
-            header_count: 0,
-            trans_id: RawStr::EMPTY,
-            unparsed_uri: RawStr {
-                data: uri,
-                len: uri_len,
-            },
-            method_name: RawStr {
-                data: method,
-                len: method_len,
-            },
-            http_version: RawStr {
-                data: version,
-                len: version_len,
-            },
-            client_addr: RawStr {
-                data: client,
-                len: client_len,
-            },
-            client_port: 12_345,
-            server_addr: RawStr {
-                data: server,
-                len: server_len,
-            },
-            server_port: 80,
+            modsec: Some(RawModsecReq {
+                headers: std::ptr::null(),
+                header_count: 0,
+                trans_id: None,
+                unparsed_uri: RawStr {
+                    data: uri,
+                    len: uri_len,
+                },
+                method_name: RawStr {
+                    data: method,
+                    len: method_len,
+                },
+                http_version: NgxWafHttpVersion::Http11,
+                client_addr: RawStr {
+                    data: client,
+                    len: client_len,
+                },
+                client_port: 12_345,
+                server_addr: RawStr {
+                    data: server,
+                    len: server_len,
+                },
+                server_port: 80,
+            }),
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -3332,7 +3294,7 @@ mod tests {
         let mut machine = modsecurity_machine(&mut conf, b"/blocked");
         let outcome = decide(&mut machine);
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert_eq!(outcome.rule_type, b"ModSecurity");
         assert!(outcome.blocked);
         assert!(outcome.general_log);
@@ -3370,7 +3332,12 @@ mod tests {
         };
 
         let mut machine = modsecurity_machine(&mut conf, b"/");
-        machine.req.trans_id = id;
+        machine
+            .req
+            .modsec
+            .as_mut()
+            .expect("the view is there")
+            .trans_id = Some(id);
         let outcome = decide(&mut machine);
         assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.rule_type.is_empty());
@@ -3378,10 +3345,15 @@ mod tests {
 
         // A rule of the file still reacts with the id in place.
         let mut machine = modsecurity_machine(&mut conf, b"/blocked");
-        machine.req.trans_id = id;
+        machine
+            .req
+            .modsec
+            .as_mut()
+            .expect("the view is there")
+            .trans_id = Some(id);
         let outcome = decide(&mut machine);
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         machine.log_phase();
 
         std::fs::remove_file(&rules).unwrap();
@@ -3462,7 +3434,7 @@ mod tests {
         // and the phase 2 rule never runs.
         let mut machine = modsecurity_machine(&mut conf, b"/both?a=1");
         let outcome = decide(&mut machine);
-        assert_eq!(outcome.status, HTTP_FORBIDDEN);
+        assert_eq!(outcome.status, FORBIDDEN);
         assert!(outcome.location.is_empty());
         assert!(String::from_utf8_lossy(&outcome.rule_details).contains("phase one"));
         machine.log_phase();

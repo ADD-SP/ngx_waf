@@ -1,21 +1,3 @@
-/* The `kind` values of `ngx_waf_step_t`, mirrored from rust/src/types.rs. */
-#define NGX_WAF_STEP_ALLOW          0
-#define NGX_WAF_STEP_RESPONSE       1
-#define NGX_WAF_STEP_INTERNAL_ERROR 2
-#define NGX_WAF_STEP_RESOLVE_ADDR   3
-#define NGX_WAF_STEP_HTTP_REQUEST   4
-
-/* The `kind` values of `ngx_waf_event_t`. */
-#define NGX_WAF_EVENT_RESOLVED_NAME  0
-#define NGX_WAF_EVENT_RESOLVE_FAILED 1
-#define NGX_WAF_EVENT_HTTP_RESPONSE  2
-#define NGX_WAF_EVENT_HTTP_FAILED    3
-
-/* The `content_type` values of `ngx_waf_step_t`. */
-#define NGX_WAF_CT_HTML 0
-#define NGX_WAF_CT_TEXT 1
-
-
 #ifndef NGX_HTTP_WAF_FFI_H
 #define NGX_HTTP_WAF_FFI_H
 
@@ -26,171 +8,131 @@
 #include <stdlib.h>
 
 /**
- * `waf` values.
+ * The method of one request.  The glue owns the mapping from the bits of
+ * nginx (`NGX_HTTP_*`) onto this enum, so the core never spells an nginx
+ * value.
  */
-#define WAF_UNSET -1
-
-#define WAF_OFF 0
-
-#define WAF_ON 1
-
-#define WAF_BYPASS 2
+typedef enum ngx_waf_method {
+    NGX_WAF_METHOD_UNKNOWN = 0,
+    NGX_WAF_METHOD_GET = 1,
+    NGX_WAF_METHOD_HEAD = 2,
+    NGX_WAF_METHOD_POST = 3,
+    NGX_WAF_METHOD_PUT = 4,
+    NGX_WAF_METHOD_DELETE = 5,
+    NGX_WAF_METHOD_MKCOL = 6,
+    NGX_WAF_METHOD_COPY = 7,
+    NGX_WAF_METHOD_MOVE = 8,
+    NGX_WAF_METHOD_OPTIONS = 9,
+    NGX_WAF_METHOD_PROPFIND = 10,
+    NGX_WAF_METHOD_PROPPATCH = 11,
+    NGX_WAF_METHOD_LOCK = 12,
+    NGX_WAF_METHOD_UNLOCK = 13,
+    NGX_WAF_METHOD_PATCH = 14,
+    NGX_WAF_METHOD_TRACE = 15,
+} ngx_waf_method;
 
 /**
- * `NGX_HTTP_UNKNOWN`, the bit of a request whose method nginx does not know.
+ * The protocol version of one request, rendered for libmodsecurity.
  */
-#define M_UNKNOWN 1
-
-#define M_INSPECT_GET 2
-
-#define M_INSPECT_HEAD 4
-
-#define M_INSPECT_POST 8
-
-#define M_INSPECT_PUT 16
-
-#define M_INSPECT_DELETE 32
-
-#define M_INSPECT_MKCOL 64
-
-#define M_INSPECT_COPY 128
-
-#define M_INSPECT_MOVE 256
-
-#define M_INSPECT_OPTIONS 512
-
-#define M_INSPECT_PROPFIND 1024
-
-#define M_INSPECT_PROPPATCH 2048
-
-#define M_INSPECT_LOCK 4096
-
-#define M_INSPECT_UNLOCK 8192
-
-#define M_INSPECT_PATCH 16384
-
-#define M_INSPECT_TRACE 32768
-
-#define M_INSPECT_IP (M_INSPECT_TRACE << 1)
-
-#define M_INSPECT_URL (M_INSPECT_IP << 1)
-
-#define M_INSPECT_RB (M_INSPECT_URL << 1)
-
-#define M_INSPECT_ARGS (M_INSPECT_RB << 1)
-
-#define M_INSPECT_UA (M_INSPECT_ARGS << 1)
-
-#define M_INSPECT_COOKIE (M_INSPECT_UA << 1)
-
-#define M_INSPECT_REFERER (M_INSPECT_COOKIE << 1)
-
-#define M_CMN_METH ((M_INSPECT_GET | M_INSPECT_POST) | M_INSPECT_HEAD)
-
-#define M_ALL_METH ((((((((((((((M_INSPECT_GET | M_INSPECT_HEAD) | M_INSPECT_POST) | M_INSPECT_PUT) | M_INSPECT_DELETE) | M_INSPECT_MKCOL) | M_INSPECT_COPY) | M_INSPECT_MOVE) | M_INSPECT_OPTIONS) | M_INSPECT_PROPFIND) | M_INSPECT_PROPPATCH) | M_INSPECT_LOCK) | M_INSPECT_UNLOCK) | M_INSPECT_PATCH) | M_INSPECT_TRACE)
-
-#define M_STD (((((M_INSPECT_IP | M_INSPECT_URL) | M_INSPECT_RB) | M_INSPECT_ARGS) | M_INSPECT_UA) | M_CMN_METH)
-
-#define M_STATIC ((((M_INSPECT_IP | M_INSPECT_URL) | M_INSPECT_UA) | M_INSPECT_GET) | M_INSPECT_HEAD)
-
-#define M_DYNAMIC ((((((M_INSPECT_IP | M_INSPECT_URL) | M_INSPECT_RB) | M_INSPECT_ARGS) | M_INSPECT_UA) | M_INSPECT_COOKIE) | M_CMN_METH)
-
-#define M_FULL UINT64_MAX
+typedef enum ngx_waf_http_version {
+    NGX_WAF_HTTP_VERSION_HTTP09 = 0,
+    NGX_WAF_HTTP_VERSION_HTTP10 = 1,
+    NGX_WAF_HTTP_VERSION_HTTP11 = 2,
+    NGX_WAF_HTTP_VERSION_HTTP20 = 3,
+    NGX_WAF_HTTP_VERSION_UNKNOWN = 4,
+} ngx_waf_http_version;
 
 /**
- * Bot types, identical to `bot_type_e` of the C implementation.
+ * What the core asks the glue to do for one request.
  */
-#define BOT_TYPE_NONE 0
-
-#define BOT_TYPE_UNSET 1
-
-#define BOT_TYPE_GOOGLE 2
-
-#define BOT_TYPE_BING 4
-
-#define BOT_TYPE_BAIDU 8
-
-#define BOT_TYPE_SOGOU 16
-
-#define BOT_TYPE_YANDEX 32
+typedef enum ngx_waf_step_kind {
+    /**
+     * The request goes on to the next phase.
+     */
+    NGX_WAF_STEP_KIND_ALLOW = 0,
+    /**
+     * The glue answers with the decision of the step.
+     */
+    NGX_WAF_STEP_KIND_RESPONSE = 1,
+    /**
+     * The inspection could not run; the glue answers 500.
+     */
+    NGX_WAF_STEP_KIND_INTERNAL_ERROR = 2,
+    /**
+     * The glue reverse resolves the address of `pending.ip` and resumes.
+     */
+    NGX_WAF_STEP_KIND_RESOLVE_ADDR = 3,
+    /**
+     * The glue performs the request of `pending` and resumes.
+     */
+    NGX_WAF_STEP_KIND_HTTP_REQUEST = 4,
+} ngx_waf_step_kind;
 
 /**
- * Steps returned by the check state machine.  A decision uses the `ALLOW` or
- * `RESPONSE` kind, the other two park the request until the C side has run an
- * asynchronous operation for it.
+ * How the glue writes the body of a response.
  */
-#define STEP_ALLOW 0
-
-#define STEP_RESPONSE 1
-
-#define STEP_INTERNAL_ERROR 2
-
-#define STEP_RESOLVE_ADDR 3
-
-#define STEP_HTTP_REQUEST 4
+typedef enum ngx_waf_content_type {
+    NGX_WAF_CONTENT_TYPE_HTML = 0,
+    NGX_WAF_CONTENT_TYPE_TEXT = 1,
+} ngx_waf_content_type;
 
 /**
- * Events that wake a parked machine up.
+ * The events that wake a parked machine up.
  */
-#define EVENT_RESOLVED_NAME 0
-
-#define EVENT_RESOLVE_FAILED 1
-
-#define EVENT_HTTP_RESPONSE 2
-
-#define EVENT_HTTP_FAILED 3
+typedef enum ngx_waf_event_kind {
+    /**
+     * The PTR lookup succeeded.
+     */
+    NGX_WAF_EVENT_KIND_RESOLVED_NAME = 0,
+    /**
+     * No name, no resolver, timeout or lookup error.
+     */
+    NGX_WAF_EVENT_KIND_RESOLVE_FAILED = 1,
+    /**
+     * The captcha provider answered.
+     */
+    NGX_WAF_EVENT_KIND_HTTP_RESPONSE = 2,
+    /**
+     * The captcha provider could not be reached.
+     */
+    NGX_WAF_EVENT_KIND_HTTP_FAILED = 3,
+} ngx_waf_event_kind;
 
 /**
- * Content types the C side knows how to emit.
+ * One request inspection, owned by the glue, opaque to it.
  */
-#define CT_HTML 0
-
-#define CT_TEXT 1
+typedef struct ngx_waf_check_t ngx_waf_check_t;
 
 /**
- * Default status codes used when a directive does not override them.
+ * The location configuration of one request, opaque to the glue.
  */
-#define HTTP_OK 200
-
-#define HTTP_FORBIDDEN 403
-
-#define HTTP_NOT_FOUND 404
-
-#define HTTP_TOO_MANY_REQUESTS 429
-
-#define HTTP_INTERNAL_SERVER_ERROR 500
-
-#define HTTP_SERVICE_UNAVAILABLE 503
+typedef struct ngx_waf_conf_t ngx_waf_conf_t;
 
 /**
- * `crypto_hash_sha256_BYTES * 2`
+ * The main configuration (`http` level) of one nginx cycle, opaque to the
+ * glue.
  */
-#define SHA256_HEX_LEN 64
-
-/**
- * The friendly crawler each `BotId` stands for, in the order the C
- * implementation walks them.
- */
-typedef struct BotId BotId;
-
-/**
- * The inspection identifiers that `waf_priority` can reorder.
- */
-typedef struct CheckId CheckId;
-
-/**
- * The four sources that can be configured with `waf_action`.
- */
-typedef struct TriggerKind TriggerKind;
+typedef struct ngx_waf_main_t ngx_waf_main_t;
 
 /**
  * `ngx_str_t` compatible string view: nginx declares the length first, so the
- * field order matters (see the layout assertion in the C glue).
+ * field order matters (see the layout assertion in the C glue).  The data is
+ * binary, not NUL terminated.
  */
 typedef struct ngx_waf_str_t {
     size_t len;
     const uint8_t *data;
 } ngx_waf_str_t;
+
+/**
+ * The shared memory zone of every use of the configuration, by name.  An
+ * empty view means the configuration does not use that zone.
+ */
+typedef struct ngx_waf_zone_refs_t {
+    struct ngx_waf_str_t cc;
+    struct ngx_waf_str_t captcha;
+    struct ngx_waf_str_t action;
+} ngx_waf_zone_refs_t;
 
 /**
  * The engine of the glue, `ngx_waf_regex_ops_t` in the generated header.
@@ -210,50 +152,6 @@ typedef struct ngx_waf_regex_ops_t {
 } ngx_waf_regex_ops_t;
 
 /**
- * The result of one inspection.
- */
-typedef struct ngx_waf_step_t {
-    uint32_t kind;
-    uint32_t status;
-    uint32_t content_type;
-    int64_t retry_after;
-    uint8_t *body;
-    size_t body_len;
-    uint8_t *log;
-    size_t log_len;
-    uint8_t *rule_type;
-    size_t rule_type_len;
-    uint8_t *rule_details;
-    size_t rule_details_len;
-    uint8_t blocked;
-    uint8_t checked;
-    uint8_t general_log;
-    uint8_t register_content_handler;
-    int64_t rate;
-    double spend;
-    /**
-     * `Set-Cookie` values for a decision that mints them (captcha).
-     */
-    const struct ngx_waf_str_t *set_cookies;
-    size_t set_cookie_count;
-    /**
-     * The `Location` header of a decision (the redirect of ModSecurity).
-     */
-    struct ngx_waf_str_t location;
-    /**
-     * `RESOLVE_ADDR`: the address to reverse resolve.
-     */
-    const uint8_t *ip;
-    size_t ip_len;
-    /**
-     * `HTTP_REQUEST`: the request the C side has to perform.
-     */
-    struct ngx_waf_str_t url;
-    struct ngx_waf_str_t http_body;
-    int64_t timeout_ms;
-} ngx_waf_step_t;
-
-/**
  * One request header, the `ngx_table_elt_t` list of nginx.
  */
 typedef struct ngx_waf_header_t {
@@ -262,41 +160,59 @@ typedef struct ngx_waf_header_t {
 } ngx_waf_header_t;
 
 /**
- * The request view the C glue fills in.
+ * Everything libmodsecurity reads beyond the common request view.
  */
-typedef struct ngx_waf_req_t {
-    const uint8_t *ip;
-    size_t ip_len;
-    uint64_t method;
-    struct ngx_waf_str_t uri;
-    struct ngx_waf_str_t args;
-    struct ngx_waf_str_t user_agent;
-    struct ngx_waf_str_t referer;
-    const struct ngx_waf_str_t *cookies;
-    size_t cookie_count;
-    struct ngx_waf_str_t body;
-    uint8_t has_body;
-    int64_t now;
-    /**
-     * The request headers, only `waf_modsecurity` reads them.
-     */
+typedef struct ngx_waf_modsec_req_t {
     const struct ngx_waf_header_t *headers;
     size_t header_count;
     /**
-     * The evaluated `waf_modsecurity_transaction_id`, its `data` is NULL when
-     * the directive is not configured.
+     * Whether `waf_modsecurity_transaction_id` is configured; a configured
+     * empty value is still a value.
      */
+    bool has_trans_id;
     struct ngx_waf_str_t trans_id;
-    /**
-     * The rest of what ModSecurity reads.
-     */
     struct ngx_waf_str_t unparsed_uri;
     struct ngx_waf_str_t method_name;
-    struct ngx_waf_str_t http_version;
+    enum ngx_waf_http_version http_version;
     struct ngx_waf_str_t client_addr;
     uint32_t client_port;
     struct ngx_waf_str_t server_addr;
     uint32_t server_port;
+} ngx_waf_modsec_req_t;
+
+/**
+ * The request view the C glue fills in.
+ */
+typedef struct ngx_waf_req_t {
+    /**
+     * Network order address, 4 or 16 bytes; empty for a connection without
+     * one.
+     */
+    struct ngx_waf_str_t ip;
+    enum ngx_waf_method method;
+    struct ngx_waf_str_t uri;
+    struct ngx_waf_str_t args;
+    struct ngx_waf_str_t user_agent;
+    struct ngx_waf_str_t referer;
+    /**
+     * One view per `Cookie` header, the raw header values.
+     */
+    const struct ngx_waf_str_t *cookies;
+    size_t cookie_count;
+    /**
+     * The body of the request, empty when there is none.
+     */
+    struct ngx_waf_str_t body;
+    /**
+     * Wall clock seconds.
+     */
+    int64_t now;
+    /**
+     * The fields only `waf_modsecurity` reads, NULL when the inspection
+     * cannot run.  The core copies the view while `ngx_waf_check_begin()`
+     * runs; the views inside it stay valid for the whole request.
+     */
+    const struct ngx_waf_modsec_req_t *modsec;
     /**
      * `r->connection->log`: the data of the ModSecurity log callback, and
      * where a panic caught at this boundary is reported.
@@ -305,10 +221,78 @@ typedef struct ngx_waf_req_t {
 } ngx_waf_req_t;
 
 /**
+ * The zone handles of one request, NULL when the configuration does not use
+ * the zone.
+ */
+typedef struct ngx_waf_zone_handles_t {
+    void *cc;
+    void *captcha;
+    void *action;
+} ngx_waf_zone_handles_t;
+
+/**
+ * A decision: everything the glue needs for the response and the `$waf_*`
+ * variables.
+ */
+typedef struct ngx_waf_decision_t {
+    uint32_t status;
+    enum ngx_waf_content_type content_type;
+    bool has_retry_after;
+    int64_t retry_after;
+    struct ngx_waf_str_t body;
+    /**
+     * The audit line, when `general_log` is set.
+     */
+    struct ngx_waf_str_t log;
+    struct ngx_waf_str_t rule_type;
+    struct ngx_waf_str_t rule_details;
+    /**
+     * The `Location` header of the decision, empty when there is none.
+     */
+    struct ngx_waf_str_t location;
+    /**
+     * `Set-Cookie` values the decision mints (captcha).
+     */
+    const struct ngx_waf_str_t *set_cookies;
+    size_t set_cookie_count;
+    bool blocked;
+    bool checked;
+    bool general_log;
+    bool register_content_handler;
+    int64_t rate;
+    double spend;
+} ngx_waf_decision_t;
+
+/**
+ * The asynchronous operation a parked step asks for.
+ */
+typedef struct ngx_waf_pending_t {
+    /**
+     * `RESOLVE_ADDR`: the address to reverse resolve.
+     */
+    struct ngx_waf_str_t ip;
+    /**
+     * `HTTP_REQUEST`: the request the glue has to perform.
+     */
+    struct ngx_waf_str_t url;
+    struct ngx_waf_str_t body;
+} ngx_waf_pending_t;
+
+/**
+ * The result of one inspection, read-only for the glue.  The payload fields
+ * belong to `kind`: `decision` for a decision, `pending` for a park.
+ */
+typedef struct ngx_waf_step_t {
+    enum ngx_waf_step_kind kind;
+    struct ngx_waf_decision_t decision;
+    struct ngx_waf_pending_t pending;
+} ngx_waf_step_t;
+
+/**
  * The event that wakes a parked inspection up.
  */
 typedef struct ngx_waf_event_t {
-    uint32_t kind;
+    enum ngx_waf_event_kind kind;
     /**
      * `RESOLVED_NAME`: the host name the address resolves to.
      */
@@ -343,49 +327,37 @@ typedef struct ngx_waf_shm_ops_t {
     void *ctx;
 } ngx_waf_shm_ops_t;
 
-
-
-
-
-
-
 const char *ngx_waf_version(void);
 
 void ngx_waf_string_free(char *text);
 
-void *ngx_waf_main_create(void);
+struct ngx_waf_main_t *ngx_waf_main_create(void);
 
-void ngx_waf_main_free(void *main);
+void ngx_waf_main_free(struct ngx_waf_main_t *main);
 
-void *ngx_waf_conf_create(void);
+struct ngx_waf_conf_t *ngx_waf_conf_create(void);
 
-void ngx_waf_conf_free(void *conf);
-
-/**
- * The zone index the configuration uses for `waf_cc_deny`, or `-1`.
- */
-int64_t ngx_waf_conf_cc_zone(void *conf);
+void ngx_waf_conf_free(struct ngx_waf_conf_t *conf);
 
 /**
- * The zone index of the captcha action table, `-1` when there is none.
+ * Whether the inspection of a request runs with this configuration:
+ * `waf on` or `waf bypass`.  The C side skips the access and log phases of
+ * `waf off` and of a context that never set the directive.
  */
-int64_t ngx_waf_conf_action_zone(void *conf);
+bool ngx_waf_conf_enabled(const struct ngx_waf_conf_t *conf);
 
 /**
- * The zone index of the captcha fail counters, `-1` when there is none.
+ * Whether the `waf_modsecurity` inspection can run; the C side only packs the
+ * `ngx_waf_modsec_req_t` view when it does.
  */
-int64_t ngx_waf_conf_captcha_zone(void *conf);
+bool ngx_waf_conf_modsecurity_enabled(const struct ngx_waf_conf_t *conf);
 
 /**
- * The `waf` value of the configuration: `-1` unset, 0 off, 1 on, 2 bypass.
+ * The shared memory zone of every use of this configuration, by name; an
+ * empty view means the configuration does not use that zone.  The C side owns
+ * the zones and looks the handles up.
  */
-int64_t ngx_waf_conf_waf(void *conf);
-
-/**
- * The `waf_modsecurity` value of the configuration: `-1` unset, 0 off, 1 on.
- * The C glue only packs the request headers when the inspection can run.
- */
-int64_t ngx_waf_conf_modsecurity(void *conf);
+struct ngx_waf_zone_refs_t ngx_waf_conf_zone_refs(const struct ngx_waf_conf_t *conf);
 
 /**
  * One message the core wants nginx to log while it keeps the configuration
@@ -393,7 +365,7 @@ int64_t ngx_waf_conf_modsecurity(void *conf);
  * The C side drains the list after every directive and frees the message with
  * [`ngx_waf_string_free`].
  */
-char *ngx_waf_conf_take_warning(void *conf);
+char *ngx_waf_conf_take_warning(struct ngx_waf_conf_t *conf);
 
 /**
  * The endpoint the captcha provider of this configuration is asked on: the
@@ -405,13 +377,13 @@ char *ngx_waf_conf_take_warning(void *conf);
  * The returned view points into the configuration, which outlives every
  * request; it is empty when no `waf_captcha` was configured.
  */
-struct ngx_waf_str_t ngx_waf_conf_captcha_api(void *conf);
+struct ngx_waf_str_t ngx_waf_conf_captcha_api(const struct ngx_waf_conf_t *conf);
 
 /**
  * Apply one directive, returns NULL on success or an error message.
  */
-char *ngx_waf_directive(void *main,
-                        void *conf,
+char *ngx_waf_directive(struct ngx_waf_main_t *main,
+                        struct ngx_waf_conf_t *conf,
                         struct ngx_waf_str_t name,
                         const struct ngx_waf_str_t *args,
                         size_t nargs,
@@ -421,7 +393,7 @@ char *ngx_waf_directive(void *main,
  * Parse and validate `waf_zone`.  On success the returned name pointer stays
  * valid as long as the main configuration does.
  */
-char *ngx_waf_zone_directive(void *main,
+char *ngx_waf_zone_directive(struct ngx_waf_main_t *main,
                              const struct ngx_waf_str_t *args,
                              size_t nargs,
                              const uint8_t **out_name,
@@ -431,34 +403,40 @@ char *ngx_waf_zone_directive(void *main,
 /**
  * Merge a child configuration into its parent.
  */
-char *ngx_waf_conf_merge(void *child, void *parent);
+char *ngx_waf_conf_merge(struct ngx_waf_conf_t *child, struct ngx_waf_conf_t *parent);
 
 /**
  * Start the inspection of one request.  The returned handle is owned by the C
- * side and must be freed with `ngx_waf_step_free()` once the request is done,
+ * side and must be freed with `ngx_waf_check_free()` once the request is done,
  * which is also what keeps the machine of a parked request alive.
  */
-struct ngx_waf_step_t *ngx_waf_check_begin(void *conf,
-                                           const struct ngx_waf_req_t *req,
-                                           void *cc_zone,
-                                           void *action_zone,
-                                           void *captcha_zone,
-                                           int32_t http_transport);
+struct ngx_waf_check_t *ngx_waf_check_begin(struct ngx_waf_conf_t *conf,
+                                            const struct ngx_waf_req_t *req,
+                                            struct ngx_waf_zone_handles_t zones,
+                                            bool http_transport);
 
 /**
- * Feed the result of an asynchronous operation back into the machine, then
- * report the next step in the same handle.  Returns 0 on success.
+ * The step of one inspection, read-only for the C side.  The pointer stays
+ * valid until the next `ngx_waf_check_resume()` or `ngx_waf_check_free()`.
  */
-int32_t ngx_waf_check_resume(struct ngx_waf_step_t *step, const struct ngx_waf_event_t *event);
+const struct ngx_waf_step_t *ngx_waf_check_step(const struct ngx_waf_check_t *check);
+
+/**
+ * Feed the result of an asynchronous operation back into the machine and
+ * publish the next step in the same handle.  A panic is reported to the error
+ * log and published as the internal error step, so the C side never has to
+ * write to the memory this crate owns.
+ */
+void ngx_waf_check_resume(struct ngx_waf_check_t *check, const struct ngx_waf_event_t *event);
 
 /**
  * Run the log phase of one request: the audit log of the ModSecurity
  * transaction, when the inspection created one.  nginx runs the log phase
  * before the request pool (and with it the machine) is released.
  */
-void ngx_waf_check_log(struct ngx_waf_step_t *step);
+void ngx_waf_check_log(struct ngx_waf_check_t *check);
 
-void ngx_waf_step_free(struct ngx_waf_step_t *step);
+void ngx_waf_check_free(struct ngx_waf_check_t *check);
 
 /**
  * Initialise (or reuse after a reload) the Rust side state of a shared memory
@@ -483,11 +461,11 @@ void ngx_waf_shm_zone_gc(void *handle);
  * The probability check of `_gc()`, exposed so the C glue can gate the GC of
  * every zone of this worker.
  */
-int32_t ngx_waf_should_gc(int64_t worker_processes);
+bool ngx_waf_should_gc(uint32_t worker_processes);
 
 /**
  * Garbage collect the per-worker inspection caches.
  */
-void ngx_waf_gc(void *conf);
+void ngx_waf_gc(struct ngx_waf_conf_t *conf);
 
 #endif  /* NGX_HTTP_WAF_FFI_H */
