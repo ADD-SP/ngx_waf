@@ -21,7 +21,7 @@ not up to date.
 | `src/util.rs` | time/size parsing, random strings, hashing helpers |
 | `src/rules.rs` | the rule kinds, the `RuleSet` and its queries |
 | `src/rules/regex.rs` | the compiled regex rules and their matching engine |
-| `src/rules/ip.rs` | IP text parsing, `IpCidr` and the frozen-segment IP lists |
+| `src/rules/ip_matcher.rs` | IP text parsing, `IpCidr`, the `Builder` and the frozen `IpMatcher` |
 | `src/rules/load.rs` | rule-file reading/parsing, warnings and errors |
 | `src/pcre.rs` | rule matching through the PCRE engine of nginx |
 | `src/cache.rs` | per-worker inspection caches, an `lru` cache plus expiration |

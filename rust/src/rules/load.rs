@@ -1,10 +1,11 @@
 //! Rule file reading: the `fgets()` chunking, the NUL/CRLF stripping and the
 //! per-line errors of the C implementation.
 
-use super::ip::{parse_ipv4, parse_ipv6};
+use super::ip_matcher::{parse_ipv4, parse_ipv6};
 use super::regex::RegexRule;
-use super::{new_rule_set, RuleKind, RuleSet, RULE_FILES};
+use super::{new_rule_set, Builder, RuleKind, RuleSet, RULE_FILES};
 use crate::pcre::RegexOps;
+use cidr::{Ipv4Cidr, Ipv6Cidr};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -17,11 +18,32 @@ pub struct Loaded {
     pub warnings: Vec<String>,
 }
 
+/// The four IP list builders while the rule files are read; [`load_all`]
+/// freezes them into the read-only [`RuleSet`] once every file was consumed.
+struct Builders {
+    ipv4_black: Builder<Ipv4Cidr>,
+    ipv6_black: Builder<Ipv6Cidr>,
+    ipv4_white: Builder<Ipv4Cidr>,
+    ipv6_white: Builder<Ipv6Cidr>,
+}
+
+impl Builders {
+    fn new() -> Self {
+        Builders {
+            ipv4_black: Builder::new(),
+            ipv6_black: Builder::new(),
+            ipv4_white: Builder::new(),
+            ipv6_white: Builder::new(),
+        }
+    }
+}
+
 /// Load every rule file of `dir` into a fresh container, mirroring
 /// `_load_all_rule()`.  On failure the returned message is what the C side logs
 /// with `ngx_conf_log_error()`.
 pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
     let mut rules = new_rule_set();
+    let mut builders = Builders::new();
     let mut warnings = Vec::new();
     let dir = std::str::from_utf8(dir)
         .map_err(|_| "ngx_waf: the rule path is not a valid UTF-8 string".to_string())?;
@@ -48,12 +70,23 @@ pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
         std::io::Read::read_to_end(&mut file, &mut content)
             .map_err(|_| format!("ngx_waf: {path}: Cannot read configuration."))?;
 
-        load_into_container(&content, &path, kind, &mut rules, &mut warnings, ops)?;
+        load_into_container(
+            &content,
+            &path,
+            kind,
+            &mut rules,
+            &mut builders,
+            &mut warnings,
+            ops,
+        )?;
     }
 
-    // The request path only reads the lists; the flat segment array is built
-    // once, after every file was added.
-    rules.freeze();
+    // The request path only reads the lists; the flat segment arrays are
+    // built once, after every file was added.
+    rules.ipv4_black = Some(builders.ipv4_black.freeze());
+    rules.ipv6_black = Some(builders.ipv6_black.freeze());
+    rules.ipv4_white = Some(builders.ipv4_white.freeze());
+    rules.ipv6_white = Some(builders.ipv6_white.freeze());
 
     Ok(Loaded { rules, warnings })
 }
@@ -67,6 +100,7 @@ fn load_into_container(
     file_name: &str,
     kind: RuleKind,
     rules: &mut RuleSet,
+    builders: &mut Builders,
     warnings: &mut Vec<String>,
     ops: Option<&RegexOps>,
 ) -> Result<(), String> {
@@ -142,10 +176,9 @@ fn load_into_container(
                     )
                 })?;
                 let list = match kind {
-                    RuleKind::Ipv4Black => rules.ipv4_black.as_mut(),
-                    _ => rules.ipv4_white.as_mut(),
-                }
-                .expect("the ip lists are initialised");
+                    RuleKind::Ipv4Black => &mut builders.ipv4_black,
+                    _ => &mut builders.ipv4_white,
+                };
                 if let Err(existing) = list.add(block, line) {
                     // The block is already covered by one that was read before
                     // it, so nothing is lost by dropping it.  The C
@@ -170,10 +203,9 @@ fn load_into_container(
                     )
                 })?;
                 let list = match kind {
-                    RuleKind::Ipv6Black => rules.ipv6_black.as_mut(),
-                    _ => rules.ipv6_white.as_mut(),
-                }
-                .expect("the ip lists are initialised");
+                    RuleKind::Ipv6Black => &mut builders.ipv6_black,
+                    _ => &mut builders.ipv6_white,
+                };
                 if let Err(existing) = list.add(block, line) {
                     warnings.push(format!(
                         "ngx_waf: In {}:{}, the two address blocks [{}] and [{}] have overlapping parts.",

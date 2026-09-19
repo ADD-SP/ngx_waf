@@ -1,20 +1,20 @@
 //! Rule containers and the rule-set vocabulary.
 //!
-//! [`ip`] parses IP text and keeps the prefix-bucket lists, [`regex`] compiles
-//! and runs the regex rules, [`load`] reads the rule files; this module ties
-//! them together in [`RuleSet`].
+//! [`ip_matcher`] parses IP text and keeps the builder and the frozen matcher,
+//! [`regex`] compiles and runs the regex rules, [`load`] reads the rule files;
+//! this module ties them together in [`RuleSet`].
 
-mod ip;
+mod ip_matcher;
 mod load;
 mod regex;
 
-pub use ip::IpList;
+pub use ip_matcher::{Builder, IpMatcher};
 pub use load::load_all;
 pub use regex::RegexRule;
 // The tests of `check` build their lists from a parsed block; nothing else
-// outside the `ip` module needs the parsers.
+// outside the `ip_matcher` module needs the parsers.
 #[cfg(test)]
-pub use ip::parse_ipv4;
+pub use ip_matcher::parse_ipv4;
 
 use cidr::{Ipv4Cidr, Ipv6Cidr};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -61,19 +61,19 @@ pub struct RuleSet {
     pub post: Vec<RegexRule>,
     pub white_url: Vec<RegexRule>,
     pub white_referer: Vec<RegexRule>,
-    pub ipv4_black: Option<IpList<Ipv4Cidr>>,
-    pub ipv6_black: Option<IpList<Ipv6Cidr>>,
-    pub ipv4_white: Option<IpList<Ipv4Cidr>>,
-    pub ipv6_white: Option<IpList<Ipv6Cidr>>,
+    pub ipv4_black: Option<IpMatcher<Ipv4Cidr>>,
+    pub ipv6_black: Option<IpMatcher<Ipv6Cidr>>,
+    pub ipv4_white: Option<IpMatcher<Ipv4Cidr>>,
+    pub ipv6_white: Option<IpMatcher<Ipv6Cidr>>,
 }
 
 /// Initialise the empty containers, the equivalent of `_init_rule_containers()`.
 pub fn new_rule_set() -> RuleSet {
     RuleSet {
-        ipv4_black: Some(IpList::new()),
-        ipv6_black: Some(IpList::new()),
-        ipv4_white: Some(IpList::new()),
-        ipv6_white: Some(IpList::new()),
+        ipv4_black: Some(Builder::new().freeze()),
+        ipv6_black: Some(Builder::new().freeze()),
+        ipv4_white: Some(Builder::new().freeze()),
+        ipv6_white: Some(Builder::new().freeze()),
         ..RuleSet::default()
     }
 }
@@ -126,23 +126,6 @@ impl RuleSet {
                 list?.find(&addr)
             }
             _ => None,
-        }
-    }
-
-    /// Freeze the IP lists into their binary-search match tables; see
-    /// [`IpList::freeze`].
-    fn freeze(&mut self) {
-        if let Some(list) = &mut self.ipv4_black {
-            list.freeze();
-        }
-        if let Some(list) = &mut self.ipv6_black {
-            list.freeze();
-        }
-        if let Some(list) = &mut self.ipv4_white {
-            list.freeze();
-        }
-        if let Some(list) = &mut self.ipv6_white {
-            list.freeze();
         }
     }
 }

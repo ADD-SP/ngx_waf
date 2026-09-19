@@ -1,8 +1,10 @@
-//! IP text parsing and the frozen-segment IP lists.
+//! IP text parsing and the two phases of an IP matcher.
 //!
-//! `IpCidr` is the three-operation view of the `cidr` crate an `IpList` needs;
-//! `parse_ipv4()`/`parse_ipv6()` are the rule-file parsers, which mask the host
-//! bits with the same helper.
+//! [`Builder`] accumulates the rules (one hash table per prefix length) and
+//! [`Builder::freeze`] turns it into the immutable [`IpMatcher`] the request path
+//! queries with one binary search.  `IpCidr` is the view of the `cidr` crate
+//! both types need; `parse_ipv4()`/`parse_ipv6()` are the rule-file parsers,
+//! which mask the host bits with the same helper.
 
 use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
 use std::cmp::Reverse;
@@ -130,7 +132,7 @@ fn parse_depth(text: &str, full: u32) -> Option<u32> {
     Some(depth)
 }
 
-/// One accepted block of an [`IpList`].
+/// One accepted block of an [`IpMatcher`].
 #[derive(Debug, Clone, Copy)]
 struct Block<C: IpCidr> {
     /// First address of the block, its network address.
@@ -139,7 +141,7 @@ struct Block<C: IpCidr> {
     last: C::Address,
     /// Prefix length, the key of the shortest-prefix rule.
     prefix: u8,
-    /// Index into [`IpList::details`].
+    /// Index into [`IpMatcher::details`].
     detail: usize,
 }
 
@@ -154,46 +156,29 @@ struct Segment<C: IpCidr> {
     detail: usize,
 }
 
-/// The matching index of an [`IpList`].
-#[derive(Debug)]
-enum Index<C: IpCidr> {
-    /// Rules are still being added: a hash table per prefix length, probed
-    /// from the shortest prefix, which is what keeps the overlap check of
-    /// `add()` cheap and mirrors the trie of the C implementation.
-    Building(Vec<HashMap<C::Address, usize>>),
-    /// [`IpList::freeze`] ran: a sorted array of disjoint segments, queried
-    /// with one binary search.
-    Frozen(Vec<Segment<C>>),
-}
-
-/// One IP list.
+/// Builds one IP list from the rule files.
 ///
-/// Rules are added through [`IpList::add()`]; [`IpList::freeze()`] turns the
-/// accepted blocks into a sorted array of disjoint segments, which is what the
-/// request path queries.  The shortest prefix wins, like the prefix trie of
-/// the C implementation (`ngx_http_waf_module_ip_trie.c`) did.
+/// Rules are added through [`Builder::add()`] while the hash table per
+/// prefix length keeps the overlap check cheap; [`Builder::freeze()`]
+/// consumes the builder and hands over the immutable [`IpMatcher`] the request
+/// path queries.  The two phases are different types on purpose: a builder
+/// cannot be queried and a frozen list cannot be extended.
 #[derive(Debug)]
-pub struct IpList<C: IpCidr> {
-    /// Every accepted block, in insertion order; the freeze and a later
-    /// `add()` rebuild from it.
+pub struct Builder<C: IpCidr> {
+    /// Every accepted block, in insertion order, for the freeze.
     blocks: Vec<Block<C>>,
     /// The text of every rule, indexed by [`Block::detail`].
     details: Vec<Vec<u8>>,
-    index: Index<C>,
+    /// `buckets[depth]` holds the rules whose prefix is that long.
+    buckets: Vec<HashMap<C::Address, usize>>,
 }
 
-impl<C: IpCidr> Default for IpList<C> {
-    fn default() -> Self {
-        IpList::new()
-    }
-}
-
-impl<C: IpCidr> IpList<C> {
+impl<C: IpCidr> Builder<C> {
     pub fn new() -> Self {
-        IpList {
+        Builder {
             blocks: Vec::new(),
             details: Vec::new(),
-            index: Index::Building((0..=C::BITS).map(|_| HashMap::new()).collect()),
+            buckets: (0..=C::BITS).map(|_| HashMap::new()).collect(),
         }
     }
 
@@ -204,43 +189,19 @@ impl<C: IpCidr> IpList<C> {
 
     /// The index of the rule that covers `addr`, the shortest prefix first.
     fn find_index(&self, addr: &C::Address) -> Option<usize> {
-        match &self.index {
-            Index::Building(buckets) => {
-                for (depth, bucket) in buckets.iter().enumerate() {
-                    let network = C::masked(*addr, depth as u8);
-                    if let Some(&index) = bucket.get(&network) {
-                        return Some(index);
-                    }
-                }
-                None
-            }
-            Index::Frozen(segments) => {
-                let position = match segments.binary_search_by(|segment| segment.start.cmp(addr)) {
-                    Ok(index) => index,
-                    Err(0) => return None,
-                    Err(index) => index - 1,
-                };
-                let segment = &segments[position];
-                match segment.end {
-                    Some(end) if *addr >= end => None,
-                    _ => Some(segment.detail),
-                }
+        for (depth, bucket) in self.buckets.iter().enumerate() {
+            let network = C::masked(*addr, depth as u8);
+            if let Some(&index) = bucket.get(&network) {
+                return Some(index);
             }
         }
-    }
-
-    /// The text of the rule that covers `addr`.
-    pub fn find(&self, addr: &C::Address) -> Option<&[u8]> {
-        Some(&self.details[self.find_index(addr)?])
+        None
     }
 
     /// Add one rule.  `Err` carries the text of the rule that already covers
     /// the new block; that is the overlap the C implementation logged and
     /// dropped the new block for.
     pub fn add(&mut self, block: C, detail: &[u8]) -> Result<(), Vec<u8>> {
-        if matches!(&self.index, Index::Frozen(_)) {
-            self.rebuild_building();
-        }
         let network = block.first_address();
         if let Some(index) = self.find_index(&network) {
             return Err(self.details[index].clone());
@@ -253,33 +214,47 @@ impl<C: IpCidr> IpList<C> {
             prefix: block.network_length(),
             detail: index,
         });
-        match &mut self.index {
-            Index::Building(buckets) => {
-                buckets[block.network_length() as usize].insert(network, index);
-            }
-            Index::Frozen(_) => unreachable!("rebuilt above"),
-        }
+        self.buckets[block.network_length() as usize].insert(network, index);
         Ok(())
     }
 
-    /// Turn the accepted blocks into the frozen match table.  Idempotent; the
-    /// building buckets are dropped.
-    pub(super) fn freeze(&mut self) {
-        if matches!(&self.index, Index::Frozen(_)) {
-            return;
+    /// Freeze the accepted blocks into the binary-search match table.
+    pub fn freeze(self) -> IpMatcher<C> {
+        IpMatcher {
+            segments: build_segments(&self.blocks),
+            details: self.details,
         }
-        self.index = Index::Frozen(build_segments(&self.blocks));
     }
+}
 
-    /// Recreate the building buckets from the accepted blocks; an `add()`
-    /// after a freeze needs them for the overlap check.
-    fn rebuild_building(&mut self) {
-        let mut buckets: Vec<HashMap<C::Address, usize>> =
-            (0..=C::BITS).map(|_| HashMap::new()).collect();
-        for block in &self.blocks {
-            buckets[block.prefix as usize].insert(block.first, block.detail);
+/// One frozen IP list: the read-only type the request path queries.
+///
+/// The shortest prefix wins, like the prefix trie of the C implementation
+/// (`ngx_http_waf_module_ip_trie.c`) did.  The segments are sorted by their
+/// start and cover `[start, end)`; `end == None` reaches the address of all
+/// ones.
+#[derive(Debug)]
+pub struct IpMatcher<C: IpCidr> {
+    segments: Vec<Segment<C>>,
+    details: Vec<Vec<u8>>,
+}
+
+impl<C: IpCidr> IpMatcher<C> {
+    /// The text of the rule that covers `addr`.
+    pub fn find(&self, addr: &C::Address) -> Option<&[u8]> {
+        let position = match self
+            .segments
+            .binary_search_by(|segment| segment.start.cmp(addr))
+        {
+            Ok(index) => index,
+            Err(0) => return None,
+            Err(index) => index - 1,
+        };
+        let segment = &self.segments[position];
+        match segment.end {
+            Some(end) if *addr >= end => None,
+            _ => Some(&self.details[segment.detail]),
         }
-        self.index = Index::Building(buckets);
     }
 }
 
@@ -356,8 +331,10 @@ mod tests {
 
     #[test]
     fn an_ip_list_matches_what_its_blocks_cover() {
-        let mut list = IpList::new();
-        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        let mut builder = Builder::new();
+        builder.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        assert_eq!(builder.len(), 1);
+        let list = builder.freeze();
         for text in ["2.0.0.1", "2.1.0.0", "2.255.255.255"] {
             assert_eq!(
                 list.find(&address4(text)),
@@ -366,37 +343,38 @@ mod tests {
             );
         }
         assert_eq!(list.find(&address4("3.0.0.0")), None);
-        assert_eq!(list.len(), 1);
     }
 
     #[test]
     fn a_single_address_covers_only_itself() {
-        let mut list = IpList::new();
-        list.add(ipv4("1.1.1.1"), b"1.1.1.1").unwrap();
+        let mut builder = Builder::new();
+        builder.add(ipv4("1.1.1.1"), b"1.1.1.1").unwrap();
+        let list = builder.freeze();
         assert_eq!(list.find(&address4("1.1.1.1")), Some(&b"1.1.1.1"[..]));
         assert_eq!(list.find(&address4("1.1.1.2")), None);
     }
 
     #[test]
     fn an_overlapping_block_is_refused_with_the_rule_that_covers_it() {
-        let mut list = IpList::new();
-        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        let mut builder = Builder::new();
+        builder.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
         assert_eq!(
-            list.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16"),
+            builder.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16"),
             Err(b"2.0.0.0/8".to_vec())
         );
-        assert_eq!(list.len(), 1);
+        assert_eq!(builder.len(), 1);
     }
 
     #[test]
     fn the_whole_space_matches_everything_and_is_taken_once() {
-        let mut list = IpList::new();
-        list.add(ipv4("0.0.0.0/0"), b"0.0.0.0/0").unwrap();
-        assert_eq!(list.find(&address4("8.8.8.8")), Some(&b"0.0.0.0/0"[..]));
+        let mut builder = Builder::new();
+        builder.add(ipv4("0.0.0.0/0"), b"0.0.0.0/0").unwrap();
         assert_eq!(
-            list.add(ipv4("1.1.1.1"), b"1.1.1.1"),
+            builder.add(ipv4("1.1.1.1"), b"1.1.1.1"),
             Err(b"0.0.0.0/0".to_vec())
         );
+        let list = builder.freeze();
+        assert_eq!(list.find(&address4("8.8.8.8")), Some(&b"0.0.0.0/0"[..]));
     }
 
     #[test]
@@ -404,18 +382,21 @@ mod tests {
         // A block that covers one read before it is not detected as an
         // overlap, exactly like in the trie of the C implementation: the
         // later, shorter block shadows the one below it.
-        let mut list = IpList::new();
-        list.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
-        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        let mut builder = Builder::new();
+        builder.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
+        builder.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        let list = builder.freeze();
         assert_eq!(list.find(&address4("2.1.0.1")), Some(&b"2.0.0.0/8"[..]));
         assert_eq!(list.find(&address4("2.2.0.1")), Some(&b"2.0.0.0/8"[..]));
     }
 
     #[test]
     fn an_ipv6_list_matches_the_same_way() {
-        let mut list = IpList::new();
-        list.add(parse_ipv6(b"2001:db8::/32").unwrap(), b"2001:db8::/32")
+        let mut builder = Builder::new();
+        builder
+            .add(parse_ipv6(b"2001:db8::/32").unwrap(), b"2001:db8::/32")
             .unwrap();
+        let list = builder.freeze();
         assert_eq!(
             list.find(&"2001:db8::1".parse::<Ipv6Addr>().unwrap()),
             Some(&b"2001:db8::/32"[..])
@@ -425,7 +406,7 @@ mod tests {
 
     #[test]
     fn an_empty_ip_list_matches_nothing() {
-        let list: IpList<Ipv4Cidr> = IpList::new();
+        let list: IpMatcher<Ipv4Cidr> = Builder::new().freeze();
         assert_eq!(list.find(&Ipv4Addr::LOCALHOST), None);
     }
 
@@ -538,52 +519,41 @@ mod tests {
         }
     }
 
-    /// Freezing must not change a single answer, including the gaps between
-    /// blocks and the "a later shorter block shadows the one below it" rule.
+    /// The frozen table answers the fixed probe set by hand, including the
+    /// gaps between the blocks and the "a later shorter block shadows the one
+    /// below it" rule.
     #[test]
     fn freezing_keeps_the_matching_results() {
-        let mut list = IpList::new();
-        list.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
-        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
-        list.add(ipv4("9.9.9.0/24"), b"9.9.9.0/24").unwrap();
+        let mut builder = Builder::new();
+        builder.add(ipv4("2.1.0.0/16"), b"2.1.0.0/16").unwrap();
+        builder.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
+        builder.add(ipv4("9.9.9.0/24"), b"9.9.9.0/24").unwrap();
+        let list = builder.freeze();
 
-        let probes = [
-            "0.0.0.0",
-            "1.2.3.4",
-            "2.0.0.0",
-            "2.1.0.0",
-            "2.1.0.1",
-            "2.255.255.255",
-            "3.0.0.0",
-            "9.9.8.255",
-            "9.9.9.0",
-            "9.9.9.255",
-            "9.9.10.0",
-            "255.255.255.255",
+        let cases: [(&str, Option<&[u8]>); 12] = [
+            ("0.0.0.0", None),
+            ("1.2.3.4", None),
+            ("2.0.0.0", Some(&b"2.0.0.0/8"[..])),
+            ("2.1.0.0", Some(&b"2.0.0.0/8"[..])),
+            ("2.1.0.1", Some(&b"2.0.0.0/8"[..])),
+            ("2.255.255.255", Some(&b"2.0.0.0/8"[..])),
+            ("3.0.0.0", None),
+            ("9.9.8.255", None),
+            ("9.9.9.0", Some(&b"9.9.9.0/24"[..])),
+            ("9.9.9.255", Some(&b"9.9.9.0/24"[..])),
+            ("9.9.10.0", None),
+            ("255.255.255.255", None),
         ];
-        let lookup = |list: &IpList<Ipv4Cidr>| {
-            probes
-                .iter()
-                .map(|text| list.find(&address4(text)).map(<[u8]>::to_vec))
-                .collect::<Vec<_>>()
-        };
-
-        let before = lookup(&list);
-        list.freeze();
-        let after = lookup(&list);
-
-        assert_eq!(before, after);
-        assert_eq!(after[1], None);
-        assert_eq!(after[4].as_deref(), Some(&b"2.0.0.0/8"[..]));
-        assert_eq!(after[7], None);
-        assert_eq!(after[9].as_deref(), Some(&b"9.9.9.0/24"[..]));
+        for (text, expected) in cases {
+            assert_eq!(list.find(&address4(text)), expected, "{text}");
+        }
     }
 
     #[test]
     fn a_frozen_whole_space_matches_everything() {
-        let mut list = IpList::new();
-        list.add(ipv4("0.0.0.0/0"), b"0.0.0.0/0").unwrap();
-        list.freeze();
+        let mut builder = Builder::new();
+        builder.add(ipv4("0.0.0.0/0"), b"0.0.0.0/0").unwrap();
+        let list = builder.freeze();
         for text in ["0.0.0.0", "8.8.8.8", "255.255.255.255"] {
             assert_eq!(
                 list.find(&address4(text)),
@@ -595,10 +565,11 @@ mod tests {
 
     #[test]
     fn a_block_that_ends_at_the_last_address_is_frozen() {
-        let mut list = IpList::new();
-        list.add(ipv4("255.255.255.0/24"), b"255.255.255.0/24")
+        let mut builder = Builder::new();
+        builder
+            .add(ipv4("255.255.255.0/24"), b"255.255.255.0/24")
             .unwrap();
-        list.freeze();
+        let list = builder.freeze();
         assert_eq!(
             list.find(&address4("255.255.255.255")),
             Some(&b"255.255.255.0/24"[..])
@@ -608,10 +579,11 @@ mod tests {
 
     #[test]
     fn a_frozen_ipv6_list_matches_too() {
-        let mut list = IpList::new();
-        list.add(parse_ipv6(b"2001:db8::/32").unwrap(), b"2001:db8::/32")
+        let mut builder = Builder::new();
+        builder
+            .add(parse_ipv6(b"2001:db8::/32").unwrap(), b"2001:db8::/32")
             .unwrap();
-        list.freeze();
+        let list = builder.freeze();
         assert_eq!(
             list.find(&"2001:db8::1".parse::<Ipv6Addr>().unwrap()),
             Some(&b"2001:db8::/32"[..])
@@ -625,29 +597,11 @@ mod tests {
 
     #[test]
     fn an_empty_list_freezes_to_no_matches() {
-        let mut list: IpList<Ipv4Cidr> = IpList::new();
-        list.freeze();
-        list.freeze();
+        let list: IpMatcher<Ipv4Cidr> = Builder::new().freeze();
         assert_eq!(list.find(&Ipv4Addr::LOCALHOST), None);
     }
 
-    #[test]
-    fn a_frozen_list_can_be_extended() {
-        let mut list = IpList::new();
-        list.add(ipv4("2.0.0.0/8"), b"2.0.0.0/8").unwrap();
-        list.freeze();
-        assert_eq!(list.find(&address4("9.9.9.9")), None);
-
-        list.add(ipv4("9.9.9.0/24"), b"9.9.9.0/24").unwrap();
-        assert_eq!(list.find(&address4("9.9.9.9")), Some(&b"9.9.9.0/24"[..]));
-        assert_eq!(list.find(&address4("2.1.0.1")), Some(&b"2.0.0.0/8"[..]));
-        assert_eq!(
-            list.add(ipv4("9.9.9.128/25"), b"9.9.9.128/25"),
-            Err(b"9.9.9.0/24".to_vec())
-        );
-    }
-
-    /// A std-only micro-benchmark of the building and the frozen state.
+    /// A std-only micro-benchmark of the build and the frozen lookup.
     /// Ignored by default; reproduce it with
     /// `cargo test --release ip_list_microbenchmark -- --ignored --nocapture`.
     #[test]
@@ -665,31 +619,32 @@ mod tests {
         };
 
         for blocks in [4usize, 1024] {
-            let mut list = IpList::new();
+            let queries: Vec<Ipv4Addr> = (0..100_000)
+                .map(|_| Ipv4Addr::from(next() as u32))
+                .collect();
+            let start = Instant::now();
+            let mut builder = Builder::new();
             for index in 0..blocks {
                 let prefix = 24 + (next() % 9) as u8;
                 let addr = Ipv4Addr::from((next() as u32) & (u32::MAX << (32 - prefix)));
                 let block = Ipv4Cidr::new(addr, prefix).unwrap();
-                let _ = list.add(block, format!("rule-{index}").as_bytes());
+                let _ = builder.add(block, format!("rule-{index}").as_bytes());
             }
-            let queries: Vec<Ipv4Addr> = (0..100_000)
-                .map(|_| Ipv4Addr::from(next() as u32))
-                .collect();
-            let time = |list: &IpList<Ipv4Cidr>| {
-                let start = Instant::now();
-                let mut hits = 0usize;
-                for query in &queries {
-                    if list.find(query).is_some() {
-                        hits += 1;
-                    }
+            let list = builder.freeze();
+            let build = start.elapsed();
+            let start = Instant::now();
+            let mut hits = 0usize;
+            for query in &queries {
+                if list.find(query).is_some() {
+                    hits += 1;
                 }
-                black_box(hits);
-                start.elapsed().as_nanos() as f64 / queries.len() as f64
-            };
-            let building = time(&list);
-            list.freeze();
-            let frozen = time(&list);
-            println!("{blocks} rules: building {building:.1}ns/query, frozen {frozen:.1}ns/query");
+            }
+            black_box(hits);
+            let find = start.elapsed().as_nanos() as f64 / queries.len() as f64;
+            println!(
+                "{blocks} rules: build+freeze {:.3}ms, find {find:.1}ns/query",
+                build.as_secs_f64() * 1000.0
+            );
         }
     }
 }
