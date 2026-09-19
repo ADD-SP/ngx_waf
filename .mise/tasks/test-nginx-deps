@@ -2,14 +2,35 @@
 #MISE description="Install Test::Nginx when it is missing"
 set -euo pipefail
 
-if perl -MTest::Nginx -e1 > /dev/null 2>&1; then
+installed() {
+    # The suites `use Test::Nginx::Socket`, the base module alone is not enough.
+    perl -MTest::Nginx::Socket -e1 > /dev/null 2>&1
+}
+
+if installed; then
     echo " + Test::Nginx is installed"
     exit 0
 fi
 
-# A system perl usually needs root for the install step; retry with sudo, which
-# the CI runner and a developer with a password can both do.
-if ! cpanm --notest Test::Nginx; then
-    echo " + the install step needs more privileges, retrying with sudo"
-    sudo cpanm --notest Test::Nginx
+cpanm --notest Test::Nginx || true
+
+# Without root, `cpanm` puts the modules in `~/perl5` when it cannot write the
+# tree of the system perl (and the shell was never set up for local::lib): the
+# suites run with a plain perl, which does not look there, so the module has to
+# be installed for the system perl, and that needs root.
+if ! installed; then
+    echo " + $(command -v perl) cannot see the module, installing as root"
+    sudo cpanm --notest Test::Nginx || true
 fi
+
+if ! installed; then
+    cat << END
+$(basename "$0"): error: Test::Nginx::Socket is still missing for
+$(command -v perl).  Install it for that perl, for example with
+`sudo cpanm --notest Test::Nginx`, or point PERL5LIB at the tree of a
+local::lib install.
+END
+    exit 1
+fi
+
+echo " + Test::Nginx is installed"
