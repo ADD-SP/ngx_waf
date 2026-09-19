@@ -32,7 +32,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          # `llvm-tools-preview` carries the llvm-profdata and llvm-cov of the
+          # toolchain, the coverage task needs them.
+          components: rustfmt, clippy, llvm-tools-preview
 
       - name: Cache the cargo artefacts
         uses: actions/cache@v4
@@ -66,6 +68,11 @@ jobs:
 
       - name: Test
         run: mise run test-rust
+
+      # The numbers are printed, nothing fails on them: the end to end half of
+      # the coverage needs an instrumented nginx and stays a local task.
+      - name: Coverage
+        run: mise run coverage
 
       # The header is generated from rust/src/ffi.rs, a stale one would be a
       # trap for everyone building the module.

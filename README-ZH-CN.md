@@ -61,6 +61,7 @@ mise bootstrap -y  # 安装系统依赖与固定版本的 cbindgen
 mise run build     # 在 test/nginx-<version> 中构建带静态模块的 nginx
 mise run test      # Rust 单元测试与 nginx 集成测试
 mise run test-e2e  # 自研端到端检查，单 worker 与四 worker 各跑一轮
+mise run coverage  # Rust 单元测试的覆盖率，每个模块一行
 ```
 
 `mise run doctor` 检查 cargo、rustc 与 cbindgen 是否在 PATH 上。需要 stable
@@ -72,6 +73,12 @@ Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如
 libmodsecurity 3、perl）。`NGINX_SRC` 指定要复制的 nginx 源码目录，
 `NGINX_VERSION` 指定缺失时下载的版本，`mise run build-dynamic` 构建动态模块。
 与 C 实现的已知差异见 [`rust/README.md`](rust/README.md)。
+
+`mise run coverage` 打印单元测试的覆盖率，每个模块一行，并排除源码里
+`mod tests` 块中的测试代码。`mise run coverage-e2e` 更进一步：构建插桩的
+nginx，在其上运行自研端到端检查与 Test::Nginx 套件，并打印两次运行的并集。
+两个任务都需要工具链的 `llvm-tools-preview` 组件（缺失时任务会提示执行
+`rustup component add llvm-tools-preview`）。
 
 ## 联系方式
 

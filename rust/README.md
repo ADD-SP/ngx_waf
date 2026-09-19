@@ -305,7 +305,18 @@ stderr is not ported.
 mise run build              # nginx with the static module
 mise run test-rust          # the unit tests
 mise run test-e2e           # the end to end checks, one worker and four
+mise run coverage           # the unit tests with coverage, one row per module
+mise run coverage-e2e       # the same plus the nginx suites, instrumented
 ```
+
+`mise run coverage` builds the unit tests with `-C instrument-coverage` in a
+target directory of its own and prints the coverage per module, leaving the
+`mod tests` blocks of the sources out (`COVERAGE_INCLUDE_TESTS=1` counts them
+in).  `mise run coverage-e2e` also builds nginx against an instrumented core,
+runs `test/e2e/run.sh` and the `Test::Nginx` templates on it, and prints the
+union of both runs; the profile runtime of the toolchain has to be on the link
+line for the processes to write a profile at all.  Both tasks need the
+`llvm-tools-preview` component (`rustup component add llvm-tools-preview`).
 
 `test/e2e/run.sh` starts a real nginx and checks the black/white lists, the
 block page, the variables, the CC protection and the `waf off` / `waf bypass` /

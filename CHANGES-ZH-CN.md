@@ -13,5 +13,8 @@
   resolver 做反向解析、通过与验证码服务商的非阻塞请求完成验证。
   服务商响应的 HTTP 报文框架由核心解析，胶水层只负责读取字节并转交。
   ModSecurity 的响应阶段尚未移植。与 C 实现的差异见 `rust/README.md`。
+* 覆盖率只需一条命令：`mise run coverage` 打印单元测试的每模块覆盖率，
+  `mise run coverage-e2e` 额外构建插桩 nginx 并跑自研端到端与 `Test::Nginx`
+  套件。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

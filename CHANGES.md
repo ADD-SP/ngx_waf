@@ -21,5 +21,8 @@
   ModSecurity are not ported.  The HTTP framing of the provider answer is
   parsed by the core: the glue only reads the bytes and hands them over.  The
   differences to the C implementation are listed in `rust/README.md`.
+* The coverage of the core is one command: `mise run coverage` reports the
+  unit tests per module, `mise run coverage-e2e` adds an instrumented nginx
+  running the end to end and `Test::Nginx` suites.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

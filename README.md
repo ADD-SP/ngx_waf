@@ -63,6 +63,7 @@ mise bootstrap -y  # install the system packages and the pinned cbindgen
 mise run build     # build nginx with the static module in test/nginx-<version>
 mise run test      # the Rust unit tests and the nginx integration tests
 mise run test-e2e  # the end to end checks, with one worker and with four
+mise run coverage  # the Rust unit tests with coverage, one row per module
 ```
 
 `mise run doctor` checks that cargo, rustc and cbindgen are on PATH.  A stable
@@ -77,6 +78,13 @@ manager.  `NGINX_SRC` selects the nginx source tree to copy, `NGINX_VERSION` the
 version to download when it is missing, and `mise run build-dynamic` builds the
 dynamic module instead.  The known differences to the C implementation are
 listed in [`rust/README.md`](rust/README.md).
+
+`mise run coverage` prints the coverage of the unit tests, one row per module,
+with the `mod tests` blocks of the sources left out.  `mise run coverage-e2e`
+goes further: it builds an instrumented nginx, runs the end to end checks and
+the Test::Nginx suite on it, and prints the union of both runs.  Both tasks
+need the `llvm-tools-preview` component of the toolchain (the task prints
+`rustup component add llvm-tools-preview` when it is missing).
 
 ## Contact
 
