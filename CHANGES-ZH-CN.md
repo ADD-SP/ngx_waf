@@ -23,5 +23,9 @@
 * 核心对共享内存的访问统一经过持有 zone 锁的守卫：胶水不再提供"自己加锁"的
   分配入口，操作提前返回（或 panic）也不会把 zone 锁死；顺带修掉三处提前返回
   未解锁的路径。
+* 计数表不再退化成整表扫描：一次探测最多走过 64 个槽位，被遗忘或过期的条目会被
+  下一个经过它的地址复用，表到达 3/4 占用后淘汰的是本次探测经过的条目。zone
+  能记住的地址数与之前一致，但表的共享内存占用从段的 ~9.4% 涨到 ~12.5%，升级后
+  的第一次 reload 会重建一次 zone。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

@@ -33,5 +33,12 @@
   zone lock: the glue no longer offers an allocation that takes the lock
   itself, and an operation that leaves early (or panics) cannot keep the zone
   locked.  Three of those early returns were fixed.
+* A counter table does not scan itself any more: the probe of an address walks
+  at most 64 slots, a forgotten or expired entry is recycled by the next
+  address whose walk passes it, and a table that reached three quarters of its
+  slots drops one of the entries the walk passed.  A zone keeps remembering the
+  same number of addresses, its tables take a third more of the segment
+  (~12.5% instead of ~9.4%), and the first reload after the upgrade rebuilds
+  the zone once.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

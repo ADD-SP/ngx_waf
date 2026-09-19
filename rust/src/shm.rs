@@ -13,6 +13,14 @@
 //! the init handler rebuilds a segment written by another version instead of
 //! reading it with the wrong layout.
 //!
+//! No operation ever walks a whole table: the probe of an address visits at
+//! most `PROBE_LIMIT` slots, an entry that is deleted or expired is recycled
+//! by the next address whose walk passes it, and a table that reached its fill
+//! limit drops one of the entries its walk passed instead of growing without
+//! bound.  `filled` counts the slots that ever left the empty state: three
+//! quarters of a table is the target, which keeps the walks short, and the
+//! probe limit is the guarantee.
+//!
 //! The zone lock is a guard ([`ZoneLock`]): the allocator and every pointer
 //! into the segment are only reachable through it, and the operations of the
 //! other modules of the core run inside the closure of
@@ -25,8 +33,10 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 /// The smallest useful counter table, and the point at which a zone is really
-/// out of room.
-const MIN_CAPACITY: usize = 64;
+/// out of room.  A table of this size is 84 * 48 + 24 = 4056 bytes, one 4KB
+/// slab page, and the three quarters it fills up to are 63 entries, about the
+/// 64 addresses the old floor of the table budget held.
+const MIN_CAPACITY: usize = 84;
 
 /// Callbacks the C glue provides for one shared memory zone.
 #[repr(C)]
@@ -47,7 +57,7 @@ const TABLE_MAGIC: u64 = 0x4e47_5857_4146_5442; // "NGXWAFTB"
 /// Bumped whenever a structure of the segment changes: the init handler
 /// validates it and rebuilds a table written by another version, so a segment
 /// is never read with the wrong layout.
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 /// Tag entries per directory block; the directory grows by adding blocks, so a
 /// zone is not limited to a handful of tags any more.
 const TAGS_PER_BLOCK: usize = 8;
@@ -88,6 +98,10 @@ struct TableHeader {
     capacity: u32,
     /// Rotating victim for the case where the table holds no free slot.
     cursor: u32,
+    /// Slots that ever left the `Empty` state, so `capacity - filled` of them
+    /// are still empty.  Monotonic (a deleted or evicted slot is not empty
+    /// again), and what [`fill_limit()`] is compared with.
+    filled: u32,
     /// `capacity` slots follow the header.
     slots: [Slot; 0],
 }
@@ -199,6 +213,7 @@ impl ZoneHandle {
         let zone = self.lock();
         let (table, index, fresh) = slot_for(&zone, tag, addr, ipv6, now)?;
         let mut entry = Entry {
+            header: table.header,
             slot: &mut table.slots[index],
             fresh,
         };
@@ -222,6 +237,7 @@ impl ZoneHandle {
         let table = zone.table(tag)?;
         let index = find_slot(&table, addr, ipv6)?;
         let mut entry = Entry {
+            header: table.header,
             slot: &mut table.slots[index],
             fresh: false,
         };
@@ -262,13 +278,17 @@ impl ZoneLock<'_> {
     }
 
     fn table_capacity(&self) -> usize {
-        // Tables are created lazily and share the segment: a 10MB zone gives
-        // one tag ~20k counters (650KB) and halves that per extra tag, so a
-        // zone with many tags still fits.  `create_entry()` halves further
-        // when the segment is tighter than expected.
+        // Tables are created lazily and share the segment, and three quarters
+        // of a table may hold an entry: a 10MB zone gives one tag 27306 slots
+        // (1.25MB) of which 20480 may hold an address, and the budget halves
+        // per extra tag, so a zone with many tags still fits.  A slot is
+        // budgeted 384 bytes, which is the 48 bytes of the slot plus the
+        // quarter that stays empty, so the addresses a zone remembers are the
+        // same `size / 512` the earlier layout held.  `create_entry()` halves
+        // further when the segment is tighter than expected.
         // SAFETY: the header points at the live zone header of the locked zone.
         let tags = (unsafe { (*self.handle.header).tag_count } as usize) + 1;
-        std::cmp::max(MIN_CAPACITY, (self.handle.size / 512) / tags)
+        std::cmp::max(MIN_CAPACITY, (self.handle.size / 384) / tags)
     }
 
     fn find_entry(&self, tag: &[u8]) -> Option<NonNull<TableHeader>> {
@@ -317,6 +337,7 @@ impl ZoneLock<'_> {
             table_ref.version = VERSION;
             table_ref.capacity = capacity as u32;
             table_ref.cursor = 0;
+            table_ref.filled = 0;
 
             let header = &mut *self.handle.header;
 
@@ -412,6 +433,9 @@ struct Table<'a> {
 /// operations of the core see one entry at a time and never a pointer of the
 /// segment.
 pub(crate) struct Entry<'a> {
+    /// The table the slot belongs to, so that the slots a table ever used are
+    /// counted where the reserve of empty slots is enforced.
+    header: &'a mut TableHeader,
     slot: &'a mut Slot,
     fresh: bool,
 }
@@ -425,6 +449,13 @@ impl Entry<'_> {
 
     /// The entry of `addr` with a zero count and flags, expiring at `expire`.
     pub(crate) fn reset(&mut self, addr: &[u8], ipv6: bool, expire: i64) {
+        // A slot that is written for the first time is one the table can never
+        // get back: the fill limit is what keeps the probe of every other
+        // address bounded, so it is accounted for here.
+        if self.slot.state() == SlotState::Empty {
+            self.header.filled += 1;
+        }
+
         // The C glue hands over the 4 or 16 bytes of the address; a shorter
         // slice is not an address we can match, but it must not panic either.
         let len = std::cmp::min(addr.len(), self.slot.addr.len());
@@ -564,6 +595,38 @@ pub unsafe fn zone_free(handle: *mut ZoneHandle) {
     }
 }
 
+/// The longest walk a probe may take: an entry is always stored within this
+/// many slots of the slot its address hashes to, and a lookup stops there as
+/// well, so no operation scans a whole table however full it is.  Lowering it
+/// invalidates the entries a table already holds (they may sit beyond the new
+/// limit), which is what the `VERSION` check is for.
+const PROBE_LIMIT: usize = 64;
+
+/// The number of slots a table tries to keep as its own: below it the entry of
+/// a new address goes into an empty slot, above it the walk recycles one of
+/// the entries it passed.  A soft target, not an invariant: when the walk is
+/// the empty slot itself there is nothing to recycle, and the table takes the
+/// empty slot (the probe limit bounds the walk either way).
+fn fill_limit(capacity: usize) -> usize {
+    capacity / 4 * 3
+}
+
+/// Drop one entry of the walk `[start, end)` of `table` and return its slot.
+///
+/// Every slot of the walk is occupied (used, deleted or expired), so the
+/// cursor never has to skip one, and the entry that replaces the victim lands
+/// inside the walk of its own address: the probe of that address reaches it
+/// before the cap.  The cursor rotates over the walk so that the same
+/// neighbour is not dropped every time.
+fn evict_in_window(table: &mut Table<'_>, start: usize, end: usize) -> usize {
+    let capacity = table.slots.len();
+    let window = std::cmp::max(1, (end + capacity - start) % capacity);
+    let index = (start + (table.header.cursor as usize) % window) % capacity;
+
+    table.header.cursor = ((index + 1) % capacity) as u32;
+    index
+}
+
 /// Find the slot of `addr`, creating (or evicting) one when asked for.
 /// Returns the index and whether the slot has to be treated as new.
 fn slot_for<'a>(
@@ -573,41 +636,71 @@ fn slot_for<'a>(
     ipv6: bool,
     now: i64,
 ) -> Option<(Table<'a>, usize, bool)> {
-    let table = zone.table(tag)?;
+    let mut table = zone.table(tag)?;
     let kind = used_state(ipv6);
+    let capacity = table.slots.len();
+    let limit = fill_limit(capacity);
+    let start = slot_index(addr) % capacity;
+    let walk = std::cmp::min(PROBE_LIMIT, capacity);
 
-    let mut probe = slot_index(addr) % table.slots.len();
+    let mut probe = start;
     let mut first_free: Option<usize> = None;
-    let mut iterations = 0;
-    let mut evicted = false;
-    let index;
-    loop {
-        if iterations > table.slots.len() {
-            // The table is full of live entries: drop the rotating victim and
-            // keep counting for the new client instead of losing the
-            // protection for the rest of the cycle.
-            let victim = (table.header.cursor as usize) % table.slots.len();
-            table.header.cursor = (table.header.cursor + 1) % (table.slots.len() as u32);
-            index = victim;
-            evicted = true;
+    let mut choice: Option<(usize, bool)> = None;
+
+    for _ in 0..walk {
+        let (empty, recyclable, hit) = {
+            let slot = &table.slots[probe];
+            let state = slot.state();
+            (
+                state == SlotState::Empty,
+                state == SlotState::Deleted || slot.expire < now,
+                state == kind && same_addr(slot, addr, ipv6),
+            )
+        };
+        if hit {
+            // The entry of the address wins over a slot that could be reused:
+            // reusing another slot would split its counter over two entries.
+            choice = Some((probe, false));
             break;
         }
-        iterations += 1;
-        let slot = &mut table.slots[probe];
-        if slot.state() == SlotState::Empty {
-            index = first_free.unwrap_or(probe);
+        if empty {
+            choice = Some(if let Some(free) = first_free {
+                // A deleted or expired entry of the walk is free to reuse: it
+                // does not consume an empty slot of the table.
+                (free, false)
+            } else if (table.header.filled as usize) < limit {
+                // The table is below its fill limit: the entry goes into the
+                // empty slot the probe stopped on.
+                (probe, false)
+            } else if probe != start {
+                // The table reached its fill limit: recycle an entry of the
+                // walk, which leaves the empty slots of the table alone.
+                (evict_in_window(&mut table, start, probe), true)
+            } else {
+                // The walk is the empty slot itself, there is nothing to
+                // recycle: the entry takes it.  The fill limit is a target,
+                // the probe limit below is what bounds the walk.
+                (probe, false)
+            });
             break;
         }
-        if slot.state() == SlotState::Deleted {
-            if first_free.is_none() {
-                first_free = Some(probe);
-            }
-        } else if slot.state() == kind && same_addr(slot, addr, ipv6) {
-            index = probe;
-            break;
+        if recyclable && first_free.is_none() {
+            first_free = Some(probe);
         }
-        probe = (probe + 1) % table.slots.len();
+        probe = (probe + 1) % capacity;
     }
+
+    let (index, evicted) = match choice {
+        Some(choice) => choice,
+        // The walk reached its cap over occupied slots: the entry reuses one
+        // of them ...
+        None => match first_free {
+            Some(free) => (free, false),
+            // ... or drops it, which still leaves the entry inside the walk of
+            // its own address.
+            None => (evict_in_window(&mut table, start, probe), true),
+        },
+    };
 
     // An entry is expired only when `expire < now`: an entry whose expire is
     // the current second is still counted.
@@ -621,21 +714,25 @@ fn slot_for<'a>(
     Some((table, index, fresh))
 }
 
-/// The index of the entry of `addr` in `table`, if it has one.  Probing stops
-/// at the first free slot, so a deleted slot never hides an entry behind it.
+/// The index of the entry of `addr` in `table`, if it has one.  The walk stops
+/// at the first free slot, so a deleted slot never hides an entry behind it,
+/// and it is capped like the walk of [`slot_for()`]: an entry always sits
+/// within `PROBE_LIMIT` slots of its address, so a lookup does not have to
+/// scan a full table either.
 fn find_slot(table: &Table<'_>, addr: &[u8], ipv6: bool) -> Option<usize> {
     let kind = used_state(ipv6);
+    let capacity = table.slots.len();
+    let start = slot_index(addr) % capacity;
 
-    let mut probe = slot_index(addr) % table.slots.len();
-    for _ in 0..=table.slots.len() {
-        let slot = &table.slots[probe];
+    for offset in 0..std::cmp::min(PROBE_LIMIT, capacity) {
+        let index = (start + offset) % capacity;
+        let slot = &table.slots[index];
         if slot.state() == SlotState::Empty {
             return None;
         }
         if slot.state() == kind && same_addr(slot, addr, ipv6) {
-            return Some(probe);
+            return Some(index);
         }
-        probe = (probe + 1) % table.slots.len();
     }
     None
 }
@@ -798,6 +895,73 @@ mod tests {
     use super::*;
     use crate::{action, cc};
     use std::sync::atomic::Ordering;
+
+    /// What the locked zone sees in the table of `tag`.
+    struct TableState {
+        capacity: usize,
+        empty: usize,
+        filled: u32,
+        cursor: u32,
+    }
+
+    /// The table of `tag` as its own probe sees it.
+    fn table_state(handle: &ZoneHandle, tag: &[u8]) -> TableState {
+        let zone = handle.lock();
+        let table = zone.table(tag).expect("the table of a counted tag");
+
+        TableState {
+            capacity: table.slots.len(),
+            empty: table
+                .slots
+                .iter()
+                .filter(|slot| slot.state() == SlotState::Empty)
+                .count(),
+            filled: table.header.filled,
+            cursor: table.header.cursor,
+        }
+    }
+
+    /// Whether the zone has an entry for `addr` (a lookup, it creates none).
+    fn has_entry(handle: &ZoneHandle, tag: &[u8], addr: &[u8]) -> bool {
+        handle
+            .with_present_entry(tag, addr, false, |_| ())
+            .is_some()
+    }
+
+    /// A distinct 4 byte address for a counter of the tests.
+    fn addr_of(index: u32) -> [u8; 4] {
+        [0xa1, (index >> 16) as u8, (index >> 8) as u8, index as u8]
+    }
+
+    /// The first address from `base` whose probe starts on a used slot: the
+    /// next empty slot is what ends its walk, so the entry it walks over is
+    /// the one a table below its fill limit has to recycle.
+    fn address_probing_over_a_used_slot(handle: &ZoneHandle, tag: &[u8], base: u32) -> [u8; 4] {
+        let zone = handle.lock();
+        let table = zone.table(tag).expect("the table of a counted tag");
+
+        (base..)
+            .map(addr_of)
+            .find(|addr| {
+                let start = slot_index(addr) % table.slots.len();
+                table.slots[start].state() != SlotState::Empty
+            })
+            .expect("an address whose probe starts on a used slot")
+    }
+
+    /// The first address from `base` whose probe starts on an empty slot.
+    fn address_probing_over_an_empty_slot(handle: &ZoneHandle, tag: &[u8], base: u32) -> [u8; 4] {
+        let zone = handle.lock();
+        let table = zone.table(tag).expect("the table of a counted tag");
+
+        (base..)
+            .map(addr_of)
+            .find(|addr| {
+                let start = slot_index(addr) % table.slots.len();
+                table.slots[start].state() == SlotState::Empty
+            })
+            .expect("an address whose probe starts on an empty slot")
+    }
 
     /// Every operation takes the zone lock and gives it back, whatever path it
     /// leaves through.
@@ -963,6 +1127,185 @@ mod tests {
                 cc::increment(zone(ctx), tag.as_bytes(), &addr, false, 1, 60, 60, 1).unwrap();
             assert!(blocked.blocked, "tag {tag}");
         }
+    }
+
+    /// Below the fill limit the table leaves a quarter of its slots empty, so
+    /// the walk of a new address ends in a handful of steps.
+    #[test]
+    fn the_fill_limit_keeps_a_quarter_of_its_slots_free() {
+        let (_shm, ctx) = setup("fill_limit", 1024 * 1024);
+        let handle = zone(ctx);
+        let capacity = table_state(handle, b"cc").capacity;
+        let limit = capacity / 4 * 3;
+
+        for index in 0..limit as u32 {
+            let addr = addr_of(index);
+            assert!(
+                cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).is_some(),
+                "address {index} must be counted"
+            );
+        }
+
+        let state = table_state(handle, b"cc");
+        assert_eq!(state.capacity, capacity);
+        assert_eq!(state.filled as usize, limit, "every entry has its own slot");
+        assert_eq!(state.empty, capacity - limit, "the quarter is still free");
+
+        // The client of the last request is counted: the flood that recycled
+        // the table did not lose the address it just saw.
+        let last = addr_of(limit as u32 - 1);
+        let counted = cc::increment(handle, b"cc", &last, false, 1, 60, 60, 0).unwrap();
+        assert_eq!(counted.rate, 2, "the last address keeps its counter");
+    }
+
+    /// An entry whose expiry is over is recycled by the next address that
+    /// probes past it, before the rotating victim of the table is dropped.
+    #[test]
+    fn an_expired_slot_is_reused_before_a_live_one_is_evicted() {
+        let (_shm, ctx) = setup("reuse_expired", 1024 * 1024);
+        let handle = zone(ctx);
+        let capacity = table_state(handle, b"cc").capacity;
+        let limit = capacity / 4 * 3;
+
+        // Every slot the table may hold is taken by an entry of its own.
+        for index in 0..limit as u32 {
+            let addr = addr_of(index);
+            cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
+        }
+        let full = table_state(handle, b"cc");
+        assert_eq!(full.filled as usize, limit);
+
+        // The entries are over, the collector did not run yet, and the new
+        // client walks over one of them before it reaches an empty slot.
+        let addr = address_probing_over_a_used_slot(handle, b"cc", 1_000_000);
+        cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 3600).unwrap();
+
+        let after = table_state(handle, b"cc");
+        assert_eq!(after.filled, full.filled, "an expired slot was reused");
+        assert_eq!(after.cursor, full.cursor, "no victim was dropped");
+        assert!(
+            has_entry(handle, b"cc", &addr),
+            "the new address is counted"
+        );
+    }
+
+    /// A tombstone is reused by the address that comes back, without dropping
+    /// the rotating victim of the table.
+    #[test]
+    fn a_deleted_slot_is_reused_without_the_rotating_victim() {
+        let (_shm, ctx) = setup("reuse_deleted", 1024 * 1024);
+        let handle = zone(ctx);
+        let capacity = table_state(handle, b"cc").capacity;
+        let limit = capacity / 4 * 3;
+
+        for index in 0..limit as u32 {
+            let addr = addr_of(index);
+            cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
+        }
+
+        // The captcha flow forgets one address: its slot is a tombstone now.
+        let gone = addr_of(7);
+        handle
+            .with_present_entry(b"cc", &gone, false, |entry| entry.remove())
+            .unwrap();
+        let deleted = table_state(handle, b"cc");
+        assert_eq!(deleted.filled as usize, limit, "a tombstone is not empty");
+
+        // The same address comes back: it has to land on its own tombstone.
+        let counted = cc::increment(handle, b"cc", &gone, false, 1, 60, 60, 1).unwrap();
+        assert_eq!(counted.rate, 1, "the counter starts over");
+        let after = table_state(handle, b"cc");
+        assert_eq!(after.filled, deleted.filled, "the tombstone was reused");
+        assert_eq!(after.cursor, deleted.cursor, "no victim was dropped");
+        assert!(
+            has_entry(handle, b"cc", &gone),
+            "the address is counted again"
+        );
+    }
+
+    /// When the address hashes onto an empty slot there is nothing to recycle:
+    /// the entry takes the slot, the fill limit gives way instead of losing the
+    /// counter.
+    #[test]
+    fn the_fill_limit_gives_way_instead_of_losing_the_entry() {
+        let (_shm, ctx) = setup("soft_limit", 1024 * 1024);
+        let handle = zone(ctx);
+        let capacity = table_state(handle, b"cc").capacity;
+        let limit = capacity / 4 * 3;
+
+        for index in 0..limit as u32 {
+            let addr = addr_of(index);
+            cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
+        }
+        let full = table_state(handle, b"cc");
+        assert_eq!(full.filled as usize, limit);
+
+        // A new client whose walk is the empty slot itself.
+        let addr = address_probing_over_an_empty_slot(handle, b"cc", 1_000_000);
+        cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 1).unwrap();
+
+        let after = table_state(handle, b"cc");
+        assert_eq!(
+            after.filled,
+            full.filled + 1,
+            "the entry took the empty slot"
+        );
+        assert_eq!(after.cursor, full.cursor, "no entry was dropped for it");
+        assert!(
+            has_entry(handle, b"cc", &addr),
+            "the new address is counted"
+        );
+    }
+
+    /// Every entry lives inside the walk of its own address, so a lookup capped
+    /// at the probe limit always finds it and no walk scans a full table.
+    #[test]
+    fn every_entry_stays_within_the_walk_of_its_address() {
+        let (_shm, ctx) = setup("probe_bounded", 1024 * 1024);
+        let handle = zone(ctx);
+        let capacity = table_state(handle, b"cc").capacity;
+        let limit = capacity / 4 * 3;
+        let addresses = limit as u32 + 10_000;
+
+        for index in 0..addresses {
+            let addr = addr_of(index);
+            assert!(cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).is_some());
+        }
+
+        {
+            let zone = handle.lock();
+            let table = zone.table(b"cc").expect("the table of a counted tag");
+            let walk = std::cmp::min(PROBE_LIMIT, capacity);
+            let mut entries = 0usize;
+
+            for index in 0..capacity {
+                let slot = &table.slots[index];
+                if slot.state() != SlotState::UsedV4 {
+                    continue;
+                }
+                entries += 1;
+
+                let start = slot_index(&slot.addr[..4]) % capacity;
+                let distance = (index + capacity - start) % capacity;
+                assert!(
+                    distance < walk,
+                    "the entry of slot {index} sits {distance} slots after the address hashes there"
+                );
+                for offset in 0..distance {
+                    let passed = (start + offset) % capacity;
+                    assert_ne!(
+                        table.slots[passed].state(),
+                        SlotState::Empty,
+                        "the lookup of the address of slot {index} stops at slot {passed}"
+                    );
+                }
+            }
+
+            assert!(entries > 0, "the flood left entries behind");
+        }
+
+        // The newest client is counted, the recycling did not lose it.
+        assert!(has_entry(handle, b"cc", &addr_of(addresses - 1)));
     }
 
     /// A single worker collects on every request, several workers spread the

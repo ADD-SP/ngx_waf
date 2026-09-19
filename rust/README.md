@@ -172,9 +172,20 @@ stderr is not ported.
   block their own address), and it aborted on some inputs: a negative suffix
   (`1.2.3.4/-1`) with a segmentation fault, an over-long line through the
   buffer overflow check of the build.
-* The CC counters live in a growable tag directory and a table that evicts a
-  rotating victim when it is full, so a zone with many tags or a flood from many
-  addresses keeps counting instead of losing protection.
+* The CC counters live in a growable tag directory and in tables whose walks
+  are bounded: the probe of an address visits at most 64 slots, a deleted or
+  expired entry is recycled by the next address whose walk passes it, and a
+  table that reached its fill target (three quarters of its slots) drops one of
+  the entries its walk passed.  A zone with many tags or a flood from many
+  addresses therefore keeps counting at a bounded cost per request instead of
+  scanning a whole table once it filled up.
+* A counter table is budgeted 384 bytes per slot of its zone, so a zone
+  remembers the same number of addresses as the layout before it (live
+  entries are `size / 512`) while its tables take ~12.5% of the zone instead of
+  ~9.4%.  The layout of a table changed (`VERSION` 3 to 4): the first reload
+  after the upgrade rebuilds the zone, and the tables of the old layout stay in
+  the segment, which the glue cannot hand back (the core has no `free`
+  callback).
 * An inspection cache never crosses a context.  The C implementation merged the
   cache pointer of the parent into every context below it, so all of them shared
   one cache object: a location whose `waf_rule_path` differed from the one of its
