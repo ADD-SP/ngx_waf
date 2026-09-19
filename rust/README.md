@@ -18,8 +18,11 @@ not up to date.
 | --- | --- |
 | `src/types.rs` | constants shared with the C side (modes, bot types, status codes) |
 | `src/flags.rs` | the typed view of those bits (`bitflags`) |
-| `src/util.rs` | time/size parsing, IP parsing, random strings |
-| `src/rules.rs` | rule containers (the IP lists included) and rule-file loading |
+| `src/util.rs` | time/size parsing, random strings, hashing helpers |
+| `src/rules.rs` | the rule kinds, the `RuleSet` and its queries |
+| `src/rules/regex.rs` | the compiled regex rules and their matching engine |
+| `src/rules/ip.rs` | IP text parsing, the `IpCidr` mask helper, the prefix-bucket IP lists |
+| `src/rules/load.rs` | rule-file reading/parsing, warnings and errors |
 | `src/pcre.rs` | rule matching through the PCRE engine of nginx |
 | `src/cache.rs` | per-worker inspection caches, an `lru` cache plus expiration |
 | `src/cc.rs` | shared memory CC counters |
