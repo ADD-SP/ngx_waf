@@ -114,20 +114,12 @@ static void ngx_http_waf_fetch_cleanup(void* data) {
 
 
 /**
- * Hand the answer to the machine.  Returns 1 when this happened synchronously,
- * i.e. while the drive loop is still on the stack: in that case the caller must
- * not finalize the request, the decision is applied by the phase handler that
- * is already running.
+ * The tail of one provider request the core left: stop its timers, hand the
+ * connection back to the worker and forget the buffers, which belong to that
+ * one request.
  */
-ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
-    ngx_uint_t status, u_char* body, size_t len, ngx_uint_t failed)
-{
-    ngx_connection_t* c;
-    ngx_waf_event_t event;
-
-    ngx_memzero(&event, sizeof(ngx_waf_event_t));
-
-    c = ctx->fetch.connection;
+static void ngx_http_waf_fetch_settle(ngx_http_waf_ctx_t* ctx) {
+    ngx_connection_t* c = ctx->fetch.connection;
 
     if (c != NULL) {
         if (c->read->timer_set) {
@@ -138,17 +130,6 @@ ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* 
         }
     }
 
-    if (failed) {
-        event.kind = NGX_WAF_EVENT_KIND_HTTP_FAILED;
-
-    } else {
-        event.kind = NGX_WAF_EVENT_KIND_HTTP_RESPONSE;
-        event.status = status;
-        event.body.data = body;
-        event.body.len = len;
-    }
-
-    ngx_http_waf_resume(r, ctx, &event);
     ctx->fetch.finished = 1;
 
     ngx_http_waf_fetch_close(ctx);
@@ -157,32 +138,75 @@ ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* 
      * another one builds its own. */
     ctx->fetch.request = NULL;
     ctx->fetch.response = NULL;
-
-    return ctx->fetch.in_drive;
 }
 
 
 /**
- * Wake the parked request up from an event: the machine is resumed and, when
- * this is an asynchronous wake up, the phases are re-entered so that the phase
- * handler applies the new decision.
+ * Wake the parked request up from an event: the phases are re-entered so that
+ * the phase handler applies the new step.  Nothing to do while the drive loop
+ * is still on the stack, that loop applies the step itself.
  */
-void ngx_http_waf_fetch_finish(ngx_http_request_t* r, ngx_uint_t status, u_char* body,
-    size_t len, ngx_uint_t failed)
-{
-    ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
-
-    if (ctx == NULL) {
-        return;
-    }
-
-    if (ngx_http_waf_fetch_settle(r, ctx, status, body, len, failed)) {
-        /* the drive loop is still running, it will apply the decision */
+static void ngx_http_waf_fetch_wake(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    if (ctx->fetch.in_drive) {
         return;
     }
 
     ngx_http_finalize_request(r, NGX_DONE);
     ngx_http_core_run_phases(r);
+}
+
+
+/**
+ * Hand the bytes of the answer read so far to the machine.  Returns 1 when it
+ * left the HTTP step (the request was settled), 0 when it still waits for the
+ * rest of the same answer.  The caller returns either way: the request may be
+ * gone once the machine settled.
+ */
+ngx_uint_t ngx_http_waf_fetch_feed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    ngx_uint_t eof)
+{
+    ngx_waf_event_t event;
+    ngx_buf_t* b = ctx->fetch.response;
+
+    ngx_memzero(&event, sizeof(ngx_waf_event_t));
+
+    event.kind = NGX_WAF_EVENT_KIND_HTTP_DATA;
+    event.data.data = b->pos;
+    event.data.len = (size_t) (b->last - b->pos);
+    event.eof = eof != 0;
+
+    ngx_http_waf_resume(r, ctx, &event);
+
+    if (ctx->step != NULL && ctx->step->kind == NGX_WAF_STEP_KIND_HTTP_REQUEST) {
+        /* the same provider request waits for the rest of the answer */
+        return 0;
+    }
+
+    ngx_http_waf_fetch_settle(ctx);
+    ngx_http_waf_fetch_wake(r, ctx);
+
+    return 1;
+}
+
+
+/**
+ * The provider request failed before an answer could be read: the machine
+ * settles it as a failed attempt.
+ */
+void ngx_http_waf_fetch_failed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
+    ngx_waf_event_t event;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    ngx_memzero(&event, sizeof(ngx_waf_event_t));
+    event.kind = NGX_WAF_EVENT_KIND_HTTP_FAILED;
+
+    ngx_http_waf_resume(r, ctx, &event);
+
+    ngx_http_waf_fetch_settle(ctx);
+    ngx_http_waf_fetch_wake(r, ctx);
 }
 
 
@@ -205,7 +229,7 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
      * peer sends back would be parsed as an answer.
      */
     if (c->ssl == NULL || !c->ssl->handshaked || c->timedout || c->error) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
@@ -234,7 +258,7 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
     }
 
     if (rev->timedout) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
@@ -248,12 +272,12 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
 
             if (b->last == b->end) {
                 /* a provider answer bigger than the buffer is not one we can use */
-                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                ngx_http_waf_fetch_failed(r, ctx);
                 return;
             }
 
-            /* a length or a chunked framing says the answer is complete */
-            if (ngx_http_waf_fetch_answer(r, ctx, b->pos, b->last, 0)) {
+            /* the machine settles the request when the answer is complete */
+            if (ngx_http_waf_fetch_feed(r, ctx, 0)) {
                 return;
             }
 
@@ -261,22 +285,25 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
         }
 
         if (n == 0) {
-            /* the provider is done (the request asked to close) */
-            if (!ngx_http_waf_fetch_answer(r, ctx, b->pos, b->last, 1)) {
-                /* an answer the provider did not finish */
-                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            /*
+             * The provider is done (the request asked to close): the machine
+             * settles the request, an answer it cannot read included.  A step
+             * that still waits for bytes is a failed attempt, not a hang.
+             */
+            if (!ngx_http_waf_fetch_feed(r, ctx, 1)) {
+                ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
         if (n == NGX_AGAIN) {
             if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
-                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 }
@@ -295,12 +322,12 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
     }
 
     if (wev->timedout) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
     if (ngx_http_waf_fetch_connect_test(c) != NGX_OK) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
@@ -313,13 +340,13 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
             if (ngx_handle_read_event(c->read, 0) != NGX_OK
                 || ngx_handle_write_event(c->write, 0) != NGX_OK)
             {
-                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
         if (rc != NGX_OK) {
-            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ngx_http_waf_fetch_failed(r, ctx);
             return;
         }
 
@@ -340,12 +367,12 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
             ngx_add_timer(c->write, NGX_HTTP_WAF_FETCH_TIMEOUT);
 
             if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
-                ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+                ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
@@ -382,7 +409,7 @@ static ngx_int_t ngx_http_waf_start_http_peer(ngx_http_request_t* r, ngx_http_wa
     if (ctx->fetch.resolved_failed) {
         ctx->fetch.resolved_failed = 0;
 
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
 
         return NGX_OK;
@@ -420,7 +447,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
          */
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
             "ngx_waf: the captcha provider endpoint is not configured");
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
     }
@@ -435,7 +462,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
             + step->pending.body.len + 512;
         b = ngx_create_temp_buf(r->pool, len);
         if (b == NULL) {
-            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ngx_http_waf_fetch_failed(r, ctx);
             ctx->fetch.in_drive = 0;
             return NGX_OK;
         }
@@ -459,7 +486,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     if (ctx->fetch.response == NULL) {
         ctx->fetch.response = ngx_create_temp_buf(r->pool, NGX_HTTP_WAF_FETCH_BUFFER);
         if (ctx->fetch.response == NULL) {
-            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ngx_http_waf_fetch_failed(r, ctx);
             ctx->fetch.in_drive = 0;
             return NGX_OK;
         }
@@ -474,7 +501,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
     if (clcf->resolver == NULL) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
     }
@@ -482,7 +509,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     rc = ngx_resolve_start(clcf->resolver, NULL);
 
     if (rc == NULL || rc == NGX_NO_RESOLVER) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
     }
@@ -496,7 +523,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
 
     if (ngx_resolve_name(rc) != NGX_OK) {
         ngx_resolve_name_done(rc);
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
     }
@@ -616,7 +643,7 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
     if (rc == NGX_ERROR || rc == NGX_BUSY || rc == NGX_DECLINED
         || peer.connection == NULL || peer.connection->fd == -1)
     {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return NGX_OK;
     }
 
@@ -641,7 +668,7 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
      */
     cln = ngx_pool_cleanup_add(r->pool, 0);
     if (cln == NULL) {
-        ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+        ngx_http_waf_fetch_failed(r, ctx);
         return NGX_OK;
     }
     cln->handler = ngx_http_waf_fetch_cleanup;
@@ -652,14 +679,14 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
                                       NGX_SSL_BUFFER|NGX_SSL_CLIENT) != NGX_OK)
         {
             ctx->fetch.connection = c;
-            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ngx_http_waf_fetch_failed(r, ctx);
             return NGX_OK;
         }
         c->sendfile = 0;
         if (SSL_set_tlsext_host_name(c->ssl->connection, (char*) conf->captcha_api.host.data)
             == 0)
         {
-            ngx_http_waf_fetch_finish(r, 0, NULL, 0, 1);
+            ngx_http_waf_fetch_failed(r, ctx);
             return NGX_OK;
         }
 

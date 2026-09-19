@@ -89,9 +89,9 @@ typedef enum ngx_waf_event_kind {
      */
     NGX_WAF_EVENT_KIND_RESOLVE_FAILED = 1,
     /**
-     * The captcha provider answered.
+     * Bytes of the answer of the captcha provider.
      */
-    NGX_WAF_EVENT_KIND_HTTP_RESPONSE = 2,
+    NGX_WAF_EVENT_KIND_HTTP_DATA = 2,
     /**
      * The captcha provider could not be reached.
      */
@@ -298,13 +298,16 @@ typedef struct ngx_waf_event_t {
      */
     struct ngx_waf_str_t name;
     /**
-     * `HTTP_RESPONSE`: the status code of the provider.
+     * `HTTP_DATA`: the bytes of the answer the glue read, from its start.
      */
-    uint32_t status;
+    struct ngx_waf_str_t data;
     /**
-     * `HTTP_RESPONSE`: its body.
+     * `HTTP_DATA`: whether the provider closed the connection.  The core
+     * settles the request when the answer is complete or unreadable; an
+     * answer that is merely incomplete leaves the step on `HTTP_REQUEST`,
+     * and the glue reads on and feeds the bytes again.
      */
-    struct ngx_waf_str_t body;
+    bool eof;
 } ngx_waf_event_t;
 
 /**
@@ -426,6 +429,10 @@ const struct ngx_waf_step_t *ngx_waf_check_step(const struct ngx_waf_check_t *ch
  * publish the next step in the same handle.  A panic is reported to the error
  * log and published as the internal error step, so the C side never has to
  * write to the memory this crate owns.
+ *
+ * `HTTP_DATA` may be fed more than once for the same provider request: the
+ * step stays on `HTTP_REQUEST` until the bytes hold a whole answer (or one
+ * the core cannot read, which is a failed attempt).
  */
 void ngx_waf_check_resume(struct ngx_waf_check_t *check, const struct ngx_waf_event_t *event);
 

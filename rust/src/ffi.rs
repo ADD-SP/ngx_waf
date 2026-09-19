@@ -615,6 +615,10 @@ pub unsafe extern "C" fn ngx_waf_check_step(check: *const NgxWafCheck) -> *const
 /// publish the next step in the same handle.  A panic is reported to the error
 /// log and published as the internal error step, so the C side never has to
 /// write to the memory this crate owns.
+///
+/// `HTTP_DATA` may be fed more than once for the same provider request: the
+/// step stays on `HTTP_REQUEST` until the bytes hold a whole answer (or one
+/// the core cannot read, which is a failed attempt).
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_check_resume(check: *mut NgxWafCheck, event: *const NgxWafEvent) {
     if check.is_null() || event.is_null() {
@@ -637,10 +641,10 @@ pub unsafe extern "C" fn ngx_waf_check_resume(check: *mut NgxWafCheck, event: *c
                 // SAFETY: the name view is valid for this call.
                 check::Event::ResolvedName(unsafe { event.name.as_slice() })
             }
-            NgxWafEventKind::HttpResponse => check::Event::HttpResponse {
-                status: event.status,
-                // SAFETY: the body view is valid for this call.
-                body: unsafe { event.body.as_slice() },
+            NgxWafEventKind::HttpData => check::Event::HttpData {
+                // SAFETY: the data view is valid for this call.
+                data: unsafe { event.data.as_slice() },
+                eof: event.eof,
             },
             NgxWafEventKind::HttpFailed => check::Event::HttpFailed,
             NgxWafEventKind::ResolveFailed => check::Event::ResolveFailed,
@@ -949,7 +953,7 @@ mod tests {
             [
                 NgxWafEventKind::ResolvedName as u32,
                 NgxWafEventKind::ResolveFailed as u32,
-                NgxWafEventKind::HttpResponse as u32,
+                NgxWafEventKind::HttpData as u32,
                 NgxWafEventKind::HttpFailed as u32
             ],
             [0, 1, 2, 3]

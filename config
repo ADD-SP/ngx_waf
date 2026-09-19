@@ -7,8 +7,7 @@ ngx_http_waf_srcs="$ngx_addon_dir/src/ngx_http_waf_module.c \
     $ngx_addon_dir/src/ngx_http_waf_shm.c \
     $ngx_addon_dir/src/ngx_http_waf_request.c \
     $ngx_addon_dir/src/ngx_http_waf_variables.c \
-    $ngx_addon_dir/src/ngx_http_waf_fetch.c \
-    $ngx_addon_dir/src/ngx_http_waf_fetch_parse.c"
+    $ngx_addon_dir/src/ngx_http_waf_fetch.c"
 ngx_http_waf_deps="$ngx_addon_dir/include/ngx_http_waf_ffi.h \
     $ngx_addon_dir/src/ngx_http_waf_module.h"
 

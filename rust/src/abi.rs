@@ -153,8 +153,8 @@ pub enum NgxWafEventKind {
     ResolvedName = 0,
     /// No name, no resolver, timeout or lookup error.
     ResolveFailed = 1,
-    /// The captcha provider answered.
-    HttpResponse = 2,
+    /// Bytes of the answer of the captcha provider.
+    HttpData = 2,
     /// The captcha provider could not be reached.
     HttpFailed = 3,
 }
@@ -221,10 +221,13 @@ pub struct NgxWafEvent {
     pub kind: NgxWafEventKind,
     /// `RESOLVED_NAME`: the host name the address resolves to.
     pub name: NgxWafStr,
-    /// `HTTP_RESPONSE`: the status code of the provider.
-    pub status: u32,
-    /// `HTTP_RESPONSE`: its body.
-    pub body: NgxWafStr,
+    /// `HTTP_DATA`: the bytes of the answer the glue read, from its start.
+    pub data: NgxWafStr,
+    /// `HTTP_DATA`: whether the provider closed the connection.  The core
+    /// settles the request when the answer is complete or unreadable; an
+    /// answer that is merely incomplete leaves the step on `HTTP_REQUEST`,
+    /// and the glue reads on and feeds the bytes again.
+    pub eof: bool,
 }
 
 /// A decision: everything the glue needs for the response and the `$waf_*`

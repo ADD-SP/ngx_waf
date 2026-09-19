@@ -202,25 +202,20 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
 void ngx_http_waf_resume(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx, ngx_waf_event_t* event);
 
 
-ngx_uint_t ngx_http_waf_fetch_settle(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
-    ngx_uint_t status, u_char* body, size_t len, ngx_uint_t failed);
+/**
+ * Hand the bytes of `ctx->fetch.response` to the core, `eof` when the provider
+ * closed the connection.  Returns 1 when the core left the HTTP step (the
+ * request was settled), 0 when it still waits for the rest of the same answer.
+ */
+ngx_uint_t ngx_http_waf_fetch_feed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
+    ngx_uint_t eof);
 
 
-void ngx_http_waf_fetch_finish(ngx_http_request_t* r, ngx_uint_t status, u_char* body,
-    size_t len, ngx_uint_t failed);
-
-
-ngx_uint_t ngx_http_waf_fetch_is_chunked(u_char* headers, u_char* end);
-
-
-ngx_uint_t ngx_http_waf_fetch_dechunk(u_char* body, u_char* end, size_t* out_len);
-
-
-ngx_uint_t ngx_http_waf_fetch_length(u_char* headers, u_char* end, size_t* out_len);
-
-
-ngx_uint_t ngx_http_waf_fetch_answer(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
-    u_char* data, u_char* last, ngx_uint_t eof);
+/**
+ * The provider request failed before an answer could be read: the core
+ * settles it as a failed attempt.
+ */
+void ngx_http_waf_fetch_failed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
 
 
 /*

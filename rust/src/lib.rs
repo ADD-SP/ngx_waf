@@ -22,6 +22,7 @@ mod data;
 mod ffi;
 mod flags;
 mod http;
+mod http_response;
 mod modsec;
 mod pcre;
 mod rules;

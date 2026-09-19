@@ -15,6 +15,7 @@ use crate::ffi::RawReq;
 use crate::ffi::{RawModsecReq, RawStr};
 use crate::flags::WafMode;
 use crate::http::{FORBIDDEN, INTERNAL_SERVER_ERROR, OK, SERVICE_UNAVAILABLE, TOO_MANY_REQUESTS};
+use crate::http_response::{self, Response};
 use crate::modsec;
 use crate::rules::RuleKind;
 use crate::util;
@@ -433,8 +434,9 @@ pub enum Event<'a> {
     ResolvedName(&'a [u8]),
     /// No name, no resolver, timeout or lookup error.
     ResolveFailed,
-    /// The captcha provider answered.
-    HttpResponse { status: u32, body: &'a [u8] },
+    /// The bytes of the answer of the captcha provider read so far, and
+    /// whether the provider closed the connection.
+    HttpData { data: &'a [u8], eof: bool },
     /// The captcha provider could not be reached.
     HttpFailed,
 }
@@ -621,22 +623,34 @@ impl Machine {
         }
     }
 
-    /// The captcha provider answered, or could not be reached.
+    /// The captcha provider answered, or could not be reached.  An answer the
+    /// provider is still sending parks the machine again on the same request.
     fn resume_captcha(&mut self, path: CaptchaPath, event: Event<'_>) -> Step {
-        let conf = self.conf.get();
-        let is_v3 = conf.captcha.provider == Some(CaptchaProvider::RecaptchaV3);
-        let threshold = conf.captcha.score;
-
         let verdict = match event {
-            Event::HttpResponse { status, body } => {
-                if status == 0 || status >= 400 {
-                    CaptchaVerdict::Bad
-                } else if provider_verdict(body, is_v3, threshold) {
-                    CaptchaVerdict::Pass
-                } else {
-                    CaptchaVerdict::Bad
+            Event::HttpData { data, eof } => match http_response::parse(data, eof) {
+                Response::Complete { status, body } => {
+                    let conf = self.conf.get();
+                    let is_v3 = conf.captcha.provider == Some(CaptchaProvider::RecaptchaV3);
+                    let threshold = conf.captcha.score;
+
+                    if status == 0 || status >= 400 {
+                        CaptchaVerdict::Bad
+                    } else if provider_verdict(body.as_ref(), is_v3, threshold) {
+                        CaptchaVerdict::Pass
+                    } else {
+                        CaptchaVerdict::Bad
+                    }
                 }
-            }
+                // An answer the core cannot read is a failed attempt, like a
+                // provider that cannot be reached.
+                Response::Invalid => CaptchaVerdict::Bad,
+                Response::Incomplete => {
+                    // The provider is still talking: the machine waits for the
+                    // rest of the answer with the same parked request.
+                    self.continuation = Some(Continuation::Captcha { path });
+                    return Step::Pending(Pending::HttpRequest);
+                }
+            },
             // The provider cannot be reached: the visitor is challenged again
             // instead of being let through, see the known differences.
             _ => CaptchaVerdict::Bad,
@@ -2574,6 +2588,18 @@ mod tests {
         cookie
     }
 
+    /// A provider answer with the framing a real one carries: the status line,
+    /// the length of the body, and the body itself.
+    fn provider_answer(status: &str, body: &[u8]) -> Vec<u8> {
+        let mut answer = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        answer.extend_from_slice(body);
+        answer
+    }
+
     #[test]
     fn captcha_challenges_a_visitor_without_cookies() {
         let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
@@ -2608,9 +2634,10 @@ mod tests {
         assert_eq!(url, "http://127.0.0.1:1/verify");
         assert_eq!(fetch_body, b"response=token&secret=secret");
 
-        let outcome = match machine.resume(Event::HttpResponse {
-            status: 200,
-            body: br#"{"success":true}"#,
+        let answer = provider_answer("200 OK", br#"{"success":true}"#);
+        let outcome = match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
         }) {
             Step::Decision(outcome) => outcome,
             _ => panic!("the provider answer decides the request"),
@@ -2668,19 +2695,23 @@ mod tests {
 
     #[test]
     fn captcha_bad_and_transport_failure_are_reported() {
+        let bad = provider_answer("200 OK", br#"{"success":false}"#);
+        let wrong_status = provider_answer("500 Internal Server Error", b"oops");
+        let not_json = provider_answer("200 OK", b"not json");
+
         for event in [
-            Event::HttpResponse {
-                status: 200,
-                body: br#"{"success":false}"#,
+            Event::HttpData {
+                data: &bad,
+                eof: false,
             },
             Event::HttpFailed,
-            Event::HttpResponse {
-                status: 500,
-                body: b"oops",
+            Event::HttpData {
+                data: &wrong_status,
+                eof: false,
             },
-            Event::HttpResponse {
-                status: 200,
-                body: b"not json",
+            Event::HttpData {
+                data: &not_json,
+                eof: false,
             },
         ] {
             let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
@@ -2701,6 +2732,46 @@ mod tests {
         }
     }
 
+    /// An answer the provider is still sending parks the machine again on the
+    /// very same request; the rest of the bytes decide it then.
+    #[test]
+    fn captcha_resumes_on_a_split_answer() {
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
+        let body = b"g-recaptcha-response=token";
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+
+        let answer = provider_answer("200 OK", br#"{"success":true}"#);
+
+        // A piece in the middle of the status line and one in the middle of
+        // the body both leave the machine parked on the same request.
+        for cut in [1, answer.len() - 4] {
+            let step = machine.resume(Event::HttpData {
+                data: &answer[..cut],
+                eof: false,
+            });
+            assert!(matches!(step, Step::Pending(Pending::HttpRequest)));
+
+            let (url, fetch_body) = machine.fetch().expect("the provider request");
+            assert_eq!(url, "http://127.0.0.1:1/verify");
+            assert_eq!(fetch_body, b"response=token&secret=secret");
+        }
+
+        let outcome = match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("the whole answer decides the request"),
+        };
+        assert_eq!(outcome.status, OK);
+        assert_eq!(outcome.body, b"good");
+    }
+
     #[test]
     fn captcha_v3_requires_the_configured_score() {
         for (score, expected_body) in [(0.1f64, &b"bad"[..]), (0.9f64, &b"good"[..])] {
@@ -2713,9 +2784,10 @@ mod tests {
                 Step::Pending(Pending::HttpRequest)
             ));
             let payload = format!(r#"{{"success":true,"score":{score}}}"#);
-            let outcome = match machine.resume(Event::HttpResponse {
-                status: 200,
-                body: payload.as_bytes(),
+            let answer = provider_answer("200 OK", payload.as_bytes());
+            let outcome = match machine.resume(Event::HttpData {
+                data: &answer,
+                eof: false,
             }) {
                 Step::Decision(outcome) => outcome,
                 _ => panic!("the provider answer decides the request"),
@@ -2741,9 +2813,10 @@ mod tests {
             machine.step(),
             Step::Pending(Pending::HttpRequest)
         ));
-        let outcome = match machine.resume(Event::HttpResponse {
-            status: 200,
-            body: br#"{"success":true}"#,
+        let answer = provider_answer("200 OK", br#"{"success":true}"#);
+        let outcome = match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
         }) {
             Step::Decision(outcome) => outcome,
             _ => panic!("decided"),
@@ -2795,9 +2868,10 @@ mod tests {
             machine.step(),
             Step::Pending(Pending::HttpRequest)
         ));
-        let outcome = match machine.resume(Event::HttpResponse {
-            status: 200,
-            body: br#"{"success":true}"#,
+        let answer = provider_answer("200 OK", br#"{"success":true}"#);
+        let outcome = match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
         }) {
             Step::Decision(outcome) => outcome,
             _ => panic!("decided"),
@@ -2858,9 +2932,10 @@ mod tests {
             machine.step(),
             Step::Pending(Pending::HttpRequest)
         ));
-        let outcome = match machine.resume(Event::HttpResponse {
-            status: 200,
-            body: br#"{"success":true}"#,
+        let answer = provider_answer("200 OK", br#"{"success":true}"#);
+        let outcome = match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
         }) {
             Step::Decision(outcome) => outcome,
             _ => panic!("the provider answer decides the request"),
@@ -2958,15 +3033,16 @@ mod tests {
     /// Drive one verify request through the provider answer.
     fn captcha_verify(conf: &mut LocConf, zone: *mut cc::ZoneHandle, answer: &[u8]) -> Outcome {
         let body = b"g-recaptcha-response=token";
+        let answer = provider_answer("200 OK", answer);
         let mut machine = captcha_machine(conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
         machine.set_captcha_zone(zone);
         assert!(
             matches!(machine.step(), Step::Pending(Pending::HttpRequest)),
             "the provider request has to be started"
         );
-        match machine.resume(Event::HttpResponse {
-            status: 200,
-            body: answer,
+        match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
         }) {
             Step::Decision(outcome) => outcome,
             _ => panic!("the provider answer decides the request"),
@@ -2988,9 +3064,10 @@ mod tests {
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
             ));
-            let outcome = match machine.resume(Event::HttpResponse {
-                status: 200,
-                body: br#"{"success":false}"#,
+            let answer = provider_answer("200 OK", br#"{"success":false}"#);
+            let outcome = match machine.resume(Event::HttpData {
+                data: &answer,
+                eof: false,
             }) {
                 Step::Decision(outcome) => outcome,
                 _ => panic!("the provider answer decides the request"),

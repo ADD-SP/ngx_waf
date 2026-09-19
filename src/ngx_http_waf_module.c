@@ -7,8 +7,8 @@
  * reaches back through; `ngx_http_waf_config.c` handles the configuration,
  * `ngx_http_waf_request.c` the request path, `ngx_http_waf_shm.c` the shared
  * memory zones, `ngx_http_waf_variables.c` the `$waf_*` variables and
- * `ngx_http_waf_fetch.c`/`ngx_http_waf_fetch_parse.c` the captcha provider
- * request.  Every rule, action and configuration semantic lives in `rust/`.
+ * `ngx_http_waf_fetch.c` the captcha provider request.  Every rule, action,
+ * configuration semantic and protocol parse lives in `rust/`.
  */
 
 
