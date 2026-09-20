@@ -4,6 +4,7 @@ set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 : "${NGINX_VERSION:=1.27.2}"
+export NGINX_VERSION
 nginx="${NGINX_BIN:-$root/test/nginx-$NGINX_VERSION/objs/nginx}"
 
 # The glue and the nginx core are compiled and linked with AddressSanitizer,
@@ -24,6 +25,10 @@ restore() {
 }
 trap restore EXIT
 
+# The build task is called as a script, so the dependency mise would run for it
+# (the sources of the tree below `test/`) is run here: an existing `NGINX_SRC`
+# is copied, without one the sources are downloaded like `mise run build` does.
+"$root/.mise/tasks/nginx-src"
 "$root/.mise/tasks/build-static"
 
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:abort_on_error=1}"

@@ -237,9 +237,15 @@ jobs:
       # AddressSanitizer itself: the C glue and the memory the module handles
       # outside the shared mapping.  The mapping itself is invisible to the
       # sanitizer, the fake segment of `test-asan` and `test-miri` covers it.
+      #
+      # The sanitized build configures a tree of its own below `test/`, which
+      # `nginx-src` copies out of `NGINX_SRC`: the sources of this job (the ones
+      # the steps above already downloaded) instead of a second download.
       - name: Run the checks with AddressSanitizer
         if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
-        run: mise run test-sanitize-nginx
+        run: |
+          export NGINX_SRC="${{ github.workspace }}/nginx-src"
+          mise run test-sanitize-nginx
 
       # The rest of the matrix builds nginx with PCRE2, so the `#if
       # !(NGX_PCRE2)` half of the glue is never compiled there: a pattern that
