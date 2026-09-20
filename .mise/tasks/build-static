@@ -47,7 +47,13 @@ if [ "$(cat "$stamp" 2> /dev/null || true)" != "$want" ] || [ ! -f "$makefile" ]
     || [ ! -f "$bin" ]
 then
     echo " + configuring nginx (static module)"
-    (cd "$dir" && ./auto/configure \
+
+    # A checkout of nginx carries `auto/configure`, the release tarball the
+    # matrix of CI downloads carries `configure` next to `auto/`.
+    configure=configure
+    [ -x "$dir/auto/configure" ] && configure=auto/configure
+
+    (cd "$dir" && "./$configure" \
         --prefix="$NGINX_PREFIX" \
         "${flags[@]}" \
         "${configure_cc[@]}" \

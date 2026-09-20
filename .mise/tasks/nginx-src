@@ -8,7 +8,9 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 
 dir="$root/test/nginx-$NGINX_VERSION"
 
-if [ -f "$dir/auto/configure" ]; then
+# A checkout of nginx carries `auto/configure`, a release tarball carries
+# `configure` next to `auto/`.
+if [ -f "$dir/auto/configure" ] || [ -f "$dir/configure" ]; then
     exit 0
 fi
 

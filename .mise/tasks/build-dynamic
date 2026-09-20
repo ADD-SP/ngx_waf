@@ -42,7 +42,13 @@ fi
 
 if [ "$(cat "$stamp" 2> /dev/null || true)" != "$want" ] || [ ! -f "$makefile" ]; then
     echo " + configuring nginx (dynamic module)"
-    (cd "$dir" && ./auto/configure \
+
+    # A checkout of nginx carries `auto/configure`, the release tarball carries
+    # `configure` next to `auto/`.
+    configure=configure
+    [ -x "$dir/auto/configure" ] && configure=auto/configure
+
+    (cd "$dir" && "./$configure" \
         --prefix="$NGINX_PREFIX" \
         "${flags[@]}" \
         "${configure_cc[@]}" \
