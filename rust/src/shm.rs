@@ -1421,9 +1421,11 @@ mod tests {
         let size = shm.memory.len();
         let base = shm.memory.as_ptr() as usize;
         let header_size = std::mem::size_of::<TableHeader>();
-        // A table header in the last bytes of the segment, with the capacity
-        // the size of the segment alone would allow.
-        let fake = (base + size - header_size) as *mut TableHeader;
+        let align = std::mem::align_of::<TableHeader>();
+        // A table header in the last bytes of the segment, aligned like the
+        // allocator aligns one, with the capacity the size of the segment
+        // alone would allow.
+        let fake = ((base + size - header_size) & !(align - 1)) as *mut TableHeader;
 
         // SAFETY: the header lies in the last bytes of the segment, which the
         // test owns.
