@@ -37,5 +37,8 @@
 * 共享内存区的表现在要求“表头 + 其描述的槽位数组”整体位于段内：容量只满足
   整个段的大小、却超出表头之后空间的表（被 bug、崩溃或其它进程写坏的表）此前
   会被当成越出段的切片使用。
+* 友好爬虫或验证码服务商解析失败时的 resolver 上下文不再被重复释放：
+  `ngx_resolve_name()`/`ngx_resolve_addr()` 报告失败时已经释放了上下文，
+  模块不再在该分支上调用 `ngx_resolve_*_done()`。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

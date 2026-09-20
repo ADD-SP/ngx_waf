@@ -57,5 +57,9 @@
   segment but not the room behind its header (a table a bug, a crash or
   another process wrote over) was turned into a slice that reached out of the
   zone.
+* The resolver context of a failed crawler or captcha provider lookup is not
+  released twice any more: `ngx_resolve_name()`/`ngx_resolve_addr()` release
+  the context when they report the failure, the module no longer calls
+  `ngx_resolve_*_done()` on that path.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

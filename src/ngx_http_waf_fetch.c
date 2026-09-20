@@ -522,7 +522,12 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     ctx->resolver_inline = 0;
 
     if (ngx_resolve_name(rc) != NGX_OK) {
-        ngx_resolve_name_done(rc);
+        /*
+         * `ngx_resolve_name()` released the context on this path (it is what
+         * `ngx_http_upstream.c` relies on as well), calling
+         * `ngx_resolve_name_done()` here would read and free it a second
+         * time.
+         */
         ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;

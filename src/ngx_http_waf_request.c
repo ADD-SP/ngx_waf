@@ -780,7 +780,12 @@ static ngx_int_t ngx_http_waf_start_resolve(ngx_http_request_t* r, ngx_http_waf_
     ctx->resolver_inline = 0;
 
     if (ngx_resolve_addr(rc) != NGX_OK) {
-        ngx_resolve_addr_done(rc);
+        /*
+         * `ngx_resolve_addr()` released the context on this path (it is what
+         * `ngx_http_upstream.c` relies on as well), calling
+         * `ngx_resolve_addr_done()` here would read and free it a second
+         * time.
+         */
         ngx_memzero(&event, sizeof(ngx_waf_event_t));
         event.kind = NGX_WAF_EVENT_KIND_RESOLVE_FAILED;
         ngx_http_waf_resume(r, ctx, &event);
@@ -1047,4 +1052,3 @@ ngx_http_waf_ctx_t *ngx_http_waf_get_ctx(ngx_http_request_t* r) {
 
     return NULL;
 }
-
