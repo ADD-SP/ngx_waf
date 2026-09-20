@@ -81,6 +81,56 @@ jobs:
           mise run header
           git diff --exit-code -- include/ngx_http_waf_ffi.h
 
+  sanitizers:
+    name: Sanitizers and fuzzing
+    runs-on: ubuntu-latest
+    needs: [rust]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # AddressSanitizer, Miri and cargo-fuzz are nightly only; the module
+      # itself keeps being built by the stable toolchain of rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - name: Cache the cargo artefacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/Cargo.toml') }}
+
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
+
+      - name: Install the system packages
+        run: |
+          sudo apt-get --yes update
+          mise bootstrap -y
+
+      # The unit tests of the core on the fake segment: the buffer of a fake
+      # zone is a vector, so AddressSanitizer sees the redzones around it and a
+      # table that reads or writes outside its slot array is a failure.  The
+      # shared memory of a real zone is anonymous memory of nginx, where the
+      # sanitizer cannot see a write that stays inside the mapping; that is what
+      # the tests here are for.
+      - name: Test with AddressSanitizer
+        run: mise run test-asan
+
+      # Miri checks the provenance and the aliasing rules of the same tables.
+      - name: Test with Miri
+        run: mise run test-miri
+
+      - name: Fuzz the table state machine
+        run: |
+          FUZZ_TIME=30 mise run fuzz
 
   build_test:
     name: nginx ${{ matrix.nginx-version }} (${{ matrix.module-type }})
@@ -182,6 +232,14 @@ jobs:
           export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
           export NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx"
           mise run test-valgrind
+
+      # The end to end checks again, against an nginx the task builds with
+      # AddressSanitizer itself: the C glue and the memory the module handles
+      # outside the shared mapping.  The mapping itself is invisible to the
+      # sanitizer, the fake segment of `test-asan` and `test-miri` covers it.
+      - name: Run the checks with AddressSanitizer
+        if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
+        run: mise run test-sanitize-nginx
 
       # The rest of the matrix builds nginx with PCRE2, so the `#if
       # !(NGX_PCRE2)` half of the glue is never compiled there: a pattern that

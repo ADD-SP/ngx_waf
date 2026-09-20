@@ -30,5 +30,9 @@
 * 共享内存 zone 的结构在读取前先校验：核心跟随的每个指针都必须落在段内，表头必须
   描述得下它的槽位；校验失败的目录条目（或目录链）会被丢弃并重建，而不是被当成
   越出段的切片使用。zone 被 bug、崩溃或其它进程写坏时因此可以自愈。
+* 核心的内存安全现在由 sanitizer 与 fuzzer 把关：`mise run test-asan` 在
+  AddressSanitizer 下跑单测，`mise run test-miri` 在 Miri 下跑共享内存表，
+  `mise run fuzz` 用 cargo-fuzz 模糊表状态机，`mise run test-sanitize-nginx`
+  用 AddressSanitizer 构建的 nginx 跑端到端检查。CI 四项都会执行。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

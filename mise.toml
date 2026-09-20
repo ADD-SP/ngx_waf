@@ -6,6 +6,8 @@
 
 [tools]
 "cargo:cbindgen" = "0.29.4"
+# `mise run fuzz` runs `cargo fuzz`, which cargo installs; see the task.
+"cargo:cargo-fuzz" = "0.13.1"
 
 # Debian/Ubuntu only; see README.md for the packages of other distributions.
 [bootstrap.packages]

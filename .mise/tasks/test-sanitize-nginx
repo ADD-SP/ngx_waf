@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#MISE description="Run the end to end checks against an nginx built with AddressSanitizer"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+nginx="${NGINX_BIN:-$root/test/nginx-$NGINX_VERSION/objs/nginx}"
+
+# The glue and the nginx core are compiled and linked with AddressSanitizer,
+# which stops at the first invalid access.  A leak is not a failure here: nginx
+# does not release its cycle on the way out, and `mise run test-valgrind` looks
+# at the allocations of the module with its own suppressions.
+#
+# UndefinedBehaviorSanitizer was left out deliberately: the nginx core of 1.27
+# hands a NULL to `ngx_pstrdup()` while it initialises its cycle
+# (`src/core/ngx_cycle.c`), which halts every run before the module is reached.
+export NGX_WAF_CC_OPT='-fsanitize=address -fno-omit-frame-pointer -g'
+export NGX_WAF_LD_OPT='-fsanitize=address'
+
+restore() {
+    unset NGX_WAF_CC_OPT NGX_WAF_LD_OPT
+    # The tree of the next task has to be the ordinary build again.
+    "$root/.mise/tasks/build-static" > /dev/null 2>&1 || true
+}
+trap restore EXIT
+
+"$root/.mise/tasks/build-static"
+
+export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:abort_on_error=1}"
+export NGINX_BIN="$nginx"
+
+"$root/test/e2e/run.sh"

@@ -2980,7 +2980,10 @@ mod tests {
         /// A bump allocator, the shared structures hold 64 bit counters and
         /// have to stay aligned.
         fn alloc(&mut self, size: usize) -> *mut u8 {
-            let start = (self.offset + 15) & !15;
+            // A `Vec<u8>` is aligned for `u8` only, the buffer of the fake
+            // segment has to be aligned against its own address.
+            let base = self.memory.as_ptr() as usize;
+            let start = (base + self.offset).next_multiple_of(16) - base;
             if start + size > self.memory.len() {
                 return std::ptr::null_mut();
             }

@@ -455,13 +455,21 @@ impl ZoneLock<'_> {
     /// the lock can know that, and the returned view borrows the guard, so it
     /// cannot be kept after the lock is released.
     unsafe fn view(&self, table: NonNull<TableHeader>) -> Table<'_> {
+        // The slots are the bytes right behind the header of the table: the
+        // pointer of the allocation reaches them, a `&mut` of the zero sized
+        // array field of the header does not (that would be a retag of zero
+        // bytes, which says nothing about the slots that follow it).
+        let header_ptr = table.as_ptr();
         // SAFETY: the caller guarantees the table is live and locked.
-        let header = unsafe { &mut *table.as_ptr() };
+        let header = unsafe { &mut *header_ptr };
         // SAFETY: `create_entry()` allocated `capacity` slots right behind the
         // header, which is what the flexible array member of `TableHeader`
-        // documents.
+        // documents, and the allocation of the table covers them.
         let slots = unsafe {
-            std::slice::from_raw_parts_mut(header.slots.as_mut_ptr(), header.capacity as usize)
+            std::slice::from_raw_parts_mut(
+                header_ptr.add(1).cast::<Slot>(),
+                header.capacity as usize,
+            )
         };
 
         Table { header, slots }
@@ -974,7 +982,19 @@ pub(crate) mod testing {
     use super::{zone_init, ShmOps, ZoneHandle};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    /// The fake segment, a handle of the state below it.
+    ///
+    /// The state is heap allocated once and only reached through the raw
+    /// pointer the callbacks are handed: a reference cast to a `*mut` (or a
+    /// `Box` that moves after such a pointer was made) is undefined behaviour
+    /// to write through, which Miri refuses.  The C side never moves the pool
+    /// of a zone either.
     pub(crate) struct FakeShm {
+        inner: *mut FakeShmInner,
+    }
+
+    /// The state of the fake segment.
+    pub(crate) struct FakeShmInner {
         pub(crate) memory: Vec<u8>,
         pub(crate) offset: usize,
         pub(crate) locked: AtomicUsize,
@@ -983,13 +1003,33 @@ pub(crate) mod testing {
         pub(crate) without_lock: AtomicUsize,
     }
 
+    impl std::ops::Deref for FakeShm {
+        type Target = FakeShmInner;
+
+        fn deref(&self) -> &FakeShmInner {
+            // SAFETY: `inner` comes from `Box::into_raw()` in `new()` and is
+            // released in `drop()`, nothing else uses it in between.
+            unsafe { &*self.inner }
+        }
+    }
+
+    impl Drop for FakeShm {
+        fn drop(&mut self) {
+            // SAFETY: the pointer came from `Box::into_raw()` and is not used
+            // after this.
+            unsafe { drop(Box::from_raw(self.inner)) };
+        }
+    }
+
     impl FakeShm {
         pub(crate) fn new(size: usize) -> Box<FakeShm> {
             Box::new(FakeShm {
-                memory: vec![0u8; size],
-                offset: 0,
-                locked: AtomicUsize::new(0),
-                without_lock: AtomicUsize::new(0),
+                inner: Box::into_raw(Box::new(FakeShmInner {
+                    memory: vec![0u8; size],
+                    offset: 0,
+                    locked: AtomicUsize::new(0),
+                    without_lock: AtomicUsize::new(0),
+                })),
             })
         }
 
@@ -999,20 +1039,20 @@ pub(crate) mod testing {
                 lock: Some(fake_lock),
                 unlock: Some(fake_unlock),
                 alloc_locked: Some(fake_alloc_locked),
-                ctx: self as *const FakeShm as *mut core::ffi::c_void,
+                ctx: self.inner.cast(),
             }
         }
     }
 
     unsafe extern "C" fn fake_lock(ctx: *mut core::ffi::c_void) {
-        // SAFETY: the tests pass the live `FakeShm` of the zone as `ctx`.
-        let shm = unsafe { &*(ctx as *const FakeShm) };
+        // SAFETY: the tests pass the live `FakeShmInner` of the zone as `ctx`.
+        let shm = unsafe { &*ctx.cast::<FakeShmInner>() };
         shm.locked.fetch_add(1, Ordering::SeqCst);
     }
 
     unsafe extern "C" fn fake_unlock(ctx: *mut core::ffi::c_void) {
         // SAFETY: see `fake_lock()`.
-        let shm = unsafe { &*(ctx as *const FakeShm) };
+        let shm = unsafe { &*ctx.cast::<FakeShmInner>() };
         shm.locked.fetch_sub(1, Ordering::SeqCst);
     }
 
@@ -1020,8 +1060,8 @@ pub(crate) mod testing {
         ctx: *mut core::ffi::c_void,
         size: usize,
     ) -> *mut core::ffi::c_void {
-        // SAFETY: `ctx` is the live `FakeShm` of the test.
-        let shm = unsafe { &mut *(ctx as *mut FakeShm) };
+        // SAFETY: `ctx` is the live `FakeShmInner` of the test.
+        let shm = unsafe { &mut *ctx.cast::<FakeShmInner>() };
 
         if shm.locked.load(Ordering::SeqCst) == 0 {
             // A record instead of a panic: unwinding out of an `extern "C"`
@@ -1029,7 +1069,8 @@ pub(crate) mod testing {
             shm.without_lock.fetch_add(1, Ordering::SeqCst);
         }
 
-        let start = (shm.offset + 15) & !15;
+        let base = shm.memory.as_ptr() as usize;
+        let start = (base + shm.offset).next_multiple_of(16) - base;
         let end = start + size;
         if end > shm.memory.len() {
             return std::ptr::null_mut();
@@ -1285,8 +1326,8 @@ mod tests {
         cc::increment(zone(ctx), b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 0).unwrap();
 
         // A header of a zone that mapped the segment elsewhere (or a pointer a
-        // bug left behind): it addresses memory of the test process.
-        let outside = Box::into_raw(Box::new(0u64)) as *mut ZoneHeader;
+        // bug left behind): the address is not inside the segment.
+        let outside = std::ptr::dangling_mut::<ZoneHeader>();
         assert!(!zone(ctx).holds(
             outside.cast::<u8>(),
             std::mem::size_of::<ZoneHeader>(),
@@ -1316,12 +1357,10 @@ mod tests {
         assert_eq!(result.unwrap().rate, 1);
 
         // SAFETY: `ctx` and `rebuilt` came from `zone_init()` and are not used
-        // after this; the boxed u64 was never handed to the zone.
+        // after this.
         unsafe { zone_free(ctx) };
         // SAFETY: see above.
         unsafe { zone_free(rebuilt) };
-        // SAFETY: `outside` came from `Box::into_raw()` above.
-        unsafe { drop(Box::from_raw(outside)) };
     }
 
     /// A table header that was written over is refused: the entry is given
@@ -1358,13 +1397,13 @@ mod tests {
     /// dereferenced: the entry is dropped and the table is built again.
     #[test]
     fn a_table_outside_the_segment_is_not_read() {
-        let (shm, ctx) = setup("outside-table", 1024 * 1024);
+        let (_shm, ctx) = setup("outside-table", 1024 * 1024);
         let handle = zone(ctx);
         let addr = [1u8, 2, 3, 4];
         cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
 
-        // The entry points at a heap object the zone never handed out.
-        let outside = Box::into_raw(Box::new(0u64)) as *mut TableHeader;
+        // The entry points at an address the zone never handed out.
+        let outside = std::ptr::dangling_mut::<TableHeader>();
         assert!(!handle.holds(
             outside.cast::<u8>(),
             std::mem::size_of::<TableHeader>(),
@@ -1383,18 +1422,13 @@ mod tests {
         assert_eq!(first.rate, 1, "the table was rebuilt");
         let second = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 2).unwrap();
         assert_eq!(second.rate, 2, "the rebuilt table is reused");
-
-        // SAFETY: `outside` came from `Box::into_raw()` above and the zone
-        // never followed it.
-        unsafe { drop(Box::from_raw(outside)) };
-        let _ = shm;
     }
 
     /// A directory chain that leaves the segment is cut where the segment
     /// ends: the blocks behind it are not ours to follow.
     #[test]
     fn a_directory_chain_that_leaves_the_segment_is_cut() {
-        let (shm, ctx) = setup("outside-chain", 1024 * 1024);
+        let (_shm, ctx) = setup("outside-chain", 1024 * 1024);
         let handle = zone(ctx);
 
         // Eight tags fill the first directory block, the next one has to walk
@@ -1405,7 +1439,7 @@ mod tests {
             cc::increment(handle, tag.as_bytes(), &addr, false, 1, 60, 60, 0).unwrap();
         }
 
-        let outside = Box::into_raw(Box::new(0u64)) as *mut TagBlock;
+        let outside = std::ptr::dangling_mut::<TagBlock>();
         assert!(!handle.holds(
             outside.cast::<u8>(),
             std::mem::size_of::<TagBlock>(),
@@ -1430,11 +1464,6 @@ mod tests {
         // The block of the tags below the cut is still reachable as well.
         let kept = cc::increment(handle, b"t0", &addr_of(0), false, 1, 60, 60, 2).unwrap();
         assert_eq!(kept.rate, 2);
-
-        // SAFETY: `outside` came from `Box::into_raw()` above and the zone
-        // never followed it.
-        unsafe { drop(Box::from_raw(outside)) };
-        let _ = shm;
     }
 
     #[test]
@@ -1463,6 +1492,8 @@ mod tests {
 
     /// Below the fill limit the table leaves a quarter of its slots empty, so
     /// the walk of a new address ends in a handful of steps.
+    /// The flood of the test is too slow for Miri (it interprets every step).
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn the_fill_limit_keeps_a_quarter_of_its_slots_free() {
         let (_shm, ctx) = setup("fill_limit", 1024 * 1024);
@@ -1492,6 +1523,8 @@ mod tests {
 
     /// An entry whose expiry is over is recycled by the next address that
     /// probes past it, before the rotating victim of the table is dropped.
+    /// The flood of the test is too slow for Miri (it interprets every step).
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn an_expired_slot_is_reused_before_a_live_one_is_evicted() {
         let (_shm, ctx) = setup("reuse_expired", 1024 * 1024);
@@ -1523,6 +1556,8 @@ mod tests {
 
     /// A tombstone is reused by the address that comes back, without dropping
     /// the rotating victim of the table.
+    /// The flood of the test is too slow for Miri (it interprets every step).
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn a_deleted_slot_is_reused_without_the_rotating_victim() {
         let (_shm, ctx) = setup("reuse_deleted", 1024 * 1024);
@@ -1558,6 +1593,8 @@ mod tests {
     /// When the address hashes onto an empty slot there is nothing to recycle:
     /// the entry takes the slot, the fill limit gives way instead of losing the
     /// counter.
+    /// The flood of the test is too slow for Miri (it interprets every step).
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn the_fill_limit_gives_way_instead_of_losing_the_entry() {
         let (_shm, ctx) = setup("soft_limit", 1024 * 1024);
@@ -1591,6 +1628,8 @@ mod tests {
 
     /// Every entry lives inside the walk of its own address, so a lookup capped
     /// at the probe limit always finds it and no walk scans a full table.
+    /// The flood of the test is too slow for Miri (it interprets every step).
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn every_entry_stays_within_the_walk_of_its_address() {
         let (_shm, ctx) = setup("probe_bounded", 1024 * 1024);
@@ -1672,6 +1711,8 @@ mod tests {
     /// of insertions, lookups, removals, collections and clock jumps is, an
     /// address that was just counted is found again, a lookup writes nothing,
     /// and the table keeps describing slots.
+    /// Hundreds of thousands of operations are too slow for Miri.
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn random_operations_keep_the_table_sound() {
         for seed in 1..=200u32 {

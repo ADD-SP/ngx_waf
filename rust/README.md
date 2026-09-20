@@ -123,6 +123,17 @@ segment that was written over turns into undefined behaviour; it does not
 promise that the counters stay correct once the segment belongs to somebody
 else.
 
+The gates of CI follow that model: the corruption cases and the random
+operation sequences run with `mise run test-rust` on the fake segment,
+`mise run test-asan` and `mise run test-miri` run the same tables under
+AddressSanitizer and Miri, `mise run fuzz` fuzzes the state machine with
+cargo-fuzz, and `mise run test-sanitize-nginx` runs the end to end checks
+against an nginx built with AddressSanitizer.  Neither AddressSanitizer nor
+valgrind can see a write that stays inside the mapping of the shared memory,
+which is why the fake segment of the unit tests (a vector, with redzones) is
+where the layout checks are exercised; `mise run test-valgrind` stays what
+covers the module inside nginx.
+
 ## Building
 
 The nginx `config` script drives cargo; `mise run build` at the repository root
@@ -360,6 +371,10 @@ mise run test-e2e           # the end to end checks, one worker and four
 mise run coverage           # the unit tests with coverage, one row per module
 mise run coverage-e2e       # the same plus the nginx suites, instrumented
 mise run test-valgrind      # the templates and the end to end checks, under valgrind
+mise run test-asan          # the unit tests under AddressSanitizer (nightly)
+mise run test-miri          # the shared memory tests under Miri (nightly)
+mise run fuzz               # the table state machine under cargo-fuzz (nightly)
+mise run test-sanitize-nginx # the end to end checks against an ASan nginx
 ```
 
 `mise run coverage` builds the unit tests with `-C instrument-coverage` in a
@@ -377,6 +392,20 @@ line for the processes to write a profile at all.  Both tasks need the
 anything.  The records of the nginx core and of the PCRE2 JIT in libmodsecurity
 are suppressed by `test/test-nginx/valgrind.suppress`; naming templates checks
 only those and leaves the end to end half out.
+
+`mise run test-asan` builds the unit tests with `-Zsanitizer=address` in a
+target directory of its own (the nightly toolchain and an explicit `--target`
+are what `-Zsanitizer` needs) and lifts the leak detection, which needs ptrace
+in some environments and is what valgrind does for the module.  `mise run
+test-miri` runs the tables of `src/shm.rs` under Miri with
+`-Zmiri-permissive-provenance` (the fake segment hands over the address of a
+vector, like nginx hands over its mapping) and leaves the floods of the tests
+out.  `mise run fuzz` drives `rust/fuzz/fuzz_targets/table.rs` with cargo-fuzz,
+`FUZZ_TIME` sets the budget in seconds.  `mise run test-sanitize-nginx` builds
+the tree of `build-static` with AddressSanitizer, runs the end to end suite
+against it and restores the ordinary build on the way out; the
+UndefinedBehaviorSanitizer is left out because the nginx core of 1.27 trips it
+while it initialises its own cycle.
 
 `test/e2e/run.sh` starts a real nginx and checks the black/white lists, the
 block page, the variables, the CC protection and the `waf off` / `waf bypass` /

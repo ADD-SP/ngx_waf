@@ -46,5 +46,11 @@
   chain) that fails the check is dropped, so a zone that a bug, a crash or
   another process wrote over is rebuilt instead of being read as a slice that
   reaches out of the zone.
+* The memory safety of the core is checked by sanitizers and a fuzzer now:
+  `mise run test-asan` runs the unit tests under AddressSanitizer,
+  `mise run test-miri` runs the shared memory tables under Miri, `mise run
+  fuzz` fuzzes the table state machine with cargo-fuzz, and
+  `mise run test-sanitize-nginx` runs the end to end checks against an nginx
+  built with AddressSanitizer.  CI runs all four.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

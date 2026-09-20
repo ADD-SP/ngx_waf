@@ -18,6 +18,7 @@ makefile="$dir/objs/Makefile"
 # the profile runtime on the link line.
 target_dir="${NGX_WAF_TARGET_DIR:-$root/rust/target}"
 ld_opt="${NGX_WAF_LD_OPT:-}"
+cc_opt="${NGX_WAF_CC_OPT:-}"
 lib="$target_dir/release/libngx_waf_core.a"
 
 # What the configured tree depends on: the kind of module (`--add-module` and
@@ -27,11 +28,19 @@ lib="$target_dir/release/libngx_waf_core.a"
 # file that was renamed or removed leaves the `objs/Makefile` of the tree
 # pointing at nothing until it is configured again.
 flags=(--with-http_ssl_module --with-http_realip_module)
-want="static ${flags[*]} $NGINX_PREFIX $root $target_dir $ld_opt $(cksum "$root/config")"
+want="static ${flags[*]} $NGINX_PREFIX $root $target_dir $cc_opt $ld_opt $(cksum "$root/config")"
 
 configure_ld=()
 if [ -n "$ld_opt" ]; then
     configure_ld=(--with-ld-opt="$ld_opt")
+fi
+
+# `NGX_WAF_CC_OPT` is the knob of the sanitizer task: nginx and the glue are
+# compiled with it on the command line (AddressSanitizer, UndefinedBehavior-
+# Sanitizer), and the fingerprint above rebuilds the tree when it changes.
+configure_cc=()
+if [ -n "$cc_opt" ]; then
+    configure_cc=(--with-cc-opt="$cc_opt")
 fi
 
 if [ "$(cat "$stamp" 2> /dev/null || true)" != "$want" ] || [ ! -f "$makefile" ] \
@@ -41,6 +50,7 @@ then
     (cd "$dir" && ./auto/configure \
         --prefix="$NGINX_PREFIX" \
         "${flags[@]}" \
+        "${configure_cc[@]}" \
         "${configure_ld[@]}" \
         --add-module="$root" > /dev/null)
     printf '%s\n' "$want" > "$stamp"

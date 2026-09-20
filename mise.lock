@@ -2,6 +2,11 @@
 
 lockfile_version = 2
 
+[[tools."cargo:cargo-fuzz"]]
+version = "0.13.1"
+backend = "cargo:cargo-fuzz"
+specifiers = ["0.13.1"]
+
 [[tools."cargo:cbindgen"]]
 version = "0.29.4"
 backend = "cargo:cbindgen"

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#MISE description="Run the shared memory tests under Miri (nightly)"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+target_dir="${MIRI_DIR:-$root/rust/target/miri}"
+
+if ! rustup component list --toolchain nightly --installed 2> /dev/null | grep -q '^miri-'; then
+    cat << END
+$(basename "$0"): error: the miri component of nightly is missing, install it
+with:
+
+    rustup component add --toolchain nightly miri
+END
+    exit 1
+fi
+
+# `-Zmiri-permissive-provenance`: the fake segment of the tests hands the zone
+# the address of a `Vec` as an integer, the way nginx hands over the mapping of
+# its zone.  `-Zmiri-disable-isolation` lets `getrandom` hand out entropy to the
+# tests that reach `random_uniform()`.  `-Zmiri-ignore-leaks` because the tests
+# keep the handle of a zone alive with its segment on purpose; the leaks of the
+# module are what `mise run test-valgrind` looks at.
+#
+# Only the tables of `shm` run here: the rest of the suite talks to nginx and to
+# libmodsecurity through the C ABI, which Miri does not execute.  The heavy
+# floods of the tests are ignored under Miri (`#[cfg_attr(miri, ignore)]`).
+export MIRIFLAGS="${MIRIFLAGS:-} -Zmiri-permissive-provenance -Zmiri-disable-isolation -Zmiri-ignore-leaks"
+export CARGO_TARGET_DIR="$target_dir"
+
+"$cargo" +nightly miri test --manifest-path "$root/rust/Cargo.toml" --lib -- shm::
