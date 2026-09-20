@@ -61,5 +61,9 @@
   released twice any more: `ngx_resolve_name()`/`ngx_resolve_addr()` release
   the context when they report the failure, the module no longer calls
   `ngx_resolve_*_done()` on that path.
+* The chunked framing of a captcha provider answer whose chunk size leaves no
+  room for the CRLF of its chunk in the address space is refused instead of
+  overflowing the addition that sizes the framing (a debug build panicked on
+  the sum, a release build on the slice that followed it).
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

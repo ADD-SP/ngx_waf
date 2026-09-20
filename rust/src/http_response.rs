@@ -180,12 +180,17 @@ fn decode_chunked(body: &[u8]) -> Chunked {
         let Some(end) = read.checked_add(size) else {
             return Chunked::Invalid;
         };
+        // The CRLF that ends the chunk has to fit as well: a size that leaves
+        // no room for it in the address space is not a framing to wait for.
+        let Some(next) = end.checked_add(2) else {
+            return Chunked::Invalid;
+        };
 
-        if body.len() < end + 2 {
+        if body.len() < next {
             return Chunked::Incomplete;
         }
 
-        if &body[end..end + 2] != b"\r\n" {
+        if &body[end..next] != b"\r\n" {
             return Chunked::Invalid;
         }
 
@@ -343,6 +348,24 @@ mod tests {
         }
         many.extend_from_slice(b"\r\n");
         assert!(matches!(parse(&many, false), Response::Invalid));
+    }
+
+    /// A chunk size that leaves no room for the CRLF of its chunk in the
+    /// address space is refused: the addition that bounds the framing used to
+    /// wrap, which panicked on the sum of a debug build and on the slice of a
+    /// release build.
+    #[test]
+    fn a_chunk_size_that_leaves_no_room_for_its_crlf_is_invalid() {
+        // The size line is made of the hex digits of `size` and its CRLF, so
+        // `usize::MAX - (digits + 2)` makes the end of the chunk reach the end
+        // of the address space, where its two CRLF bytes no longer fit.
+        let digits = format!("{:x}", usize::MAX).len();
+        let size = usize::MAX - (digits + 2);
+        let answer = format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{size:x}\r\n");
+        assert_eq!(format!("{size:x}").len(), digits);
+
+        assert!(matches!(parse(answer.as_bytes(), false), Response::Invalid));
+        assert!(matches!(parse(answer.as_bytes(), true), Response::Invalid));
     }
 
     #[test]
