@@ -27,5 +27,8 @@
   下一个经过它的地址复用，表到达 3/4 占用后淘汰的是本次探测经过的条目。zone
   能记住的地址数与之前一致，但表的共享内存占用从段的 ~9.4% 涨到 ~12.5%，升级后
   的第一次 reload 会重建一次 zone。
+* 共享内存 zone 的结构在读取前先校验：核心跟随的每个指针都必须落在段内，表头必须
+  描述得下它的槽位；校验失败的目录条目（或目录链）会被丢弃并重建，而不是被当成
+  越出段的切片使用。zone 被 bug、崩溃或其它进程写坏时因此可以自愈。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

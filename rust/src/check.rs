@@ -2166,7 +2166,14 @@ mod tests {
         };
         // SAFETY: the leaked directory segment and the callbacks above stay
         // alive for the test, and the handle is freed at its end.
-        let handle = unsafe { shm::zone_init(0x1000, 1024 * 1024, std::ptr::null_mut(), ops) };
+        let handle = unsafe {
+            shm::zone_init(
+                directory.as_ptr() as usize,
+                directory.len(),
+                std::ptr::null_mut(),
+                ops,
+            )
+        };
         assert!(
             !handle.is_null(),
             "the tag directory allocation must succeed"
@@ -3004,9 +3011,11 @@ mod tests {
             alloc_locked: Some(fake_zone_alloc_locked),
             ctx: &*shm as *const FakeZone as *mut core::ffi::c_void,
         };
+        let addr = shm.memory.as_ptr() as usize;
+        let size = shm.memory.len();
         // SAFETY: `shm` is returned to the caller and stays alive while the
         // handle is used.
-        let zone = unsafe { shm::zone_init(0x2000, 1024 * 1024, std::ptr::null_mut(), ops) };
+        let zone = unsafe { shm::zone_init(addr, size, std::ptr::null_mut(), ops) };
         assert!(!zone.is_null(), "the zone header must be allocated");
         (zone, shm)
     }

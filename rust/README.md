@@ -92,6 +92,37 @@ The crate enables `unsafe_op_in_unsafe_fn` and
 operation inside an `unsafe fn` needs its own `unsafe` block and every block
 and `unsafe impl` needs a `// SAFETY:` argument.
 
+## The shared memory and its attackers
+
+The core carries no allocator of its own for a zone: the bytes come from the
+slab of nginx (`ngx_slab_alloc_locked()`, through the `alloc_locked` callback)
+and the core never frees them.  The hand written part is the layout of the
+segment and the search of the entries inside it, which is guarded on three
+levels:
+
+* **Bounds**: every pointer the core follows has to lie inside
+  `[base, base + size)` and to be aligned.  A table header is refused unless
+  its capacity describes slots that fit in the segment, `filled <= capacity`
+  and `cursor < capacity`; the directory entry that pointed at it is given
+  back and a fresh table is built in its place.  A directory chain that leaves
+  the segment is cut where the segment ends, and a zone header that is not
+  ours is never read (`zone_init()` rebuilds the zone instead).
+* **Vocabulary**: a remote client can only have values written (the 4 or 16
+  bytes of an address, counts, flags), never a length, an offset or a pointer.
+  The sizes come from the configuration (`waf_zone size=`) and from the slab.
+  A probe visits at most `PROBE_LIMIT` slots, and every entry is stored inside
+  the walk of its own address, so a lookup never scans a full table.
+* **Version**: the zone header and the tables carry a magic and a `VERSION`; a
+  segment written by another layout is rebuilt instead of being read with the
+  wrong structures.
+
+The threat model has to be stated as well: a process of the same user can
+write the shared memory of nginx (and ptrace it), which no module inside the
+process can defend against.  What the module defends is that remote input or a
+segment that was written over turns into undefined behaviour; it does not
+promise that the counters stay correct once the segment belongs to somebody
+else.
+
 ## Building
 
 The nginx `config` script drives cargo; `mise run build` at the repository root

@@ -40,5 +40,11 @@
   same number of addresses, its tables take a third more of the segment
   (~12.5% instead of ~9.4%), and the first reload after the upgrade rebuilds
   the zone once.
+* The structures of a shared memory zone are checked before they are used:
+  every pointer the core follows has to lie inside the segment, a table header
+  has to describe slots that fit in it, and a directory entry (or a directory
+  chain) that fails the check is dropped, so a zone that a bug, a crash or
+  another process wrote over is rebuilt instead of being read as a slice that
+  reaches out of the zone.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

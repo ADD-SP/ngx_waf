@@ -161,6 +161,10 @@ fn used_state(ipv6: bool) -> SlotState {
 
 /// The Rust side handle of one shared memory zone, one per worker.
 pub struct ZoneHandle {
+    /// First byte of the segment.  Every pointer of the segment has to point
+    /// into `[base, base + size)`: that is what tells a pointer the core wrote
+    /// from one a corrupted structure invented.
+    base: usize,
     header: *mut ZoneHeader,
     /// Size of the shared memory segment, used to size new tables.
     size: usize,
@@ -174,6 +178,18 @@ unsafe impl Send for ZoneHandle {}
 unsafe impl Sync for ZoneHandle {}
 
 impl ZoneHandle {
+    /// Whether `pointer` addresses `len` bytes of one structure of the
+    /// segment, aligned like the allocator aligns it.  The comparison uses
+    /// subtraction, `base + size` does not have to be representable.
+    fn holds(&self, pointer: *const u8, len: usize, align: usize) -> bool {
+        let address = pointer as usize;
+        let Some(offset) = address.checked_sub(self.base) else {
+            return false;
+        };
+
+        address.is_multiple_of(align) && offset <= self.size && len <= self.size - offset
+    }
+
     /// Take the zone lock.
     ///
     /// Private: every operation of this module takes the lock itself, and the
@@ -287,21 +303,45 @@ impl ZoneLock<'_> {
         // same `size / 512` the earlier layout held.  `create_entry()` halves
         // further when the segment is tighter than expected.
         // SAFETY: the header points at the live zone header of the locked zone.
-        let tags = (unsafe { (*self.handle.header).tag_count } as usize) + 1;
-        std::cmp::max(MIN_CAPACITY, (self.handle.size / 384) / tags)
+        let tags = (unsafe { (*self.handle.header).tag_count } as usize).saturating_add(1);
+        let capacity = std::cmp::max(MIN_CAPACITY, (self.handle.size / 384) / tags);
+
+        // The capacity goes into a `u32` field of the table header.
+        std::cmp::min(capacity, u32::MAX as usize)
     }
 
-    fn find_entry(&self, tag: &[u8]) -> Option<NonNull<TableHeader>> {
+    /// The directory entry of `tag` and the table it points at, when the
+    /// directory holds one.  Only entries of blocks that lie inside the
+    /// segment are read, and the table pointer itself is not dereferenced.
+    fn find_entry(&self, tag: &[u8]) -> Option<(NonNull<TagEntry>, NonNull<TableHeader>)> {
         // SAFETY: the header points at the live zone header of the locked zone.
         let mut block = unsafe { (*self.handle.header).blocks };
-        while !block.is_null() {
-            // SAFETY: every directory block lives in the zone and is valid
-            // while the zone is.
-            let block_ref = unsafe { &*block };
-            for entry in block_ref.entries.iter() {
+
+        while let Some(block_ptr) = NonNull::new(block) {
+            if !self.handle.holds(
+                block_ptr.cast::<u8>().as_ptr(),
+                std::mem::size_of::<TagBlock>(),
+                std::mem::align_of::<TagBlock>(),
+            ) {
+                // A chain that leaves the segment is not ours to follow.
+                break;
+            }
+            // SAFETY: the block is inside the segment and the lock is held.
+            let block_ref = unsafe { &*block_ptr.as_ptr() };
+
+            for index in 0..TAGS_PER_BLOCK {
+                let entry = &block_ref.entries[index];
                 if entry.tag_len as usize == tag.len() && entry.tag[..tag.len()] == *tag {
                     if let Some(table) = NonNull::new(entry.table) {
-                        return Some(table);
+                        // SAFETY: the entry is a field of the block the walk
+                        // validated and `index` is one of its entries, so the
+                        // pointer is inside the segment.
+                        let entry_ptr = unsafe {
+                            NonNull::new_unchecked(std::ptr::addr_of_mut!(
+                                (*block_ptr.as_ptr()).entries[index]
+                            ))
+                        };
+                        return Some((entry_ptr, table));
                     }
                 }
             }
@@ -314,10 +354,23 @@ impl ZoneLock<'_> {
         // Halve the table until the zone can hold it, so that a zone shared by
         // several tags degrades to smaller tables instead of losing a tag.
         let mut capacity = self.table_capacity();
+        if capacity > u32::MAX as usize {
+            // A table that does not fit the `capacity` field of its header is
+            // one this core cannot describe.
+            return None;
+        }
         let memory = loop {
             let size = std::mem::size_of::<TableHeader>() + capacity * std::mem::size_of::<Slot>();
             let memory = self.alloc(size);
             if !memory.is_null() {
+                if !self
+                    .handle
+                    .holds(memory, size, std::mem::align_of::<TableHeader>())
+                {
+                    // An allocation of nginx that lands outside the segment is
+                    // not one this core can describe.
+                    return None;
+                }
                 break memory;
             }
             if capacity <= MIN_CAPACITY {
@@ -341,24 +394,48 @@ impl ZoneLock<'_> {
 
             let header = &mut *self.handle.header;
 
-            // Reuse a free entry of an existing block ...
+            // Reuse a free entry of an existing block, and cut a chain that
+            // leaves the segment: the blocks behind it are not ours to touch,
+            // and a new block is linked in front of the ones that are.
             let mut block = header.blocks;
-            while !block.is_null() {
-                let block_ref = &mut *block;
+            let mut previous: *mut TagBlock = std::ptr::null_mut();
+            while let Some(block_ptr) = NonNull::new(block) {
+                if !self.handle.holds(
+                    block_ptr.cast::<u8>().as_ptr(),
+                    std::mem::size_of::<TagBlock>(),
+                    std::mem::align_of::<TagBlock>(),
+                ) {
+                    if previous.is_null() {
+                        header.blocks = std::ptr::null_mut();
+                        header.tag_count = 0;
+                    } else {
+                        // SAFETY: the previous block was validated by this
+                        // walk and the lock of the zone is held.
+                        (*previous).next = std::ptr::null_mut();
+                    }
+                    break;
+                }
+                // SAFETY: the block is inside the segment and the lock is held.
+                let block_ref = &mut *block_ptr.as_ptr();
                 for entry in block_ref.entries.iter_mut() {
                     if entry.tag_len == 0 {
                         *entry = new_entry(tag, table);
-                        header.tag_count += 1;
+                        header.tag_count = header.tag_count.saturating_add(1);
                         return Some(table);
                     }
                 }
+                previous = block_ptr.as_ptr();
                 block = block_ref.next;
             }
 
             // ... or add a block to the directory.
             let block_size = std::mem::size_of::<TagBlock>();
             let memory = self.alloc(block_size);
-            if memory.is_null() {
+            if memory.is_null()
+                || !self
+                    .handle
+                    .holds(memory, block_size, std::mem::align_of::<TagBlock>())
+            {
                 return None;
             }
             std::ptr::write_bytes(memory, 0, block_size);
@@ -366,7 +443,7 @@ impl ZoneLock<'_> {
             (*new_block).next = header.blocks;
             (*new_block).entries[0] = new_entry(tag, table);
             header.blocks = new_block;
-            header.tag_count += 1;
+            header.tag_count = header.tag_count.saturating_add(1);
             Some(table)
         }
     }
@@ -397,27 +474,63 @@ impl ZoneLock<'_> {
             return None;
         }
 
-        let table = match self.find_entry(tag) {
-            // SAFETY: a directory entry only points at a table of this zone,
-            // and the guard holds its lock.
-            Some(table) if unsafe { is_live_table(table) } => table,
-            _ => self.create_entry(tag)?,
-        };
+        if let Some((entry, table)) = self.find_entry(tag) {
+            if self.handle.is_live_table(table) {
+                // SAFETY: the table passed the validation of
+                // `is_live_table()` and the guard holds the zone lock.
+                return Some(unsafe { self.view(table) });
+            }
 
-        // SAFETY: `table` is a live table of the zone the guard locks.
+            // The entry points at something that is not a table of this
+            // layout: give the entry back so that `create_entry()` builds the
+            // table in it.  Adding a second entry for the tag instead would
+            // leave the broken one in front of the new table, and every call
+            // would build another table behind it.
+            // SAFETY: `entry` is a field of a directory block the walk
+            // validated, and the guard holds the lock of the zone.
+            unsafe {
+                (*entry.as_ptr()).tag_len = 0;
+                let header = &mut *self.handle.header;
+                header.tag_count = header.tag_count.saturating_sub(1);
+            }
+        }
+
+        let table = self.create_entry(tag)?;
+        // SAFETY: `create_entry()` just wrote the header of the table.
         Some(unsafe { self.view(table) })
     }
 }
 
-/// Whether the directory entry points at a table of this layout.
-///
-/// # Safety
-/// `table` must point at a table of a zone whose lock is held.
-unsafe fn is_live_table(table: NonNull<TableHeader>) -> bool {
-    // SAFETY: the caller guarantees the pointer is a table of a locked zone.
-    let header = unsafe { &*table.as_ptr() };
+impl ZoneHandle {
+    /// Whether the directory entry points at a table of this layout, with a
+    /// header that describes one.  The zone lock has to be held.
+    ///
+    /// The pointer is checked against the segment *before* it is read, and the
+    /// fields that size the slot array are checked against the segment too: a
+    /// table that a bug, a crash or another process wrote over is refused
+    /// instead of being turned into a slice that reaches out of the zone.
+    fn is_live_table(&self, table: NonNull<TableHeader>) -> bool {
+        if !self.holds(
+            table.as_ptr().cast::<u8>(),
+            std::mem::size_of::<TableHeader>(),
+            std::mem::align_of::<TableHeader>(),
+        ) {
+            return false;
+        }
 
-    header.magic == TABLE_MAGIC && header.version == VERSION
+        // SAFETY: the pointer is inside the segment, the size of a header was
+        // checked, and any bit pattern is a valid `TableHeader`.
+        let header = unsafe { &*table.as_ptr() };
+        let capacity = header.capacity as usize;
+
+        header.magic == TABLE_MAGIC
+            && header.version == VERSION
+            // The slot array has to fit in the segment with its header.
+            && capacity > 0
+            && capacity <= self.size / std::mem::size_of::<Slot>()
+            && header.filled <= header.capacity
+            && header.cursor < header.capacity
+    }
 }
 
 /// The header and the slot array of one table, borrowed together while the
@@ -526,20 +639,38 @@ pub unsafe fn zone_init(
     if addr == 0 || size == 0 {
         return std::ptr::null_mut();
     }
+
+    let mut handle = ZoneHandle {
+        base: addr,
+        header: std::ptr::null_mut(),
+        size,
+        ops,
+    };
+
     // SAFETY: the C glue passes NULL or the handle it received from the
     // previous cycle of the same shared memory zone.
     if let Some(old) = unsafe { old.as_ref() } {
         // The segment is reused, `old.header` points at the directory written
-        // by the previous cycle.  Only trust it when it is ours: a segment
-        // written by another version of the core would be read as a directory
-        // of tables (garbage pointers) otherwise.
+        // by the previous cycle.  Only trust it when it is ours: the header
+        // has to lie inside this segment and carry our magic and version, or a
+        // segment written by another version of the core (or one that was
+        // written over) would be read as a directory of tables.
         let header = old.header;
-        // SAFETY: `header` is the zone header of the previous cycle, kept
-        // alive by the shared memory segment nginx reuses.
-        if let Some(header_ref) = unsafe { header.as_ref() } {
-            if header_ref.magic == ZONE_MAGIC && header_ref.version == VERSION {
-                return Box::into_raw(Box::new(ZoneHandle { header, size, ops }));
-            }
+        if handle.holds(
+            header.cast::<u8>(),
+            std::mem::size_of::<ZoneHeader>(),
+            std::mem::align_of::<ZoneHeader>(),
+        ) && unsafe {
+            // SAFETY: `holds()` checked that the pointer addresses the header
+            // of this segment.
+            is_live_zone(header)
+        } {
+            return Box::into_raw(Box::new(ZoneHandle {
+                base: addr,
+                header,
+                size,
+                ops,
+            }));
         }
     }
 
@@ -549,17 +680,20 @@ pub unsafe fn zone_init(
      * created is free, nginx initialized the pool (`ngx_init_zone_pool()`) and
      * with it the mutex before this callback ran.
      */
-    let mut handle = ZoneHandle {
-        header: std::ptr::null_mut(),
-        size,
-        ops,
-    };
-
     let memory = {
         let zone = handle.lock();
         let memory = zone.alloc(std::mem::size_of::<ZoneHeader>());
 
-        if memory.is_null() {
+        // An allocation of nginx that lands outside the segment would make
+        // every pointer check below meaningless, so the header (and every
+        // table and block after it) has to be inside the zone.
+        if memory.is_null()
+            || !handle.holds(
+                memory,
+                std::mem::size_of::<ZoneHeader>(),
+                std::mem::align_of::<ZoneHeader>(),
+            )
+        {
             // The guard releases the lock on the way out.
             return std::ptr::null_mut();
         }
@@ -580,6 +714,18 @@ pub unsafe fn zone_init(
     handle.header = memory as *mut ZoneHeader;
 
     Box::into_raw(Box::new(handle))
+}
+
+/// Whether `header` is the header of a zone of this layout.
+///
+/// # Safety
+/// `header` must point at readable memory of the segment (a pointer that
+/// [`ZoneHandle::holds()`] accepted, for instance).
+unsafe fn is_live_zone(header: *mut ZoneHeader) -> bool {
+    // SAFETY: the caller guarantees the pointer is readable.
+    let header = unsafe { &*header };
+
+    header.magic == ZONE_MAGIC && header.version == VERSION
 }
 
 /// Release a handle created by [`zone_init`].  The shared memory itself is
@@ -611,6 +757,20 @@ fn fill_limit(capacity: usize) -> usize {
     capacity / 4 * 3
 }
 
+/// `index + offset` wrapped into `capacity`.  Written without `index + offset`
+/// as such: on a 32 bit build the sum of two indices of a large zone could
+/// overflow the address space.
+fn wrapped(index: usize, offset: usize, capacity: usize) -> usize {
+    debug_assert!(index < capacity && offset < capacity);
+    let room = capacity - index;
+
+    if offset >= room {
+        offset - room
+    } else {
+        index + offset
+    }
+}
+
 /// Drop one entry of the walk `[start, end)` of `table` and return its slot.
 ///
 /// Every slot of the walk is occupied (used, deleted or expired), so the
@@ -620,8 +780,13 @@ fn fill_limit(capacity: usize) -> usize {
 /// neighbour is not dropped every time.
 fn evict_in_window(table: &mut Table<'_>, start: usize, end: usize) -> usize {
     let capacity = table.slots.len();
-    let window = std::cmp::max(1, (end + capacity - start) % capacity);
-    let index = (start + (table.header.cursor as usize) % window) % capacity;
+    let window = if end >= start {
+        end - start
+    } else {
+        capacity - start + end
+    };
+    let window = std::cmp::max(1, window);
+    let index = wrapped(start, (table.header.cursor as usize) % window, capacity);
 
     table.header.cursor = ((index + 1) % capacity) as u32;
     index
@@ -687,7 +852,7 @@ fn slot_for<'a>(
         if recyclable && first_free.is_none() {
             first_free = Some(probe);
         }
-        probe = (probe + 1) % capacity;
+        probe = wrapped(probe, 1, capacity);
     }
 
     let (index, evicted) = match choice {
@@ -725,7 +890,7 @@ fn find_slot(table: &Table<'_>, addr: &[u8], ipv6: bool) -> Option<usize> {
     let start = slot_index(addr) % capacity;
 
     for offset in 0..std::cmp::min(PROBE_LIMIT, capacity) {
-        let index = (start + offset) % capacity;
+        let index = wrapped(start, offset, capacity);
         let slot = &table.slots[index];
         if slot.state() == SlotState::Empty {
             return None;
@@ -759,20 +924,27 @@ pub fn gc(handle: &ZoneHandle, now: i64) {
     // SAFETY: the header points at the live zone header of the locked zone.
     let header = unsafe { &*handle.header };
     let mut block = header.blocks;
-    while !block.is_null() {
-        // SAFETY: every directory block lives in the zone and is valid while
-        // the zone is.
-        let block_ref = unsafe { &*block };
+    while let Some(block_ptr) = NonNull::new(block) {
+        if !handle.holds(
+            block_ptr.cast::<u8>().as_ptr(),
+            std::mem::size_of::<TagBlock>(),
+            std::mem::align_of::<TagBlock>(),
+        ) {
+            // A chain that leaves the segment is not ours to follow.
+            break;
+        }
+        // SAFETY: the block is inside the segment and the lock is held.
+        let block_ref = unsafe { &*block_ptr.as_ptr() };
         for entry in block_ref.entries.iter() {
             let Some(table) = NonNull::new(entry.table) else {
                 continue;
             };
-            // SAFETY: a directory entry only points at a table of this zone,
-            // whose lock is held.
-            let table = unsafe { zone.view(table) };
-            if table.header.magic != TABLE_MAGIC || table.header.version != VERSION {
+            if !handle.is_live_table(table) {
                 continue;
             }
+            // SAFETY: the table passed the validation of `is_live_table()` and
+            // the guard holds the lock of the zone.
+            let table = unsafe { zone.view(table) };
             for slot in table.slots.iter_mut() {
                 // A sweep deletes the entries with `expire < now`.
                 if !matches!(slot.state(), SlotState::Empty | SlotState::Deleted)
@@ -1105,6 +1277,166 @@ mod tests {
         unsafe { zone_free(rebuilt) };
     }
 
+    /// A reload whose previous handle points at memory that is not part of the
+    /// segment may not read it: the zone is rebuilt instead.
+    #[test]
+    fn a_zone_header_outside_the_segment_is_not_read() {
+        let (shm, ctx) = setup("outside-header", 1024 * 1024);
+        cc::increment(zone(ctx), b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 0).unwrap();
+
+        // A header of a zone that mapped the segment elsewhere (or a pointer a
+        // bug left behind): it addresses memory of the test process.
+        let outside = Box::into_raw(Box::new(0u64)) as *mut ZoneHeader;
+        assert!(!zone(ctx).holds(
+            outside.cast::<u8>(),
+            std::mem::size_of::<ZoneHeader>(),
+            std::mem::align_of::<ZoneHeader>(),
+        ));
+
+        let mut old = ZoneHandle {
+            base: shm.memory.as_ptr() as usize,
+            header: outside,
+            size: shm.memory.len(),
+            ops: shm.ops(),
+        };
+        // SAFETY: `old` is a live handle and the segment it names is alive.
+        let rebuilt = unsafe {
+            zone_init(
+                shm.memory.as_ptr() as usize,
+                shm.memory.len(),
+                &mut old,
+                shm.ops(),
+            )
+        };
+        assert!(!rebuilt.is_null());
+
+        // The rebuilt zone counts from scratch, the foreign header was never
+        // read.
+        let result = cc::increment(zone(rebuilt), b"cc", &[9, 9, 9, 9], false, 5, 60, 60, 1);
+        assert_eq!(result.unwrap().rate, 1);
+
+        // SAFETY: `ctx` and `rebuilt` came from `zone_init()` and are not used
+        // after this; the boxed u64 was never handed to the zone.
+        unsafe { zone_free(ctx) };
+        // SAFETY: see above.
+        unsafe { zone_free(rebuilt) };
+        // SAFETY: `outside` came from `Box::into_raw()` above.
+        unsafe { drop(Box::from_raw(outside)) };
+    }
+
+    /// A table header that was written over is refused: the entry is given
+    /// back and a fresh table is built, instead of a slice that reaches out of
+    /// the segment.
+    #[test]
+    fn a_table_with_a_broken_header_is_rebuilt() {
+        for broken in ["capacity", "filled", "cursor"] {
+            let (_shm, ctx) = setup("broken-table", 1024 * 1024);
+            let handle = zone(ctx);
+            let addr = [1u8, 2, 3, 4];
+            cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
+
+            {
+                let zone = handle.lock();
+                let table = zone.table(b"cc").expect("the table of a counted tag");
+                match broken {
+                    "capacity" => table.header.capacity = u32::MAX,
+                    "filled" => table.header.filled = table.header.capacity + 1,
+                    _ => table.header.cursor = table.header.capacity,
+                }
+            }
+
+            // The name of the address is not in the rebuilt table any more,
+            // and the table is used again from the second call on.
+            let first = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 1).unwrap();
+            assert_eq!(first.rate, 1, "the rebuilt table counts ({broken})");
+            let second = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 2).unwrap();
+            assert_eq!(second.rate, 2, "the rebuilt table is reused ({broken})");
+        }
+    }
+
+    /// A directory entry that points outside the segment may not be
+    /// dereferenced: the entry is dropped and the table is built again.
+    #[test]
+    fn a_table_outside_the_segment_is_not_read() {
+        let (shm, ctx) = setup("outside-table", 1024 * 1024);
+        let handle = zone(ctx);
+        let addr = [1u8, 2, 3, 4];
+        cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
+
+        // The entry points at a heap object the zone never handed out.
+        let outside = Box::into_raw(Box::new(0u64)) as *mut TableHeader;
+        assert!(!handle.holds(
+            outside.cast::<u8>(),
+            std::mem::size_of::<TableHeader>(),
+            std::mem::align_of::<TableHeader>(),
+        ));
+        {
+            let _zone = handle.lock();
+            // SAFETY: the header of a live handle of this segment.
+            let header = unsafe { &mut *handle.header };
+            // SAFETY: the directory of the zone was built by this core.
+            let block = unsafe { &mut *header.blocks };
+            block.entries[0].table = outside;
+        }
+
+        let first = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 1).unwrap();
+        assert_eq!(first.rate, 1, "the table was rebuilt");
+        let second = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 2).unwrap();
+        assert_eq!(second.rate, 2, "the rebuilt table is reused");
+
+        // SAFETY: `outside` came from `Box::into_raw()` above and the zone
+        // never followed it.
+        unsafe { drop(Box::from_raw(outside)) };
+        let _ = shm;
+    }
+
+    /// A directory chain that leaves the segment is cut where the segment
+    /// ends: the blocks behind it are not ours to follow.
+    #[test]
+    fn a_directory_chain_that_leaves_the_segment_is_cut() {
+        let (shm, ctx) = setup("outside-chain", 1024 * 1024);
+        let handle = zone(ctx);
+
+        // Eight tags fill the first directory block, the next one has to walk
+        // its `next` pointer.
+        for index in 0..8u32 {
+            let tag = format!("t{index}");
+            let addr = addr_of(index);
+            cc::increment(handle, tag.as_bytes(), &addr, false, 1, 60, 60, 0).unwrap();
+        }
+
+        let outside = Box::into_raw(Box::new(0u64)) as *mut TagBlock;
+        assert!(!handle.holds(
+            outside.cast::<u8>(),
+            std::mem::size_of::<TagBlock>(),
+            std::mem::align_of::<TagBlock>(),
+        ));
+        {
+            let _zone = handle.lock();
+            // SAFETY: the header of a live handle of this segment.
+            let header = unsafe { &mut *handle.header };
+            // SAFETY: the directory of the zone was built by this core.
+            let block = unsafe { &mut *header.blocks };
+            block.next = outside;
+        }
+
+        // The ninth tag cuts the chain and links its own block in front.
+        let addr = addr_of(8);
+        let first = cc::increment(handle, b"t8", &addr, false, 1, 60, 60, 1).unwrap();
+        assert_eq!(first.rate, 1);
+        let again = cc::increment(handle, b"t8", &addr, false, 1, 60, 60, 2).unwrap();
+        assert_eq!(again.rate, 2, "the new block stays reachable");
+
+        // The block of the tags below the cut is still reachable as well.
+        let kept = cc::increment(handle, b"t0", &addr_of(0), false, 1, 60, 60, 2).unwrap();
+        assert_eq!(kept.rate, 2);
+
+        // SAFETY: `outside` came from `Box::into_raw()` above and the zone
+        // never followed it.
+        unsafe { drop(Box::from_raw(outside)) };
+        let _ = shm;
+    }
+
     #[test]
     fn many_tags_are_supported() {
         // The directory grows by adding blocks, so a zone with many tags keeps
@@ -1272,40 +1604,129 @@ mod tests {
             assert!(cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).is_some());
         }
 
-        {
-            let zone = handle.lock();
-            let table = zone.table(b"cc").expect("the table of a counted tag");
-            let walk = std::cmp::min(PROBE_LIMIT, capacity);
-            let mut entries = 0usize;
-
-            for index in 0..capacity {
-                let slot = &table.slots[index];
-                if slot.state() != SlotState::UsedV4 {
-                    continue;
-                }
-                entries += 1;
-
-                let start = slot_index(&slot.addr[..4]) % capacity;
-                let distance = (index + capacity - start) % capacity;
-                assert!(
-                    distance < walk,
-                    "the entry of slot {index} sits {distance} slots after the address hashes there"
-                );
-                for offset in 0..distance {
-                    let passed = (start + offset) % capacity;
-                    assert_ne!(
-                        table.slots[passed].state(),
-                        SlotState::Empty,
-                        "the lookup of the address of slot {index} stops at slot {passed}"
-                    );
-                }
-            }
-
-            assert!(entries > 0, "the flood left entries behind");
-        }
+        assert!(
+            assert_table_invariants(handle, b"cc") > 0,
+            "the flood left entries behind"
+        );
 
         // The newest client is counted, the recycling did not lose it.
         assert!(has_entry(handle, b"cc", &addr_of(addresses - 1)));
+    }
+
+    /// Panics unless the counters and the placement invariant of the table of
+    /// `tag` hold, and returns the number of entries it counted.
+    ///
+    /// Every entry sits inside the walk of its own address, no empty slot
+    /// stands between the address and its entry, and the counters of the
+    /// header describe slots of the table.
+    fn assert_table_invariants(handle: &ZoneHandle, tag: &[u8]) -> usize {
+        let zone = handle.lock();
+        let table = zone.table(tag).expect("the table of a counted tag");
+        let capacity = table.header.capacity as usize;
+
+        assert_eq!(capacity, table.slots.len(), "the capacity describes slots");
+        assert!(table.header.filled <= table.header.capacity, "filled");
+        assert!(table.header.cursor < table.header.capacity, "cursor");
+
+        let walk = std::cmp::min(PROBE_LIMIT, capacity);
+        let mut entries = 0usize;
+        for index in 0..capacity {
+            let slot = &table.slots[index];
+            if slot.state() != SlotState::UsedV4 {
+                continue;
+            }
+            entries += 1;
+
+            let start = slot_index(&slot.addr[..4]) % capacity;
+            let distance = if index >= start {
+                index - start
+            } else {
+                capacity - start + index
+            };
+            assert!(
+                distance < walk,
+                "the entry of slot {index} sits {distance} slots after the address hashes there"
+            );
+            for offset in 0..distance {
+                let passed = wrapped(start, offset, capacity);
+                assert_ne!(
+                    table.slots[passed].state(),
+                    SlotState::Empty,
+                    "the lookup of the address of slot {index} stops at slot {passed}"
+                );
+            }
+        }
+
+        entries
+    }
+
+    /// The counters of the table of `tag` as the locked zone sees them.
+    fn table_counters(handle: &ZoneHandle, tag: &[u8]) -> (u32, usize, u32) {
+        let zone = handle.lock();
+        let table = zone.table(tag).expect("the table of a counted tag");
+
+        (table.header.filled, table.slots.len(), table.header.cursor)
+    }
+
+    /// A deterministic run of random operations on one zone: whatever the mix
+    /// of insertions, lookups, removals, collections and clock jumps is, an
+    /// address that was just counted is found again, a lookup writes nothing,
+    /// and the table keeps describing slots.
+    #[test]
+    fn random_operations_keep_the_table_sound() {
+        for seed in 1..=200u32 {
+            // The small zone reaches its fill limit (and recycles) quickly, the
+            // large one stays below it: both regimes are worth running.
+            let size = if seed % 2 == 0 {
+                64 * 1024
+            } else {
+                1024 * 1024
+            };
+            let (_shm, ctx) = setup("random", size);
+            let handle = zone(ctx);
+            let mut state = seed.wrapping_mul(2_654_435_761) | 1;
+            let mut now = 0i64;
+
+            for step in 0..2000usize {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let addr = addr_of(state & 0xffff);
+
+                match (state >> 20) % 8 {
+                    0..=3 => {
+                        let cycle = 60 + (state % 600) as i64;
+                        let result = cc::increment(handle, b"cc", &addr, false, 10, cycle, 60, now);
+                        assert!(
+                            result.is_some(),
+                            "seed {seed}, step {step}: the counter has to be written"
+                        );
+                        assert!(
+                            has_entry(handle, b"cc", &addr),
+                            "seed {seed}, step {step}: the entry just counted is found"
+                        );
+                    }
+                    4 => {
+                        let before = table_counters(handle, b"cc");
+                        let _ = has_entry(handle, b"cc", &addr);
+                        assert_eq!(
+                            table_counters(handle, b"cc"),
+                            before,
+                            "seed {seed}, step {step}: a lookup wrote to the table"
+                        );
+                    }
+                    5 => {
+                        handle.with_present_entry(b"cc", &addr, false, |entry| entry.remove());
+                    }
+                    6 => gc(handle, now),
+                    _ => now += 1 + (state % 30) as i64,
+                }
+
+                if step % 16 == 0 {
+                    assert_table_invariants(handle, b"cc");
+                }
+            }
+
+            assert_table_invariants(handle, b"cc");
+        }
     }
 
     /// A single worker collects on every request, several workers spread the
