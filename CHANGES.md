@@ -65,5 +65,8 @@
   room for the CRLF of its chunk in the address space is refused instead of
   overflowing the addition that sizes the framing (a debug build panicked on
   the sum, a release build on the slice that followed it).
+* `$waf_spend` never copies more bytes than the buffer that formats the number
+  holds: `snprintf()` reports the length it would have written, and the copy
+  used that length to read from the stack buffer it was given.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

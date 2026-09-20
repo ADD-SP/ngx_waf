@@ -43,5 +43,7 @@
 * 验证码服务商应答的分块（chunked）报文中，如果 chunk 大小的末尾 CRLF 在地址
   空间里放不下，该报文会被拒绝：此前用于计算报文边界的加法会溢出（debug 构建
   在加法处 panic，release 构建在随后的切片处 panic）。
+* `$waf_spend` 复制的字节数不再可能超过格式化它的栈缓冲区：`snprintf()`
+  返回的是“本该写入”的长度，而拷贝此前把它当成了要从栈缓冲区读取的长度。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

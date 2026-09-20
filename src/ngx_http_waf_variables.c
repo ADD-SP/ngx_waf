@@ -104,6 +104,7 @@ ngx_int_t ngx_http_waf_var_rule_details(ngx_http_request_t* r, ngx_http_variable
 
 ngx_int_t ngx_http_waf_var_spend(ngx_http_request_t* r, ngx_http_variable_value_t* v, uintptr_t data) {
     ngx_http_waf_ctx_t* ctx = ngx_http_waf_get_ctx(r);
+    int n;
     u_char text[64];
 
     if (ctx == NULL || ctx->step == NULL) {
@@ -111,7 +112,17 @@ ngx_int_t ngx_http_waf_var_spend(ngx_http_request_t* r, ngx_http_variable_value_
         return NGX_OK;
     }
 
-    v->len = snprintf((char*) text, sizeof(text), "%.5lf", ctx->step->decision.spend);
+    n = snprintf((char*) text, sizeof(text), "%.5lf", ctx->step->decision.spend);
+    if (n < 0) {
+        return NGX_ERROR;
+    }
+
+    /*
+     * `snprintf()` reports the length it would have written, which the buffer
+     * cannot hold for a number this module never produces; a value that does
+     * not fit is truncated, the copy may not read behind the buffer.
+     */
+    v->len = (size_t) n < sizeof(text) ? (size_t) n : sizeof(text) - 1;
     v->data = ngx_pnalloc(r->pool, v->len);
     if (v->data == NULL) {
         return NGX_ERROR;
