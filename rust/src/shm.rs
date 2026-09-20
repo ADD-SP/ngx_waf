@@ -514,7 +514,7 @@ impl ZoneHandle {
     /// header that describes one.  The zone lock has to be held.
     ///
     /// The pointer is checked against the segment *before* it is read, and the
-    /// fields that size the slot array are checked against the segment too: a
+    /// header and the slot array it describes have to fit in the segment: a
     /// table that a bug, a crash or another process wrote over is refused
     /// instead of being turned into a slice that reaches out of the zone.
     fn is_live_table(&self, table: NonNull<TableHeader>) -> bool {
@@ -531,11 +531,26 @@ impl ZoneHandle {
         let header = unsafe { &*table.as_ptr() };
         let capacity = header.capacity as usize;
 
+        // The header and the slots behind it have to fit in the segment, and
+        // the sum has to be computed without wrapping: `capacity` is a `u32`
+        // of the segment, and a 32 bit build reaches the end of its address
+        // space with a capacity a table can hold.
+        let Some(slots) = capacity.checked_mul(std::mem::size_of::<Slot>()) else {
+            return false;
+        };
+        let Some(size) = std::mem::size_of::<TableHeader>().checked_add(slots) else {
+            return false;
+        };
+
         header.magic == TABLE_MAGIC
             && header.version == VERSION
-            // The slot array has to fit in the segment with its header.
+            // The whole table has to fit in the segment.
             && capacity > 0
-            && capacity <= self.size / std::mem::size_of::<Slot>()
+            && self.holds(
+                table.as_ptr().cast::<u8>(),
+                size,
+                std::mem::align_of::<TableHeader>(),
+            )
             && header.filled <= header.capacity
             && header.cursor < header.capacity
     }
@@ -1391,6 +1406,59 @@ mod tests {
             let second = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 2).unwrap();
             assert_eq!(second.rate, 2, "the rebuilt table is reused ({broken})");
         }
+    }
+
+    /// A table header whose capacity describes slots that fit the *size* of
+    /// the segment but not the room behind the header may not be used: the
+    /// header and the slots it describes have to lie in the segment.
+    #[test]
+    fn a_table_whose_slots_leave_the_segment_is_rebuilt() {
+        let (shm, ctx) = setup("slots-outside", 128 * 1024);
+        let handle = zone(ctx);
+        let addr = [1u8, 2, 3, 4];
+        cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 0).unwrap();
+
+        let size = shm.memory.len();
+        let base = shm.memory.as_ptr() as usize;
+        let header_size = std::mem::size_of::<TableHeader>();
+        // A table header in the last bytes of the segment, with the capacity
+        // the size of the segment alone would allow.
+        let fake = (base + size - header_size) as *mut TableHeader;
+
+        // SAFETY: the header lies in the last bytes of the segment, which the
+        // test owns.
+        unsafe {
+            std::ptr::write_bytes(fake.cast::<u8>(), 0, header_size);
+            (*fake).magic = TABLE_MAGIC;
+            (*fake).version = VERSION;
+            (*fake).capacity = (size / std::mem::size_of::<Slot>()) as u32;
+            (*fake).cursor = 0;
+            (*fake).filled = 0;
+        }
+
+        {
+            let _zone = handle.lock();
+            assert!(
+                !handle.is_live_table(NonNull::new(fake).unwrap()),
+                "the slot array of the table reaches out of the segment"
+            );
+        }
+
+        {
+            let _zone = handle.lock();
+            // SAFETY: the header of a live handle of this segment.
+            let header = unsafe { &mut *handle.header };
+            // SAFETY: the directory of the zone was built by this core.
+            let block = unsafe { &mut *header.blocks };
+            block.entries[0].table = fake;
+        }
+
+        // The entry is given back and a fresh table counts the address, like
+        // a table whose header was written over.
+        let first = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 1).unwrap();
+        assert_eq!(first.rate, 1, "the rebuilt table counts");
+        let second = cc::increment(handle, b"cc", &addr, false, 1, 60, 60, 2).unwrap();
+        assert_eq!(second.rate, 2, "the rebuilt table is reused");
     }
 
     /// A directory entry that points outside the segment may not be

@@ -34,5 +34,8 @@
   AddressSanitizer 下跑单测，`mise run test-miri` 在 Miri 下跑共享内存表，
   `mise run fuzz` 用 cargo-fuzz 模糊表状态机，`mise run test-sanitize-nginx`
   用 AddressSanitizer 构建的 nginx 跑端到端检查。CI 四项都会执行。
+* 共享内存区的表现在要求“表头 + 其描述的槽位数组”整体位于段内：容量只满足
+  整个段的大小、却超出表头之后空间的表（被 bug、崩溃或其它进程写坏的表）此前
+  会被当成越出段的切片使用。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

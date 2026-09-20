@@ -52,5 +52,10 @@
   fuzz` fuzzes the table state machine with cargo-fuzz, and
   `mise run test-sanitize-nginx` runs the end to end checks against an nginx
   built with AddressSanitizer.  CI runs all four.
+* A table of a shared memory zone is refused unless the header and the slot
+  array it describes lie in the segment: a capacity that fit the size of the
+  segment but not the room behind its header (a table a bug, a crash or
+  another process wrote over) was turned into a slice that reached out of the
+  zone.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).
