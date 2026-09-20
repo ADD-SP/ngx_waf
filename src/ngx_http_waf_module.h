@@ -63,6 +63,12 @@ typedef struct {
     unsigned                   configured:1;
     /** Set when the host was resolved while the configuration was read. */
     unsigned                   resolved:1;
+    /**
+     * Set once the pool cleanup that releases `ssl` was registered: a repeated
+     * `waf_captcha` of one context replaces the endpoint but keeps the one
+     * cleanup that owns the context built in its place.
+     */
+    unsigned                   ssl_cleanup_registered:1;
 } ngx_http_waf_captcha_api_t;
 
 

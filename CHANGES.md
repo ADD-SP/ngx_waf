@@ -68,5 +68,9 @@
 * `$waf_spend` never copies more bytes than the buffer that formats the number
   holds: `snprintf()` reports the length it would have written, and the copy
   used that length to read from the stack buffer it was given.
+* A context whose `waf_captcha` names more than one `api=https://...` keeps one
+  pool cleanup for the SSL context of its endpoint: the module releases the
+  context a repeated directive replaces and registers the cleanup once instead
+  of freeing the same `SSL_CTX` twice when the configuration goes away.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).

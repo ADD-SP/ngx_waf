@@ -45,5 +45,8 @@
   在加法处 panic，release 构建在随后的切片处 panic）。
 * `$waf_spend` 复制的字节数不再可能超过格式化它的栈缓冲区：`snprintf()`
   返回的是“本该写入”的长度，而拷贝此前把它当成了要从栈缓冲区读取的长度。
+* 同一上下文中的 `waf_captcha` 指定多个 `api=https://...` 时，其端点的 SSL
+  上下文只保留一条池清理：模块会释放被后续指令替换掉的上下文，并且只注册
+  一次清理，配置释放时不再对同一个 `SSL_CTX` 释放两次。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。

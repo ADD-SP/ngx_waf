@@ -792,5 +792,37 @@ check 200 "a long zone tag counts the first request" \
 check 503 "a long zone tag denies the second request" \
     -H 'X-Real-IP: 9.9.9.30' "$long_tag/"
 
+# A repeated `waf_captcha` with another https endpoint replaces the SSL context
+# of the first one.  The pool cleanup that owns the context may only be
+# registered once: a second registration freed the same `SSL_CTX` twice when
+# the configuration went away, and the `-t` below aborted.
+{
+    if [ -n "${MODULE_PATH:-}" ]; then
+        printf 'load_module %s;\n' "$MODULE_PATH"
+    fi
+    cat <<'END'
+worker_processes 1;
+events {
+    worker_connections 8;
+}
+http {
+    server {
+        listen 127.0.0.1:18106;
+        waf_captcha on prov=reCAPTCHAv2:checkbox secret=s sitekey=k api=https://a.example/verify;
+        waf_captcha on prov=reCAPTCHAv2:checkbox secret=s sitekey=k api=https://b.example/verify;
+    }
+}
+END
+} > "$prefix/conf/dup.conf"
+
+if "$nginx_bin" -p "$prefix" -c conf/dup.conf -t > /dev/null 2>&1; then
+    pass=$((pass + 1))
+    printf 'ok   %-52s %s\n' "a second https captcha endpoint is released once" "0"
+else
+    fail=$((fail + 1))
+    printf 'FAIL %-52s %s (want %s)\n' \
+        "a second https captcha endpoint is released once" "$?" "0"
+fi
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

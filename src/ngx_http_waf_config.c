@@ -84,27 +84,51 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
     }
 
     if (ssl) {
+        /*
+         * A repeated `waf_captcha` of this context replaced the endpoint: the
+         * SSL context of the previous one is released here, the pool cleanup
+         * registered for the struct releases the one that takes its place.
+         */
+        if (conf->captcha_api.ssl.ctx != NULL) {
+            ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
+        }
+
         ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
         conf->captcha_api.ssl.log = cf->log;
         if (ngx_ssl_create(&conf->captcha_api.ssl, NGX_SSL_TLSv1_2, NULL) != NGX_OK) {
+            /*
+             * `ngx_ssl_create()` leaves a partially built context behind on
+             * some of its failures; the cleanup that may already be
+             * registered for this struct has to find none.
+             */
+            if (conf->captcha_api.ssl.ctx != NULL) {
+                ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
+                ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
+            }
             return NGX_ERROR;
         }
 
         /*
          * `ngx_ssl_create()` only builds the context: the caller owns it and
          * hands it to a cleanup of the pool the configuration lives in, the
-         * way the nginx modules do.  The merge copies the context into the
-         * contexts below, the cleanup stays registered once.
+         * way the nginx modules do.  The cleanup is registered once per
+         * context: a second one would `SSL_CTX_free()` the same context when
+         * the configuration goes away.  The merge copies the context into the
+         * contexts below, which never register a cleanup of their own.
          */
-        cln = ngx_pool_cleanup_add(cf->pool, 0);
+        if (!conf->captcha_api.ssl_cleanup_registered) {
+            cln = ngx_pool_cleanup_add(cf->pool, 0);
 
-        if (cln == NULL) {
-            ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
-            return NGX_ERROR;
+            if (cln == NULL) {
+                ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
+                ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
+                return NGX_ERROR;
+            }
+
+            cln->handler = ngx_ssl_cleanup_ctx;
+            cln->data = &conf->captcha_api.ssl;
+            conf->captcha_api.ssl_cleanup_registered = 1;
         }
-
-        cln->handler = ngx_ssl_cleanup_ctx;
-        cln->data = &conf->captcha_api.ssl;
 
         ciphers.data = (u_char*) "HIGH:!aNULL:!MD5";
         ciphers.len = sizeof("HIGH:!aNULL:!MD5") - 1;
