@@ -1378,7 +1378,10 @@ fn cookie_mac(key: &[u8], ip: &[u8], time: &[u8], uid: &[u8]) -> String {
 /// The value of one cookie: the name is compared case insensitively at the
 /// start of a header value or right after a `;` or `,` separator, spaces are
 /// allowed around the `=`, and the value ends at the next `;`.  The glue hands
-/// one string per cookie header over, the raw header value (`a=1; b=2`).
+/// one string per cookie header over, the raw header value (`a=1; b=2`).  The
+/// parser lives here, nginx changed the separator of its own cookie parser in
+/// 1.29.6 and the C implementation that called it challenged every visitor
+/// (issue #154).
 fn cookie_value<'a>(cookies: &'a [Vec<u8>], name: &str) -> Option<&'a [u8]> {
     let name = name.as_bytes();
 
@@ -2905,6 +2908,37 @@ mod tests {
                 matches!(other, Step::Pending(_))
             ),
         }
+    }
+
+    /// The shape a browser sends: the whole trio in one `Cookie` header,
+    /// separated by `; `.  nginx 1.29.6 changed its own cookie parser (issue
+    /// #154); the core reads this header itself.
+    #[test]
+    fn the_cookie_trio_is_read_from_one_browser_header() {
+        let cookies = vec![
+            b"a=1; __WAF_CAPTCHA_TIME = 7; __WAF_CAPTCHA_UID = uid; __waf_captcha_hmac=hmac"
+                .to_vec(),
+        ];
+
+        assert_eq!(
+            cookie_value(&cookies, "__waf_captcha_time"),
+            Some(&b"7"[..])
+        );
+        assert_eq!(
+            cookie_value(&cookies, "__waf_captcha_uid"),
+            Some(&b"uid"[..])
+        );
+        assert_eq!(
+            cookie_value(&cookies, "__waf_captcha_hmac"),
+            Some(&b"hmac"[..])
+        );
+
+        // The comma separator the C implementation relied on still works.
+        let cookies = vec![b"a=1, __waf_captcha_time=8".to_vec()];
+        assert_eq!(
+            cookie_value(&cookies, "__waf_captcha_time"),
+            Some(&b"8"[..])
+        );
     }
 
     /// The session flow of `waf_action X=CAPTCHA`: the visitor posted a token

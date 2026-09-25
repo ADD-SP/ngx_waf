@@ -72,5 +72,10 @@
   pool cleanup for the SSL context of its endpoint: the module releases the
   context a repeated directive replaces and registers the cleanup once instead
   of freeing the same `SSL_CTX` twice when the configuration goes away.
+* The cookies of the captcha and of the under attack page are parsed by the
+  core, so the "Cookie" parsing change of nginx 1.29.6 (issue #154) does not
+  affect them.  The C implementation looked the cookies up with
+  `ngx_http_parse_multi_header_lines()`, which stopped treating `;` as a
+  separator and challenged every visitor again.
 
 See [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/changes/overview.md).
