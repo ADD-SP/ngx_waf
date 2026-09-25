@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Remove the build artefacts"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+cargo="${CARGO:-cargo}"
+
+(cd "$root/rust" && "$cargo" clean)
+rm -rf "$root/test/nginx-$NGINX_VERSION/objs"

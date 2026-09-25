@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#MISE description="Fuzz the table state machine with cargo-fuzz (nightly)"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+rustc="${RUSTC:-rustc}"
+seconds="${FUZZ_TIME:-60}"
+
+# AddressSanitizer, which cargo-fuzz turns on, is incompatible with a
+# statically linked libc: the target is named explicitly instead of letting
+# cargo-fuzz guess one.
+host=$("$rustc" -vV | sed -n 's/^host: //p')
+
+if ! command -v cargo-fuzz > /dev/null 2>&1; then
+    cat << END
+$(basename "$0"): error: cargo-fuzz was not found, the tools of mise.toml
+carry it, install them with:
+
+    mise install
+END
+    exit 1
+fi
+
+# The corpus and the artefacts live below `rust/target` (ignored by git), the
+# `CARGO_TARGET_DIR` keeps the build of the fuzz crate out of the normal one.
+export CARGO_TARGET_DIR="${FUZZ_DIR:-$root/rust/target/fuzz}"
+corpus="$root/rust/target/fuzz-corpus/table"
+mkdir -p "$corpus"
+
+cd "$root/rust"
+exec "$cargo" +nightly fuzz run table "$corpus" --target "$host" -- -max_total_time="$seconds"

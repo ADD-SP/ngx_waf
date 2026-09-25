@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#MISE description="Build nginx with the static module"
+#MISE depends=["rust-core", "nginx-src"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_PREFIX:=$root/test/nginx-install}"
+: "${JOBS:=$(nproc 2> /dev/null || echo 2)}"
+
+dir="$root/test/nginx-$NGINX_VERSION"
+stamp="$dir/.ngx-waf-configure"
+bin="$dir/objs/nginx"
+makefile="$dir/objs/Makefile"
+
+# `NGX_WAF_TARGET_DIR` and `NGX_WAF_LD_OPT` are the knobs of the coverage
+# tasks: an instrumented core lives in a target directory of its own and needs
+# the profile runtime on the link line.
+target_dir="${NGX_WAF_TARGET_DIR:-$root/rust/target}"
+ld_opt="${NGX_WAF_LD_OPT:-}"
+cc_opt="${NGX_WAF_CC_OPT:-}"
+lib="$target_dir/release/libngx_waf_core.a"
+
+# What the configured tree depends on: the kind of module (`--add-module` and
+# `--add-dynamic-module` replace the Makefile of the tree), the arguments
+# below, the target directory and the linker options, and the `config` script
+# of the module.  The script holds the list of the sources of the module, and a
+# file that was renamed or removed leaves the `objs/Makefile` of the tree
+# pointing at nothing until it is configured again.
+flags=(--with-http_ssl_module --with-http_realip_module)
+want="static ${flags[*]} $NGINX_PREFIX $root $target_dir $cc_opt $ld_opt $(cksum "$root/config")"
+
+configure_ld=()
+if [ -n "$ld_opt" ]; then
+    configure_ld=(--with-ld-opt="$ld_opt")
+fi
+
+# `NGX_WAF_CC_OPT` is the knob of the sanitizer task: nginx and the glue are
+# compiled with it on the command line (AddressSanitizer, UndefinedBehavior-
+# Sanitizer), and the fingerprint above rebuilds the tree when it changes.
+configure_cc=()
+if [ -n "$cc_opt" ]; then
+    configure_cc=(--with-cc-opt="$cc_opt")
+fi
+
+if [ "$(cat "$stamp" 2> /dev/null || true)" != "$want" ] || [ ! -f "$makefile" ] \
+    || [ ! -f "$bin" ]
+then
+    echo " + configuring nginx (static module)"
+
+    # A checkout of nginx carries `auto/configure`, the release tarball the
+    # matrix of CI downloads carries `configure` next to `auto/`.
+    configure=configure
+    [ -x "$dir/auto/configure" ] && configure=auto/configure
+
+    (cd "$dir" && "./$configure" \
+        --prefix="$NGINX_PREFIX" \
+        "${flags[@]}" \
+        "${configure_cc[@]}" \
+        "${configure_ld[@]}" \
+        --add-module="$root" > /dev/null)
+    printf '%s\n' "$want" > "$stamp"
+fi
+
+if [ "$bin" -ot "$lib" ]; then
+    echo " + the Rust core changed, relinking nginx"
+    rm -f "$bin"
+fi
+
+echo " + building nginx"
+make -C "$dir" -j"$JOBS"

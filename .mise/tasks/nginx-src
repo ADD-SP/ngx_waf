@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Fetch the nginx sources used by the local build"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_SRC:=$HOME/src/nginx}"
+: "${NGINX_VERSION:=1.27.2}"
+
+dir="$root/test/nginx-$NGINX_VERSION"
+
+# A checkout of nginx carries `auto/configure`, a release tarball carries
+# `configure` next to `auto/`.
+if [ -f "$dir/auto/configure" ] || [ -f "$dir/configure" ]; then
+    exit 0
+fi
+
+mkdir -p "$dir"
+
+if [ -d "$NGINX_SRC" ]; then
+    echo " + copying nginx from $NGINX_SRC"
+    (cd "$NGINX_SRC" && tar cf - --exclude=objs .) | (cd "$dir" && tar xf -)
+else
+    echo " + downloading nginx $NGINX_VERSION"
+    mkdir -p "$root/test"
+    curl -L --fail -o "$root/test/nginx.tar.gz" \
+        "https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
+    tar -xzf "$root/test/nginx.tar.gz" -C "$root/test"
+fi

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#MISE description="Run the unit tests under AddressSanitizer (nightly)"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+rustc="${RUSTC:-rustc}"
+target_dir="${ASAN_DIR:-$root/rust/target/asan}"
+
+host=$("$rustc" -vV | sed -n 's/^host: //p')
+
+if ! rustup toolchain list 2> /dev/null | grep -q '^nightly-'; then
+    cat << END
+$(basename "$0"): error: the nightly toolchain is missing, the sanitizers of
+rustc are nightly only, install it with:
+
+    rustup toolchain install nightly
+END
+    exit 1
+fi
+
+# The shared memory of a zone is anonymous memory of nginx, AddressSanitizer
+# cannot see a write that stays inside it; what this task checks is the rest of
+# the core, and the fake segment of the unit tests (a vector with redzones) is
+# where the layout of a table is exercised for real.
+#
+# LeakSanitizer needs ptrace, which some environments refuse, and the leaks of
+# the module are what `mise run test-valgrind` reports.
+export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
+export RUSTFLAGS="${RUSTFLAGS:-} -Zsanitizer=address"
+# The instrumented artefacts never mix with the ones of the stable build.
+export CARGO_TARGET_DIR="$target_dir"
+
+# `-Zsanitizer` needs an explicit target on the command line.
+"$cargo" +nightly test --manifest-path "$root/rust/Cargo.toml" --lib --target "$host"

@@ -1,0 +1,24 @@
+[package]
+name = "ngx-waf-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+# The table module of the core is compiled into the target through `#[path]`,
+# the crate itself is not a dependency: the fuzzer only needs the layout of the
+# segment and the operations of a zone, not the C ABI and libmodsecurity.
+[[bin]]
+name = "table"
+path = "fuzz_targets/table.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

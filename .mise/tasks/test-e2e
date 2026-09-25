@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Run the end to end checks with one worker and with four"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_BIN:=$root/test/nginx-$NGINX_VERSION/objs/nginx}"
+
+NGINX_BIN="$NGINX_BIN" "$root/test/e2e/run.sh"
+E2E_WORKERS=4 NGINX_BIN="$NGINX_BIN" "$root/test/e2e/run.sh"

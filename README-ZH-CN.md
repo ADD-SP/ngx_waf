@@ -46,6 +46,48 @@
 * 推荐链接：[https://add-sp.github.io/ngx_waf-docs/zh-cn/](https://add-sp.github.io/ngx_waf-docs/zh-cn/)
 * 备用链接：[https://ngx-waf-docs.pages.dev/zh-cn/](https://ngx-waf-docs.pages.dev/zh-cn/)
 
+## 从源码构建
+
+模块由一层很薄的 C 胶水代码和一个承载全部逻辑的 Rust 核心组成（见
+[`rust/README.md`](rust/README.md)），不再使用 Bazel。
+
+构建任务与 Debian/Ubuntu 系统依赖声明在 [`mise.toml`](mise.toml) 中，用
+[mise](https://mise.jdx.dev) 执行。Rust 工具链不由 mise 管理：仍由 rustup 与
+`rust-toolchain.toml` 固定，因此请先安装 rustup。
+
+```sh
+mise trust         # 允许 mise 读取 mise.toml
+mise bootstrap -y  # 安装系统依赖与固定版本的 cbindgen
+mise run build     # 在 test/nginx-<version> 中构建带静态模块的 nginx
+mise run test      # Rust 单元测试与 nginx 集成测试
+mise run test-e2e  # 自研端到端检查，单 worker 与四 worker 各跑一轮
+mise run coverage  # Rust 单元测试的覆盖率，每个模块一行
+mise run test-valgrind  # 在 valgrind 下跑模板套件与端到端检查
+```
+
+`mise run doctor` 检查 cargo、rustc 与 cbindgen 是否在 PATH 上。需要 stable
+Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如
+`libmodsecurity-dev` 软件包，或用 `LIB_MODSECURITY` 指定安装前缀），并且 nginx
+必须启用 SSL 支持（`--with-http_ssl_module`）：访问验证码服务商的客户端使用的
+是 nginx 自身的 TLS 设施。`[bootstrap.packages]` 只列 Debian/Ubuntu 的软件包，
+其他发行版请用其包管理器安装等价依赖（C 工具链、zlib、PCRE2、OpenSSL、
+libmodsecurity 3、perl）。`NGINX_SRC` 指定要复制的 nginx 源码目录，
+`NGINX_VERSION` 指定缺失时下载的版本，`mise run build-dynamic` 构建动态模块。
+与 C 实现的已知差异见 [`rust/README.md`](rust/README.md)。
+
+`mise run coverage` 打印单元测试的覆盖率，每个模块一行，并排除源码里
+`mod tests` 块中的测试代码。`mise run coverage-e2e` 更进一步：构建插桩的
+nginx，在其上运行自研端到端检查与 Test::Nginx 套件，并打印两次运行的并集。
+两个任务都需要工具链的 `llvm-tools-preview` 组件（缺失时任务会提示执行
+`rustup component add llvm-tools-preview`）。
+
+`mise run test-valgrind` 在 valgrind 下运行 Test::Nginx 模板与自研端到端检查，
+一旦 valgrind 报告任何内容就判失败；nginx 自身与 libmodsecurity 里 PCRE2 JIT
+的记录由 `test/test-nginx/valgrind.suppress` 抑制。请先安装 valgrind
+（Debian/Ubuntu：`apt-get install valgrind`）；传入模板名可只跑指定文件
+（`mise run test-valgrind t/captcha.t`）。CI 在 stable 分支的静态模块组合上
+运行它。
+
 ## 联系方式
 
 * Telegram 频道: [https://t.me/ngx_waf](https://t.me/ngx_waf)
@@ -61,26 +103,32 @@
 ## 测试套件
 
 本项目使用一个 Perl 开发的数据驱动型的测试套件进行测试。
-感谢项目 [Test::Nginx](http://search.cpan.org/perldoc?Test::Nginx) 及其开发者们。
+感谢项目 [Test::Nginx](https://metacpan.org/pod/Test::Nginx) 及其开发者们。
 
-你可以通过下列命令来运行测试。
+先在机器上装好依赖并构建套件要运行的 nginx，然后运行全部模板：
 
 ```shell
-# 这行命令的执行时间比较长，但是以后再测试的时候就不需要运行了。
-cpan Test::Nginx
+# 系统依赖里包含 cpanminus；第二行安装 Test::Nginx。
+mise bootstrap -y
+mise run test-nginx-deps
 
-# 你需要指定一个临时目录。
-# 如果目录不存在会自动创建。
-# 如果目录已经会被存在则会先**删除**再创建。
-export MODULE_TEST_PATH=/path/to/temp/dir
+mise run build           # 或：mise run build-dynamic
 
-# 如果你安装了动态模块则需要指定动态模块的绝对路径，反之则无需执行这行命令。
-export MODULE_PATH=/path/to/ngx_http_waf_module.so
-
-cd ./test/test-nginx
-sh ./init.sh
-sh ./start.sh ./t/*.t
+mise run test-nginx
 ```
+
+`mise run test-nginx` 运行全部模板；传入一个或多个测试文件则只跑这些：
+
+```shell
+mise run test-nginx t/modsecurity.t
+```
+
+动态构建时导出 `MODULE_PATH=/path/to/ngx_http_waf_module.so`；需要测试
+`mise run build` 之外的其他 nginx 二进制时导出
+`TEST_NGINX_BINARY=/path/to/nginx`。
+
+部分模板会访问真实的验证码服务商，因此测试需要网络。
+
 ## 开源许可证
 
 [BSD 3-Clause License](LICENSE)

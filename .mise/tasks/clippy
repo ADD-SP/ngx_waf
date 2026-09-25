@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Lint the Rust sources"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+
+"$cargo" clippy --manifest-path "$root/rust/Cargo.toml" --all-targets -- -D warnings

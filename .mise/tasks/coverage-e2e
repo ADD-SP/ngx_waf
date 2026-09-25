@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#MISE description="Run the unit and end to end suites with coverage"
+#MISE depends=["coverage", "test-nginx-deps"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_PREFIX:=$root/test/nginx-install}"
+rustc="${RUSTC:-rustc}"
+coverage_dir="${COVERAGE_DIR:-$root/rust/target/coverage}"
+
+host=$("$rustc" -vV | sed -n 's/^host: //p')
+sysroot=$("$rustc" --print sysroot)
+tools="$sysroot/lib/rustlib/$host/bin"
+runtime=("$sysroot"/lib/rustlib/"$host"/lib/libprofiler_builtins-*.rlib)
+
+if [ ! -x "$tools/llvm-profdata" ] || [ ! -x "$tools/llvm-cov" ]; then
+    cat << END
+$(basename "$0"): error: the LLVM tools of the toolchain are missing, install
+them with:
+
+    rustup component add llvm-tools-preview
+END
+    exit 1
+fi
+
+if [ ! -f "${runtime[0]}" ]; then
+    cat << END
+$(basename "$0"): error: the profile runtime of the toolchain is missing
+([$sysroot/lib/rustlib/$host/lib/libprofiler_builtins-*.rlib]), install it
+with:
+
+    rustup component add llvm-tools-preview
+END
+    exit 1
+fi
+
+bin="$root/test/nginx-$NGINX_VERSION/objs/nginx"
+profraw="$coverage_dir/e2e"
+profdata="$coverage_dir/e2e.profdata"
+lcov="$coverage_dir/e2e.lcov"
+
+rm -rf "$profraw" "$lcov"
+mkdir -p "$profraw"
+
+# The instrumented core needs a target directory of its own, and the link needs
+# the profile runtime: rustc does not put it into a staticlib, and a process
+# writes its profile only when the runtime is linked in.
+export RUSTFLAGS="-C instrument-coverage ${RUSTFLAGS:-}"
+export NGX_WAF_TARGET_DIR="$coverage_dir/target"
+export NGX_WAF_LD_OPT="-Wl,--whole-archive ${runtime[0]} -Wl,--no-whole-archive"
+export LLVM_PROFILE_FILE="$profraw/%p.profraw"
+
+echo " + building the instrumented nginx"
+"$root/.mise/tasks/build-static"
+
+echo " + running the end to end checks"
+NGINX_BIN="$bin" "$root/test/e2e/run.sh"
+
+# Test::Nginx kills nginx with SIGKILL unless it is told otherwise, and a
+# killed process writes no profile.  Its harness expects the working directory
+# of `mise run test-nginx`.
+echo " + running the Test::Nginx suite"
+(cd "$root/test/test-nginx" && TEST_NGINX_FAST_SHUTDOWN=1 ./run.sh)
+
+# The end to end suite stops its nginx while it exits: wait for the workers to
+# write their profile.
+for _ in $(seq 1 50); do
+    pgrep -f "$bin" > /dev/null 2>&1 || break
+    sleep 0.1
+done
+
+"$tools/llvm-profdata" merge -sparse "$profraw"/*.profraw -o "$profdata"
+"$tools/llvm-cov" export "$bin" -instr-profile="$profdata" -format=lcov \
+    --ignore-filename-regex='/\.cargo/registry/|/rustlib/' > "$lcov"
+
+# Leave the tree as the other tasks expect it: the next build would reconfigure
+# on its own, this only saves the wait for it.
+unset RUSTFLAGS NGX_WAF_TARGET_DIR NGX_WAF_LD_OPT
+echo " + rebuilding nginx without the coverage instrumentation"
+"$root/.mise/tasks/build-static" > /dev/null
+
+echo
+python3 "$root/test/coverage/report.py" \
+    ${COVERAGE_INCLUDE_TESTS:+--include-tests} \
+    "$coverage_dir/unit.lcov" "$lcov"
+echo
+echo " + the artefacts are in $coverage_dir"

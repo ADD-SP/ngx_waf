@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#MISE description="Run the unit tests with coverage and print the per-module table"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+rustc="${RUSTC:-rustc}"
+coverage_dir="${COVERAGE_DIR:-$root/rust/target/coverage}"
+
+# The LLVM tools belong to the toolchain, not to cargo.
+host=$("$rustc" -vV | sed -n 's/^host: //p')
+tools=$("$rustc" --print sysroot)/lib/rustlib/$host/bin
+
+if [ ! -x "$tools/llvm-profdata" ] || [ ! -x "$tools/llvm-cov" ]; then
+    cat << END
+$(basename "$0"): error: the LLVM tools of the toolchain are missing, install
+them with:
+
+    rustup component add llvm-tools-preview
+END
+    exit 1
+fi
+
+target="$coverage_dir/target"
+profraw="$coverage_dir/unit"
+message="$coverage_dir/unit.json"
+profdata="$coverage_dir/unit.profdata"
+lcov="$coverage_dir/unit.lcov"
+
+rm -rf "$profraw" "$lcov"
+mkdir -p "$profraw"
+
+# A target directory of its own: an instrumented crate cannot share the
+# artefacts of `mise run build` and `mise run test-rust`, cargo would rebuild
+# every dependency on each switch.
+export CARGO_TARGET_DIR="$target"
+export RUSTFLAGS="-C instrument-coverage ${RUSTFLAGS:-}"
+export LLVM_PROFILE_FILE="$profraw/%p.profraw"
+
+echo " + building the unit tests with coverage"
+(
+    cd "$root/rust"
+    "$cargo" test --no-run --message-format=json-render-diagnostics > "$message"
+)
+
+# The profile of a binary has to be read with that very binary, so the test
+# executable is taken from the build instead of running `cargo test` (which
+# would run the tests a second time).
+binary=$(python3 - "$message" << 'END'
+import json
+import sys
+
+for line in open(sys.argv[1], errors="replace"):
+    try:
+        message = json.loads(line)
+    except ValueError:
+        continue
+
+    if message.get("reason") == "compiler-artifact" and message.get("executable"):
+        if message["profile"]["test"]:
+            print(message["executable"])
+END
+)
+
+if [ -z "$binary" ]; then
+    echo "$(basename "$0"): error: cargo did not report the test binary" >&2
+    exit 1
+fi
+
+echo " + running the unit tests"
+(cd "$root/rust" && "$binary")
+
+"$tools/llvm-profdata" merge -sparse "$profraw"/*.profraw -o "$profdata"
+"$tools/llvm-cov" export "$binary" -instr-profile="$profdata" -format=lcov \
+    --ignore-filename-regex='/\.cargo/registry/|/rustlib/' > "$lcov"
+
+echo
+python3 "$root/test/coverage/report.py" \
+    ${COVERAGE_INCLUDE_TESTS:+--include-tests} "$lcov"
+echo
+echo " + the artefacts are in $coverage_dir"

@@ -47,6 +47,54 @@ Handy, High performance Nginx firewall module.
 * Recommended link: [https://add-sp.github.io/ngx_waf-docs/](https://add-sp.github.io/ngx_waf-docs/)
 * Alternate link: [https://ngx-waf-docs.pages.dev/](https://ngx-waf-docs.pages.dev/)
 
+## Building from source
+
+The module is a small nginx glue written in C plus a Rust core that holds the
+logic (see [`rust/README.md`](rust/README.md)); Bazel is not used anymore.
+
+The tasks and the Debian/Ubuntu system packages are declared in
+[`mise.toml`](mise.toml) and run with [mise](https://mise.jdx.dev).  The Rust
+toolchain is not managed by mise: rustup and `rust-toolchain.toml` pin it, so
+install rustup first.
+
+```sh
+mise trust         # let mise read mise.toml
+mise bootstrap -y  # install the system packages and the pinned cbindgen
+mise run build     # build nginx with the static module in test/nginx-<version>
+mise run test      # the Rust unit tests and the nginx integration tests
+mise run test-e2e  # the end to end checks, with one worker and with four
+mise run coverage  # the Rust unit tests with coverage, one row per module
+mise run test-valgrind  # the templates and the end to end checks under valgrind
+```
+
+`mise run doctor` checks that cargo, rustc and cbindgen are on PATH.  A stable
+Rust toolchain (with cargo) and the development files of libmodsecurity 3 (for
+example the `libmodsecurity-dev` package, or `LIB_MODSECURITY` pointing at a
+prefix) are required, and nginx has to be built with SSL support
+(`--with-http_ssl_module`): the client that reaches a captcha provider uses the
+TLS machinery of nginx itself.  `[bootstrap.packages]` only names
+Debian/Ubuntu packages; on another distribution install the equivalents (a C
+toolchain, zlib, PCRE2, OpenSSL, libmodsecurity 3, perl) with its package
+manager.  `NGINX_SRC` selects the nginx source tree to copy, `NGINX_VERSION` the
+version to download when it is missing, and `mise run build-dynamic` builds the
+dynamic module instead.  The known differences to the C implementation are
+listed in [`rust/README.md`](rust/README.md).
+
+`mise run coverage` prints the coverage of the unit tests, one row per module,
+with the `mod tests` blocks of the sources left out.  `mise run coverage-e2e`
+goes further: it builds an instrumented nginx, runs the end to end checks and
+the Test::Nginx suite on it, and prints the union of both runs.  Both tasks
+need the `llvm-tools-preview` component of the toolchain (the task prints
+`rustup component add llvm-tools-preview` when it is missing).
+
+`mise run test-valgrind` runs the Test::Nginx templates and the end to end
+checks under valgrind and fails when it reports anything; the records of nginx
+and of the PCRE2 JIT inside libmodsecurity are suppressed by
+`test/test-nginx/valgrind.suppress`.  Install valgrind first (Debian/Ubuntu:
+`apt-get install valgrind`), name templates to check only those
+(`mise run test-valgrind t/captcha.t`), and note that CI runs it for the static
+module of the stable nginx branch.
+
 ## Contact
 
 * Telegram Channel: [https://t.me/ngx_waf](https://t.me/ngx_waf)
@@ -59,30 +107,35 @@ Hope you can help promote this project. The more stars got, the better this proj
 
 ## Test Suite
 
-This module comes with a Perl-driven test suite. The test cases are declarative too. 
-Thanks to the [Test::Nginx](http://search.cpan.org/perldoc?Test::Nginx) module in the Perl world.
+This module comes with a Perl-driven test suite. The test cases are declarative too.
+Thanks to the [Test::Nginx](https://metacpan.org/pod/Test::Nginx) module in the Perl world.
 
-To run it on your side:
+Install the prerequisites once per machine, build the tree the suite runs
+against, then run every template:
 
 ```shell
-## It will take a lot of time, but it only needs to be run once.
-cpan Test::Nginx
+# The system packages include cpanminus; the second line installs Test::Nginx.
+mise bootstrap -y
+mise run test-nginx-deps
 
-# You need to specify a temporary directory.
-# If the directory does not exist it will be created automatically.
-# If the directory already exists it will be **removed** first and then created.
-export MODULE_TEST_PATH=/path/to/temp/dir
+mise run build           # or: mise run build-dynamic
 
-# You need to specify the absolute path to the dynamic module if you have it installed, 
-# otherwise you do not need to run this line.
-export MODULE_PATH=/path/to/ngx_http_waf_module.so
-
-cd ./test/test-nginx
-sh ./init.sh
-sh ./start.sh ./t/*.t
+mise run test-nginx
 ```
 
-Some parts of the test suite requires standard modules proxy, rewrite and SSI to be enabled as well when building Nginx.
+`mise run test-nginx` runs every template; pass one or more test files to run
+only those:
+
+```shell
+mise run test-nginx t/modsecurity.t
+```
+
+Export `MODULE_PATH=/path/to/ngx_http_waf_module.so` when the module is built
+dynamically, and `TEST_NGINX_BINARY=/path/to/nginx` to test a binary other than
+the one `mise run build` produced.
+
+Some templates reach the real captcha providers, so the suite needs network
+access.
 
 ## License
 

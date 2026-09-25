@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Check the Rust formatting"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+
+"$cargo" fmt --manifest-path "$root/rust/Cargo.toml" --check

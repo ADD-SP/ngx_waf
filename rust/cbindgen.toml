@@ -1,0 +1,130 @@
+# Configuration of the header generator (`mise run header`).
+#
+# cbindgen is pinned to 0.29.4 by `mise.toml`; CI regenerates the header and
+# fails when `include/ngx_http_waf_ffi.h` is out of date.
+
+language = "C"
+include_guard = "NGX_HTTP_WAF_FFI_H"
+tab_width = 4
+line_length = 100
+style = "both"
+documentation = true
+usize_is_size_t = true
+
+[export]
+prefix = ""
+# Only the vocabulary of `rust/src/abi.rs` crosses the boundary: the
+# constants, globals and typedefs of the implementation are never exported.
+item_types = ["enums", "structs", "opaque", "functions"]
+# cbindgen exports every function of an `extern "C"` block, whatever the
+# `include` list says, so the raw bindings of libmodsecurity (see
+# rust/src/modsec.rs) are excluded by name here.  The internal types the crate
+# still declares `pub` are excluded as well, they are not part of the ABI.
+exclude = [
+    "msc_init",
+    "msc_set_log_cb",
+    "msc_cleanup",
+    "msc_create_rules_set",
+    "msc_rules_add_file",
+    "msc_rules_add_remote",
+    "msc_rules_cleanup",
+    "msc_new_transaction",
+    "msc_new_transaction_with_id",
+    "msc_transaction_cleanup",
+    "msc_process_connection",
+    "msc_process_uri",
+    "msc_add_n_request_header",
+    "msc_process_request_headers",
+    "msc_append_request_body",
+    "msc_process_request_body",
+    "msc_update_status_code",
+    "msc_intervention",
+    "msc_process_logging",
+    "ngx_http_waf_modsecurity_log",
+    "ngx_http_waf_log_error",
+    "free",
+    "BotId",
+    "CheckId",
+    "TriggerKind",
+]
+include = [
+    "NgxWafStr",
+    "NgxWafHeader",
+    "NgxWafModsecReq",
+    "NgxWafReq",
+    "NgxWafStep",
+    "NgxWafDecision",
+    "NgxWafPending",
+    "NgxWafEvent",
+    "NgxWafZoneRefs",
+    "NgxWafZoneHandles",
+    "ShmOps",
+    "RegexOps",
+    "ngx_waf_version",
+    "ngx_waf_string_free",
+    "ngx_waf_main_create",
+    "ngx_waf_main_free",
+    "ngx_waf_conf_create",
+    "ngx_waf_conf_free",
+    "ngx_waf_conf_enabled",
+    "ngx_waf_conf_modsecurity_enabled",
+    "ngx_waf_conf_zone_refs",
+    "ngx_waf_conf_captcha_api",
+    "ngx_waf_conf_take_warning",
+    "ngx_waf_directive",
+    "ngx_waf_zone_directive",
+    "ngx_waf_conf_merge",
+    "ngx_waf_check_begin",
+    "ngx_waf_check_step",
+    "ngx_waf_check_resume",
+    "ngx_waf_check_log",
+    "ngx_waf_check_free",
+    "ngx_waf_shm_zone_init",
+    "ngx_waf_shm_zone_free",
+    "ngx_waf_shm_zone_gc",
+    "ngx_waf_should_gc",
+    "ngx_waf_gc",
+]
+
+[export.rename]
+"NgxWafStr" = "ngx_waf_str_t"
+"NgxWafHeader" = "ngx_waf_header_t"
+"NgxWafModsecReq" = "ngx_waf_modsec_req_t"
+"NgxWafReq" = "ngx_waf_req_t"
+"NgxWafStep" = "ngx_waf_step_t"
+"NgxWafDecision" = "ngx_waf_decision_t"
+"NgxWafPending" = "ngx_waf_pending_t"
+"NgxWafEvent" = "ngx_waf_event_t"
+"NgxWafZoneRefs" = "ngx_waf_zone_refs_t"
+"NgxWafZoneHandles" = "ngx_waf_zone_handles_t"
+"NgxWafMethod" = "ngx_waf_method"
+"NgxWafHttpVersion" = "ngx_waf_http_version"
+"NgxWafStepKind" = "ngx_waf_step_kind"
+"NgxWafEventKind" = "ngx_waf_event_kind"
+"NgxWafContentType" = "ngx_waf_content_type"
+"NgxWafMain" = "ngx_waf_main_t"
+"NgxWafConf" = "ngx_waf_conf_t"
+"NgxWafCheck" = "ngx_waf_check_t"
+"ShmOps" = "ngx_waf_shm_ops_t"
+"RegexOps" = "ngx_waf_regex_ops_t"
+
+[enum]
+# `NGX_WAF_STEP_KIND_ALLOW`, the spelling the C glue uses for the values that
+# used to be hand written macros.
+rename_variants = "QualifiedScreamingSnakeCase"
+
+[fn]
+args = "auto"
+rename_args = "none"
+
+[parse]
+parse_deps = false
+
+[parse.expand]
+crates = []
+all_features = false
+
+# The flags of `rust/src/flags.rs` are an implementation detail, the header
+# never sees the macro.
+[macro_expansion]
+bitflags = false

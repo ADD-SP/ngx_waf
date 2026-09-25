@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#MISE description="Build the dynamic module"
+#MISE depends=["rust-core", "nginx-src"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_PREFIX:=$root/test/nginx-install}"
+: "${JOBS:=$(nproc 2> /dev/null || echo 2)}"
+
+dir="$root/test/nginx-$NGINX_VERSION"
+stamp="$dir/.ngx-waf-configure"
+bin="$dir/objs/nginx"
+makefile="$dir/objs/Makefile"
+module="$dir/objs/ngx_http_waf_module.so"
+
+# See `build-static`: the two knobs belong to the coverage tasks.
+target_dir="${NGX_WAF_TARGET_DIR:-$root/rust/target}"
+ld_opt="${NGX_WAF_LD_OPT:-}"
+cc_opt="${NGX_WAF_CC_OPT:-}"
+lib="$target_dir/release/libngx_waf_core.a"
+
+# See `build-static`: the fingerprint covers the kind of module, the arguments
+# below, the target directory and the linker options, and the `config` script
+# of the module; the `objs/Makefile` has to be there for the tree to build at
+# all.
+flags=(--with-http_ssl_module --with-http_realip_module)
+want="dynamic ${flags[*]} $NGINX_PREFIX $root $target_dir $cc_opt $ld_opt $(cksum "$root/config")"
+
+configure_ld=()
+if [ -n "$ld_opt" ]; then
+    configure_ld=(--with-ld-opt="$ld_opt")
+fi
+
+# `NGX_WAF_CC_OPT` is the knob of the sanitizer task: nginx and the glue are
+# compiled with it on the command line, and the fingerprint above rebuilds the
+# tree when it changes.
+configure_cc=()
+if [ -n "$cc_opt" ]; then
+    configure_cc=(--with-cc-opt="$cc_opt")
+fi
+
+if [ "$(cat "$stamp" 2> /dev/null || true)" != "$want" ] || [ ! -f "$makefile" ]; then
+    echo " + configuring nginx (dynamic module)"
+
+    # A checkout of nginx carries `auto/configure`, the release tarball carries
+    # `configure` next to `auto/`.
+    configure=configure
+    [ -x "$dir/auto/configure" ] && configure=auto/configure
+
+    (cd "$dir" && "./$configure" \
+        --prefix="$NGINX_PREFIX" \
+        "${flags[@]}" \
+        "${configure_cc[@]}" \
+        "${configure_ld[@]}" \
+        --add-dynamic-module="$root" > /dev/null)
+    printf '%s\n' "$want" > "$stamp"
+    rm -f "$bin"
+fi
+
+if [ "$module" -ot "$lib" ]; then
+    echo " + the Rust core changed, relinking the module"
+    rm -f "$module"
+fi
+
+echo " + building nginx and the dynamic module"
+make -C "$dir" -j"$JOBS"

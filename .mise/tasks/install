@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Install the built dynamic module into the nginx prefix"
+#MISE depends=["build-dynamic"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+: "${NGINX_VERSION:=1.27.2}"
+: "${NGINX_PREFIX:=$root/test/nginx-install}"
+
+dir="$root/test/nginx-$NGINX_VERSION"
+
+mkdir -p "$NGINX_PREFIX/modules"
+cp "$dir/objs/ngx_http_waf_module.so" "$NGINX_PREFIX/modules/"
+make -C "$dir" install
+echo " + the module is installed in $NGINX_PREFIX/modules"

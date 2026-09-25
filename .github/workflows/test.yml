@@ -1,7 +1,7 @@
 name: test
 
 on:
-  push: 
+  push:
     branches:
       - master
       - lts
@@ -21,94 +21,137 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+
 jobs:
-  buld_deps:
-    name: Build dependencies
+  rust:
+    name: Rust core
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-        with: 
-          ref: ${{ github.ref }}
-          submodules: true
 
-      - name: Generate cache key
-        id: cache_key
-        uses: ./.github/workflows/reusable_actions/build_cache_key
-      
-      - name: Lookup build cache
-        id: cache
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # `llvm-tools-preview` carries the llvm-profdata and llvm-cov of the
+          # toolchain, the coverage task needs them.
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Cache the cargo artefacts
         uses: actions/cache@v4
         with:
-          key: ${{ steps.cache_key.outputs.cache_key }}
           path: |
-            ${{ github.workspace }}/deps.tar.gz
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
 
-      - name: Install pre-requirements
+      # The action installs mise and the tools of mise.toml (cbindgen); the
+      # cache above lets the cargo backend reuse the crate sources.
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
+
+      # The crate is linked against libmodsecurity, `cargo test` therefore needs
+      # the library even when no inspection runs; `mise bootstrap` installs it
+      # with the rest of `[bootstrap.packages]`.
+      - name: Install the system packages
         run: |
           sudo apt-get --yes update
-          # https://github.com/actions/runner-images/issues/2139
-          sudo apt-get remove nginx-core \
-            nginx-full \
-            nginx-light \
-            nginx-extras \
-            libgd3
-          sudo apt-get install --yes \
-            build-essential \
-            zlib1g-dev \
-            libpcre3 \
-            libpcre3-dev \
-            libssl-dev \
-            libxslt1-dev \
-            libxml2-dev \
-            libgeoip-dev \
-            libgd-dev \
-            libperl-dev \
-            libcurl4-openssl-dev
+          mise bootstrap -y
 
-      - name: Build dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Format
+        run: mise run fmt-check
+
+      - name: Lint
+        run: mise run clippy
+
+      - name: Test
+        run: mise run test-rust
+
+      # The numbers are printed, nothing fails on them: the end to end half of
+      # the coverage needs an instrumented nginx and stays a local task.
+      - name: Coverage
+        run: mise run coverage
+
+      # The header is generated from rust/src/ffi.rs, a stale one would be a
+      # trap for everyone building the module.
+      - name: Check the FFI header is up to date
         run: |
-          bazel build --registry=file://$(realpath ngx_waf_deps) //:deps
-          cp bazel-bin/deps.tar.gz .
+          mise run header
+          git diff --exit-code -- include/ngx_http_waf_ffi.h
+
+  sanitizers:
+    name: Sanitizers and fuzzing
+    runs-on: ubuntu-latest
+    needs: [rust]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # AddressSanitizer, Miri and cargo-fuzz are nightly only; the module
+      # itself keeps being built by the stable toolchain of rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - name: Cache the cargo artefacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/Cargo.toml') }}
+
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
+
+      - name: Install the system packages
+        run: |
+          sudo apt-get --yes update
+          mise bootstrap -y
+
+      # The unit tests of the core on the fake segment: the buffer of a fake
+      # zone is a vector, so AddressSanitizer sees the redzones around it and a
+      # table that reads or writes outside its slot array is a failure.  The
+      # shared memory of a real zone is anonymous memory of nginx, where the
+      # sanitizer cannot see a write that stays inside the mapping; that is what
+      # the tests here are for.
+      - name: Test with AddressSanitizer
+        run: mise run test-asan
+
+      # Miri checks the provenance and the aliasing rules of the same tables.
+      - name: Test with Miri
+        run: mise run test-miri
+
+      - name: Fuzz the table state machine
+        run: |
+          FUZZ_TIME=30 mise run fuzz
 
   build_test:
-    name: Build & Test
+    name: nginx ${{ matrix.nginx-version }} (${{ matrix.module-type }})
     runs-on: ubuntu-latest
-    needs: [buld_deps]
+    needs: [rust]
 
     strategy:
+      fail-fast: false
       matrix:
         nginx-version: ['stable', 'mainline']
         module-type:  ['static', 'dynamic']
 
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - uses: actions/checkout@v4
-        with: 
-          ref: ${{ github.ref }}
-          submodules: true
 
-      - name: Generate cache key
-        id: cache_key
-        uses: ./.github/workflows/reusable_actions/build_cache_key
-      
-      - name: Lookup build cache
-        id: cache
-        uses: actions/cache@v4
-        with:
-          key: ${{ steps.cache_key.outputs.cache_key }}
-          path: |
-            ${{ github.workspace }}/deps.tar.gz
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Assert build dependencies cache found
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Build dependencies cache not found, this step should be unreachable."
-          exit 1
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
 
       - name: Install pre-requirements
         run: |
@@ -119,62 +162,118 @@ jobs:
             nginx-light \
             nginx-extras \
             libgd3
-          sudo apt-get install --yes \
-            build-essential \
-            zlib1g-dev \
-            libpcre3 \
-            libpcre3-dev \
-            libssl-dev \
-            libxslt1-dev \
-            libxml2-dev \
-            libgeoip-dev \
-            libgd-dev \
-            libperl-dev \
-            libcurl4-openssl-dev
+          mise bootstrap -y
+          mise run test-nginx-deps
 
-      - name: Apply dependencies
+      - name: Download the nginx sources
         run: |
-          tar -zxf deps.tar.gz
+          # A `sudo pip install` fails on a runner whose python3 carries the
+          # Debian packages: pip tries to replace urllib3 and cannot uninstall
+          # a package of the distribution.  `lastversion` lives in a virtual
+          # environment of its own, its dependencies never meet the ones of
+          # the system.
+          sudo apt-get install --yes python3-venv
+          python3 -m venv /tmp/lastversion
+          /tmp/lastversion/bin/pip install --quiet lastversion
+          /tmp/lastversion/bin/lastversion download nginx:${{ matrix.nginx-version }}
 
-          echo "$(realpath deps/libmodsecurity/lib)" | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
-          echo "$(realpath deps/libsodium/lib)"      | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
-          echo "$(realpath deps/libcjson/lib)"       | sudo tee -a /etc/ld.so.conf.d/ngx_waf.conf
-          sudo ldconfig
-
-          echo "LIB_MODSECURITY=$(realpath deps/libmodsecurity)" >> "$GITHUB_ENV"
-          echo "LIB_SODIUM=$(realpath deps/libsodium)" >> "$GITHUB_ENV"
-          echo "LIB_CJSON=$(realpath deps/libcjson)" >> "$GITHUB_ENV"
-          echo "LIB_UTHASH=$(realpath deps/uthash)" >> "$GITHUB_ENV"
-
-      - name: Download & Build & Install nginx-${{ matrix.nginx-version }}
-        run: |
-          sudo pip install lastversion
-          lastversion download nginx:${{ matrix.nginx-version }}
           mkdir nginx-src
           tar zxf nginx-*.tar.gz --directory nginx-src --strip-components=1
 
+      - name: Configure & build nginx
+        run: |
           cd nginx-src
-          if [ ${{ matrix.module-type }} = 'static module' ] ; then \
-            opt='--add-module' ;\
-          else \
-            opt='--add-dynamic-module' ;\
+          if [ "${{ matrix.module-type }}" = 'static' ]; then
+            opt='--add-module'
+          else
+            opt='--add-dynamic-module'
           fi
 
-          ./configure ${opt}=${{ github.workspace }} --with-http_realip_module --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
-          make -j$(nproc)
-          sudo make install
-          sudo useradd nginx -s /sbin/nologin -M
-          sudo ln -s /usr/local/nginx/sbin/nginx /usr/local/bin/nginx
-          nginx -V
+          ./configure ${opt}=${{ github.workspace }} \
+            --with-http_ssl_module \
+            --with-http_realip_module \
+            --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
+          make -j"$(nproc)"
 
-      - name: Install Test::Nginx
+      - name: Run the integration tests
         run: |
-          sudo cpan Test::Nginx
-
-      - name: Test
-        run: |
-          sudo chmod 777 -R /tmp
           cd test/test-nginx
           export MODULE_TEST_PATH=/tmp/module_test
+          if [ "${{ matrix.module-type }}" = 'dynamic' ]; then
+            export MODULE_PATH="${{ github.workspace }}/nginx-src/objs/ngx_http_waf_module.so"
+          fi
+          export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
           sh ./init.sh
-          exec sudo sh start.sh t/*.t
+
+          # Every template `init.sh` just wrote into t/.  modsecurity.t and
+          # the ModSecurity cases of action.t need the ModSecurity/coreruleset
+          # repositories, init.sh clones them (once, into $MODULE_TEST_DEPS).
+          sh ./start.sh
+
+          # The end to end checks of the module itself, with one worker and
+          # with four (the counters and the action table live in shared memory
+          # and have to hold across workers).  A dynamic build has to load the
+          # module, like the integration tests above.
+          cd "${{ github.workspace }}"
+          MODULE_PATH="${MODULE_PATH:-}" \
+            NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx" mise run test-e2e
+
+      # One combination of the matrix is enough for the memory checks: they run
+      # the suites of the step above again, under valgrind, on the same build.
+      - name: Run the memory checks
+        if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
+        run: |
+          sudo apt-get install --yes valgrind
+
+          # The paths of the integration tests above: the templates live in
+          # /tmp/module_test and the ModSecurity repositories of their cases in
+          # /tmp/ngx-waf-test-deps, which `init.sh` reuses instead of cloning.
+          export MODULE_TEST_PATH=/tmp/module_test
+          export TEST_NGINX_BINARY="${{ github.workspace }}/nginx-src/objs/nginx"
+          export NGINX_BIN="${{ github.workspace }}/nginx-src/objs/nginx"
+          mise run test-valgrind
+
+      # The end to end checks again, against an nginx the task builds with
+      # AddressSanitizer itself: the C glue and the memory the module handles
+      # outside the shared mapping.  The mapping itself is invisible to the
+      # sanitizer, the fake segment of `test-asan` and `test-miri` covers it.
+      #
+      # The sanitized build configures a tree of its own below `test/`, which
+      # `nginx-src` copies out of `NGINX_SRC`: the sources of this job (the ones
+      # the steps above already downloaded) instead of a second download.
+      - name: Run the checks with AddressSanitizer
+        if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
+        run: |
+          export NGINX_SRC="${{ github.workspace }}/nginx-src"
+          mise run test-sanitize-nginx
+
+      # The rest of the matrix builds nginx with PCRE2, so the `#if
+      # !(NGX_PCRE2)` half of the glue is never compiled there: a pattern that
+      # is a slice of a rule file (the engine expects a NUL terminated string
+      # with PCRE1, `pcre2_compile()` takes a length) only breaks in a tree
+      # like this one.  The suites load the configuration over and over, which
+      # is what compiles the rules.
+      # Reproduce it locally with a tree of your own:
+      #   ./configure --without-pcre2 --with-http_ssl_module \
+      #     --with-http_realip_module --add-module=$PWD
+      #   TEST_NGINX_BINARY=<tree>/objs/nginx mise run test-nginx
+      - name: Run the integration tests of a PCRE1 build
+        if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
+        run: |
+          sudo apt-get install --yes libpcre3-dev
+
+          mkdir -p nginx-pcre1
+          tar zxf nginx-*.tar.gz --directory nginx-pcre1 --strip-components=1
+
+          cd nginx-pcre1
+          ./configure --without-pcre2 \
+            --with-http_ssl_module \
+            --with-http_realip_module \
+            --add-module="${{ github.workspace }}" \
+            --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong'
+          make -j"$(nproc)"
+
+          cd "${{ github.workspace }}"
+          TEST_NGINX_BINARY="${{ github.workspace }}/nginx-pcre1/objs/nginx" \
+            MODULE_TEST_PATH=/tmp/module_test_pcre1 mise run test-nginx
+          NGINX_BIN="${{ github.workspace }}/nginx-pcre1/objs/nginx" mise run test-e2e

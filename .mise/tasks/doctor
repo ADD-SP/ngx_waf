@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#MISE description="Check cargo, rustc and cbindgen"
+set -euo pipefail
+
+status=0
+
+if ! command -v rustc > /dev/null 2>&1 || ! command -v cargo > /dev/null 2>&1; then
+    echo "ngx_waf: rustc/cargo not found on PATH" >&2
+    echo "         install rustup from https://rustup.rs; rust-toolchain.toml pins the toolchain" >&2
+    status=1
+fi
+
+if ! command -v cbindgen > /dev/null 2>&1; then
+    echo "ngx_waf: cbindgen not found on PATH" >&2
+    echo "         run 'mise install', or 'mise bootstrap -y' for the system packages too" >&2
+    status=1
+fi
+
+# The sanitizers, Miri and the fuzzer are optional: they are needed by
+# `mise run test-asan`, `mise run test-miri` and `mise run fuzz`, not by a
+# build.
+if ! rustup toolchain list 2> /dev/null | grep -q '^nightly-'; then
+    echo "ngx_waf: note: the nightly toolchain is missing, the sanitizer tasks need it"
+    echo "         (rustup toolchain install nightly)"
+fi
+
+if ! rustup component list --toolchain nightly --installed 2> /dev/null | grep -q '^miri-'; then
+    echo "ngx_waf: note: the miri component of nightly is missing"
+    echo "         (rustup component add --toolchain nightly miri)"
+fi
+
+if ! command -v cargo-fuzz > /dev/null 2>&1; then
+    echo "ngx_waf: note: cargo-fuzz is missing, 'mise run fuzz' needs it"
+    echo "         (mise install)"
+fi
+
+exit "$status"
