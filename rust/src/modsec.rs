@@ -12,8 +12,8 @@
 //! dependency would be.  The library itself is linked by nginx, see
 //! `ngx_http_waf_module_libs` in `config`.
 //!
-//! There is no response phase wrapper: the response headers and body are not
-//! inspected yet (see `rust/README.md`).
+//! There is no response phase wrapper: the response headers and body are
+//! intentionally not inspected (see `rust/README.md`).
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};

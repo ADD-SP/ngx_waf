@@ -68,14 +68,37 @@ printf '/white/\n'                       >> "$prefix/rules/white-referer"
 # the ones of the C implementation did (`rust/src/pcre.rs`).  The leading
 # newline ends the last line of the shipped file, which has none.
 printf '\n^/(?!allowed/)www\\.pcre$\n'   >> "$prefix/rules/url"
-# A certificate for the TLS provider stub; without openssl the TLS case is
-# skipped.
+# The CA and the server certificate of the TLS provider stub; without openssl
+# the TLS cases are skipped.
 # nginx resolves a relative certificate path against the configuration
 # directory.
 mkdir -p "$prefix/conf/ssl"
 if command -v openssl > /dev/null 2>&1; then
-    openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=127.0.0.1' \
-        -keyout "$prefix/conf/ssl/key.pem" -out "$prefix/conf/ssl/cert.pem" > /dev/null 2>&1
+    openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
+        -subj '/CN=ngx_waf test CA' \
+        -keyout "$prefix/conf/ssl/ca-key.pem" \
+        -out "$prefix/conf/ssl/ca.pem" > /dev/null 2>&1
+    openssl req -newkey rsa:2048 -nodes -subj '/CN=localhost' \
+        -keyout "$prefix/conf/ssl/key.pem" \
+        -out "$prefix/conf/ssl/cert.csr" > /dev/null 2>&1
+    printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\n' \
+        > "$prefix/conf/ssl/san.cnf"
+    openssl x509 -req -days 2 \
+        -in "$prefix/conf/ssl/cert.csr" \
+        -CA "$prefix/conf/ssl/ca.pem" \
+        -CAkey "$prefix/conf/ssl/ca-key.pem" \
+        -CAcreateserial \
+        -extfile "$prefix/conf/ssl/san.cnf" \
+        -out "$prefix/conf/ssl/cert.pem" > /dev/null 2>&1
+    # A certificate no CA of this run signed, for the negative TLS check.
+    openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
+        -subj '/CN=127.0.0.1' \
+        -keyout "$prefix/conf/ssl/wrong-key.pem" \
+        -out "$prefix/conf/ssl/wrong-cert.pem" > /dev/null 2>&1
+
+    # OpenSSL reads this through `SSL_CTX_set_default_verify_paths()`; nginx
+    # keeps it across a reload through the `env` directive of nginx.conf.
+    export SSL_CERT_FILE="$prefix/conf/ssl/ca.pem"
 fi
 
 if [ -n "${MODULE_PATH:-}" ]; then
@@ -710,6 +733,8 @@ if [ -s "$prefix/conf/ssl/cert.pem" ]; then
     # this fails when the name is not terminated properly.
     check_body 200 'good' "captcha sends the host name as SNI" \
         -X POST -d 'g-recaptcha-response=token' "$cap/tlsname/captcha"
+    check_body 200 'bad' "captcha rejects an untrusted provider certificate" \
+        -X POST -d 'g-recaptcha-response=token' "$cap/badtls/captcha"
 fi
 
 # The stub of this script accepts the connection and never answers: the module

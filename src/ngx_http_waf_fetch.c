@@ -211,12 +211,46 @@ void ngx_http_waf_fetch_failed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
 
 
 /**
+ * Check the name the verified provider certificate has to carry: a DNS name
+ * through the helper of nginx, an IP literal through the check of the library
+ * (nginx' helper only looks at DNS names).
+ */
+static ngx_int_t ngx_http_waf_fetch_check_name(ngx_connection_t* c, ngx_str_t* host) {
+#ifdef X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT
+    u_char addr6[16];
+
+    if (ngx_inet_addr(host->data, host->len) != INADDR_NONE
+        || (host->len != 0
+            && ngx_inet6_addr(host->data, host->len, addr6) == NGX_OK))
+    {
+        X509* cert = SSL_get_peer_certificate(c->ssl->connection);
+        int ok;
+
+        if (cert == NULL) {
+            return NGX_ERROR;
+        }
+
+        /* the host of the endpoint is NUL terminated, see the configuration */
+        ok = X509_check_ip_asc(cert, (char*) host->data, 0);
+        X509_free(cert);
+
+        return ok == 1 ? NGX_OK : NGX_ERROR;
+    }
+#endif
+
+    return ngx_ssl_check_host(c, host);
+}
+
+
+/**
  * The TLS handshake of a provider request is finished: send the request.
  * nginx calls this through `c->ssl->handler`.
  */
 static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
     ngx_http_request_t* r = c->data;
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
+    ngx_http_waf_loc_conf_t* conf;
+    long rc;
 
     if (ctx == NULL || ctx->fetch.request == NULL || ctx->fetch.finished) {
         return;
@@ -229,6 +263,34 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
      * peer sends back would be parsed as an answer.
      */
     if (c->ssl == NULL || !c->ssl->handshaked || c->timedout || c->error) {
+        ngx_http_waf_fetch_failed(r, ctx);
+        return;
+    }
+
+    /*
+     * `SSL_VERIFY_PEER` lets the library refuse a certificate it cannot
+     * verify during the handshake; the check is repeated here like nginx does
+     * for an upstream connection.  The request is only written once the chain
+     * and the name of the provider were accepted.
+     */
+    rc = SSL_get_verify_result(c->ssl->connection);
+
+    if (rc != X509_V_OK) {
+        ngx_log_error(NGX_LOG_ERR, c->log, 0,
+                      "ngx_waf: the captcha provider certificate could not be "
+                      "verified (%l:%s)", rc, X509_verify_cert_error_string(rc));
+        ngx_http_waf_fetch_failed(r, ctx);
+        return;
+    }
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+
+    if (conf == NULL
+        || ngx_http_waf_fetch_check_name(c, &conf->captcha_api.host) != NGX_OK)
+    {
+        ngx_log_error(NGX_LOG_ERR, c->log, 0,
+                      "ngx_waf: the captcha provider certificate does not match "
+                      "the configured host");
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }

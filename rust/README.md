@@ -160,18 +160,30 @@ system directories.  The bindings are the raw declarations of the C API in
 | `waf_action` (status, block page, CAPTCHA policies), `waf_block_page` | done |
 | `waf_cache`, `waf_cc_deny` (shared memory counters, `$waf_rate`, `Retry-After`) | done |
 | the `$waf_*` variables and the `ngx_waf: [rule][detail]` audit line | done |
-| `waf_verify_bot` (crawler user agent + reverse DNS) | done |
-| `waf_captcha` (cookies/HMAC, `verify_url`, provider verdict, fail counters, `waf_action X=CAPTCHA`, CC reset) | done |
+| `waf_verify_bot` (crawler user agent + reverse DNS) | done, the aliases `gethostbyaddr()` reported are not walked (known issue) |
+| `waf_captcha` (cookies/HMAC, `verify_url`, provider verdict, fail counters, `waf_action X=CAPTCHA`, CC reset) | done, an HTTPS provider is verified against the system CA store |
 | `waf_under_attack` (the five second shield, cookie trio + HMAC) | done |
-| `waf_modsecurity` (rules, request phases, intervention, transaction id, audit log) | done, the response phases are not ported |
+| `waf_modsecurity` (rules, request phases, intervention, transaction id, audit log) | done, the response phases are intentionally out of scope for this rewrite |
 
 Every directive of the C implementation is implemented and the full
 `test/test-nginx` suite passes (`modsecurity.t` needs the two upstream
 repositories, `test/test-nginx/init.sh` fetches them once into
 `$MODULE_TEST_DEPS`, `ngx-waf-test-deps` next to `$MODULE_TEST_PATH` by
 default).  Of the easter eggs, `waf_mode NICO` is accepted and
-`waf_block_page SpongeBob` works; the ASCII art `waf_mode NICO` printed to
-stderr is not ported.
+prints its ASCII art to stderr again, and `waf_block_page SpongeBob` works.
+The C implementation passed the art to `fprintf("%s")` although its array had
+no terminating NUL, so it kept printing the memory behind the array; only the
+intended banner is restored here.
+
+### Known issues
+
+* Decision: `waf_modsecurity` runs the request phases of the library only.  The
+  response phases are deliberately out of scope for this rewrite, see the entry
+  below.
+* `waf_verify_bot` matches the host name the asynchronous resolver returns; the
+  aliases `gethostbyaddr()` reported in the C implementation are not checked.
+  A crawler that only matches through an alias is treated as a fake one, and
+  `waf_verify_bot strict` refuses it.
 
 ## Known differences
 
@@ -270,11 +282,13 @@ stderr is not ported.
   implementation only prepared an endpoint when the directive of the *request's
   own* context carried `api=`, so the documented default endpoint never worked
   and a location that inherited `waf_captcha` could never verify anything.
-* `waf_captcha api=https://...` is supported but the provider certificate is not
-  verified (there is no way to configure a CA bundle), and an answer bigger than
-  8k is treated as a failure.  The request is only written after the TLS
-  handshake completed (a timeout or a failed handshake is a failed attempt, the
-  token and the secret never reach the socket in clear text) and the host name
+* `waf_captcha api=https://...` verifies the provider certificate against the
+  CA store the TLS library was built with (the default paths of OpenSSL; the
+  `SSL_CERT_FILE` and `SSL_CERT_DIR` environment variables override them, and
+  an nginx that has to preserve one configures it with `env`).  The chain and
+  the host name of the endpoint both have to verify; an endpoint that cannot
+  be verified is a failed attempt, and the token and the secret are never
+  written.  An answer bigger than 8k is treated as a failure.  The host name
   of the endpoint is sent as the SNI.
 * The endpoint of `api=` has to be a URL `ngx_parse_url()` accepts (`http://`,
   `https://` or a bare `host[:port][/path]`).  The C implementation stored the
@@ -294,10 +308,11 @@ stderr is not ported.
   challenged again.  A cookie never crossed a process anyway, the salt is
   drawn while the configuration is read and a restart replaces it.
 * The friendly crawler check only looks at the host name nginx' asynchronous
-  resolver returns, the C implementation also walked the aliases `gethostbyaddr`
-  reports.  A crawler whose lookup needs a `resolver` (see the `resolver`
-  directive of the enclosing context) is treated as a fake one when the lookup
-  fails or no resolver is configured, so `waf_verify_bot strict` fails closed.
+  resolver returns (known issue: the C implementation also walked the aliases
+  `gethostbyaddr` reports).  A crawler whose lookup needs a `resolver` (see the
+  `resolver` directive of the enclosing context) is treated as a fake one when
+  the lookup fails or no resolver is configured, so `waf_verify_bot strict`
+  fails closed.
   When the lookup answers, `$waf_rule_details` and the audit line carry that
   host name; the C implementation reported the name of the crawler the user
   agent claims (`FAKE-BOT`/`REAL-BOT` with `GoogleBot`, `BingBot`, ...).
@@ -330,10 +345,11 @@ stderr is not ported.
   `waf_under_attack file=`) is served complete, like the C implementation did.
   The captcha templates are rendered with the site key and were complete in the
   C implementation as well.
-* ModSecurity: the C implementation installed nginx header/body filters and ran
-  the response phases of the library (and the rules of CRS phase 3/4) with them.
-  This port only runs the request phases — connection, URI, request headers and
-  request body — so a rule that reacts to a response does not fire.  The
+* ModSecurity: this port intentionally runs the request phases only —
+  connection, URI, request headers and request body.  The C implementation
+  installed nginx header/body filters and ran the response phases of the
+  library (and the rules of CRS phase 3/4) with them; that part is out of scope
+  for the rewrite, so a rule that reacts to a response does not fire.  The
   transaction is created when the inspection runs, kept in the request machine
   and released with the request pool.
 * ModSecurity: `msc_process_logging()` runs in the log phase like the C

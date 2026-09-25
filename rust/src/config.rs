@@ -835,8 +835,9 @@ fn directive_mode(conf: &mut LocConf, args: &[Vec<u8>]) -> Result<(), String> {
         } else if eq_ci(keyword, "FULL") {
             WafMode::FULL
         } else if value == b"NICO" {
-            // The NICO easter egg is accepted, but its ASCII art is not
-            // printed (see rust/README.md).
+            // The C implementation accepted this exact value and printed its
+            // ASCII art to stderr without changing the inspection mode.
+            crate::data::print_nico_banner();
             continue;
         } else {
             return Err("ngx_waf: invalid value.".to_string());
@@ -1545,6 +1546,20 @@ mod tests {
             WafMode::FULL.difference(WafMode::GET) | WafMode::STD
         );
         assert!(dir(&mut conf, "waf_mode", &["BAD"]).is_err());
+    }
+
+    #[test]
+    fn the_nico_easter_egg_is_accepted_without_a_mode() {
+        let mut conf = LocConf::default();
+        dir(&mut conf, "waf_mode", &["NICO"]).unwrap();
+        assert!(conf.waf_mode.is_empty());
+
+        dir(&mut conf, "waf_mode", &["FULL", "NICO"]).unwrap();
+        assert_eq!(conf.waf_mode, WafMode::FULL);
+
+        // The C implementation compared the value byte for byte.
+        assert!(dir(&mut conf, "waf_mode", &["nico"]).is_err());
+        assert!(dir(&mut conf, "waf_mode", &["!NICO"]).is_err());
     }
 
     #[test]

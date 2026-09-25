@@ -135,8 +135,21 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
         if (ngx_ssl_ciphers(cf, &conf->captcha_api.ssl, &ciphers, 0) != NGX_OK) {
             return NGX_ERROR;
         }
-        /* the provider certificate cannot be verified without a CA bundle */
-        SSL_CTX_set_verify(conf->captcha_api.ssl.ctx, SSL_VERIFY_NONE, NULL);
+
+        /*
+         * The provider certificate is checked against the CA store OpenSSL
+         * was built with.  `SSL_CERT_FILE`/`SSL_CERT_DIR` override the default
+         * paths, which is how a private CA is installed without a directive
+         * of the module; there is no bundle to fall back on, so a tree that
+         * cannot load its default paths refuses the configuration.
+         */
+        if (SSL_CTX_set_default_verify_paths(conf->captcha_api.ssl.ctx) != 1) {
+            ngx_ssl_error(NGX_LOG_EMERG, cf->log, 0,
+                          "SSL_CTX_set_default_verify_paths() failed");
+            return NGX_ERROR;
+        }
+
+        SSL_CTX_set_verify(conf->captcha_api.ssl.ctx, SSL_VERIFY_PEER, NULL);
     }
 
     conf->captcha_api.use_ssl = ssl;
