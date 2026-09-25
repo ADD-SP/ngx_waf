@@ -1,5 +1,23 @@
 ## Unreleased
 
+* The next generation rule engine of discussion #129 landed under `rust/rule/`
+  together with the `ngx-waf-rule` command line tool (`rust/rule-cli/`).  It
+  compiles the `Rule "condition" actions;` syntax, evaluates it against a
+  synthetic request and keeps the score/user variable semantics of the
+  examples; the tool has the `check` and `test` subcommands.  `rust/Cargo.toml`
+  is now a virtual workspace whose members are `src/` (the `ngx-waf-core` core
+  crate, whose manifest lives next to `lib.rs`), `rule/` and `rule-cli/`.  The
+  engine is not wired into `waf_rule_path` or the nginx module yet, that
+  integration and its FFI entry points are the next change.
+* The rule engine has a criterion benchmark of `RuleSet::evaluate`
+  (`mise run bench`): the individual operators, header scans and 0/3/10/100/1000
+  rule sets.  `mise run bench-check` compiles the harness and runs criterion's
+  test mode in CI; the benchmark is not a performance gate.
+* The rule engine has a reusable `EvaluationState` and `evaluate_fast` hot
+  path: the owned `evaluate`/`evaluate_traced` API stays compatible, a worker
+  can reuse one state per request, and a rule set without `log` actions or user
+  variables does not allocate on the fast path.  The criterion suite compares
+  the owned and fast paths.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.

@@ -43,7 +43,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/**/Cargo.toml') }}
 
       # The action installs mise and the tools of mise.toml (cbindgen); the
       # cache above lets the cargo backend reuse the crate sources.
@@ -68,6 +68,11 @@ jobs:
 
       - name: Test
         run: mise run test-rust
+
+      # The benchmarks are not a performance gate: the step compiles them and
+      # runs criterion's `--test` mode so that a broken harness cannot rot.
+      - name: Benchmark smoke
+        run: mise run bench-check
 
       # The numbers are printed, nothing fails on them: the end to end half of
       # the coverage needs an instrumented nginx and stays a local task.
@@ -103,7 +108,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/**/Cargo.toml') }}
 
       - uses: jdx/mise-action@v2
 

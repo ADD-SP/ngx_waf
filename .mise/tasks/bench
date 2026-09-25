@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Run the rule execution benchmarks with criterion"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+
+# The criterion reports are written relative to the working directory of the
+# benchmark; keep them next to the cargo target directory of the workspace.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/rust/target}"
+
+# The arguments are criterion's: a positional filter, `--save-baseline`,
+# `--baseline`, `--measurement-time`, ...
+exec "$cargo" bench --manifest-path "$root/rust/Cargo.toml" \
+    -p ngx-waf-rule --bench evaluate -- "$@"

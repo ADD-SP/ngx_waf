@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn matches_the_shipped_rules() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/rules");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/rules");
         let path = format!("{}/", root.display());
         let rules = load_all(path.as_bytes(), None).unwrap().rules;
         assert!(rules.url.iter().any(|rule| rule.is_match(b"/www.bak")));

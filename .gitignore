@@ -5,8 +5,9 @@ test/test-nginx/t/*.t
 test/test-nginx/gmon.out
 bazel-*
 /rust/target
-/rust/fuzz/artifacts
-/rust/fuzz/corpus
-/rust/fuzz/target
+/rust/rule/target
+/rust/src/fuzz/artifacts
+/rust/src/fuzz/corpus
+/rust/src/fuzz/target
 /test/nginx-*/
 /test/nginx-install/

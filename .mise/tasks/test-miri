@@ -29,4 +29,4 @@ fi
 export MIRIFLAGS="${MIRIFLAGS:-} -Zmiri-permissive-provenance -Zmiri-disable-isolation -Zmiri-ignore-leaks"
 export CARGO_TARGET_DIR="$target_dir"
 
-"$cargo" +nightly miri test --manifest-path "$root/rust/Cargo.toml" --lib -- shm::
+"$cargo" +nightly miri test --manifest-path "$root/rust/src/Cargo.toml" --lib -- shm::

@@ -1,0 +1,73 @@
+// The grammar of the next generation rule engine, the syntax of the project
+// discussion #129:
+//
+//     Rule "$URL == '/etc/passwd'" deny,log;
+//
+// The condition is a double quoted string, the string literals inside it use
+// single quotes, and the action list follows the closing quote.
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" | comment }
+comment = _{ "#" ~ (!"\n" ~ ANY)* | "//" ~ (!"\n" ~ ANY)* }
+
+file = { SOI ~ rule* ~ EOI }
+
+rule = { ^"rule" ~ !id_char ~ condition ~ action_list ~ ";" }
+condition = { "\"" ~ expr ~ "\"" }
+
+expr = { or_expr }
+or_expr = { and_expr ~ (op_or ~ and_expr)* }
+and_expr = { primary ~ (op_and ~ primary)* }
+primary = { "(" ~ expr ~ ")" | comparison }
+comparison = { operand ~ operator ~ operand }
+
+op_or = _{ "||" }
+op_and = _{ "&&" }
+
+operator = _{ op_not_in | op_in | op_ge | op_le | op_ne | op_eq | op_prefix | op_regex | op_gt | op_lt }
+op_eq = { "==" }
+op_ne = { "!=" }
+op_prefix = { "^=" }
+op_regex = { "~=" }
+op_ge = { ">=" }
+op_le = { "<=" }
+op_gt = { ">" }
+op_lt = { "<" }
+op_not_in = { not_word ~ op_in }
+not_word = @{ ^"not" ~ !id_char }
+op_in = @{ ^"in" ~ !id_char }
+
+operand = _{ variable | string | bare }
+variable = { "$" ~ var_name ~ ("." ~ header_name)? }
+var_name = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+header_name = @{ (ASCII_ALPHANUMERIC | "_" | "-")+ }
+
+string = ${ "'" ~ string_char* ~ "'" }
+string_char = _{ escape | !("'" | "\\") ~ ANY }
+double_string = ${ "\"" ~ double_string_char* ~ "\"" }
+double_string_char = _{ escape | !("\"" | "\\") ~ ANY }
+escape = @{ "\\" ~ ("\\" | "'" | "\"" | "n" | "r" | "t") }
+
+bare = @{ (ASCII_ALPHANUMERIC | "." | ":" | "/" | "-" | "_")+ }
+
+action_list = { action ~ ("," ~ action)* }
+action = _{ action_deny | action_allow | action_log | action_msg | action_var }
+action_deny = { ^"deny" ~ !id_char }
+action_allow = { ^"allow" ~ !id_char }
+action_log = { ^"log" ~ !id_char }
+action_msg = { ^"msg" ~ !id_char ~ ":" ~ string }
+action_var = { ^"var" ~ !id_char ~ ":" ~ "$" ~ var_name ~ "=" ~ value }
+
+value = _{ int_expr | string | double_string }
+int_expr = { int_term ~ (add_op ~ int_term)* }
+int_term = { int_factor ~ (mul_op ~ int_factor)* }
+int_factor = _{ int_literal | int_var | "(" ~ int_expr ~ ")" }
+int_literal = @{ ASCII_DIGIT+ }
+int_var = { "$" ~ var_name }
+add_op = { "+" | "-" }
+mul_op = { "*" }
+
+id_char = _{ ASCII_ALPHANUMERIC | "_" }
+
+// Parsing the content of a quoted `var:` value, it has to be one integer
+// expression and nothing else.
+int_expr_only = { SOI ~ int_expr ~ EOI }

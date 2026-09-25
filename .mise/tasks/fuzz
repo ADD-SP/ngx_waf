@@ -28,5 +28,5 @@ export CARGO_TARGET_DIR="${FUZZ_DIR:-$root/rust/target/fuzz}"
 corpus="$root/rust/target/fuzz-corpus/table"
 mkdir -p "$corpus"
 
-cd "$root/rust"
+cd "$root/rust/src"
 exec "$cargo" +nightly fuzz run table "$corpus" --target "$host" -- -max_total_time="$seconds"

@@ -17,7 +17,7 @@ tmp=$(mktemp "$(dirname "$header")/.$(basename "$header").XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 
 "$cbindgen" --config rust/cbindgen.toml --only-target-dependencies \
-    --output "$tmp" rust
+    --output "$tmp" rust/src
 
 chmod --reference="$header" "$tmp"
 mv "$tmp" "$header"

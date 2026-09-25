@@ -1,0 +1,20 @@
+[package]
+name = "ngx-waf-rule-cli"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The command line tool that checks and tests ngx_waf rules"
+license = "BSD-2-Clause"
+
+[[bin]]
+name = "ngx-waf-rule"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ngx-waf-rule = { path = "../rule" }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"

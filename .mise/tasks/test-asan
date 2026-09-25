@@ -32,4 +32,4 @@ export RUSTFLAGS="${RUSTFLAGS:-} -Zsanitizer=address"
 export CARGO_TARGET_DIR="$target_dir"
 
 # `-Zsanitizer` needs an explicit target on the command line.
-"$cargo" +nightly test --manifest-path "$root/rust/Cargo.toml" --lib --target "$host"
+"$cargo" +nightly test --manifest-path "$root/rust/src/Cargo.toml" --lib --target "$host"

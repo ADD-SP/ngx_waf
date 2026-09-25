@@ -1,0 +1,31 @@
+[package]
+name = "ngx-waf-core"
+version = "10.1.1"
+edition = "2021"
+publish = false
+description = "The Rust core of the ngx_waf nginx module"
+license = "BSD-2-Clause"
+
+[lib]
+name = "ngx_waf_core"
+# The crate root is the source directory itself, the manifest lives next to
+# `lib.rs`; without this line cargo would look for `src/lib.rs` below it.
+path = "lib.rs"
+# `staticlib` is what nginx links against, `rlib` keeps `cargo test` working.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+bitflags = "2"
+cidr = { version = "0.3", default-features = false }
+# Parsing the cookie trio of the captcha and of the under attack pages.
+cookie = { version = "0.18", default-features = false }
+hmac = "0.12"
+# Parsing the HTTP framing of the captcha provider answer.
+httparse = "1"
+lru = { version = "0.16", default-features = false }
+rand = { version = "0.9", default-features = false, features = ["std", "os_rng"] }
+regex = "1"
+# Parsing the JSON of the captcha provider answer.
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2.6"
