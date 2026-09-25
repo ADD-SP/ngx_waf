@@ -468,6 +468,17 @@ check_page "$root/rust/data/block.html" \
     "the block page is byte for byte the C page" "$base/bp/www.bak"
 check_page "$root/rust/data/under-attack.html" \
     "the under attack page is byte for byte" "http://127.0.0.1:18099/"
+# The cookie trio of the under attack page has to be found in the header a
+# browser sends back.  The C implementation used the cookie parser of nginx,
+# which changed in 1.29.6 (issue #154).
+rm -f "$prefix/under.cookies"
+check 503 "under attack mints the cookie trio" \
+    -c "$prefix/under.cookies" "http://127.0.0.1:18099/"
+check 503 "under attack holds the visitor back" \
+    -b "$prefix/under.cookies" "http://127.0.0.1:18099/"
+sleep 6
+check 200 "under attack lets the waited visitor through" \
+    -b "$prefix/under.cookies" "http://127.0.0.1:18099/"
 check_body 403 '\[true\]\[true\]\[true\]\[BLACK-URL\]' \
     "variables of a blocked request"         -H 'X-Real-IP: 9.9.9.1' "$base/www.bak"
 # An `error_page` that is a file (nginx internally redirects to it) has to be
@@ -693,6 +704,9 @@ fi
 cap="http://127.0.0.1:18091"
 check 503 "captcha challenges a visitor without cookies" "$cap/"
 
+# The core reads the trio from the raw header itself; the C implementation
+# looked it up with the cookie parser of nginx, which changed in 1.29.6 (issue
+# #154).
 headers=$(curl -s -D - -o /dev/null --max-time 5 -X POST \
     -d 'g-recaptcha-response=token' "$cap/captcha")
 body=$(printf '%s' "$headers" | tail -n 1)

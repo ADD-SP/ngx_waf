@@ -48,5 +48,9 @@
 * 同一上下文中的 `waf_captcha` 指定多个 `api=https://...` 时，其端点的 SSL
   上下文只保留一条池清理：模块会释放被后续指令替换掉的上下文，并且只注册
   一次清理，配置释放时不再对同一个 `SSL_CTX` 释放两次。
+* 验证码与 under attack 页面的 Cookie 由核心自己解析，因此 nginx 1.29.6 对
+  "Cookie" 解析的改动（issue #154）不会影响它们。C 实现使用
+  `ngx_http_parse_multi_header_lines()` 查找 Cookie；该函数在 1.29.6 起不再把
+  `;` 当分隔符，导致每个访客都被重新挑战。
 
 见 [https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md](https://github.com/ADD-SP/ngx_waf-docs/blob/master/docs/zh-cn/changes/overview.md)。
