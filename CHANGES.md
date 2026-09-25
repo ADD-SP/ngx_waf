@@ -13,6 +13,11 @@
   (`mise run bench`): the individual operators, header scans and 0/3/10/100/1000
   rule sets.  `mise run bench-check` compiles the harness and runs criterion's
   test mode in CI; the benchmark is not a performance gate.
+* The rule engine has a reusable `EvaluationState` and `evaluate_fast` hot
+  path: the owned `evaluate`/`evaluate_traced` API stays compatible, a worker
+  can reuse one state per request, and a rule set without `log` actions or user
+  variables does not allocate on the fast path.  The criterion suite compares
+  the owned and fast paths.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.

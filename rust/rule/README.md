@@ -107,6 +107,34 @@ whose right side is not a string literal, a rule with both `deny` and `allow`,
 two `msg:` actions, or an assignment to a built-in variable.  Errors carry the
 one based line and column of the source.
 
+### Hot path and reusable state
+
+`evaluate()`, `evaluate_with()`, `evaluate_traced()` and
+`evaluate_traced_with()` return owned results; they are the API of the CLI and
+the tests.  A worker that evaluates many requests should reuse one
+`EvaluationState`:
+
+```rust
+let mut state = EvaluationState::new();
+let verdict = rules.evaluate_fast(&request, &mut state);
+
+for &rule in state.logs() {
+    let line = rules.rule_line(rule);
+    let message = rules.rule_message(rule);
+}
+for (name, value) in rules.variable_names().iter().zip(state.variables()) {
+    // `state.assigned()` tells whether the variable was set by this request.
+}
+```
+
+`evaluate_fast` clears and resizes the state on every call, so the same state
+can be reused across requests and rule sets.  A rule set without `log` actions
+and without user variables never allocates on this path; a rule set with them
+allocates only until its buffers have reached their high-water mark.
+`state.assigned()` tells which variables were set during the evaluation, and
+`evaluate_fast_with` takes the same `UserVariables` map as `evaluate_with`
+when values have to be seeded before the first rule.
+
 ## The command line tool
 
 The binary is built by `cargo build -p ngx-waf-rule-cli` and is called
@@ -155,7 +183,10 @@ mise run bench -- --baseline before  # compare with the saved run
 
 The suite compiles each rule source and builds its request before the measured
 loop, so the numbers are one `evaluate()` call; the parse/compile path is not
-part of them, and `evaluate_traced` and the CLI are not benchmarked.  The cases
+part of them, and `evaluate_traced` and the CLI are not benchmarked.  The `fast`
+group runs the same representative cases through `evaluate_fast` with one
+reused `EvaluationState`, so the owned and the allocation-free paths can be
+compared.  The cases
 cover the individual operators (URL equality/prefix/regex, integer,
 IPv4/IPv6 CIDR, header substring/equality, `&&`), a header scan with 1, 8 and
 32 headers, and rule sets of 0, 3, 10, 100 and 1000 rules (first/last/no match,

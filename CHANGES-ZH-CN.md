@@ -10,6 +10,10 @@
 * 规则引擎新增 `RuleSet::evaluate` 的 criterion 基准（`mise run bench`）：
   覆盖各运算符、header 扫描以及 0/3/10/100/1000 条规则集。CI 通过
   `mise run bench-check` 只做编译与 criterion test 模式烟测，不做性能门禁。
+* 规则引擎新增可复用的 `EvaluationState` 与 `evaluate_fast` 热路径：owned
+  `evaluate`/`evaluate_traced` API 保持兼容；每个 worker 可复用一个 state，
+  没有 `log` 动作且没有用户变量的规则集在快速路径上零分配。criterion 基准
+  会同时对比 owned 与 fast 两条路径。
 * 模块逻辑正在用 Rust 重写：C 代码只保留 nginx 胶水层（模块与指令注册、请求数据
   打包、响应与变量落地），其余逻辑位于 `rust/`。
 * 使用 nginx `config` 脚本、cargo 与 mise 任务取代 Bazel。

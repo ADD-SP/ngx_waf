@@ -36,7 +36,9 @@ mod request;
 
 pub use crate::compile::RuleSet;
 pub use crate::error::{Error, Errors};
-pub use crate::eval::{Evaluation, LogEntry, RuleTrace, TracedEvaluation, UserVariables, Verdict};
+pub use crate::eval::{
+    Evaluation, EvaluationState, LogEntry, RuleTrace, TracedEvaluation, UserVariables, Verdict,
+};
 pub use crate::regex::{CompiledRegex, RegexEngine, RustRegexEngine};
 pub use crate::request::{Header, Request};
 

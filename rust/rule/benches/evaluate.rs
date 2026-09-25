@@ -13,7 +13,7 @@ use criterion::measurement::WallTime;
 use criterion::{
     criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
 };
-use ngx_waf_rule::{compile, Header, Request, RuleSet};
+use ngx_waf_rule::{compile, EvaluationState, Header, Request, RuleSet};
 
 const SCORE_RULES: &str = "\
 Rule \"'scanner' in $HEADER.User-Agent\" var:$score=1, log;
@@ -77,6 +77,22 @@ fn bench_case(
     let name = BenchmarkId::from_parameter(name);
     group.bench_function(name, |bencher| {
         bencher.iter(|| black_box(rules.evaluate(black_box(request))));
+    });
+}
+
+fn bench_fast_case(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    name: impl std::fmt::Display,
+    source: &str,
+    request: &Request<'_>,
+    state: &mut EvaluationState,
+) {
+    let rules: RuleSet = compile(source).expect("the benchmark rules compile");
+    let name = BenchmarkId::from_parameter(name);
+    group.bench_function(name, |bencher| {
+        bencher.iter(|| {
+            black_box(rules.evaluate_fast(black_box(request), state));
+        });
     });
 }
 
@@ -284,6 +300,62 @@ fn bench_rule_sets(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_fast(c: &mut Criterion) {
+    let mut group = c.benchmark_group("fast");
+
+    let url_match = request(b"/etc/passwd", ipv4(192, 0, 2, 1), 443, &HEADERS_CURL);
+    let score_match = request(b"/eval.php", ipv4(192, 0, 2, 1), 443, &HEADERS_SCANNER);
+    let first = request(b"/first", ipv4(192, 0, 2, 1), 443, &HEADERS_CURL);
+    let none = request(b"/none", ipv4(192, 0, 2, 1), 443, &HEADERS_CURL);
+    let log = request(b"/log", ipv4(192, 0, 2, 1), 443, &HEADERS_CURL);
+    let mut state = EvaluationState::new();
+
+    group.throughput(Throughput::Elements(1));
+    bench_fast_case(
+        &mut group,
+        "url_eq/match",
+        "Rule \"$URL == '/etc/passwd'\" deny;\n",
+        &url_match,
+        &mut state,
+    );
+    bench_fast_case(
+        &mut group,
+        "score/match",
+        SCORE_RULES,
+        &score_match,
+        &mut state,
+    );
+
+    group.throughput(Throughput::Elements(10));
+    bench_fast_case(
+        &mut group,
+        "10/first",
+        &generated_source(10, Mode::First),
+        &first,
+        &mut state,
+    );
+
+    group.throughput(Throughput::Elements(100));
+    bench_fast_case(
+        &mut group,
+        "100/log_all",
+        &log_all_source(100),
+        &log,
+        &mut state,
+    );
+
+    group.throughput(Throughput::Elements(1000));
+    bench_fast_case(
+        &mut group,
+        "1000/none",
+        &generated_source(1000, Mode::None),
+        &none,
+        &mut state,
+    );
+
+    group.finish();
+}
+
 fn criterion_config() -> Criterion {
     Criterion::default()
         .sample_size(50)
@@ -294,7 +366,7 @@ fn criterion_config() -> Criterion {
 criterion_group! {
     name = benches;
     config = criterion_config();
-    targets = bench_operators, bench_header_scan, bench_rule_sets
+    targets = bench_operators, bench_header_scan, bench_rule_sets, bench_fast
 }
 
 criterion_main!(benches);

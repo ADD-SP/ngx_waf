@@ -84,7 +84,10 @@ tool of the same discussion.
 Both crates are a preview: the nginx module does not load their files yet, the
 `waf_rule_path` integration and the C ABI entry points are the next change.
 The syntax, the variables, the actions and the command line options are
-documented in [`rule/README.md`](rule/README.md).
+documented in [`rule/README.md`](rule/README.md).  The engine exposes an owned
+`evaluate`/`evaluate_traced` API for the CLI and the tests, and a reusable
+`EvaluationState`/`evaluate_fast` path for the future per-worker nginx hot
+path; the criterion suite compares both.
 
 ## Unsafe boundaries
 

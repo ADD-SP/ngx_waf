@@ -1,5 +1,6 @@
 //! The type checks and the compilation of a syntax tree.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
 
@@ -15,6 +16,8 @@ use crate::regex::{CompiledRegex, RegexEngine};
 /// reference to the source string.
 pub struct RuleSet {
     pub(crate) rules: Vec<CompiledRule>,
+    pub(crate) variable_names: Vec<String>,
+    pub(crate) has_logs: bool,
 }
 
 impl RuleSet {
@@ -27,13 +30,72 @@ impl RuleSet {
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
     }
+
+    /// The user variables of the rule set, indexed by the value of a
+    /// [`VarId`](crate::EvaluationState) in the fast evaluation path.
+    pub fn variable_names(&self) -> &[String] {
+        &self.variable_names
+    }
+
+    /// The index of a user variable in [`RuleSet::variable_names`].
+    pub fn variable_index(&self, name: &str) -> Option<usize> {
+        self.variable_names
+            .iter()
+            .position(|variable| variable == name)
+    }
+
+    /// Whether the rule set uses any user variable.
+    pub fn has_variables(&self) -> bool {
+        !self.variable_names.is_empty()
+    }
+
+    /// Whether any rule carries a `log` action.
+    pub fn has_logs(&self) -> bool {
+        self.has_logs
+    }
+
+    /// The source line of the rule with the given index.
+    pub fn rule_line(&self, index: u32) -> Option<usize> {
+        self.rules.get(index as usize).map(|rule| rule.line)
+    }
+
+    /// The `msg:` message of the rule with the given index, when it has one.
+    pub fn rule_message(&self, index: u32) -> Option<&str> {
+        self.rules
+            .get(index as usize)
+            .and_then(|rule| rule.msg.as_deref())
+    }
 }
 
 impl fmt::Debug for RuleSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RuleSet")
             .field("rules", &self.rules.len())
+            .field("variables", &self.variable_names.len())
+            .field("has_logs", &self.has_logs)
             .finish()
+    }
+}
+
+/// The dense index of one user variable.
+pub(crate) type VarId = u32;
+
+#[derive(Default)]
+struct VariableTable {
+    names: Vec<String>,
+    ids: HashMap<String, VarId>,
+}
+
+impl VariableTable {
+    fn id(&mut self, name: &str) -> VarId {
+        if let Some(id) = self.ids.get(name) {
+            return *id;
+        }
+        let id = self.names.len() as VarId;
+        let owned = name.to_string();
+        self.names.push(owned);
+        self.ids.insert(name.to_string(), id);
+        id
     }
 }
 
@@ -101,7 +163,7 @@ pub(crate) enum Value {
     Port,
     ClientIp,
     Header(Vec<u8>),
-    Var(String),
+    Var(VarId),
 }
 
 pub(crate) enum Action {
@@ -109,13 +171,13 @@ pub(crate) enum Action {
     Allow,
     Log,
     Msg(String),
-    Var { name: String, value: IntValue },
+    Var { id: VarId, value: IntValue },
 }
 
 pub(crate) enum IntValue {
     Literal(i64),
     Port,
-    Var(String),
+    Var(VarId),
     Add(Box<IntValue>, Box<IntValue>),
     Sub(Box<IntValue>, Box<IntValue>),
     Mul(Box<IntValue>, Box<IntValue>),
@@ -147,18 +209,28 @@ pub(crate) fn compile(
     regex: &dyn RegexEngine,
 ) -> Result<RuleSet, Errors> {
     let map = Source::new(source);
+    let mut variables = VariableTable::default();
     let mut diagnostics = Vec::new();
     let mut compiled = Vec::with_capacity(rules.len());
 
     for rule in rules {
-        match compile_rule(rule, &map, source, regex) {
+        match compile_rule(rule, &mut variables, &map, source, regex) {
             Ok(rule) => compiled.push(rule),
             Err(mut errors) => diagnostics.append(&mut errors),
         }
     }
 
     if diagnostics.is_empty() {
-        Ok(RuleSet { rules: compiled })
+        let has_logs = compiled.iter().any(|rule| {
+            rule.actions
+                .iter()
+                .any(|action| matches!(action, Action::Log))
+        });
+        Ok(RuleSet {
+            rules: compiled,
+            variable_names: variables.names,
+            has_logs,
+        })
     } else {
         Err(Errors::new(diagnostics))
     }
@@ -166,12 +238,13 @@ pub(crate) fn compile(
 
 fn compile_rule(
     rule: &RuleAst,
+    variables: &mut VariableTable,
     map: &Source,
     source: &str,
     regex: &dyn RegexEngine,
 ) -> Result<CompiledRule, Vec<Error>> {
     let mut errors = Vec::new();
-    let condition = compile_expr(&rule.condition, map, source, regex, &mut errors);
+    let condition = compile_expr(&rule.condition, variables, map, source, regex, &mut errors);
 
     let mut actions = Vec::new();
     let mut deny = None;
@@ -210,11 +283,9 @@ fn compile_rule(
                     ));
                     continue;
                 }
-                if let Some(value) = compile_int(value, map, source, &mut errors) {
-                    actions.push(Action::Var {
-                        name: name.clone(),
-                        value,
-                    });
+                let id = variables.id(name);
+                if let Some(value) = compile_int(value, variables, map, source, &mut errors) {
+                    actions.push(Action::Var { id, value });
                 }
             }
         }
@@ -244,6 +315,7 @@ fn compile_rule(
 
 fn compile_expr(
     expr: &Expr,
+    variables: &mut VariableTable,
     map: &Source,
     source: &str,
     regex: &dyn RegexEngine,
@@ -251,13 +323,13 @@ fn compile_expr(
 ) -> Option<Condition> {
     match expr {
         Expr::Or(left, right) => {
-            let left = compile_expr(left, map, source, regex, errors);
-            let right = compile_expr(right, map, source, regex, errors);
+            let left = compile_expr(left, variables, map, source, regex, errors);
+            let right = compile_expr(right, variables, map, source, regex, errors);
             Some(Condition::Or(Box::new(left?), Box::new(right?)))
         }
         Expr::And(left, right) => {
-            let left = compile_expr(left, map, source, regex, errors);
-            let right = compile_expr(right, map, source, regex, errors);
+            let left = compile_expr(left, variables, map, source, regex, errors);
+            let right = compile_expr(right, variables, map, source, regex, errors);
             Some(Condition::And(Box::new(left?), Box::new(right?)))
         }
         Expr::Compare {
@@ -265,7 +337,9 @@ fn compile_expr(
             op,
             right,
             span,
-        } => compile_comparison(left, *op, right, *span, map, source, regex, errors),
+        } => compile_comparison(
+            left, *op, right, *span, variables, map, source, regex, errors,
+        ),
     }
 }
 
@@ -275,13 +349,14 @@ fn compile_comparison(
     op: Operator,
     right: &Operand,
     _span: Span,
+    variables: &mut VariableTable,
     map: &Source,
     source: &str,
     regex: &dyn RegexEngine,
     errors: &mut Vec<Error>,
 ) -> Option<Condition> {
-    let left_value = compile_operand(left, map, source, errors)?;
-    let right_value = compile_operand(right, map, source, errors)?;
+    let left_value = compile_operand(left, variables, map, source, errors)?;
+    let right_value = compile_operand(right, variables, map, source, errors)?;
     let left_kind = left_value.kind();
     let right_kind = right_value.kind();
 
@@ -490,7 +565,7 @@ enum OperandValue {
     Port,
     ClientIp,
     Header(Vec<u8>),
-    Var(String),
+    Var(VarId),
 }
 
 impl OperandValue {
@@ -519,13 +594,14 @@ impl OperandValue {
             OperandValue::Port => Some(Value::Port),
             OperandValue::ClientIp => Some(Value::ClientIp),
             OperandValue::Header(name) => Some(Value::Header(name)),
-            OperandValue::Var(name) => Some(Value::Var(name)),
+            OperandValue::Var(id) => Some(Value::Var(id)),
         }
     }
 }
 
 fn compile_operand(
     operand: &Operand,
+    variables: &mut VariableTable,
     map: &Source,
     source: &str,
     errors: &mut Vec<Error>,
@@ -540,7 +616,7 @@ fn compile_operand(
             Variable::Header { name } => {
                 OperandValue::Header(name.to_ascii_lowercase().into_bytes())
             }
-            Variable::User(name) => OperandValue::Var(name.clone()),
+            Variable::User(name) => OperandValue::Var(variables.id(name)),
         }),
         Operand::String { value, .. } => Some(OperandValue::Bytes(value.clone().into_bytes())),
         Operand::Bare { text, span } => {
@@ -608,6 +684,7 @@ fn coerce_ip_literal(value: OperandValue, other_is_ip: bool) -> OperandValue {
 
 fn compile_int(
     expr: &IntExpr,
+    variables: &mut VariableTable,
     map: &Source,
     source: &str,
     errors: &mut Vec<Error>,
@@ -626,14 +703,14 @@ fn compile_int(
                 ));
                 None
             } else {
-                Some(IntValue::Var(name.clone()))
+                Some(IntValue::Var(variables.id(name)))
             }
         }
         IntExpr::Add { left, right, .. }
         | IntExpr::Sub { left, right, .. }
         | IntExpr::Mul { left, right, .. } => {
-            let left = compile_int(left, map, source, errors);
-            let right = compile_int(right, map, source, errors);
+            let left = compile_int(left, variables, map, source, errors);
+            let right = compile_int(right, variables, map, source, errors);
             let left = left?;
             let right = right?;
             Some(match expr {
