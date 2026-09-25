@@ -546,28 +546,28 @@ else
         "$(tr -d '\r' < "$prefix/session.headers" | grep -i '^Set-Cookie:' | tr '\n' ' ')"
 fi
 
-# The fail counter of that server lives in a fourth zone: `max_fails=1:1m`
-# means twenty failures are allowed (`max(max_fails, 20)`), the 21st blocks.
-# Counting needs a visitor the action table challenges, so it is blacklisted
-# first, and every following request to the verification URL has no token.
+# The fail counter of that server lives in a fourth zone: `max_fails=3:1m`
+# means three failures are allowed, the fourth blocks.  Counting needs a
+# visitor the action table challenges, so it is blacklisted first, and every
+# following request to the verification URL has no token.
 check 403 "captcha fail counter visitor is challenged" \
     -H 'X-Real-IP: 9.9.9.42' "$multi/www.bak"
 fail_zone_ok=1
 attempt=0
-while [ "$attempt" -lt 21 ]; do
+while [ "$attempt" -lt 4 ]; do
     attempt=$((attempt + 1))
     status=$(curl -s -o /dev/null --max-time 5 -w '%{http_code}' \
         -H 'X-Real-IP: 9.9.9.42' -X POST -d 'x=1' "$multi/captcha")
-    if [ "$attempt" -le 20 ] && [ "$status" != 200 ]; then
+    if [ "$attempt" -le 3 ] && [ "$status" != 200 ]; then
         fail_zone_ok=0
     fi
-    if [ "$attempt" -eq 21 ] && [ "$status" != 429 ]; then
+    if [ "$attempt" -eq 4 ] && [ "$status" != 429 ]; then
         fail_zone_ok=0
     fi
 done
 if [ "$fail_zone_ok" = 1 ]; then
     pass=$((pass + 1))
-    printf 'ok   %-52s %s\n' "captcha fail counter on its own zone" "429 after 20"
+    printf 'ok   %-52s %s\n' "captcha fail counter on its own zone" "429 after 3"
 else
     fail=$((fail + 1))
     printf 'FAIL %-52s (attempt %s was %s)\n' \
