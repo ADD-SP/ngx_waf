@@ -17,6 +17,7 @@ pub(crate) const HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX: &[u8] =
 pub(crate) const HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE: &[u8] =
     include_bytes!("../data/reCAPTCHAv2_Invisible.html");
 pub(crate) const HTML_CAPTCHA_RECAPTCHA_V3: &[u8] = include_bytes!("../data/reCAPTCHAv3.html");
+pub(crate) const HTML_CAPTCHA_TURNSTILE: &[u8] = include_bytes!("../data/turnstile.html");
 
 /// The bytes of an embedded page the module serves.
 ///

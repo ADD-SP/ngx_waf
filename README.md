@@ -22,13 +22,13 @@ Handy, High performance Nginx firewall module.
 * High performance: Efficient algorithms and caching.
 * Advanced protection: [ModSecurity](https://github.com/SpiderLabs/ModSecurity) compatible, you can use [OWASP(Open Web Application Security Project®) ModSecurity Core Rule Set](https://owasp.org/www-project-modsecurity-core-rule-set/).
 * Friendly crawler verification: Supports verifying Google, Bing, Baidu and Yandex crawlers and allowing them automatically to avoid false positives.
-* Captcha: Supports three kinds of captchas: hCaptcha, reCAPTCHAv2 and reCAPTCHAv3.
+* Captcha: Supports hCaptcha, Cloudflare Turnstile, reCAPTCHAv2 and reCAPTCHAv3.
 
 ## Features
 
 * [ModSecurity](https://github.com/SpiderLabs/ModSecurity) compatible.
 * IPV4 and IPV6 support.
-* Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha).
+* Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha).
 * Support authentication-friendly crawlers (based on user agent and IP identification) to avoid blocking of these crawlers (e.g. GoogleBot).
 * CC protection, if the request rate exceeds the limit, the IP will be automatically banned for a period of time, or use CAPTCHA to do human identification and allow it if successful.
 * Exceptional allow on specific IP address.

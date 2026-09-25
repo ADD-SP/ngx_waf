@@ -632,12 +632,12 @@ impl Machine {
             Event::HttpData { data, eof } => match http_response::parse(data, eof) {
                 Response::Complete { status, body } => {
                     let conf = self.conf.get();
-                    let is_v3 = conf.captcha.provider == Some(CaptchaProvider::RecaptchaV3);
+                    let provider = conf.captcha.provider;
                     let threshold = conf.captcha.score;
 
                     if status == 0 || status >= 400 {
                         CaptchaVerdict::Bad
-                    } else if provider_verdict(body.as_ref(), is_v3, threshold) {
+                    } else if provider_verdict(body.as_ref(), provider, threshold) {
                         CaptchaVerdict::Pass
                     } else {
                         CaptchaVerdict::Bad
@@ -1148,9 +1148,8 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
 /// Run the provider (or the "not a verify request" path) for one captcha
 /// attempt.
 fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
-    let response_key = match state.conf.captcha.provider {
-        Some(CaptchaProvider::HCaptcha) => "h-captcha-response",
-        Some(_) => "g-recaptcha-response",
+    let provider = match state.conf.captcha.provider {
+        Some(provider) => provider,
         None => return captcha_apply(state, path, CaptchaVerdict::Fault),
     };
 
@@ -1158,7 +1157,7 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
         return captcha_apply(state, path, CaptchaVerdict::Challenge);
     }
 
-    let Some(token) = form_value(state.req.body, response_key) else {
+    let Some(token) = captcha_token(state.req.body, provider) else {
         return captcha_apply(state, path, CaptchaVerdict::Bad);
     };
 
@@ -1171,6 +1170,19 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
         continuation: Continuation::Captcha { path },
         url: String::from_utf8_lossy(&state.conf.captcha.api).into_owned(),
         body,
+    }
+}
+
+/// The form field the provider puts its token in.  Turnstile also accepts the
+/// field of its reCAPTCHA compatibility mode (`compat=recaptcha`).
+fn captcha_token(body: &[u8], provider: CaptchaProvider) -> Option<&[u8]> {
+    match provider {
+        CaptchaProvider::HCaptcha => form_value(body, "h-captcha-response"),
+        CaptchaProvider::Turnstile => form_value(body, "cf-turnstile-response")
+            .or_else(|| form_value(body, "g-recaptcha-response")),
+        CaptchaProvider::RecaptchaV2Checkbox
+        | CaptchaProvider::RecaptchaV2Invisible
+        | CaptchaProvider::RecaptchaV3 => form_value(body, "g-recaptcha-response"),
     }
 }
 
@@ -1417,7 +1429,11 @@ fn form_value<'a>(body: &'a [u8], key: &str) -> Option<&'a [u8]> {
 }
 
 /// Decide whether the provider accepted the token.
-fn provider_verdict(body: &[u8], is_v3: bool, threshold: Option<f64>) -> bool {
+fn provider_verdict(
+    body: &[u8],
+    provider: Option<CaptchaProvider>,
+    threshold: Option<f64>,
+) -> bool {
     let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) else {
         return false;
     };
@@ -1428,13 +1444,17 @@ fn provider_verdict(body: &[u8], is_v3: bool, threshold: Option<f64>) -> bool {
     if !success {
         return false;
     }
-    if !is_v3 {
-        return true;
+
+    match provider {
+        Some(CaptchaProvider::RecaptchaV3) => json
+            .get("score")
+            .and_then(|value| value.as_f64())
+            .map(|score| threshold.is_some_and(|threshold| score >= threshold))
+            .unwrap_or(false),
+        // hCaptcha, reCAPTCHA v2 and Turnstile only report whether the token
+        // was accepted.
+        _ => true,
     }
-    json.get("score")
-        .and_then(|value| value.as_f64())
-        .map(|score| threshold.is_some_and(|threshold| score >= threshold))
-        .unwrap_or(false)
 }
 
 /// `waf_under_attack`: hold every visitor back for five seconds before letting
@@ -2755,7 +2775,12 @@ mod tests {
 
     #[test]
     fn captcha_v3_requires_the_configured_score() {
-        for (score, expected_body) in [(0.1f64, &b"bad"[..]), (0.9f64, &b"good"[..])] {
+        for (payload, expected_body) in [
+            (r#"{"success":true,"score":0.1}"#, &b"bad"[..]),
+            (r#"{"success":true,"score":0.9}"#, &b"good"[..]),
+            // A Turnstile style answer without a score is not a v3 pass.
+            (r#"{"success":true}"#, &b"bad"[..]),
+        ] {
             let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
             let body = b"g-recaptcha-response=token";
             let mut machine =
@@ -2764,7 +2789,6 @@ mod tests {
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
             ));
-            let payload = format!(r#"{{"success":true,"score":{score}}}"#);
             let answer = provider_answer("200 OK", payload.as_bytes());
             let outcome = match machine.resume(Event::HttpData {
                 data: &answer,
@@ -2774,8 +2798,77 @@ mod tests {
                 _ => panic!("the provider answer decides the request"),
             };
             assert_eq!(outcome.status, OK);
-            assert_eq!(outcome.body, expected_body, "score {score}");
+            assert_eq!(outcome.body, expected_body, "payload {payload}");
         }
+    }
+
+    #[test]
+    fn captcha_turnstile_only_needs_success() {
+        for (payload, expected_body) in [
+            (r#"{"success":true}"#, &b"good"[..]),
+            // The score is not part of the Turnstile answer and is ignored.
+            (r#"{"success":true,"score":0.0}"#, &b"good"[..]),
+            (
+                r#"{"success":false,"error-codes":["invalid-input-response"]}"#,
+                &b"bad"[..],
+            ),
+        ] {
+            let mut conf = captcha_conf("Turnstile", &[]);
+            let body = b"cf-turnstile-response=token";
+            let mut machine =
+                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+            assert!(matches!(
+                machine.step(),
+                Step::Pending(Pending::HttpRequest)
+            ));
+            let answer = provider_answer("200 OK", payload.as_bytes());
+            let outcome = match machine.resume(Event::HttpData {
+                data: &answer,
+                eof: false,
+            }) {
+                Step::Decision(outcome) => outcome,
+                _ => panic!("the provider answer decides the request"),
+            };
+            assert_eq!(outcome.status, OK);
+            assert_eq!(outcome.body, expected_body, "payload {payload}");
+        }
+    }
+
+    /// The `compat=recaptcha` widget of Turnstile posts the reCAPTCHA field.
+    #[test]
+    fn captcha_turnstile_accepts_the_recaptcha_field() {
+        let mut conf = captcha_conf("Turnstile", &[]);
+        let body = b"g-recaptcha-response=token";
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let answer = provider_answer("200 OK", br#"{"success":true}"#);
+        let outcome = match machine.resume(Event::HttpData {
+            data: &answer,
+            eof: false,
+        }) {
+            Step::Decision(outcome) => outcome,
+            _ => panic!("the provider answer decides the request"),
+        };
+        assert_eq!(outcome.status, OK);
+        assert_eq!(outcome.body, b"good");
+    }
+
+    #[test]
+    fn captcha_turnstile_prefers_the_native_field() {
+        let mut conf = captcha_conf("Turnstile", &[]);
+        let body = b"g-recaptcha-response=compat&cf-turnstile-response=native";
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let (_, fetch_body) = machine.fetch().expect("the provider request");
+        assert_eq!(fetch_body, b"response=native&secret=secret");
     }
 
     #[test]

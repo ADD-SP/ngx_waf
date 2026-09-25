@@ -5,8 +5,8 @@
 use crate::cache::Caches;
 use crate::data::{
     embedded_page, HTML_BLOCK, HTML_CAPTCHA_HCAPTCHA, HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX,
-    HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE, HTML_CAPTCHA_RECAPTCHA_V3, HTML_SPONGE_BOB,
-    HTML_UNDER_ATTACK,
+    HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE, HTML_CAPTCHA_RECAPTCHA_V3, HTML_CAPTCHA_TURNSTILE,
+    HTML_SPONGE_BOB, HTML_UNDER_ATTACK,
 };
 use crate::flags::{BotTypes, WafMode};
 use crate::http::{FORBIDDEN, SERVICE_UNAVAILABLE};
@@ -369,6 +369,7 @@ pub enum CaptchaProvider {
     RecaptchaV2Checkbox,
     RecaptchaV2Invisible,
     RecaptchaV3,
+    Turnstile,
 }
 
 /// The shared memory zone a directive writes through: the name `waf_zone`
@@ -1033,6 +1034,7 @@ fn captcha_template(provider: CaptchaProvider) -> Option<&'static [u8]> {
         CaptchaProvider::RecaptchaV2Checkbox => Some(HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX),
         CaptchaProvider::RecaptchaV2Invisible => Some(HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE),
         CaptchaProvider::RecaptchaV3 => Some(HTML_CAPTCHA_RECAPTCHA_V3),
+        CaptchaProvider::Turnstile => Some(HTML_CAPTCHA_TURNSTILE),
     }
 }
 
@@ -1073,6 +1075,8 @@ fn directive_captcha(
                 }
                 let (provider, template) = if eq_ci(&value, "hCaptcha") {
                     (CaptchaProvider::HCaptcha, Some(HTML_CAPTCHA_HCAPTCHA))
+                } else if eq_ci(&value, "Turnstile") {
+                    (CaptchaProvider::Turnstile, Some(HTML_CAPTCHA_TURNSTILE))
                 } else if eq_ci(&value, "reCAPTCHAv2:checkbox") {
                     (
                         CaptchaProvider::RecaptchaV2Checkbox,
@@ -1187,6 +1191,9 @@ fn directive_captcha(
     if conf.captcha.api.is_empty() {
         conf.captcha.api = match conf.captcha.provider {
             Some(CaptchaProvider::HCaptcha) => b"https://hcaptcha.com/siteverify".to_vec(),
+            Some(CaptchaProvider::Turnstile) => {
+                b"https://challenges.cloudflare.com/turnstile/v0/siteverify".to_vec()
+            }
             Some(_) => b"https://www.recaptcha.net/recaptcha/api/siteverify".to_vec(),
             None => Vec::new(),
         };
@@ -1917,6 +1924,46 @@ mod tests {
         );
         assert!(conf.captcha.html.windows(3).any(|window| window == b"key"));
         assert!(!conf.captcha.html.windows(2).any(|window| window == b"%V"));
+    }
+
+    #[test]
+    fn turnstile_captcha_configuration() {
+        let mut conf = LocConf::default();
+        dir(
+            &mut conf,
+            "waf_captcha",
+            &["on", "prov=Turnstile", "sitekey=key", "secret=sec"],
+        )
+        .unwrap();
+
+        assert_eq!(conf.captcha.provider, Some(CaptchaProvider::Turnstile));
+        assert_eq!(
+            conf.captcha.api,
+            b"https://challenges.cloudflare.com/turnstile/v0/siteverify"
+        );
+        assert!(conf.captcha.html.windows(3).any(|window| window == b"key"));
+        assert!(!conf.captcha.html.windows(2).any(|window| window == b"%V"));
+        assert!(conf
+            .captcha
+            .html
+            .windows(b"cf-turnstile-response".len())
+            .any(|window| window == b"cf-turnstile-response"));
+
+        // A page read from a file replaces the built-in template.
+        let page = rule_file("<html>custom turnstile</html>");
+        let file = format!("file={}", page.display());
+        let mut conf = LocConf::default();
+        dir(
+            &mut conf,
+            "waf_captcha",
+            &["on", "prov=Turnstile", "secret=sec", file.as_str()],
+        )
+        .unwrap();
+        assert_eq!(
+            conf.captcha.html.as_slice(),
+            b"<html>custom turnstile</html>"
+        );
+        std::fs::remove_file(&page).unwrap();
     }
 
     #[test]

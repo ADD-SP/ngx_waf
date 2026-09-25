@@ -72,6 +72,11 @@
   pool cleanup for the SSL context of its endpoint: the module releases the
   context a repeated directive replaces and registers the cleanup once instead
   of freeing the same `SSL_CTX` twice when the configuration goes away.
+* `waf_captcha` supports Cloudflare Turnstile (`prov=Turnstile`): the default
+  endpoint is Turnstile's siteverify API, the answer only has to carry
+  `success`, the native `cf-turnstile-response` and the compatibility mode's
+  `g-recaptcha-response` fields are both accepted, and the module ships a
+  Turnstile page (issue #153).
 * The cookies of the captcha and of the under attack page are parsed with the
   `cookie` crate, so the "Cookie" parsing change of nginx 1.29.6 (issue #154)
   does not affect them.  The C implementation looked the cookies up with

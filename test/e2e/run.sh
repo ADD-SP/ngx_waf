@@ -740,6 +740,12 @@ check_body 200 'bad' "captcha survives an invalid answer" \
     -X POST -d 'g-recaptcha-response=token' "$cap/junk/captcha"
 check_body 200 'bad' "captcha v3 rejects a low score" \
     -X POST -d 'g-recaptcha-response=token' "$cap/v3/captcha"
+check_body 200 'good' "captcha turnstile accepts a scoreless answer" \
+    -X POST -d 'cf-turnstile-response=token' "$cap/turnstile/captcha"
+check_body 200 'good' "captcha turnstile accepts the compatible field" \
+    -X POST -d 'g-recaptcha-response=token' "$cap/turnstile/captcha"
+check_body 200 'bad' "captcha turnstile rejects a failed answer" \
+    -X POST -d 'cf-turnstile-response=token' "$cap/turnstile-bad/captcha"
 if [ -s "$prefix/conf/ssl/cert.pem" ]; then
     check_body 200 'good' "captcha reaches an https provider" \
         -X POST -d 'g-recaptcha-response=token' "$cap/tls/captcha"
@@ -822,6 +828,18 @@ check 200 "cc captcha counts from one again" \
 sleep 2
 check 503 "cc captcha denies the address again" \
     -H "$cc_header" "$cc_cap/"
+
+# The configuration of issue #153: `waf_captcha off` plus the action table of
+# `waf_action cc_deny=CAPTCHA`, solved by a scoreless Turnstile answer.
+cc_turnstile="http://127.0.0.1:18104/turnstile"
+cc_turnstile_header='X-Real-IP: 9.9.9.24'
+check 404 "cc turnstile counts the first request" \
+    -H "$cc_turnstile_header" "$cc_turnstile/"
+check 503 "cc turnstile challenges from the action table" \
+    -H "$cc_turnstile_header" "$cc_turnstile/"
+check_body 200 'good' "cc turnstile is solved with the provider" \
+    -H "$cc_turnstile_header" -X POST -d 'cf-turnstile-response=token' \
+    "$cc_turnstile/captcha"
 
 # The tag of `waf_cc_deny zone=name:tag` is stored as the configuration wrote
 # it: a long one counts and denies like any other.
