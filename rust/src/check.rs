@@ -1016,11 +1016,16 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
 
     if (400..600).contains(&verdict.status) {
         // `waf_action modsecurity=FOLLOW` (the built-in default of the trigger)
-        // answers with the status of the intervention, every other policy is
-        // the response the configuration asked for.
+        // keeps the status of the intervention and serves the configured block
+        // page when there is one; every other policy is the response the
+        // configuration asked for.
         let policy = state.conf.policy(TriggerKind::Modsecurity);
         if policy == Policy::Follow {
-            *state.decision = Some(Decision::status(verdict.status));
+            *state.decision = Some(if state.conf.block_page.is_empty() {
+                Decision::status(verdict.status)
+            } else {
+                Decision::page(verdict.status, Rc::clone(&state.conf.block_page))
+            });
         } else {
             state.apply_policy(policy);
         }
@@ -3375,7 +3380,9 @@ mod tests {
               SecRule REQUEST_URI \"@streq /blocked\" \
                 \"id:1001,phase:2,deny,status:403,log,msg:'blocked'\"\n\
               SecRule REQUEST_URI \"@streq /moved\" \
-                \"id:1002,phase:2,redirect:/,status:302,log\"\n",
+                \"id:1002,phase:2,redirect:/,status:302,log\"\n\
+              SecRule REQUEST_URI \"@streq /denied\" \
+                \"id:1003,phase:2,deny,status:406,log,msg:'denied'\"\n",
         )
         .unwrap();
         path
@@ -3467,6 +3474,9 @@ mod tests {
         assert!(outcome.blocked);
         assert!(outcome.general_log);
         assert!(String::from_utf8_lossy(&outcome.rule_details).contains("blocked"));
+        // Without a `waf_block_page` the intervention keeps the bare status.
+        assert!(outcome.body.is_empty());
+        assert!(!outcome.register_content_handler);
 
         // The log phase writes the audit log of the transaction, it must not
         // crash and must not change the decision.
@@ -3478,6 +3488,34 @@ mod tests {
         assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.rule_type.is_empty());
         machine.log_phase();
+
+        std::fs::remove_file(&rules).unwrap();
+    }
+
+    #[test]
+    fn modsecurity_follow_uses_the_block_page() {
+        let _guard = modsec::test_lock();
+        let rules = modsecurity_rules();
+        let mut conf = modsecurity_conf(&rules);
+        conf.block_page = Rc::new(b"<html>blocked</html>".to_vec());
+
+        // The default `FOLLOW` policy serves the page and keeps the status of
+        // the rule (403 for `/blocked`, 406 for `/denied`).
+        for (uri, status) in [(&b"/blocked"[..], FORBIDDEN), (&b"/denied"[..], 406)] {
+            let mut machine = modsecurity_machine(&mut conf, uri);
+            let outcome = decide(&mut machine);
+            assert_eq!(outcome.kind, OutcomeKind::Response);
+            assert_eq!(
+                outcome.status,
+                status,
+                "uri {}",
+                String::from_utf8_lossy(uri)
+            );
+            assert_eq!(outcome.body, b"<html>blocked</html>");
+            assert_eq!(outcome.rule_type, b"ModSecurity");
+            assert!(outcome.blocked);
+            machine.log_phase();
+        }
 
         std::fs::remove_file(&rules).unwrap();
     }
@@ -3559,6 +3597,16 @@ mod tests {
         let outcome = decide(&mut machine);
         assert_eq!(outcome.status, 302);
         assert_eq!(outcome.location, b"/");
+
+        // The default FOLLOW policy with a block page still redirects: the URL
+        // of the intervention wins over the configured page.
+        set_policy(&mut conf, TriggerKind::Modsecurity, Policy::Follow);
+        conf.block_page = Rc::new(b"<html>blocked</html>".to_vec());
+        let mut machine = modsecurity_machine(&mut conf, b"/moved");
+        let outcome = decide(&mut machine);
+        assert_eq!(outcome.status, 302);
+        assert_eq!(outcome.location, b"/");
+        assert!(outcome.body.is_empty());
 
         std::fs::remove_file(&rules).unwrap();
     }
