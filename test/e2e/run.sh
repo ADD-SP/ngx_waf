@@ -621,6 +621,8 @@ check 403 "modsecurity loads the first rule file" \
     "http://127.0.0.1:18101/phase?phase=1"
 check 419 "modsecurity loads the second rule file" \
     "http://127.0.0.1:18101/second"
+check_page "$root/rust/data/block.html" \
+    "modsecurity follows the block page" "http://127.0.0.1:18101/second"
 
 # A connection over a unix domain socket carries no client address at all: a
 # blacklisted URL is still refused, while no address list or counter matches.

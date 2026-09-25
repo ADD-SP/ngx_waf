@@ -323,6 +323,11 @@ intended banner is restored here.
 * A `waf_block_page` in one context does not change the responses of its parent
   or of its sibling locations.  The C implementation converted the shared action
   chain in place, so a location level page also reached the parent context.
+* `waf_action modsecurity=FOLLOW` keeps the status of the ModSecurity
+  intervention and serves the `waf_block_page` of the context when one is
+  configured; the C implementation returned the bare status, so nginx served
+  its own error page (issue #114).  An explicit `modsecurity=4xx` still forces
+  that status.
 * The decision of a blocked request is reachable for the whole request, an
   `error_page` of the blocked status included: the audit line is written and
   `$waf_log`, `$waf_blocked`, `$waf_rule_type` and `$waf_rule_details` keep

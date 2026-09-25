@@ -122,7 +122,8 @@ pub enum Policy {
     Return { status: u32 },
     /// Answer with this status and an HTML body, written by the content handler.
     Page { status: u32, body: Rc<Vec<u8>> },
-    /// Let the inspection decide the status (`waf_action modsecurity=FOLLOW`).
+    /// Let the inspection decide the status (`waf_action modsecurity=FOLLOW`);
+    /// the block page of the context is the body when it configured one.
     Follow,
     /// Show the captcha page and hand the request to the captcha flow.
     Captcha { source: CaptchaSource },
@@ -1458,7 +1459,8 @@ fn apply_block_page(conf: &mut LocConf) {
             continue;
         };
         // Only a plain status return is turned into the configured block page;
-        // `waf_action X=CAPTCHA` and `FOLLOW` keep their own response.
+        // `waf_action X=CAPTCHA` keeps its own response and `FOLLOW` resolves
+        // the page at run time because its status comes from the rule.
         if let Policy::Return { status } = *policy {
             *policy = Policy::Page {
                 status,
