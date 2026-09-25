@@ -9,6 +9,10 @@
   crate, whose manifest lives next to `lib.rs`), `rule/` and `rule-cli/`.  The
   engine is not wired into `waf_rule_path` or the nginx module yet, that
   integration and its FFI entry points are the next change.
+* The rule engine has a criterion benchmark of `RuleSet::evaluate`
+  (`mise run bench`): the individual operators, header scans and 0/3/10/100/1000
+  rule sets.  `mise run bench-check` compiles the harness and runs criterion's
+  test mode in CI; the benchmark is not a performance gate.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.

@@ -435,7 +435,13 @@ mise run test-asan          # the unit tests under AddressSanitizer (nightly)
 mise run test-miri          # the shared memory tests under Miri (nightly)
 mise run fuzz               # the table state machine under cargo-fuzz (nightly)
 mise run test-sanitize-nginx # the end to end checks against an ASan nginx
+mise run bench              # criterion benchmarks of RuleSet::evaluate
 ```
+
+`mise run bench` runs the criterion benchmarks of the rule engine's hot path,
+`RuleSet::evaluate`; `mise run bench-check` only compiles them and runs
+criterion's test mode, which is what CI uses.  The benchmark numbers are for
+local comparison and are not a CI gate.
 
 `mise run coverage` builds the unit tests with `-C instrument-coverage` in a
 target directory of its own and prints the coverage per module, leaving the

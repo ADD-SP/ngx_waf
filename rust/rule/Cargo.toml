@@ -11,3 +11,10 @@ cidr = { version = "0.3", default-features = false }
 pest = "2"
 pest_derive = "2"
 regex = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "evaluate"
+harness = false

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="Compile and smoke the rule execution benchmarks"
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cargo="${CARGO:-cargo}"
+
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/rust/target}"
+
+"$cargo" bench --manifest-path "$root/rust/Cargo.toml" \
+    -p ngx-waf-rule --bench evaluate --no-run
+"$cargo" bench --manifest-path "$root/rust/Cargo.toml" \
+    -p ngx-waf-rule --bench evaluate -- --test

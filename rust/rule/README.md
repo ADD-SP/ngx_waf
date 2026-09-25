@@ -142,6 +142,29 @@ The exit code is `0` when the file is valid and, for `test`, the evaluation
 ran, even when the verdict is `deny`; it is `1` for a rule or IO error and `2`
 for a command line usage error.
 
+## Benchmarks
+
+`RuleSet::evaluate` — the hot path of the engine — has a criterion suite:
+
+```
+mise run bench                       # every case
+mise run bench -- 'operator/'        # one group
+mise run bench -- --save-baseline before
+mise run bench -- --baseline before  # compare with the saved run
+```
+
+The suite compiles each rule source and builds its request before the measured
+loop, so the numbers are one `evaluate()` call; the parse/compile path is not
+part of them, and `evaluate_traced` and the CLI are not benchmarked.  The cases
+cover the individual operators (URL equality/prefix/regex, integer,
+IPv4/IPv6 CIDR, header substring/equality, `&&`), a header scan with 1, 8 and
+32 headers, and rule sets of 0, 3, 10, 100 and 1000 rules (first/last/no match,
+plus a 100 rule `log`/`var:` run).  The rule sets are synthetic: use the
+numbers for relative costs and scaling, not as an absolute promise.  For a
+less noisy local run, pin a core (`taskset -c 2 mise run bench`); CI only
+compiles the benchmarks and runs criterion's `--test` mode
+(`mise run bench-check`), it does not gate on a threshold.
+
 ## Differences from the LTS `advanced` file and the next step
 
 The LTS implementation shipped an `advanced` rule file with the `id:`, `if:`
