@@ -143,7 +143,7 @@ by mise: `rust-toolchain.toml` in the repository root pins the stable toolchain
 (with rustfmt and clippy) for every cargo invocation of the repository.  The
 crate builds offline as long as the cargo registry cache
 already contains `regex`, `serde_json`, `bitflags`, `sha2`, `lru`, `hmac`,
-`rand`, `subtle` and `cidr`.  nginx
+`rand`, `subtle`, `cidr` and `cookie`.  nginx
 links the crate against libmodsecurity, whose C API the `waf_modsecurity`
 inspection calls: the development files (headers and the shared library) have to
 be installed, `LIB_MODSECURITY` can point at a prefix when they are not in the
@@ -368,10 +368,11 @@ intended banner is restored here.
   header value on older versions (which is also why the cookies of the captcha
   and of the under attack page never validated there).
 * The cookie trio of the captcha and of the under attack page is parsed by the
-  core from the raw `Cookie` header values.  The C implementation looked the
-  cookies up with `ngx_http_parse_multi_header_lines()`, which stopped treating
-  `;` as a separator on nginx 1.29.6, so its captcha and under attack flows
-  challenged every visitor (issue #154); this port is not affected.
+  core with the `cookie` crate from the raw `Cookie` header values.  The C
+  implementation looked the cookies up with `ngx_http_parse_multi_header_lines()`,
+  which stopped treating `;` as a separator on nginx 1.29.6, so its captcha and
+  under attack flows challenged every visitor (issue #154); this port is not
+  affected.
 * ModSecurity: with PCRE1 the C implementation pointed the allocator globals of
   libpcre at the nginx pool while the rules were parsed; the glue does the same,
   the rule loading itself happens in the Rust core.

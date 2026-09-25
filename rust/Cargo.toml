@@ -14,6 +14,8 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 bitflags = "2"
 cidr = { version = "0.3", default-features = false }
+# Parsing the cookie trio of the captcha and of the under attack pages.
+cookie = { version = "0.18", default-features = false }
 hmac = "0.12"
 # Parsing the HTTP framing of the captcha provider answer.
 httparse = "1"

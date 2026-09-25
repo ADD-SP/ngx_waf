@@ -1310,12 +1310,12 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
         return Ok(false);
     }
 
-    let expected = cookie_hmac(state, time, uid);
-    if !bool::from(expected.as_bytes().ct_eq(hmac)) {
+    let expected = cookie_hmac(state, time.as_bytes(), uid.as_bytes());
+    if !bool::from(expected.as_bytes().ct_eq(hmac.as_bytes())) {
         return Ok(false);
     }
 
-    let Some(client_time) = util::atoi(time) else {
+    let Some(client_time) = util::atoi(time.as_bytes()) else {
         return Ok(false);
     };
     let Some(expire) = state.conf.captcha.expire else {
@@ -1375,55 +1375,28 @@ fn cookie_mac(key: &[u8], ip: &[u8], time: &[u8], uid: &[u8]) -> String {
     util::hex(&mac.finalize().into_bytes())
 }
 
-/// The value of one cookie: the name is compared case insensitively at the
-/// start of a header value or right after a `;` or `,` separator, spaces are
-/// allowed around the `=`, and the value ends at the next `;`.  The glue hands
-/// one string per cookie header over, the raw header value (`a=1; b=2`).  The
-/// parser lives here, nginx changed the separator of its own cookie parser in
-/// 1.29.6 and the C implementation that called it challenged every visitor
-/// (issue #154).
-fn cookie_value<'a>(cookies: &'a [Vec<u8>], name: &str) -> Option<&'a [u8]> {
-    let name = name.as_bytes();
+/// The value of one cookie, parsed with the `cookie` crate.
+///
+/// The glue hands one raw header value over per `Cookie` header (`a=1; b=2`),
+/// the name is compared case insensitively and the first match wins.  nginx
+/// changed the separator of its own cookie parser in 1.29.6 and the C
+/// implementation that called it challenged every visitor (issue #154); the
+/// crate splits on `;` like nginx does.
+fn cookie_value(cookies: &[Vec<u8>], name: &str) -> Option<String> {
+    for header in cookies {
+        // A cookie header is a series of ASCII tokens; a header that is not
+        // UTF-8 cannot carry a cookie this module minted.
+        let Ok(text) = std::str::from_utf8(header) else {
+            continue;
+        };
 
-    for value in cookies {
-        let mut start = 0;
-        while start < value.len() {
-            if value.len() - start >= name.len()
-                && value[start..start + name.len()].eq_ignore_ascii_case(name)
-            {
-                let mut cursor = start + name.len();
-                while cursor < value.len() && value[cursor] == b' ' {
-                    cursor += 1;
-                }
-                if cursor < value.len() && value[cursor] == b'=' {
-                    cursor += 1;
-                    while cursor < value.len() && value[cursor] == b' ' {
-                        cursor += 1;
-                    }
-                    let end = value[cursor..]
-                        .iter()
-                        .position(|&byte| byte == b';')
-                        .map(|offset| cursor + offset)
-                        .unwrap_or(value.len());
-                    return Some(&value[cursor..end]);
-                }
-                start = cursor;
-            }
-
-            // The next candidate starts after the next separator, a comma was
-            // one as well.
-            while start < value.len() {
-                let byte = value[start];
-                start += 1;
-                if byte == b';' || byte == b',' {
-                    break;
-                }
-            }
-            while start < value.len() && value[start] == b' ' {
-                start += 1;
+        for cookie in cookie::Cookie::split_parse(text).flatten() {
+            if cookie.name().eq_ignore_ascii_case(name) {
+                return Some(cookie.value().to_owned());
             }
         }
     }
+
     None
 }
 
@@ -1487,8 +1460,12 @@ fn check_under_attack(state: &mut State) -> CheckResult {
                 || hmac.len() >= COOKIE_HMAC_FIELD
             {
                 false
-            } else if bool::from(cookie_hmac(state, time, uid).as_bytes().ct_eq(hmac)) {
-                client_time = util::atoi(time);
+            } else if bool::from(
+                cookie_hmac(state, time.as_bytes(), uid.as_bytes())
+                    .as_bytes()
+                    .ct_eq(hmac.as_bytes()),
+            ) {
+                client_time = util::atoi(time.as_bytes());
                 true
             } else {
                 false
@@ -2856,8 +2833,8 @@ mod tests {
     }
 
     /// The cookie names are matched case insensitively, at the start of a
-    /// header value or after a `;` or `,` separator, with spaces allowed
-    /// around the `=`.
+    /// header value or after a `;` separator, with spaces allowed around the
+    /// `=`.
     #[test]
     fn captcha_cookie_names_are_matched_like_nginx() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
@@ -2891,7 +2868,7 @@ mod tests {
         };
 
         let cookies = vec![
-            format!("a=1, __WAF_CAPTCHA_TIME = {}", value("__waf_captcha_time")).into_bytes(),
+            format!("a=1; __WAF_CAPTCHA_TIME = {}", value("__waf_captcha_time")).into_bytes(),
             format!("__WAF_CAPTCHA_UID={}; x", value("__waf_captcha_uid")).into_bytes(),
             format!("__waf_captcha_hmac={}", value("__waf_captcha_hmac")).into_bytes(),
         ];
@@ -2912,7 +2889,7 @@ mod tests {
 
     /// The shape a browser sends: the whole trio in one `Cookie` header,
     /// separated by `; `.  nginx 1.29.6 changed its own cookie parser (issue
-    /// #154); the core reads this header itself.
+    /// #154); the core parses it with the `cookie` crate.
     #[test]
     fn the_cookie_trio_is_read_from_one_browser_header() {
         let cookies = vec![
@@ -2921,24 +2898,22 @@ mod tests {
         ];
 
         assert_eq!(
-            cookie_value(&cookies, "__waf_captcha_time"),
-            Some(&b"7"[..])
+            cookie_value(&cookies, "__waf_captcha_time").as_deref(),
+            Some("7")
         );
         assert_eq!(
-            cookie_value(&cookies, "__waf_captcha_uid"),
-            Some(&b"uid"[..])
+            cookie_value(&cookies, "__waf_captcha_uid").as_deref(),
+            Some("uid")
         );
         assert_eq!(
-            cookie_value(&cookies, "__waf_captcha_hmac"),
-            Some(&b"hmac"[..])
+            cookie_value(&cookies, "__waf_captcha_hmac").as_deref(),
+            Some("hmac")
         );
 
-        // The comma separator the C implementation relied on still works.
+        // The crate, like nginx 1.29.6 and later, splits on `;` only: a comma
+        // belongs to the value and is not a separator.
         let cookies = vec![b"a=1, __waf_captcha_time=8".to_vec()];
-        assert_eq!(
-            cookie_value(&cookies, "__waf_captcha_time"),
-            Some(&b"8"[..])
-        );
+        assert_eq!(cookie_value(&cookies, "__waf_captcha_time"), None);
     }
 
     /// The session flow of `waf_action X=CAPTCHA`: the visitor posted a token
