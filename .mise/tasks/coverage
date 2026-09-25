@@ -39,7 +39,7 @@ export LLVM_PROFILE_FILE="$profraw/%p.profraw"
 
 echo " + building the unit tests with coverage"
 (
-    cd "$root/rust"
+    cd "$root/rust/src"
     "$cargo" test --no-run --message-format=json-render-diagnostics > "$message"
 )
 
@@ -68,7 +68,7 @@ if [ -z "$binary" ]; then
 fi
 
 echo " + running the unit tests"
-(cd "$root/rust" && "$binary")
+(cd "$root/rust/src" && "$binary")
 
 "$tools/llvm-profdata" merge -sparse "$profraw"/*.profraw -o "$profdata"
 "$tools/llvm-cov" export "$binary" -instr-profile="$profdata" -format=lcov \

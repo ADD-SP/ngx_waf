@@ -33,7 +33,7 @@ fi
 ngx_http_waf_profile="${NGX_WAF_CARGO_PROFILE:-release}"
 ngx_http_waf_target_dir="${NGX_WAF_TARGET_DIR:-$ngx_http_waf_rust_dir/target}"
 
-ngx_http_waf_cargo_args="--manifest-path $ngx_http_waf_rust_dir/Cargo.toml
+ngx_http_waf_cargo_args="--manifest-path $ngx_http_waf_rust_dir/src/Cargo.toml
     --profile $ngx_http_waf_profile
     --target-dir $ngx_http_waf_target_dir
     $NGX_WAF_CARGO_FLAGS"

@@ -3,8 +3,10 @@
 * discussion #129 的下一代规则引擎已落地在 `rust/rule/`，并附带
   `ngx-waf-rule` 命令行工具（`rust/rule-cli/`）。它编译
   `Rule "condition" actions;` 语法、对合成请求求值，并保留示例中的
-  score/用户变量语义；工具提供 `check` 与 `test` 两个子命令。该引擎尚未接入
-  `waf_rule_path` 与 nginx 模块，接入及其 FFI 入口是下一步改动。
+  score/用户变量语义；工具提供 `check` 与 `test` 两个子命令。`rust/Cargo.toml`
+  现在是虚拟 workspace，成员为 `src/`（`ngx-waf-core` core crate，manifest
+  与 `lib.rs` 同目录）、`rule/` 与 `rule-cli/`。该引擎尚未接入 `waf_rule_path`
+  与 nginx 模块，接入及其 FFI 入口是下一步改动。
 * 模块逻辑正在用 Rust 重写：C 代码只保留 nginx 胶水层（模块与指令注册、请求数据
   打包、响应与变量落地），其余逻辑位于 `rust/`。
 * 使用 nginx `config` 脚本、cargo 与 mise 任务取代 Bazel。

@@ -5,7 +5,7 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cargo="${CARGO:-cargo}"
 
-cd "$root/rust"
+cd "$root/rust/src"
 
 # NGX_WAF_CARGO_FLAGS is a list of extra cargo flags, splitting is intended.
 # shellcheck disable=SC2086

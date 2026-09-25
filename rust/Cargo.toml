@@ -1,35 +1,9 @@
-[package]
-name = "ngx-waf-core"
-version = "10.1.1"
-edition = "2021"
-publish = false
-description = "The Rust core of the ngx_waf nginx module"
-license = "BSD-2-Clause"
-
-[lib]
-name = "ngx_waf_core"
-# `staticlib` is what nginx links against, `rlib` keeps `cargo test` working.
-crate-type = ["staticlib", "rlib"]
-
-[dependencies]
-bitflags = "2"
-cidr = { version = "0.3", default-features = false }
-# Parsing the cookie trio of the captcha and of the under attack pages.
-cookie = { version = "0.18", default-features = false }
-hmac = "0.12"
-# Parsing the HTTP framing of the captcha provider answer.
-httparse = "1"
-lru = { version = "0.16", default-features = false }
-rand = { version = "0.9", default-features = false, features = ["std", "os_rng"] }
-regex = "1"
-# Parsing the JSON of the captcha provider answer.
-serde_json = "1"
-sha2 = "0.10"
-subtle = "2.6"
-
-# The next generation rule engine and its command line tool are workspace
-# members of their own: the core keeps building alone when nginx runs
-# `cargo build --manifest-path rust/Cargo.toml`.
+# The workspace of the Rust side of ngx_waf.
+#
+# `src/` is the core crate of the nginx module (the manifest lives next to
+# `lib.rs`), `rule/` is the next generation DSL engine and `rule-cli/` is its
+# command line tool.  nginx builds the core alone with
+# `cargo build --manifest-path rust/src/Cargo.toml`.
 [workspace]
-members = ["rule", "rule-cli"]
+members = ["src", "rule", "rule-cli"]
 resolver = "2"

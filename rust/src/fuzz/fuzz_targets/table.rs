@@ -19,7 +19,7 @@ mod util {
     }
 }
 
-#[path = "../../src/shm.rs"]
+#[path = "../../shm.rs"]
 mod shm;
 
 use shm::{ShmOps, ZoneHandle};

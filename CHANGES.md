@@ -4,9 +4,11 @@
   together with the `ngx-waf-rule` command line tool (`rust/rule-cli/`).  It
   compiles the `Rule "condition" actions;` syntax, evaluates it against a
   synthetic request and keeps the score/user variable semantics of the
-  examples; the tool has the `check` and `test` subcommands.  The engine is
-  not wired into `waf_rule_path` or the nginx module yet, that integration and
-  its FFI entry points are the next change.
+  examples; the tool has the `check` and `test` subcommands.  `rust/Cargo.toml`
+  is now a virtual workspace whose members are `src/` (the `ngx-waf-core` core
+  crate, whose manifest lives next to `lib.rs`), `rule/` and `rule-cli/`.  The
+  engine is not wired into `waf_rule_path` or the nginx module yet, that
+  integration and its FFI entry points are the next change.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.
