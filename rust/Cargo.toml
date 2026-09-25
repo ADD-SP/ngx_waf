@@ -26,3 +26,10 @@ regex = "1"
 serde_json = "1"
 sha2 = "0.10"
 subtle = "2.6"
+
+# The next generation rule engine and its command line tool are workspace
+# members of their own: the core keeps building alone when nginx runs
+# `cargo build --manifest-path rust/Cargo.toml`.
+[workspace]
+members = ["rule", "rule-cli"]
+resolver = "2"

@@ -1,0 +1,13 @@
+[package]
+name = "ngx-waf-rule"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The next generation rule engine of ngx_waf"
+license = "BSD-2-Clause"
+
+[dependencies]
+cidr = { version = "0.3", default-features = false }
+pest = "2"
+pest_derive = "2"
+regex = "1"

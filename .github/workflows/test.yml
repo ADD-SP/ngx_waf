@@ -43,7 +43,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/**/Cargo.toml') }}
 
       # The action installs mise and the tools of mise.toml (cbindgen); the
       # cache above lets the cargo backend reuse the crate sources.
@@ -103,7 +103,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/**/Cargo.toml') }}
 
       - uses: jdx/mise-action@v2
 

@@ -5,4 +5,4 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cargo="${CARGO:-cargo}"
 
-"$cargo" test --manifest-path "$root/rust/Cargo.toml"
+"$cargo" test --workspace --manifest-path "$root/rust/Cargo.toml"
