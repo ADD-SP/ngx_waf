@@ -161,7 +161,7 @@ system directories.  The bindings are the raw declarations of the C API in
 | `waf_cache`, `waf_cc_deny` (shared memory counters, `$waf_rate`, `Retry-After`) | done |
 | the `$waf_*` variables and the `ngx_waf: [rule][detail]` audit line | done |
 | `waf_verify_bot` (crawler user agent + reverse DNS) | done, the aliases `gethostbyaddr()` reported are not walked (known issue) |
-| `waf_captcha` (cookies/HMAC, `verify_url`, provider verdict, fail counters, `waf_action X=CAPTCHA`, CC reset) | done, an HTTPS provider is verified against the system CA store |
+| `waf_captcha` (cookies/HMAC, `verify_url`, hCaptcha/reCAPTCHAv2/reCAPTCHAv3/Turnstile, fail counters, `waf_action X=CAPTCHA`, CC reset) | done, an HTTPS provider is verified against the system CA store |
 | `waf_under_attack` (the five second shield, cookie trio + HMAC) | done |
 | `waf_modsecurity` (rules, request phases, intervention, transaction id, audit log) | done, the response phases are intentionally out of scope for this rewrite |
 
@@ -277,11 +277,12 @@ intended banner is restored here.
   cannot be resolved at configuration time); a request that cannot reach the
   provider fails closed.
 * The provider endpoint is the `api=` of `waf_captcha` or the default of the
-  provider it named (hCaptcha and reCAPTCHA have their own), and it is inherited
-  by the contexts below the directive like every other captcha setting.  The C
-  implementation only prepared an endpoint when the directive of the *request's
-  own* context carried `api=`, so the documented default endpoint never worked
-  and a location that inherited `waf_captcha` could never verify anything.
+  provider it named (hCaptcha, Turnstile and reCAPTCHA have their own), and it
+  is inherited by the contexts below the directive like every other captcha
+  setting.  The C implementation only prepared an endpoint when the directive
+  of the *request's own* context carried `api=`, so the documented default
+  endpoint never worked and a location that inherited `waf_captcha` could
+  never verify anything.
 * `waf_captcha api=https://...` verifies the provider certificate against the
   CA store the TLS library was built with (the default paths of OpenSSL; the
   `SSL_CERT_FILE` and `SSL_CERT_DIR` environment variables override them, and

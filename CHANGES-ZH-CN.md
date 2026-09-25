@@ -48,6 +48,10 @@
 * 同一上下文中的 `waf_captcha` 指定多个 `api=https://...` 时，其端点的 SSL
   上下文只保留一条池清理：模块会释放被后续指令替换掉的上下文，并且只注册
   一次清理，配置释放时不再对同一个 `SSL_CTX` 释放两次。
+* `waf_captcha` 支持 Cloudflare Turnstile（`prov=Turnstile`）：默认端点使用
+  Turnstile 的 siteverify API，判定只要求应答携带 `success`，同时接受原生的
+  `cf-turnstile-response` 与兼容模式的 `g-recaptcha-response`，并自带 Turnstile
+  验证页（issue #153）。
 * 验证码与 under attack 页面的 Cookie 改用 `cookie` crate 解析，因此
   nginx 1.29.6 对 "Cookie" 解析的改动（issue #154）不会影响它们。C 实现使用
   `ngx_http_parse_multi_header_lines()` 查找 Cookie；该函数在 1.29.6 起不再把

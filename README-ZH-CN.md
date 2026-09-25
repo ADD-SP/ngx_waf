@@ -24,13 +24,13 @@
 * 高性能：使用高效的 IP 检查算法和缓存机制。
 * 高级防护：兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity)，因此你可以使用[开放式网络应用安全项目（OWASP）® 的核心规则库](https://owasp.org/www-project-modsecurity-core-rule-set/)。
 * 友好爬虫验证：支持验证 Google、Bing、Baidu 和 Yandex 的爬虫并自动放行，避免错误拦截。
-* 验证码：支持三种验证码：hCaptcha、reCAPTCHAv2 和 reCAPTCHAv3。
+* 验证码：支持 hCaptcha、Cloudflare Turnstile、reCAPTCHAv2 和 reCAPTCHAv3。
 
 ## 功能
 
 * 兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity)。
 * 支持 IPV4 和 IPV6。
-* 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。
+* 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。
 * 支持识别友好爬虫（如 BaiduSpider）并自动放行（基于 User-Agent 和 IP 的识别）。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间或者使用验证码做人机识别。
 * IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
