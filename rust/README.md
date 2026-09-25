@@ -262,6 +262,9 @@ intended banner is restored here.
   the documented example) compared like `0` there and every answer whose score
   was not negative passed.  The value is not range checked, like in the C
   implementation whose check (`score < 0.0 && score > 1.0`) can never be true.
+* `waf_captcha max_fails=N` allows exactly N failed verifications and answers
+  the next one with 429; the C implementation used `max(N, 20)` as the limit,
+  so every value below 20 behaved like 20 (issue #152).
 * The captcha provider is reached with a small non blocking client of the
   module itself (connect, send the POST, read the answer) and the framing of
   the answer is parsed in this crate: it ends at the length the headers

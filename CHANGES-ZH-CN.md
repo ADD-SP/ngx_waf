@@ -52,6 +52,9 @@
   Turnstile 的 siteverify API，判定只要求应答携带 `success`，同时接受原生的
   `cf-turnstile-response` 与兼容模式的 `g-recaptcha-response`，并自带 Turnstile
   验证页（issue #153）。
+* `waf_captcha max_fails=N` 现在按配置值生效：C 实现使用 `max(N, 20)` 的下限，
+  小于 20 的 N 都会表现为 20；现在允许 N 次失败，第 N+1 次返回 429
+  （issue #152）。
 * 验证码与 under attack 页面的 Cookie 改用 `cookie` crate 解析，因此
   nginx 1.29.6 对 "Cookie" 解析的改动（issue #154）不会影响它们。C 实现使用
   `ngx_http_parse_multi_header_lines()` 查找 Cookie；该函数在 1.29.6 起不再把

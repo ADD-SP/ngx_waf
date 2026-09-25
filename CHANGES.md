@@ -77,6 +77,9 @@
   `success`, the native `cf-turnstile-response` and the compatibility mode's
   `g-recaptcha-response` fields are both accepted, and the module ships a
   Turnstile page (issue #153).
+* `waf_captcha max_fails=N` honours the configured value: the C implementation
+  used a floor of 20 (`max(N, 20)`), so a smaller `N` behaved like 20.  The
+  failure after the configured number now answers 429 (issue #152).
 * The cookies of the captcha and of the under attack page are parsed with the
   `cookie` crate, so the "Cookie" parsing change of nginx 1.29.6 (issue #154)
   does not affect them.  The C implementation looked the cookies up with

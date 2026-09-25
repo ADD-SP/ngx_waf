@@ -1277,7 +1277,6 @@ fn captcha_inc_fails(state: &mut State) -> bool {
         return false;
     };
 
-    let limit = std::cmp::max(max_fails, 20);
     let cycle = 60 * 45 + util::random_uniform(60 * 15) as i64;
     let tag = captcha_zone.tag.clone();
     match cc::increment(
@@ -1285,7 +1284,7 @@ fn captcha_inc_fails(state: &mut State) -> bool {
         &tag,
         state.req.ip,
         state.req.ipv6,
-        limit,
+        max_fails,
         cycle,
         duration,
         state.req.now,
@@ -3126,8 +3125,9 @@ mod tests {
     }
 
     /// A configuration with `waf_captcha on`, a fail counter and its zone.
-    fn captcha_counter_conf() -> LocConf {
-        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &["max_fails=1:1m", "zone=any:tag"]);
+    fn captcha_counter_conf(max_fails: i64) -> LocConf {
+        let max_fails = format!("max_fails={max_fails}:1m");
+        let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[&max_fails, "zone=any:tag"]);
         // The zone lookup needs a zone in the main configuration; patch the two
         // fields the checks read.
         conf.captcha.zone = Some(crate::config::ZoneRef {
@@ -3158,46 +3158,55 @@ mod tests {
 
     #[test]
     fn captcha_fail_counter_blocks_after_the_threshold() {
-        let (zone, _shm) = captcha_counter_zone();
-        let mut conf = captcha_counter_conf();
+        for max_fails in [1, 3, 20] {
+            let (zone, _shm) = captcha_counter_zone();
+            let mut conf = captcha_counter_conf(max_fails);
 
-        // 20 failures are allowed (`max(max_fails, 20)`), the 21st blocks.
-        for attempt in 1..=21 {
-            let body = b"g-recaptcha-response=token";
-            let mut machine =
-                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
-            machine.set_captcha_zone(zone);
-            assert!(matches!(
-                machine.step(),
-                Step::Pending(Pending::HttpRequest)
-            ));
-            let answer = provider_answer("200 OK", br#"{"success":false}"#);
-            let outcome = match machine.resume(Event::HttpData {
-                data: &answer,
-                eof: false,
-            }) {
-                Step::Decision(outcome) => outcome,
-                _ => panic!("the provider answer decides the request"),
-            };
-            if attempt <= 20 {
-                assert_eq!(outcome.body, b"bad", "attempt {attempt}");
-            } else {
-                assert_eq!(outcome.status, TOO_MANY_REQUESTS, "attempt {attempt}");
-                assert_eq!(outcome.rule_details, b"TO MANY FAILS");
+            // The configured number of failures is allowed, the next one
+            // answers 429.
+            for attempt in 1..=max_fails + 1 {
+                let body = b"g-recaptcha-response=token";
+                let mut machine =
+                    captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+                machine.set_captcha_zone(zone);
+                assert!(matches!(
+                    machine.step(),
+                    Step::Pending(Pending::HttpRequest)
+                ));
+                let answer = provider_answer("200 OK", br#"{"success":false}"#);
+                let outcome = match machine.resume(Event::HttpData {
+                    data: &answer,
+                    eof: false,
+                }) {
+                    Step::Decision(outcome) => outcome,
+                    _ => panic!("the provider answer decides the request"),
+                };
+                if attempt <= max_fails {
+                    assert_eq!(
+                        outcome.body, b"bad",
+                        "max_fails {max_fails}, attempt {attempt}"
+                    );
+                } else {
+                    assert_eq!(
+                        outcome.status, TOO_MANY_REQUESTS,
+                        "max_fails {max_fails}, attempt {attempt}"
+                    );
+                    assert_eq!(outcome.rule_details, b"TO MANY FAILS");
+                }
             }
-        }
 
-        // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { shm::zone_free(zone) };
+            // SAFETY: the handle came from `zone_init()` and is not used after.
+            unsafe { shm::zone_free(zone) };
+        }
     }
 
     /// A token the provider accepted must not count as a failure: with the
     /// counter incremented on every success the visitor would be locked out by
-    /// the 429 page after `max(max_fails, 20)` solved captchas.
+    /// the 429 page after `max_fails` solved captchas.
     #[test]
     fn captcha_success_does_not_count_as_a_failure() {
         let (zone, _shm) = captcha_counter_zone();
-        let mut conf = captcha_counter_conf();
+        let mut conf = captcha_counter_conf(3);
 
         for attempt in 1..=25 {
             let outcome = captcha_verify(&mut conf, zone, br#"{"success":true}"#);
