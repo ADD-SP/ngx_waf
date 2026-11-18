@@ -329,8 +329,7 @@ impl ZoneLock<'_> {
             // SAFETY: the block is inside the segment and the lock is held.
             let block_ref = unsafe { &*block_ptr.as_ptr() };
 
-            for index in 0..TAGS_PER_BLOCK {
-                let entry = &block_ref.entries[index];
+            for (index, entry) in block_ref.entries.iter().enumerate() {
                 if entry.tag_len as usize == tag.len() && entry.tag[..tag.len()] == *tag {
                     if let Some(table) = NonNull::new(entry.table) {
                         // SAFETY: the entry is a field of the block the walk

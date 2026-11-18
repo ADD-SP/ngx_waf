@@ -1339,11 +1339,7 @@ fn captcha_cookie_valid(state: &State) -> Result<bool, ()> {
         // valid.
         return Ok(false);
     };
-    if state.req.now - client_time > expire {
-        return Ok(false);
-    }
-
-    Ok(true)
+    Ok(state.req.now - client_time <= expire)
 }
 
 /// Mint a fresh cookie trio for a visitor that passed.
