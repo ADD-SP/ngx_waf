@@ -3,7 +3,7 @@
 //!
 //! The ordering and the eviction are the ones of the `lru` crate.  On top of
 //! them this cache keeps the expiration of every entry, the flag the garbage
-//! collector of `ngx_waf_gc()` reads, and the way a sweep walks the entries.
+//! collector of `ngx_waf_cache_collect_garbage()` reads, and the way a sweep walks the entries.
 
 use std::mem;
 use std::num::NonZeroUsize;
@@ -23,10 +23,10 @@ struct Item {
 
 /// One inspection cache.  `None` is a cache nothing was sized for, which is
 /// what a capacity of 0 leaves behind; the inspections cache nothing then.
-type Cache = lru::LruCache<Vec<u8>, Item>;
+type LruCache = lru::LruCache<Vec<u8>, Item>;
 
 /// The `lru` cache of one capacity, or `None` for a capacity of 0.
-fn new_cache(capacity: usize) -> Option<Cache> {
+fn new_cache(capacity: usize) -> Option<LruCache> {
     NonZeroUsize::new(capacity).map(lru::LruCache::new)
 }
 
@@ -70,13 +70,13 @@ impl CacheKind {
 
 /// The per-worker inspection caches created by `waf_cache on`.
 pub struct Caches {
-    url: Option<Cache>,
-    args: Option<Cache>,
-    user_agent: Option<Cache>,
-    referer: Option<Cache>,
-    cookie: Option<Cache>,
-    white_url: Option<Cache>,
-    white_referer: Option<Cache>,
+    url: Option<LruCache>,
+    args: Option<LruCache>,
+    user_agent: Option<LruCache>,
+    referer: Option<LruCache>,
+    cookie: Option<LruCache>,
+    white_url: Option<LruCache>,
+    white_referer: Option<LruCache>,
     /// One flag per cache, in `CacheKind::index()` order: set when an
     /// insertion had to evict an entry that was still valid, the garbage
     /// collector drops the five least recently used entries of that cache then.
@@ -105,7 +105,7 @@ impl Caches {
         }
     }
 
-    fn slot(&mut self, kind: CacheKind) -> &mut Option<Cache> {
+    fn slot(&mut self, kind: CacheKind) -> &mut Option<LruCache> {
         match kind {
             CacheKind::Url => &mut self.url,
             CacheKind::Args => &mut self.args,
@@ -148,10 +148,10 @@ impl Caches {
         }
     }
 
-    /// The garbage collection of `ngx_waf_gc()`: a cache whose insertion had
+    /// The garbage collection of `ngx_waf_cache_collect_garbage()`: a cache whose insertion had
     /// to evict drops its five least recently used entries, the others sweep
     /// their expired entries in rounds of at most five.
-    pub fn gc(&mut self, now: i64) {
+    pub fn collect_garbage(&mut self, now: i64) {
         for kind in CacheKind::ALL {
             let no_memory = mem::take(&mut self.no_memory[kind.index()]);
             let Some(cache) = self.slot(kind).as_mut() else {
@@ -193,7 +193,7 @@ impl Caches {
 /// Drop up to `limit` entries that expired, least recently used first, and
 /// return how many were dropped.  The entries that are still valid are walked
 /// past.
-fn eliminate_expired(cache: &mut Cache, limit: usize, now: i64) -> usize {
+fn eliminate_expired(cache: &mut LruCache, limit: usize, now: i64) -> usize {
     let victims: Vec<Vec<u8>> = cache
         .iter()
         .rev()
@@ -265,7 +265,7 @@ mod tests {
         let mut caches = Caches::new(8);
         caches.insert(CacheKind::Url, b"a", 10, result(false));
         caches.insert(CacheKind::Url, b"b", 1_000, result(false));
-        caches.gc(100);
+        caches.collect_garbage(100);
         assert_eq!(caches.len(CacheKind::Url), 1);
         assert!(caches.find(CacheKind::Url, b"b", 100).is_some());
     }
@@ -276,7 +276,7 @@ mod tests {
         for index in 0..12u8 {
             caches.insert(CacheKind::Url, &[index], 10, result(false));
         }
-        caches.gc(100);
+        caches.collect_garbage(100);
         assert_eq!(caches.len(CacheKind::Url), 0);
     }
 
@@ -287,13 +287,13 @@ mod tests {
         caches.insert(CacheKind::Url, b"b", 1_000, result(false));
         caches.insert(CacheKind::Url, b"c", 1_000, result(false));
         assert!(evicted(&caches, CacheKind::Url));
-        caches.gc(1_000);
+        caches.collect_garbage(1_000);
         // Only `b` and `c` were left, the round of five drops what is there.
         assert_eq!(caches.len(CacheKind::Url), 0);
         assert!(!evicted(&caches, CacheKind::Url));
         // Nothing expired in the next round, the cache keeps what it gets.
         caches.insert(CacheKind::Url, b"d", 1_000, result(false));
-        caches.gc(1_000);
+        caches.collect_garbage(1_000);
         assert_eq!(caches.len(CacheKind::Url), 1);
     }
 
@@ -304,7 +304,7 @@ mod tests {
         caches.insert(CacheKind::Url, b"a", 1_000, result(true));
         assert_eq!(caches.len(CacheKind::Url), 0);
         assert!(caches.find(CacheKind::Url, b"a", 1).is_none());
-        caches.gc(1_000);
+        caches.collect_garbage(1_000);
         assert_eq!(caches.len(CacheKind::Url), 0);
     }
 

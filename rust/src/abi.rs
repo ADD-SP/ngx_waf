@@ -16,24 +16,24 @@ use std::os::raw::c_void;
 /// binary, not NUL terminated.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NgxWafStr {
+pub struct NgxWafStringView {
     pub len: usize,
     pub data: *const u8,
 }
 
-impl NgxWafStr {
+impl NgxWafStringView {
     /// The empty view, for the fields a request does not carry.
-    pub(crate) const EMPTY: NgxWafStr = NgxWafStr {
+    pub(crate) const EMPTY: NgxWafStringView = NgxWafStringView {
         len: 0,
         data: std::ptr::null(),
     };
 
     /// A view of one Rust buffer the caller keeps alive.
-    pub(crate) fn from_slice(bytes: &[u8]) -> NgxWafStr {
+    pub(crate) fn from_slice(bytes: &[u8]) -> NgxWafStringView {
         if bytes.is_empty() {
-            NgxWafStr::EMPTY
+            NgxWafStringView::EMPTY
         } else {
-            NgxWafStr {
+            NgxWafStringView {
                 len: bytes.len(),
                 data: bytes.as_ptr(),
             }
@@ -55,28 +55,28 @@ impl NgxWafStr {
 /// One request header, the `ngx_table_elt_t` list of nginx.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NgxWafHeader {
-    pub key: NgxWafStr,
-    pub value: NgxWafStr,
+pub struct NgxWafHeaderView {
+    pub key: NgxWafStringView,
+    pub value: NgxWafStringView,
 }
 
 /// One request header as a safe view over the ABI table.  `#[repr(transparent)]`
-/// makes a slice of these interchangeable with the `NgxWafHeader` slice the C
+/// makes a slice of these interchangeable with the `NgxWafHeaderView` slice the C
 /// side hands over.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-pub(crate) struct Header(NgxWafHeader);
+pub(crate) struct HeaderView(NgxWafHeaderView);
 
-impl Header {
+impl HeaderView {
     pub(crate) fn key(&self) -> &[u8] {
         // SAFETY: the C side keeps the header views alive for the whole
-        // request, which is what `NgxWafReq` documents.
+        // request, which is what `NgxWafRequestView` documents.
         unsafe { self.0.key.as_slice() }
     }
 
     pub(crate) fn value(&self) -> &[u8] {
         // SAFETY: the C side keeps the header views alive for the whole
-        // request, which is what `NgxWafReq` documents.
+        // request, which is what `NgxWafRequestView` documents.
         unsafe { self.0.value.as_slice() }
     }
 }
@@ -86,7 +86,7 @@ impl Header {
 /// value.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NgxWafMethod {
+pub enum NgxWafHttpMethod {
     Unknown = 0,
     Get = 1,
     Head = 2,
@@ -170,26 +170,26 @@ pub enum NgxWafContentType {
 /// The request view the C glue fills in.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NgxWafReq {
+pub struct NgxWafRequestView {
     /// Network order address, 4 or 16 bytes; empty for a connection without
     /// one.
-    pub ip: NgxWafStr,
-    pub method: NgxWafMethod,
-    pub uri: NgxWafStr,
-    pub args: NgxWafStr,
-    pub user_agent: NgxWafStr,
-    pub referer: NgxWafStr,
+    pub ip: NgxWafStringView,
+    pub method: NgxWafHttpMethod,
+    pub uri: NgxWafStringView,
+    pub args: NgxWafStringView,
+    pub user_agent: NgxWafStringView,
+    pub referer: NgxWafStringView,
     /// One view per `Cookie` header, the raw header values.
-    pub cookies: *const NgxWafStr,
+    pub cookies: *const NgxWafStringView,
     pub cookie_count: usize,
     /// The body of the request, empty when there is none.
-    pub body: NgxWafStr,
+    pub body: NgxWafStringView,
     /// Wall clock seconds.
     pub now: i64,
     /// The fields only `waf_modsecurity` reads, NULL when the inspection
-    /// cannot run.  The core copies the view while `ngx_waf_check_begin()`
+    /// cannot run.  The core copies the view while `ngx_waf_inspection_begin()`
     /// runs; the views inside it stay valid for the whole request.
-    pub modsec: *const NgxWafModsecReq,
+    pub modsecurity: *const NgxWafModSecurityRequestView,
     /// `r->connection->log`: the data of the ModSecurity log callback, and
     /// where a panic caught at this boundary is reported.
     pub log: *mut c_void,
@@ -198,19 +198,19 @@ pub struct NgxWafReq {
 /// Everything libmodsecurity reads beyond the common request view.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NgxWafModsecReq {
-    pub headers: *const NgxWafHeader,
+pub struct NgxWafModSecurityRequestView {
+    pub headers: *const NgxWafHeaderView,
     pub header_count: usize,
     /// Whether `waf_modsecurity_transaction_id` is configured; a configured
     /// empty value is still a value.
     pub has_trans_id: bool,
-    pub trans_id: NgxWafStr,
-    pub unparsed_uri: NgxWafStr,
-    pub method_name: NgxWafStr,
+    pub trans_id: NgxWafStringView,
+    pub unparsed_uri: NgxWafStringView,
+    pub method_name: NgxWafStringView,
     pub http_version: NgxWafHttpVersion,
-    pub client_addr: NgxWafStr,
+    pub client_addr: NgxWafStringView,
     pub client_port: u32,
-    pub server_addr: NgxWafStr,
+    pub server_addr: NgxWafStringView,
     pub server_port: u32,
 }
 
@@ -220,9 +220,9 @@ pub struct NgxWafModsecReq {
 pub struct NgxWafEvent {
     pub kind: NgxWafEventKind,
     /// `RESOLVED_NAME`: the host name the address resolves to.
-    pub name: NgxWafStr,
+    pub name: NgxWafStringView,
     /// `HTTP_DATA`: the bytes of the answer the glue read, from its start.
-    pub data: NgxWafStr,
+    pub data: NgxWafStringView,
     /// `HTTP_DATA`: whether the provider closed the connection.  The core
     /// settles the request when the answer is complete or unreadable; an
     /// answer that is merely incomplete leaves the step on `HTTP_REQUEST`,
@@ -239,15 +239,15 @@ pub struct NgxWafDecision {
     pub content_type: NgxWafContentType,
     pub has_retry_after: bool,
     pub retry_after: i64,
-    pub body: NgxWafStr,
+    pub body: NgxWafStringView,
     /// The audit line, when `general_log` is set.
-    pub log: NgxWafStr,
-    pub rule_type: NgxWafStr,
-    pub rule_details: NgxWafStr,
+    pub log: NgxWafStringView,
+    pub rule_type: NgxWafStringView,
+    pub rule_details: NgxWafStringView,
     /// The `Location` header of the decision, empty when there is none.
-    pub location: NgxWafStr,
+    pub location: NgxWafStringView,
     /// `Set-Cookie` values the decision mints (captcha).
-    pub set_cookies: *const NgxWafStr,
+    pub set_cookies: *const NgxWafStringView,
     pub set_cookie_count: usize,
     pub blocked: bool,
     pub checked: bool,
@@ -264,11 +264,11 @@ impl NgxWafDecision {
             content_type: NgxWafContentType::Html,
             has_retry_after: false,
             retry_after: 0,
-            body: NgxWafStr::EMPTY,
-            log: NgxWafStr::EMPTY,
-            rule_type: NgxWafStr::EMPTY,
-            rule_details: NgxWafStr::EMPTY,
-            location: NgxWafStr::EMPTY,
+            body: NgxWafStringView::EMPTY,
+            log: NgxWafStringView::EMPTY,
+            rule_type: NgxWafStringView::EMPTY,
+            rule_details: NgxWafStringView::EMPTY,
+            location: NgxWafStringView::EMPTY,
             set_cookies: std::ptr::null(),
             set_cookie_count: 0,
             blocked: false,
@@ -286,18 +286,18 @@ impl NgxWafDecision {
 #[derive(Clone, Copy)]
 pub struct NgxWafPending {
     /// `RESOLVE_ADDR`: the address to reverse resolve.
-    pub ip: NgxWafStr,
+    pub ip: NgxWafStringView,
     /// `HTTP_REQUEST`: the request the glue has to perform.
-    pub url: NgxWafStr,
-    pub body: NgxWafStr,
+    pub url: NgxWafStringView,
+    pub body: NgxWafStringView,
 }
 
 impl NgxWafPending {
     pub(crate) fn empty() -> Self {
         NgxWafPending {
-            ip: NgxWafStr::EMPTY,
-            url: NgxWafStr::EMPTY,
-            body: NgxWafStr::EMPTY,
+            ip: NgxWafStringView::EMPTY,
+            url: NgxWafStringView::EMPTY,
+            body: NgxWafStringView::EMPTY,
         }
     }
 }
@@ -326,18 +326,18 @@ impl NgxWafStep {
 /// empty view means the configuration does not use that zone.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NgxWafZoneRefs {
-    pub cc: NgxWafStr,
-    pub captcha: NgxWafStr,
-    pub action: NgxWafStr,
+pub struct NgxWafZoneReferences {
+    pub cc: NgxWafStringView,
+    pub captcha: NgxWafStringView,
+    pub action: NgxWafStringView,
 }
 
-impl NgxWafZoneRefs {
+impl NgxWafZoneReferences {
     pub(crate) fn empty() -> Self {
-        NgxWafZoneRefs {
-            cc: NgxWafStr::EMPTY,
-            captcha: NgxWafStr::EMPTY,
-            action: NgxWafStr::EMPTY,
+        NgxWafZoneReferences {
+            cc: NgxWafStringView::EMPTY,
+            captcha: NgxWafStringView::EMPTY,
+            action: NgxWafStringView::EMPTY,
         }
     }
 }
@@ -354,16 +354,16 @@ pub struct NgxWafZoneHandles {
 
 /// The main configuration (`http` level) of one nginx cycle, opaque to the
 /// glue.
-pub struct NgxWafMain {
+pub struct NgxWafMainConfiguration {
     _private: [u8; 0],
 }
 
 /// The location configuration of one request, opaque to the glue.
-pub struct NgxWafConf {
+pub struct NgxWafLocationConfiguration {
     _private: [u8; 0],
 }
 
 /// One request inspection, owned by the glue, opaque to it.
-pub struct NgxWafCheck {
+pub struct NgxWafInspectionHandle {
     _private: [u8; 0],
 }

@@ -21,7 +21,7 @@ use std::os::raw::{c_char, c_int, c_void};
 #[link(name = "modsecurity")]
 extern "C" {
     fn msc_init() -> *mut c_void;
-    fn msc_set_log_cb(instance: *mut c_void, callback: ModSecLogCb);
+    fn msc_set_log_cb(instance: *mut c_void, callback: ModSecurityLogCallback);
     fn msc_cleanup(instance: *mut c_void);
 
     fn msc_create_rules_set() -> *mut c_void;
@@ -89,8 +89,8 @@ extern "C" {
     fn free(pointer: *mut c_void);
 }
 
-/// `ModSecLogCb` of `<modsecurity/modsecurity.h>`.
-type ModSecLogCb = Option<unsafe extern "C" fn(log: *mut c_void, data: *const c_char)>;
+/// `ModSecurityLogCallback` of `<modsecurity/modsecurity.h>`.
+type ModSecurityLogCallback = Option<unsafe extern "C" fn(log: *mut c_void, data: *const c_char)>;
 
 /// `ModSecurityIntervention` of `<modsecurity/intervention.h>`.
 #[repr(C)]
@@ -128,15 +128,15 @@ pub struct Verdict {
 /// offers no message of its own, so the caller answers the internal error of
 /// the request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ModSecError;
+pub struct ModSecurityError;
 
-impl std::fmt::Display for ModSecError {
+impl std::fmt::Display for ModSecurityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("the libmodsecurity call failed")
     }
 }
 
-impl std::error::Error for ModSecError {}
+impl std::error::Error for ModSecurityError {}
 
 /// A `ModSecurity` instance and its rule set.
 pub struct Instance {
@@ -258,9 +258,9 @@ impl Transaction {
         client_port: u32,
         server: &[u8],
         server_port: u32,
-    ) -> Result<(), ModSecError> {
-        let client = CString::new(client).map_err(|_| ModSecError)?;
-        let server = CString::new(server).map_err(|_| ModSecError)?;
+    ) -> Result<(), ModSecurityError> {
+        let client = CString::new(client).map_err(|_| ModSecurityError)?;
+        let server = CString::new(server).map_err(|_| ModSecurityError)?;
         // SAFETY: the transaction is live until `Drop` and the two strings are
         // NUL terminated for the call.
         let result = unsafe {
@@ -281,10 +281,10 @@ impl Transaction {
         uri: &[u8],
         method: &[u8],
         http_version: &[u8],
-    ) -> Result<(), ModSecError> {
-        let uri = CString::new(uri).map_err(|_| ModSecError)?;
-        let method = CString::new(method).map_err(|_| ModSecError)?;
-        let http_version = CString::new(http_version).map_err(|_| ModSecError)?;
+    ) -> Result<(), ModSecurityError> {
+        let uri = CString::new(uri).map_err(|_| ModSecurityError)?;
+        let method = CString::new(method).map_err(|_| ModSecurityError)?;
+        let http_version = CString::new(http_version).map_err(|_| ModSecurityError)?;
         // SAFETY: the transaction is live until `Drop` and the three strings
         // are NUL terminated for the call.
         let result = unsafe {
@@ -299,7 +299,7 @@ impl Transaction {
     }
 
     /// `msc_add_n_request_header()`, called once per header of the request.
-    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) -> Result<(), ModSecError> {
+    pub fn add_request_header(&mut self, key: &[u8], value: &[u8]) -> Result<(), ModSecurityError> {
         if key.is_empty() {
             return Ok(());
         }
@@ -318,13 +318,13 @@ impl Transaction {
     }
 
     /// `msc_process_request_headers()`.
-    pub fn process_request_headers(&mut self) -> Result<(), ModSecError> {
+    pub fn process_request_headers(&mut self) -> Result<(), ModSecurityError> {
         // SAFETY: the transaction is live until `Drop`.
         check_status(unsafe { msc_process_request_headers(self.transaction) })
     }
 
     /// `msc_append_request_body()`.
-    pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), ModSecError> {
+    pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), ModSecurityError> {
         // SAFETY: the transaction is live until `Drop` and `body` stays
         // readable for its length.
         check_status(unsafe {
@@ -333,13 +333,13 @@ impl Transaction {
     }
 
     /// `msc_process_request_body()`.
-    pub fn process_request_body(&mut self) -> Result<(), ModSecError> {
+    pub fn process_request_body(&mut self) -> Result<(), ModSecurityError> {
         // SAFETY: the transaction is live until `Drop`.
         check_status(unsafe { msc_process_request_body(self.transaction) })
     }
 
     /// `msc_update_status_code()`.
-    pub fn update_status_code(&mut self, status: u32) -> Result<(), ModSecError> {
+    pub fn update_status_code(&mut self, status: u32) -> Result<(), ModSecurityError> {
         // SAFETY: the transaction is live until `Drop`.
         check_status(unsafe { msc_update_status_code(self.transaction, status as c_int) })
     }
@@ -383,11 +383,11 @@ impl Drop for Transaction {
 }
 
 /// The library treats `1` as success.
-fn check_status(result: c_int) -> Result<(), ModSecError> {
+fn check_status(result: c_int) -> Result<(), ModSecurityError> {
     if result == 1 {
         Ok(())
     } else {
-        Err(ModSecError)
+        Err(ModSecurityError)
     }
 }
 

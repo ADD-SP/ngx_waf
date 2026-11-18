@@ -29,14 +29,14 @@ ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data) {
     ngx_http_waf_zone_t* z = zone->data;
     ngx_http_waf_zone_t* old = data;
     ngx_slab_pool_t* pool = (ngx_slab_pool_t *) zone->shm.addr;
-    ngx_waf_shm_ops_t ops;
+    ngx_waf_shared_memory_callbacks_t ops;
 
     ops.lock = ngx_http_waf_shm_lock;
     ops.unlock = ngx_http_waf_shm_unlock;
     ops.alloc_locked = ngx_http_waf_shm_alloc_locked;
     ops.ctx = pool;
 
-    z->handle = ngx_waf_shm_zone_init(
+    z->handle = ngx_waf_shared_memory_zone_initialize(
         zone->shm.addr,
         zone->shm.size,
         old != NULL ? old->handle : NULL,
@@ -53,7 +53,7 @@ ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data) {
 }
 
 
-void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, ngx_waf_str_t name)
+void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, ngx_waf_string_view_t name)
 {
     ngx_uint_t i;
 

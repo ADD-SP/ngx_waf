@@ -264,9 +264,9 @@ char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
     ngx_http_waf_zone_t* zone = NULL;
     ngx_http_waf_zone_t** slot = NULL;
 
-    char* error = ngx_waf_zone_directive(
+    char* error = ngx_waf_zone_directive_apply(
         mcf->core,
-        (const ngx_waf_str_t*)(elts + 1),
+        (const ngx_waf_string_view_t*)(elts + 1),
         cf->args->nelts - 1,
         &name_data,
         &name_len,
@@ -400,8 +400,8 @@ static ptrdiff_t ngx_http_waf_regex_exec(void* regex, const uint8_t* value, size
  * destroys.  PCRE2 has no such globals, the helper is the plain call then.
  */
 static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
-    ngx_waf_main_t* main, ngx_waf_conf_t* conf, ngx_waf_str_t name,
-    const ngx_waf_str_t* args, size_t nargs, ngx_waf_regex_ops_t* regex_ops)
+    ngx_waf_main_configuration_t* main, ngx_waf_location_configuration_t* conf, ngx_waf_string_view_t name,
+    const ngx_waf_string_view_t* args, size_t nargs, ngx_waf_regex_callbacks_t* regex_ops)
 {
 #if !(NGX_PCRE2)
     ngx_pool_t* old_pcre_pool = NULL;
@@ -410,7 +410,7 @@ static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
         old_pcre_pool = ngx_http_waf_modsecurity_pcre_acquire(cf->pool);
     }
 
-    char* error = ngx_waf_directive(main, conf, name, args, nargs, regex_ops);
+    char* error = ngx_waf_directive_apply(main, conf, name, args, nargs, regex_ops);
 
     if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
         ngx_http_waf_modsecurity_pcre_release(old_pcre_pool);
@@ -418,7 +418,7 @@ static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
 
     return error;
 #else
-    return ngx_waf_directive(main, conf, name, args, nargs, regex_ops);
+    return ngx_waf_directive_apply(main, conf, name, args, nargs, regex_ops);
 #endif
 }
 
@@ -428,8 +428,8 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* elts = cf->args->elts;
     ngx_str_t expanded;
-    ngx_waf_regex_ops_t regex_ops;
-    const ngx_waf_str_t* args = (const ngx_waf_str_t*)(elts + 1);
+    ngx_waf_regex_callbacks_t regex_ops;
+    const ngx_waf_string_view_t* args = (const ngx_waf_string_view_t*)(elts + 1);
     ngx_uint_t nargs = cf->args->nelts - 1;
 
     /*
@@ -443,7 +443,7 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
         if (ngx_conf_full_name(cf->cycle, &expanded, 0) != NGX_OK) {
             return NGX_CONF_ERROR;
         }
-        args = (const ngx_waf_str_t*) &expanded;
+        args = (const ngx_waf_string_view_t*) &expanded;
     }
 
     regex_ops.compile = ngx_http_waf_regex_compile;
@@ -451,7 +451,7 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
     regex_ops.ctx = cf->pool;
 
     char* error = ngx_http_waf_directive_call(cf, cmd, mcf->core, loc_conf->core,
-        *(const ngx_waf_str_t*)(elts), args, nargs, &regex_ops);
+        *(const ngx_waf_string_view_t*)(elts), args, nargs, &regex_ops);
 
     if (error != NULL) {
         return ngx_http_waf_report(cf, error);
@@ -463,7 +463,7 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
      * block is dropped.
      */
     for ( ;; ) {
-        char* warning = ngx_waf_conf_take_warning(loc_conf->core);
+        char* warning = ngx_waf_location_configuration_take_warning(loc_conf->core);
 
         if (warning == NULL) {
             break;
@@ -481,7 +481,7 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
      * through the configuration merge).
      */
     if (ngx_strcmp(cmd->name.data, "waf_captcha") == 0) {
-        ngx_waf_str_t api = ngx_waf_conf_captcha_api(loc_conf->core);
+        ngx_waf_string_view_t api = ngx_waf_location_configuration_captcha_api(loc_conf->core);
 
         if (api.len != 0) {
             ngx_str_t value;
@@ -530,7 +530,7 @@ void *ngx_http_waf_create_main_conf(ngx_conf_t* cf) {
         return NULL;
     }
 
-    mcf->core = ngx_waf_main_create();
+    mcf->core = ngx_waf_main_configuration_create();
     if (mcf->core == NULL) {
         return NULL;
     }
@@ -559,7 +559,7 @@ void *ngx_http_waf_create_loc_conf(ngx_conf_t* cf) {
         return NULL;
     }
 
-    conf->core = ngx_waf_conf_create();
+    conf->core = ngx_waf_location_configuration_create();
     if (conf->core == NULL) {
         return NULL;
     }
@@ -586,7 +586,7 @@ char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
         return NGX_CONF_OK;
     }
 
-    char* error = ngx_waf_conf_merge(child->core, parent->core);
+    char* error = ngx_waf_location_configuration_merge(child->core, parent->core);
     if (error != NULL) {
         return ngx_http_waf_report(cf, error);
     }
@@ -611,12 +611,12 @@ char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
 
 
 static void ngx_http_waf_cleanup(void* data) {
-    ngx_waf_main_free(data);
+    ngx_waf_main_configuration_free(data);
 }
 
 
 static void ngx_http_waf_conf_cleanup(void* data) {
-    ngx_waf_conf_free(data);
+    ngx_waf_location_configuration_free(data);
 }
 
 
@@ -629,7 +629,7 @@ static void ngx_http_waf_zone_cleanup(void* data) {
     ngx_http_waf_zone_t* zone = data;
 
     if (zone->handle != NULL) {
-        ngx_waf_shm_zone_free(zone->handle);
+        ngx_waf_shared_memory_zone_free(zone->handle);
         zone->handle = NULL;
     }
 }

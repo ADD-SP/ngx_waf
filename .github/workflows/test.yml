@@ -260,13 +260,17 @@ jobs:
       - name: Run the integration tests of a PCRE1 build
         if: matrix.module-type == 'static' && matrix.nginx-version == 'stable'
         run: |
-          sudo apt-get install --yes libpcre3-dev
+          # Ubuntu 26 no longer provides libpcre3-dev.  PCRE1 8.45 is the
+          # final release, so build the official source tree through nginx.
+          git clone --depth 1 https://github.com/PCRE2Project/pcre1.git pcre1
+          (cd pcre1 && ./autogen.sh)
 
           mkdir -p nginx-pcre1
           tar zxf nginx-*.tar.gz --directory nginx-pcre1 --strip-components=1
 
           cd nginx-pcre1
           ./configure --without-pcre2 \
+            --with-pcre="${{ github.workspace }}/pcre1" \
             --with-http_ssl_module \
             --with-http_realip_module \
             --add-module="${{ github.workspace }}" \

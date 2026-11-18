@@ -81,7 +81,7 @@ static void ngx_http_waf_add_set_cookies(ngx_http_request_t* r, const ngx_waf_st
 
     for (i = 0; i < step->decision.set_cookie_count; i++) {
         ngx_table_elt_t* header = ngx_list_push(&r->headers_out.headers);
-        const ngx_waf_str_t* cookie = &step->decision.set_cookies[i];
+        const ngx_waf_string_view_t* cookie = &step->decision.set_cookies[i];
 
         if (header == NULL) {
             return;
@@ -110,7 +110,7 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
         return NGX_DECLINED;
     }
 
-    if (!ngx_waf_conf_enabled(conf->core)) {
+    if (!ngx_waf_location_configuration_enabled(conf->core)) {
         return NGX_DECLINED;
     }
 
@@ -263,7 +263,7 @@ static void ngx_http_waf_free_check(void* data) {
     ngx_http_waf_ctx_t* ctx = data;
 
     if (ctx->check != NULL) {
-        ngx_waf_check_free(ctx->check);
+        ngx_waf_inspection_free(ctx->check);
         ctx->check = NULL;
         ctx->step = NULL;
     }
@@ -279,10 +279,10 @@ static ngx_int_t ngx_http_waf_make_headers(ngx_http_request_t* r, ngx_array_t** 
     ngx_list_part_t* part;
     ngx_table_elt_t* header;
     ngx_uint_t i;
-    ngx_waf_header_t* item;
+    ngx_waf_header_view_t* item;
 
     *headers = ngx_array_create(r->pool, r->headers_in.headers.nalloc,
-        sizeof(ngx_waf_header_t));
+        sizeof(ngx_waf_header_view_t));
     if (*headers == NULL) {
         return NGX_ERROR;
     }
@@ -307,7 +307,7 @@ static ngx_int_t ngx_http_waf_make_headers(ngx_http_request_t* r, ngx_array_t** 
 }
 
 
-static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_str_t* body) {
+static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_string_view_t* body) {
     ngx_chain_t* bufs;
     size_t len = 0;
     u_char* data;
@@ -382,8 +382,8 @@ static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_str_t* bo
  * with the bytes nginx keeps for the whole request.  The core parses the pairs
  * and builds the text the rule list matches.
  */
-static ngx_waf_str_t* ngx_http_waf_push_cookie(ngx_array_t* cookies, ngx_str_t* value) {
-    ngx_waf_str_t* item = ngx_array_push(cookies);
+static ngx_waf_string_view_t* ngx_http_waf_push_cookie(ngx_array_t* cookies, ngx_str_t* value) {
+    ngx_waf_string_view_t* item = ngx_array_push(cookies);
 
     if (item == NULL) {
         return NULL;
@@ -399,7 +399,7 @@ static ngx_waf_str_t* ngx_http_waf_push_cookie(ngx_array_t* cookies, ngx_str_t* 
 static ngx_int_t ngx_http_waf_make_cookies(ngx_http_request_t* r, ngx_array_t** cookies) {
     ngx_table_elt_t* p;
 
-    *cookies = ngx_array_create(r->pool, 4, sizeof(ngx_waf_str_t));
+    *cookies = ngx_array_create(r->pool, 4, sizeof(ngx_waf_string_view_t));
     if (*cookies == NULL) {
         return NGX_ERROR;
     }
@@ -439,40 +439,40 @@ static ngx_int_t ngx_http_waf_make_cookies(ngx_http_request_t* r, ngx_array_t** 
  * The method of the request.  nginx spells the known methods as bits, the ABI
  * of the core spells them as an enum; the mapping belongs to the glue.
  */
-static ngx_waf_method ngx_http_waf_method(ngx_uint_t method) {
+static ngx_waf_http_method ngx_http_waf_method(ngx_uint_t method) {
     switch (method) {
     case NGX_HTTP_GET:
-        return NGX_WAF_METHOD_GET;
+        return NGX_WAF_HTTP_METHOD_GET;
     case NGX_HTTP_HEAD:
-        return NGX_WAF_METHOD_HEAD;
+        return NGX_WAF_HTTP_METHOD_HEAD;
     case NGX_HTTP_POST:
-        return NGX_WAF_METHOD_POST;
+        return NGX_WAF_HTTP_METHOD_POST;
     case NGX_HTTP_PUT:
-        return NGX_WAF_METHOD_PUT;
+        return NGX_WAF_HTTP_METHOD_PUT;
     case NGX_HTTP_DELETE:
-        return NGX_WAF_METHOD_DELETE;
+        return NGX_WAF_HTTP_METHOD_DELETE;
     case NGX_HTTP_MKCOL:
-        return NGX_WAF_METHOD_MKCOL;
+        return NGX_WAF_HTTP_METHOD_MKCOL;
     case NGX_HTTP_COPY:
-        return NGX_WAF_METHOD_COPY;
+        return NGX_WAF_HTTP_METHOD_COPY;
     case NGX_HTTP_MOVE:
-        return NGX_WAF_METHOD_MOVE;
+        return NGX_WAF_HTTP_METHOD_MOVE;
     case NGX_HTTP_OPTIONS:
-        return NGX_WAF_METHOD_OPTIONS;
+        return NGX_WAF_HTTP_METHOD_OPTIONS;
     case NGX_HTTP_PROPFIND:
-        return NGX_WAF_METHOD_PROPFIND;
+        return NGX_WAF_HTTP_METHOD_PROPFIND;
     case NGX_HTTP_PROPPATCH:
-        return NGX_WAF_METHOD_PROPPATCH;
+        return NGX_WAF_HTTP_METHOD_PROPPATCH;
     case NGX_HTTP_LOCK:
-        return NGX_WAF_METHOD_LOCK;
+        return NGX_WAF_HTTP_METHOD_LOCK;
     case NGX_HTTP_UNLOCK:
-        return NGX_WAF_METHOD_UNLOCK;
+        return NGX_WAF_HTTP_METHOD_UNLOCK;
     case NGX_HTTP_PATCH:
-        return NGX_WAF_METHOD_PATCH;
+        return NGX_WAF_HTTP_METHOD_PATCH;
     case NGX_HTTP_TRACE:
-        return NGX_WAF_METHOD_TRACE;
+        return NGX_WAF_HTTP_METHOD_TRACE;
     default:
-        return NGX_WAF_METHOD_UNKNOWN;
+        return NGX_WAF_HTTP_METHOD_UNKNOWN;
     }
 }
 
@@ -502,16 +502,16 @@ static ngx_waf_http_version ngx_http_waf_http_version(ngx_uint_t version) {
 static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
     ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
     ngx_http_waf_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_waf_module);
-    ngx_waf_req_t req;
-    ngx_waf_modsec_req_t modsec;
-    ngx_waf_zone_refs_t zone_refs;
+    ngx_waf_request_view_t req;
+    ngx_waf_modsecurity_request_view_t modsec;
+    ngx_waf_zone_references_t zone_refs;
     ngx_waf_zone_handles_t zone_handles;
-    ngx_waf_check_t* check;
+    ngx_waf_inspection_handle_t* check;
     ngx_array_t* cookies = NULL;
     ngx_array_t* headers = NULL;
-    ngx_waf_str_t body;
+    ngx_waf_string_view_t body;
 
-    ngx_memzero(&req, sizeof(ngx_waf_req_t));
+    ngx_memzero(&req, sizeof(ngx_waf_request_view_t));
 
     /* A body this module cannot read (or could not allocate) is not a body it
      * may skip: the POST list and ModSecurity have to see it, so the request
@@ -559,7 +559,7 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         req.referer.len = r->headers_in.referer->value.len;
     }
 
-    req.cookies = (const ngx_waf_str_t *) cookies->elts;
+    req.cookies = (const ngx_waf_string_view_t *) cookies->elts;
     req.cookie_count = cookies->nelts;
     req.body = body;
     req.now = ngx_time();
@@ -571,14 +571,14 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
      * packed only when the inspection can run, a configuration without
      * `waf_modsecurity` must not pay for it.
      */
-    if (ngx_waf_conf_modsecurity_enabled(conf->core)) {
-        ngx_memzero(&modsec, sizeof(ngx_waf_modsec_req_t));
+    if (ngx_waf_location_configuration_modsecurity_enabled(conf->core)) {
+        ngx_memzero(&modsec, sizeof(ngx_waf_modsecurity_request_view_t));
 
         if (ngx_http_waf_make_headers(r, &headers) != NGX_OK) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
-        modsec.headers = (const ngx_waf_header_t*) headers->elts;
+        modsec.headers = (const ngx_waf_header_view_t*) headers->elts;
         modsec.header_count = headers->nelts;
 
         if (conf->modsecurity_transaction_id != NULL) {
@@ -631,15 +631,15 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
             modsec.server_port = ngx_inet_get_port(r->connection->local_sockaddr);
         }
 
-        req.modsec = &modsec;
+        req.modsecurity = &modsec;
     }
 
-    zone_refs = ngx_waf_conf_zone_refs(conf->core);
+    zone_refs = ngx_waf_location_configuration_zone_references(conf->core);
     zone_handles.cc = ngx_http_waf_zone_handle(mcf, zone_refs.cc);
     zone_handles.captcha = ngx_http_waf_zone_handle(mcf, zone_refs.captcha);
     zone_handles.action = ngx_http_waf_zone_handle(mcf, zone_refs.action);
 
-    check = ngx_waf_check_begin(
+    check = ngx_waf_inspection_begin(
         conf->core,
         &req,
         zone_handles,
@@ -650,7 +650,7 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     }
 
     ctx->check = check;
-    ctx->step = ngx_waf_check_step(check);
+    ctx->step = ngx_waf_inspection_step(check);
     ctx->applied = 0;
     ctx->general_logged = 0;
 
@@ -856,8 +856,8 @@ void ngx_http_waf_resume(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx, ngx_waf
     if (ctx->check == NULL) {
         return;
     }
-    ngx_waf_check_resume(ctx->check, event);
-    ctx->step = ngx_waf_check_step(ctx->check);
+    ngx_waf_inspection_resume(ctx->check, event);
+    ctx->step = ngx_waf_inspection_step(ctx->check);
     ctx->applied = 0;
 }
 
@@ -990,12 +990,12 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
         return NGX_DECLINED;
     }
 
-    if (!ngx_waf_conf_enabled(conf->core)) {
+    if (!ngx_waf_location_configuration_enabled(conf->core)) {
         return NGX_DECLINED;
     }
 
-    if (ngx_waf_should_gc(ccf != NULL ? (uint32_t) ccf->worker_processes : 1)) {
-        ngx_waf_gc(conf->core);
+    if (ngx_waf_should_collect_garbage(ccf != NULL ? (uint32_t) ccf->worker_processes : 1)) {
+        ngx_waf_cache_collect_garbage(conf->core);
 
         if (mcf != NULL && mcf->zones != NULL) {
             ngx_http_waf_zone_t** zones = mcf->zones->elts;
@@ -1003,7 +1003,7 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
 
             for (i = 0; i < mcf->zones->nelts; i++) {
                 if (zones[i]->handle != NULL) {
-                    ngx_waf_shm_zone_gc(zones[i]->handle);
+                    ngx_waf_shared_memory_zone_collect_garbage(zones[i]->handle);
                 }
             }
         }
@@ -1014,7 +1014,7 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
     }
 
     /* The audit log of the ModSecurity transaction, when the inspection ran. */
-    ngx_waf_check_log(ctx->check);
+    ngx_waf_inspection_log(ctx->check);
 
     if (!ctx->general_logged && ctx->step->decision.general_log
         && ctx->step->decision.log.data != NULL)
