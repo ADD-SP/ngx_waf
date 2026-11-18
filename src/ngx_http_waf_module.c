@@ -22,7 +22,7 @@ static ngx_int_t ngx_http_waf_install_variables(ngx_conf_t* cf);
 
 /*
  * The log callback of libmodsecurity.  The Rust core installs it on every
- * instance it creates, the symbol has to be visible (see `rust/src/modsec.rs`).
+ * instance it creates, the symbol has to be visible (see `rust/src/modsecurity.rs`).
  */
 void ngx_http_waf_modsecurity_log(void* log, const void* data);
 

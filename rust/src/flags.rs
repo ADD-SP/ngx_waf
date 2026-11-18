@@ -4,13 +4,13 @@
 //! and never cross the ABI.  [`WafMode::contains`] means `mode & flag == flag`,
 //! `insert()` and `remove()` are `|=` and `&= ~`.
 
-use crate::abi::NgxWafMethod;
+use crate::abi::NgxWafHttpMethod;
 
 bitflags::bitflags! {
     /// One bit of `waf_mode`: a request method or an inspection.
     ///
     /// The method bits are the `NGX_HTTP_xxx` values of nginx; the glue maps
-    /// the method of the request onto [`NgxWafMethod`] and
+    /// the method of the request onto [`NgxWafHttpMethod`] and
     /// [`WafMode::for_method`] turns it into one of them.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct WafMode: u64 {
@@ -100,26 +100,26 @@ bitflags::bitflags! {
 
 impl WafMode {
     /// The `waf_mode` bit of one request method.  The glue maps the bits of
-    /// nginx onto [`NgxWafMethod`], the core owns the mapping onto its own
+    /// nginx onto [`NgxWafHttpMethod`], the core owns the mapping onto its own
     /// flag word.
-    pub(crate) fn for_method(method: NgxWafMethod) -> WafMode {
+    pub(crate) fn for_method(method: NgxWafHttpMethod) -> WafMode {
         match method {
-            NgxWafMethod::Unknown => WafMode::UNKNOWN,
-            NgxWafMethod::Get => WafMode::GET,
-            NgxWafMethod::Head => WafMode::HEAD,
-            NgxWafMethod::Post => WafMode::POST,
-            NgxWafMethod::Put => WafMode::PUT,
-            NgxWafMethod::Delete => WafMode::DELETE,
-            NgxWafMethod::Mkcol => WafMode::MKCOL,
-            NgxWafMethod::Copy => WafMode::COPY,
-            NgxWafMethod::Move => WafMode::MOVE,
-            NgxWafMethod::Options => WafMode::OPTIONS,
-            NgxWafMethod::Propfind => WafMode::PROPFIND,
-            NgxWafMethod::Proppatch => WafMode::PROPPATCH,
-            NgxWafMethod::Lock => WafMode::LOCK,
-            NgxWafMethod::Unlock => WafMode::UNLOCK,
-            NgxWafMethod::Patch => WafMode::PATCH,
-            NgxWafMethod::Trace => WafMode::TRACE,
+            NgxWafHttpMethod::Unknown => WafMode::UNKNOWN,
+            NgxWafHttpMethod::Get => WafMode::GET,
+            NgxWafHttpMethod::Head => WafMode::HEAD,
+            NgxWafHttpMethod::Post => WafMode::POST,
+            NgxWafHttpMethod::Put => WafMode::PUT,
+            NgxWafHttpMethod::Delete => WafMode::DELETE,
+            NgxWafHttpMethod::Mkcol => WafMode::MKCOL,
+            NgxWafHttpMethod::Copy => WafMode::COPY,
+            NgxWafHttpMethod::Move => WafMode::MOVE,
+            NgxWafHttpMethod::Options => WafMode::OPTIONS,
+            NgxWafHttpMethod::Propfind => WafMode::PROPFIND,
+            NgxWafHttpMethod::Proppatch => WafMode::PROPPATCH,
+            NgxWafHttpMethod::Lock => WafMode::LOCK,
+            NgxWafHttpMethod::Unlock => WafMode::UNLOCK,
+            NgxWafHttpMethod::Patch => WafMode::PATCH,
+            NgxWafHttpMethod::Trace => WafMode::TRACE,
         }
     }
 }
@@ -176,22 +176,22 @@ mod tests {
     #[test]
     fn every_method_has_its_bit() {
         for (method, expected) in [
-            (NgxWafMethod::Unknown, WafMode::UNKNOWN),
-            (NgxWafMethod::Get, WafMode::GET),
-            (NgxWafMethod::Head, WafMode::HEAD),
-            (NgxWafMethod::Post, WafMode::POST),
-            (NgxWafMethod::Put, WafMode::PUT),
-            (NgxWafMethod::Delete, WafMode::DELETE),
-            (NgxWafMethod::Mkcol, WafMode::MKCOL),
-            (NgxWafMethod::Copy, WafMode::COPY),
-            (NgxWafMethod::Move, WafMode::MOVE),
-            (NgxWafMethod::Options, WafMode::OPTIONS),
-            (NgxWafMethod::Propfind, WafMode::PROPFIND),
-            (NgxWafMethod::Proppatch, WafMode::PROPPATCH),
-            (NgxWafMethod::Lock, WafMode::LOCK),
-            (NgxWafMethod::Unlock, WafMode::UNLOCK),
-            (NgxWafMethod::Patch, WafMode::PATCH),
-            (NgxWafMethod::Trace, WafMode::TRACE),
+            (NgxWafHttpMethod::Unknown, WafMode::UNKNOWN),
+            (NgxWafHttpMethod::Get, WafMode::GET),
+            (NgxWafHttpMethod::Head, WafMode::HEAD),
+            (NgxWafHttpMethod::Post, WafMode::POST),
+            (NgxWafHttpMethod::Put, WafMode::PUT),
+            (NgxWafHttpMethod::Delete, WafMode::DELETE),
+            (NgxWafHttpMethod::Mkcol, WafMode::MKCOL),
+            (NgxWafHttpMethod::Copy, WafMode::COPY),
+            (NgxWafHttpMethod::Move, WafMode::MOVE),
+            (NgxWafHttpMethod::Options, WafMode::OPTIONS),
+            (NgxWafHttpMethod::Propfind, WafMode::PROPFIND),
+            (NgxWafHttpMethod::Proppatch, WafMode::PROPPATCH),
+            (NgxWafHttpMethod::Lock, WafMode::LOCK),
+            (NgxWafHttpMethod::Unlock, WafMode::UNLOCK),
+            (NgxWafHttpMethod::Patch, WafMode::PATCH),
+            (NgxWafHttpMethod::Trace, WafMode::TRACE),
         ] {
             assert_eq!(WafMode::for_method(method), expected);
         }

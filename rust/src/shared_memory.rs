@@ -41,7 +41,7 @@ const MIN_CAPACITY: usize = 84;
 /// Callbacks the C glue provides for one shared memory zone.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ShmOps {
+pub struct NgxWafSharedMemoryCallbacks {
     pub lock: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     pub unlock: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     /// Allocates from the zone: the caller holds the zone lock (the guard of
@@ -168,7 +168,7 @@ pub struct ZoneHandle {
     header: *mut ZoneHeader,
     /// Size of the shared memory segment, used to size new tables.
     size: usize,
-    ops: ShmOps,
+    ops: NgxWafSharedMemoryCallbacks,
 }
 
 // SAFETY: the handle is only touched by one worker process at a time and the
@@ -657,7 +657,7 @@ pub unsafe fn zone_init(
     addr: usize,
     size: usize,
     old: *mut ZoneHandle,
-    ops: ShmOps,
+    ops: NgxWafSharedMemoryCallbacks,
 ) -> *mut ZoneHandle {
     if addr == 0 || size == 0 {
         return std::ptr::null_mut();
@@ -942,7 +942,7 @@ fn slot_index(addr: &[u8]) -> usize {
 }
 
 /// Sweep the expired entries of every table of one zone.
-pub fn gc(handle: &ZoneHandle, now: i64) {
+pub fn collect_garbage(handle: &ZoneHandle, now: i64) {
     let zone = handle.lock();
     // SAFETY: the header points at the live zone header of the locked zone.
     let header = unsafe { &*handle.header };
@@ -983,7 +983,7 @@ pub fn gc(handle: &ZoneHandle, now: i64) {
 
 /// The probability check used by the log phase garbage collector: a worker of
 /// a multi-process setup runs it with a probability of 1 / `worker_processes`.
-pub fn should_gc(worker_processes: i64) -> bool {
+pub fn should_collect_garbage(worker_processes: i64) -> bool {
     if worker_processes <= 1 {
         return true;
     }
@@ -994,7 +994,7 @@ pub fn should_gc(worker_processes: i64) -> bool {
 pub(crate) mod testing {
     //! A fake shared memory segment so a zone can be tested without nginx.
 
-    use super::{zone_init, ShmOps, ZoneHandle};
+    use super::{zone_init, NgxWafSharedMemoryCallbacks, ZoneHandle};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// The fake segment, a handle of the state below it.
@@ -1049,8 +1049,8 @@ pub(crate) mod testing {
         }
 
         /// The callbacks and the `ctx` the C glue would pass for this segment.
-        pub(crate) fn ops(&self) -> ShmOps {
-            ShmOps {
+        pub(crate) fn ops(&self) -> NgxWafSharedMemoryCallbacks {
+            NgxWafSharedMemoryCallbacks {
                 lock: Some(fake_lock),
                 unlock: Some(fake_unlock),
                 alloc_locked: Some(fake_alloc_locked),
@@ -1217,7 +1217,7 @@ mod tests {
         cc::reset_counter(handle, b"cc", &addr, false, 1000, 60);
         assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "reset_counter");
 
-        gc(handle, 2000);
+        collect_garbage(handle, 2000);
         assert_eq!(shm.locked.load(Ordering::SeqCst), 0, "gc");
     }
 
@@ -1827,7 +1827,7 @@ mod tests {
                     5 => {
                         handle.with_present_entry(b"cc", &addr, false, |entry| entry.remove());
                     }
-                    6 => gc(handle, now),
+                    6 => collect_garbage(handle, now),
                     _ => now += 1 + (state % 30) as i64,
                 }
 
@@ -1843,13 +1843,15 @@ mod tests {
     /// A single worker collects on every request, several workers spread the
     /// work out: the GC runs with a probability of one in `worker_processes`.
     #[test]
-    fn should_gc_is_shared_between_the_workers() {
-        assert!(should_gc(0));
-        assert!(should_gc(1));
+    fn garbage_collection_is_shared_between_the_workers() {
+        assert!(should_collect_garbage(0));
+        assert!(should_collect_garbage(1));
 
         let workers = 8usize;
         let samples = 20_000usize;
-        let hits = (0..samples).filter(|_| should_gc(workers as i64)).count();
+        let hits = (0..samples)
+            .filter(|_| should_collect_garbage(workers as i64))
+            .count();
         let expected = samples / workers;
 
         // ±25% of 1/8 over 20k samples is more than twenty standard deviations.

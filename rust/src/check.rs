@@ -1,25 +1,25 @@
 //! The detection chain: it runs the inspections in the configured priority
 //! order and resolves the resulting action chain into a response.
 
-use crate::abi::{Header, NgxWafHttpVersion, NgxWafMethod};
+use crate::abi::{HeaderView, NgxWafHttpMethod, NgxWafHttpVersion};
 use crate::action;
 use crate::cache::{CacheKind, CachedResult};
 use crate::cc;
 use crate::config::{
-    BotId, CaptchaProvider, CaptchaSource, CheckId, LocConf, Policy, TriggerKind, VerifyBotMode,
-    Waf, BOTS,
+    BotId, CaptchaProvider, CaptchaSource, CheckKind, LocationConfiguration, Policy, TriggerKind,
+    VerifyBotMode, WafSwitch, BOTS,
 };
 #[cfg(test)]
 use crate::data::HTML_BLOCK;
-use crate::ffi::RawReq;
+use crate::ffi::RawRequestView;
 #[cfg(test)]
-use crate::ffi::{RawModsecReq, RawStr};
+use crate::ffi::{RawModSecurityRequestView, RawStringView};
 use crate::flags::WafMode;
 use crate::http::{FORBIDDEN, INTERNAL_SERVER_ERROR, OK, SERVICE_UNAVAILABLE, TOO_MANY_REQUESTS};
 use crate::http_response::{self, Response};
-use crate::modsec;
+use crate::modsecurity;
 use crate::rules::RuleKind;
-use crate::shm;
+use crate::shared_memory;
 use crate::util;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -29,11 +29,11 @@ use std::time::Instant;
 use subtle::ConstantTimeEq;
 
 /// The request data the C glue provides.
-pub struct Req<'a> {
+pub struct Request<'a> {
     /// Network order address, 4 or 16 bytes.
     pub ip: &'a [u8],
     pub ipv6: bool,
-    pub method: NgxWafMethod,
+    pub method: NgxWafHttpMethod,
     pub uri: &'a [u8],
     pub args: &'a [u8],
     pub user_agent: &'a [u8],
@@ -44,22 +44,22 @@ pub struct Req<'a> {
     pub now: i64,
     /// The view `waf_modsecurity` reads, `None` when the inspection cannot
     /// run.
-    pub modsec: Option<ModsecReq<'a>>,
+    pub modsecurity: Option<ModSecurityRequest<'a>>,
     /// `r->connection->log`.
     pub log: *mut std::os::raw::c_void,
     /// The handle of the CC zone, `None` when the configuration does not use
     /// one.
-    pub cc_zone: Option<&'a shm::ZoneHandle>,
+    pub cc_zone: Option<&'a shared_memory::ZoneHandle>,
     /// The handle of the captcha action table (`waf_action ... zone=...`).
-    pub action_zone: Option<&'a shm::ZoneHandle>,
+    pub action_zone: Option<&'a shared_memory::ZoneHandle>,
     /// The handle of the captcha fail counters (`waf_captcha ... zone=...`).
-    pub captcha_zone: Option<&'a shm::ZoneHandle>,
+    pub captcha_zone: Option<&'a shared_memory::ZoneHandle>,
 }
 
 /// Everything libmodsecurity reads beyond the common request view.
-pub struct ModsecReq<'a> {
+pub struct ModSecurityRequest<'a> {
     /// The request headers, in the order nginx parsed them.
-    pub headers: &'a [Header],
+    pub headers: &'a [HeaderView],
     /// The `waf_modsecurity_transaction_id` of this request, `None` when the
     /// directive is not configured.
     pub trans_id: Option<&'a [u8]>,
@@ -147,7 +147,7 @@ impl Outcome {
 /// decision.  It survives a "not matched" outcome (a fake crawler is still
 /// reported while the request goes through) and a suspension.
 #[derive(Default)]
-pub struct Meta {
+pub struct InspectionMetadata {
     pub blocked: bool,
     pub general_log: bool,
     pub rule_type: Vec<u8>,
@@ -157,27 +157,27 @@ pub struct Meta {
     pub remain: i64,
 }
 
-impl Meta {
+impl InspectionMetadata {
     fn new() -> Self {
-        Meta {
+        InspectionMetadata {
             remain: -1,
-            ..Meta::default()
+            ..InspectionMetadata::default()
         }
     }
 }
 
 /// The mutable state of one inspection.
 struct State<'a, 'r> {
-    conf: &'a mut LocConf,
-    req: &'r Req<'r>,
+    conf: &'a mut LocationConfiguration,
+    req: &'r Request<'r>,
     /// The response asked for by the inspection that matched, `None` while no
     /// inspection matched.
     decision: &'a mut Option<Decision>,
-    meta: &'a mut Meta,
+    meta: &'a mut InspectionMetadata,
     /// The ModSecurity transaction of this request, created by the
     /// `waf_modsecurity` inspection and kept until nginx destroys the request
     /// pool.
-    modsec: &'a mut Option<modsec::Transaction>,
+    modsecurity: &'a mut Option<modsecurity::Transaction>,
     /// Whether the C side can perform the captcha provider request.  Until it
     /// can, a `waf_captcha on` configuration behaves like it did before the
     /// captcha support landed: accepted by the parser, warned about, and
@@ -447,16 +447,16 @@ pub enum Event<'a> {
 /// created while the configuration is read and every request borrows it; the
 /// two accessors are the only places that turn it back into a reference, which
 /// keeps the unsafe contract in one spot.
-struct ConfHandle(NonNull<LocConf>);
+struct LocationConfigurationHandle(NonNull<LocationConfiguration>);
 
-impl ConfHandle {
-    fn get(&self) -> &LocConf {
+impl LocationConfigurationHandle {
+    fn get(&self) -> &LocationConfiguration {
         // SAFETY: the configuration outlives every machine (the C side frees it
         // only after the last request of the worker).
         unsafe { self.0.as_ref() }
     }
 
-    fn get_mut(&mut self) -> &mut LocConf {
+    fn get_mut(&mut self) -> &mut LocationConfiguration {
         // SAFETY: one worker process owns the configuration and drives one
         // machine at a time.
         unsafe { self.0.as_mut() }
@@ -466,16 +466,16 @@ impl ConfHandle {
 /// One request, checked possibly across several nginx event loop turns.
 pub struct Machine {
     /// Borrowed from the C side configuration, which outlives the request.
-    conf: ConfHandle,
-    req: RawReq,
+    conf: LocationConfigurationHandle,
+    req: RawRequestView,
     cookies: Vec<Vec<u8>>,
-    priority: Vec<CheckId>,
+    priority: Vec<CheckKind>,
     /// Index of the next inspection to run.
     index: usize,
     checked: bool,
     start: Instant,
     decision: Option<Decision>,
-    meta: Meta,
+    meta: InspectionMetadata,
     continuation: Option<Continuation>,
     /// The request the C side has to perform when the machine parks on an HTTP
     /// step.
@@ -483,7 +483,7 @@ pub struct Machine {
     /// The ModSecurity transaction of this request.  It is created when the
     /// `waf_modsecurity` inspection runs and stays alive until the machine is
     /// released, which is after the log phase of nginx.
-    modsec: Option<modsec::Transaction>,
+    modsecurity: Option<modsecurity::Transaction>,
     /// Whether the C side is able to perform that request.
     http_transport: bool,
 }
@@ -491,12 +491,12 @@ pub struct Machine {
 impl Machine {
     /// Start the inspection of one request.
     pub fn new(
-        conf: NonNull<LocConf>,
-        req: RawReq,
+        conf: NonNull<LocationConfiguration>,
+        req: RawRequestView,
         cookies: Vec<Vec<u8>>,
         http_transport: bool,
     ) -> Machine {
-        let conf = ConfHandle(conf);
+        let conf = LocationConfigurationHandle(conf);
         let priority = conf
             .get()
             .priority
@@ -511,10 +511,10 @@ impl Machine {
             checked: false,
             start: Instant::now(),
             decision: None,
-            meta: Meta::new(),
+            meta: InspectionMetadata::new(),
             continuation: None,
             fetch: None,
-            modsec: None,
+            modsecurity: None,
             http_transport,
         }
     }
@@ -522,7 +522,7 @@ impl Machine {
     /// Run until the request is decided or an asynchronous operation is needed.
     pub fn step(&mut self) -> Step {
         let conf = self.conf.get_mut();
-        if !matches!(conf.waf, Some(Waf::On | Waf::Bypass)) {
+        if !matches!(conf.waf, Some(WafSwitch::On | WafSwitch::Bypass)) {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -532,7 +532,7 @@ impl Machine {
         // request whose method is unknown through.  Every request whose method
         // is known runs the inspections, each of them gated by its own method
         // bit.
-        if conf.waf_mode.is_empty() && req.method == NgxWafMethod::Unknown {
+        if conf.waf_mode.is_empty() && req.method == NgxWafHttpMethod::Unknown {
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -543,7 +543,7 @@ impl Machine {
             &self.priority,
             &mut self.decision,
             &mut self.meta,
-            &mut self.modsec,
+            &mut self.modsecurity,
             self.http_transport,
         );
 
@@ -577,7 +577,7 @@ impl Machine {
 
     /// The raw request the machine was created with, so the C side can start
     /// the asynchronous operation a parked step asks for.
-    pub fn raw(&self) -> &RawReq {
+    pub fn raw(&self) -> &RawRequestView {
         &self.req
     }
 
@@ -588,14 +588,14 @@ impl Machine {
 
     /// Let a test inject the shared memory handle of the fail counters.
     #[cfg(test)]
-    pub fn set_captcha_zone(&mut self, zone: *mut shm::ZoneHandle) {
-        self.req.captcha_zone = zone as *const shm::ZoneHandle;
+    pub fn set_captcha_zone(&mut self, zone: *mut shared_memory::ZoneHandle) {
+        self.req.captcha_zone = zone as *const shared_memory::ZoneHandle;
     }
 
     /// Let a test inject the shared memory handle of the captcha action table.
     #[cfg(test)]
-    pub fn set_action_zone(&mut self, zone: *mut shm::ZoneHandle) {
-        self.req.action_zone = zone as *const shm::ZoneHandle;
+    pub fn set_action_zone(&mut self, zone: *mut shared_memory::ZoneHandle) {
+        self.req.action_zone = zone as *const shared_memory::ZoneHandle;
     }
 
     /// The HTTP request of a parked step, `(url, body)`.
@@ -608,7 +608,7 @@ impl Machine {
     /// The log phase of nginx: let ModSecurity write the audit log of the
     /// transaction of this request, if it started one.
     pub fn log_phase(&mut self) {
-        if let Some(transaction) = self.modsec.as_mut() {
+        if let Some(transaction) = self.modsecurity.as_mut() {
             transaction.process_logging();
         }
     }
@@ -672,7 +672,7 @@ impl Machine {
                 req: &req,
                 decision: &mut decision,
                 meta: &mut self.meta,
-                modsec: &mut self.modsec,
+                modsecurity: &mut self.modsecurity,
                 http_transport: self.http_transport,
             };
             let result = captcha_apply(&mut state, path, verdict);
@@ -731,7 +731,7 @@ impl Machine {
                 req: &self.req.view(&self.cookies),
                 decision: &mut decision,
                 meta: &mut self.meta,
-                modsec: &mut self.modsec,
+                modsecurity: &mut self.modsecurity,
                 http_transport: self.http_transport,
             };
             state.apply_policy(policy);
@@ -753,7 +753,7 @@ impl Machine {
         // In bypass mode the inspections still run (so `$waf_*` and the log are
         // filled in) but nothing is blocked and no content handler is
         // installed.
-        if conf.waf == Some(Waf::Bypass) {
+        if conf.waf == Some(WafSwitch::Bypass) {
             outcome.kind = OutcomeKind::Allow;
             outcome.status = 0;
             outcome.body.clear();
@@ -768,13 +768,13 @@ impl Machine {
 /// Run the inspections from `index`, in the configured order.
 #[allow(clippy::too_many_arguments)]
 fn run_checks(
-    conf: &mut LocConf,
-    req: &Req<'_>,
+    conf: &mut LocationConfiguration,
+    req: &Request<'_>,
     index: usize,
-    priority: &[CheckId],
+    priority: &[CheckKind],
     decision: &mut Option<Decision>,
-    meta: &mut Meta,
-    modsec: &mut Option<modsec::Transaction>,
+    meta: &mut InspectionMetadata,
+    modsecurity: &mut Option<modsecurity::Transaction>,
     http_transport: bool,
 ) -> RunResult {
     // The captcha session check runs before every other inspection, it is not
@@ -785,7 +785,7 @@ fn run_checks(
             req,
             decision,
             meta,
-            modsec,
+            modsecurity,
             http_transport,
         };
         match check_captcha_session(&mut state) {
@@ -818,7 +818,7 @@ fn run_checks(
             req,
             decision,
             meta,
-            modsec,
+            modsecurity,
             http_transport,
         };
         match run_check(&mut state, *id) {
@@ -868,47 +868,47 @@ enum RunResult {
 /// Inspect a request that never needs the event loop.  Only the tests use this,
 /// the C side always drives `Machine` through the FFI.
 #[cfg(test)]
-pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
+pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
     let mut machine = Machine::new(
         NonNull::from(conf),
-        RawReq {
-            ip: RawStr {
+        RawRequestView {
+            ip: RawStringView {
                 data: req.ip.as_ptr(),
                 len: req.ip.len(),
             },
             method: req.method,
-            uri: RawStr {
+            uri: RawStringView {
                 data: req.uri.as_ptr(),
                 len: req.uri.len(),
             },
-            args: RawStr {
+            args: RawStringView {
                 data: req.args.as_ptr(),
                 len: req.args.len(),
             },
-            user_agent: RawStr {
+            user_agent: RawStringView {
                 data: req.user_agent.as_ptr(),
                 len: req.user_agent.len(),
             },
-            referer: RawStr {
+            referer: RawStringView {
                 data: req.referer.as_ptr(),
                 len: req.referer.len(),
             },
-            body: RawStr {
+            body: RawStringView {
                 data: req.body.as_ptr(),
                 len: req.body.len(),
             },
             now: req.now,
-            modsec: None,
+            modsecurity: None,
             log: std::ptr::null_mut(),
-            cc_zone: req
-                .cc_zone
-                .map_or(std::ptr::null(), |zone| zone as *const shm::ZoneHandle),
-            action_zone: req
-                .action_zone
-                .map_or(std::ptr::null(), |zone| zone as *const shm::ZoneHandle),
-            captcha_zone: req
-                .captcha_zone
-                .map_or(std::ptr::null(), |zone| zone as *const shm::ZoneHandle),
+            cc_zone: req.cc_zone.map_or(std::ptr::null(), |zone| {
+                zone as *const shared_memory::ZoneHandle
+            }),
+            action_zone: req.action_zone.map_or(std::ptr::null(), |zone| {
+                zone as *const shared_memory::ZoneHandle
+            }),
+            captcha_zone: req.captcha_zone.map_or(std::ptr::null(), |zone| {
+                zone as *const shared_memory::ZoneHandle
+            }),
         },
         req.cookies.to_vec(),
         true,
@@ -927,23 +927,23 @@ pub fn check(conf: &mut LocConf, req: &Req) -> Outcome {
     }
 }
 
-fn run_check(state: &mut State, id: CheckId) -> CheckResult {
+fn run_check(state: &mut State, id: CheckKind) -> CheckResult {
     match id {
-        CheckId::Cc => check_cc(state).into(),
-        CheckId::WhiteIp => check_ip(state, true).into(),
-        CheckId::Ip => check_ip(state, false).into(),
-        CheckId::WhiteUrl => check_regex(state, RuleKind::WhiteUrl, true).into(),
-        CheckId::Url => check_regex(state, RuleKind::Url, false).into(),
-        CheckId::Args => check_regex(state, RuleKind::Args, false).into(),
-        CheckId::Ua => check_regex(state, RuleKind::UserAgent, false).into(),
-        CheckId::WhiteReferer => check_regex(state, RuleKind::WhiteReferer, true).into(),
-        CheckId::Referer => check_regex(state, RuleKind::Referer, false).into(),
-        CheckId::Cookie => check_cookie(state).into(),
-        CheckId::Post => check_post(state).into(),
-        CheckId::VerifyBot => check_verify_bot(state),
-        CheckId::Captcha => check_captcha(state),
-        CheckId::UnderAttack => check_under_attack(state),
-        CheckId::Modsecurity => check_modsecurity(state),
+        CheckKind::Cc => check_cc(state).into(),
+        CheckKind::WhiteIp => check_ip(state, true).into(),
+        CheckKind::Ip => check_ip(state, false).into(),
+        CheckKind::WhiteUrl => check_regex(state, RuleKind::WhiteUrl, true).into(),
+        CheckKind::Url => check_regex(state, RuleKind::Url, false).into(),
+        CheckKind::Args => check_regex(state, RuleKind::Args, false).into(),
+        CheckKind::Ua => check_regex(state, RuleKind::UserAgent, false).into(),
+        CheckKind::WhiteReferer => check_regex(state, RuleKind::WhiteReferer, true).into(),
+        CheckKind::Referer => check_regex(state, RuleKind::Referer, false).into(),
+        CheckKind::Cookie => check_cookie(state).into(),
+        CheckKind::Post => check_post(state).into(),
+        CheckKind::VerifyBot => check_verify_bot(state),
+        CheckKind::Captcha => check_captcha(state),
+        CheckKind::UnderAttack => check_under_attack(state),
+        CheckKind::ModSecurity => check_modsecurity(state),
     }
 }
 
@@ -962,7 +962,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     // enabled inspection without it is a bug at the boundary, answer like
     // every other inspection that cannot run.
     let req = state.req;
-    let Some(modsec_req) = req.modsec.as_ref() else {
+    let Some(modsec_req) = req.modsecurity.as_ref() else {
         *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
         return CheckResult::Matched;
     };
@@ -985,12 +985,12 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     let verdict = match run_modsecurity_request(state, &mut transaction, modsec_req) {
         Ok(verdict) => verdict,
         Err(_) => {
-            *state.modsec = Some(transaction);
+            *state.modsecurity = Some(transaction);
             *state.decision = Some(Decision::status(INTERNAL_SERVER_ERROR));
             return CheckResult::Matched;
         }
     };
-    *state.modsec = Some(transaction);
+    *state.modsecurity = Some(transaction);
 
     let Some(verdict) = verdict else {
         return CheckResult::NotMatched;
@@ -1004,7 +1004,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     }
 
     if state
-        .modsec
+        .modsecurity
         .as_mut()
         .expect("the transaction is alive")
         .update_status_code(verdict.status)
@@ -1019,7 +1019,7 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
         // keeps the status of the intervention and serves the configured block
         // page when there is one; every other policy is the response the
         // configuration asked for.
-        let policy = state.conf.policy(TriggerKind::Modsecurity);
+        let policy = state.conf.policy(TriggerKind::ModSecurity);
         if policy == Policy::Follow {
             *state.decision = Some(if state.conf.block_page.is_empty() {
                 Decision::status(verdict.status)
@@ -1040,8 +1040,8 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
 /// status 200 keeps the rule info the answer carried and runs the next phase.
 fn take_intervention(
     state: &mut State,
-    transaction: &mut modsec::Transaction,
-) -> Result<Option<modsec::Verdict>, modsec::ModSecError> {
+    transaction: &mut modsecurity::Transaction,
+) -> Result<Option<modsecurity::Verdict>, modsecurity::ModSecurityError> {
     let Some(verdict) = transaction.intervention() else {
         return Ok(None);
     };
@@ -1064,9 +1064,9 @@ fn take_intervention(
 /// stop at the first intervention of the library.
 fn run_modsecurity_request(
     state: &mut State,
-    transaction: &mut modsec::Transaction,
-    req: &ModsecReq<'_>,
-) -> Result<Option<modsec::Verdict>, modsec::ModSecError> {
+    transaction: &mut modsecurity::Transaction,
+    req: &ModSecurityRequest<'_>,
+) -> Result<Option<modsecurity::Verdict>, modsecurity::ModSecurityError> {
     transaction.process_connection(
         req.client_addr,
         req.client_port,
@@ -1131,7 +1131,7 @@ fn check_captcha_session(state: &mut State) -> CheckResult {
     }
     // The session entry point needs the *action* table (the one
     // `waf_action X=CAPTCHA zone=...` created), not the fail counter.
-    if state.conf.waf == Some(Waf::Bypass) {
+    if state.conf.waf == Some(WafSwitch::Bypass) {
         return CheckResult::NotMatched;
     }
     let Some(action_zone) = state.req.action_zone else {
@@ -1158,7 +1158,7 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
         None => return captcha_apply(state, path, CaptchaVerdict::Fault),
     };
 
-    if !captcha_is_verify_url(state) || state.req.method != NgxWafMethod::Post {
+    if !captcha_is_verify_url(state) || state.req.method != NgxWafHttpMethod::Post {
         return captcha_apply(state, path, CaptchaVerdict::Challenge);
     }
 
@@ -1850,8 +1850,8 @@ fn check_cc(state: &mut State) -> bool {
 /// applies: a bare status, or a status with a body written by the content
 /// handler.
 fn resolve(
-    _conf: &LocConf,
-    meta: &Meta,
+    _conf: &LocationConfiguration,
+    meta: &InspectionMetadata,
     decision: &mut Option<Decision>,
     spend: f64,
     checked: bool,
@@ -1911,7 +1911,7 @@ fn resolve(
 
 /// `Retry-After` is only produced by the CC denial, and only when the denial is
 /// a plain status return.
-fn retry_after(meta: &Meta, status: u32) -> Option<i64> {
+fn retry_after(meta: &InspectionMetadata, status: u32) -> Option<i64> {
     if meta.rule_type != b"CC-DENY" || status == 444 {
         return None;
     }
@@ -1940,7 +1940,7 @@ mod tests {
     use crate::rules::{self, RegexRule};
     use std::rc::Rc;
 
-    fn set_policy(conf: &mut LocConf, kind: TriggerKind, policy: Policy) {
+    fn set_policy(conf: &mut LocationConfiguration, kind: TriggerKind, policy: Policy) {
         conf.action.policies[kind.index()] = Some(policy);
     }
 
@@ -1956,12 +1956,12 @@ mod tests {
         );
     }
 
-    fn conf_with_rules(rules: rules::RuleSet) -> LocConf {
-        LocConf {
-            waf: Some(Waf::On),
+    fn conf_with_rules(rules: rules::RuleSet) -> LocationConfiguration {
+        LocationConfiguration {
+            waf: Some(WafSwitch::On),
             waf_mode: WafMode::FULL,
             rules: Some(Rc::new(rules)),
-            ..LocConf::default()
+            ..LocationConfiguration::default()
         }
     }
 
@@ -1973,11 +1973,11 @@ mod tests {
         rules
     }
 
-    fn request<'a>(uri: &'a [u8], cookies: &'a [Vec<u8>]) -> Req<'a> {
-        Req {
+    fn request<'a>(uri: &'a [u8], cookies: &'a [Vec<u8>]) -> Request<'a> {
+        Request {
             ip: &[1, 2, 3, 4],
             ipv6: false,
-            method: NgxWafMethod::Get,
+            method: NgxWafHttpMethod::Get,
             uri,
             args: b"",
             user_agent: b"",
@@ -1985,7 +1985,7 @@ mod tests {
             cookies,
             body: b"",
             now: 1_000,
-            modsec: None,
+            modsecurity: None,
             log: std::ptr::null_mut(),
             cc_zone: None,
             action_zone: None,
@@ -1996,7 +1996,7 @@ mod tests {
     #[test]
     fn disabled_waf_does_not_check() {
         let mut conf = conf_with_rules(url_rules());
-        conf.waf = Some(Waf::Off);
+        conf.waf = Some(WafSwitch::Off);
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Allow);
@@ -2064,7 +2064,7 @@ mod tests {
                 .push(RegexRule::compile(b"^/white/", None).unwrap());
             rules
         }));
-        conf.priority = Some(vec![CheckId::WhiteUrl, CheckId::Url]);
+        conf.priority = Some(vec![CheckKind::WhiteUrl, CheckKind::Url]);
         let cookies = Vec::new();
         let outcome = check(&mut conf, &request(b"/white/www.bak", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Allow);
@@ -2076,7 +2076,7 @@ mod tests {
     #[test]
     fn bypass_mode_reports_but_never_blocks() {
         let mut conf = conf_with_rules(url_rules());
-        conf.waf = Some(Waf::Bypass);
+        conf.waf = Some(WafSwitch::Bypass);
         conf.block_page = Rc::new(HTML_BLOCK.to_vec());
         let page = Rc::clone(&conf.block_page);
         set_policy(
@@ -2162,7 +2162,7 @@ mod tests {
 
         let directory = Box::leak(vec![0u8; 4096].into_boxed_slice());
         DIRECTORY.store(directory.as_mut_ptr() as usize, Ordering::SeqCst);
-        let ops = shm::ShmOps {
+        let ops = shared_memory::NgxWafSharedMemoryCallbacks {
             lock: None,
             unlock: None,
             alloc_locked: Some(directory_alloc),
@@ -2171,7 +2171,7 @@ mod tests {
         // SAFETY: the leaked directory segment and the callbacks above stay
         // alive for the test, and the handle is freed at its end.
         let handle = unsafe {
-            shm::zone_init(
+            shared_memory::zone_init(
                 directory.as_ptr() as usize,
                 directory.len(),
                 std::ptr::null_mut(),
@@ -2188,7 +2188,7 @@ mod tests {
         conf.cc_deny.limit = Some(2);
         conf.cc_deny.cycle = Some(60);
         conf.cc_deny.duration = Some(60);
-        conf.cc_deny.zone = Some(crate::config::ZoneRef {
+        conf.cc_deny.zone = Some(crate::config::ZoneReference {
             name: b"any".to_vec(),
             tag: b"cc_deny".to_vec(),
         });
@@ -2202,7 +2202,7 @@ mod tests {
         assert!(outcome.blocked);
         assert_eq!(outcome.rule_type, b"CC-DENY");
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { shm::zone_free(handle) };
+        unsafe { shared_memory::zone_free(handle) };
     }
 
     #[test]
@@ -2303,38 +2303,38 @@ mod tests {
     }
 
     /// Build a machine for a request that only carries a user agent.
-    fn machine_for_user_agent(conf: &mut LocConf, user_agent: &[u8]) -> Machine {
+    fn machine_for_user_agent(conf: &mut LocationConfiguration, user_agent: &[u8]) -> Machine {
         let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
         let (uri, uri_len) = leaked(b"/");
         let (user_agent, user_agent_len) = leaked(user_agent);
-        let raw = RawReq {
-            ip: RawStr {
+        let raw = RawRequestView {
+            ip: RawStringView {
                 data: ip,
                 len: ip_len,
             },
-            method: NgxWafMethod::Get,
-            uri: RawStr {
+            method: NgxWafHttpMethod::Get,
+            uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStr {
+            args: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            user_agent: RawStr {
+            user_agent: RawStringView {
                 data: user_agent,
                 len: user_agent_len,
             },
-            referer: RawStr {
+            referer: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            body: RawStr {
+            body: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
             now: 1_000,
-            modsec: None,
+            modsecurity: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -2343,12 +2343,12 @@ mod tests {
         Machine::new(NonNull::from(conf), raw, Vec::new(), true)
     }
 
-    fn verify_bot_conf(mode: &str) -> LocConf {
-        let mut main = crate::config::MainConf::default();
-        let mut conf = LocConf {
-            waf: Some(Waf::On),
+    fn verify_bot_conf(mode: &str) -> LocationConfiguration {
+        let mut main = crate::config::MainConfiguration::default();
+        let mut conf = LocationConfiguration {
+            waf: Some(WafSwitch::On),
             waf_mode: WafMode::GET | WafMode::UA,
-            ..LocConf::default()
+            ..LocationConfiguration::default()
         };
         let args: Vec<Vec<u8>> = vec![mode.as_bytes().to_vec(), b"GoogleBot".to_vec()];
         crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args, None).unwrap();
@@ -2458,12 +2458,12 @@ mod tests {
         rules
             .url
             .push(RegexRule::compile(b"/www\\.bak", None).unwrap());
-        let mut main = crate::config::MainConf::default();
-        let mut conf = LocConf {
-            waf: Some(Waf::On),
+        let mut main = crate::config::MainConfiguration::default();
+        let mut conf = LocationConfiguration {
+            waf: Some(WafSwitch::On),
             waf_mode: WafMode::UA | WafMode::URL | WafMode::GET,
             rules: Some(Rc::new(rules)),
-            ..LocConf::default()
+            ..LocationConfiguration::default()
         };
         let args: Vec<Vec<u8>> = vec![b"on".to_vec(), b"GoogleBot".to_vec()];
         crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args, None).unwrap();
@@ -2471,34 +2471,34 @@ mod tests {
         let user_agent = b"Googlebot";
         let uri = b"/www.bak";
         let ip = [1u8, 2, 3, 4];
-        let raw = RawReq {
-            ip: RawStr {
+        let raw = RawRequestView {
+            ip: RawStringView {
                 data: ip.as_ptr(),
                 len: ip.len(),
             },
-            method: NgxWafMethod::Get,
-            uri: RawStr {
+            method: NgxWafHttpMethod::Get,
+            uri: RawStringView {
                 data: uri.as_ptr(),
                 len: uri.len(),
             },
-            args: RawStr {
+            args: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            user_agent: RawStr {
+            user_agent: RawStringView {
                 data: user_agent.as_ptr(),
                 len: user_agent.len(),
             },
-            referer: RawStr {
+            referer: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            body: RawStr {
+            body: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
             now: 1_000,
-            modsec: None,
+            modsecurity: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -2520,14 +2520,14 @@ mod tests {
 
     /// A configuration with `waf_captcha on` (and a bogus provider URL, the
     /// tests drive the provider answer themselves).
-    fn captcha_conf(provider: &str, extra: &[&str]) -> LocConf {
-        let mut main = crate::config::MainConf::default();
+    fn captcha_conf(provider: &str, extra: &[&str]) -> LocationConfiguration {
+        let mut main = crate::config::MainConfiguration::default();
         crate::config::zone_directive(&mut main, &[b"name=any".to_vec(), b"size=10m".to_vec()])
             .unwrap();
-        let mut conf = LocConf {
-            waf: Some(Waf::On),
+        let mut conf = LocationConfiguration {
+            waf: Some(WafSwitch::On),
             waf_mode: WafMode::GET | WafMode::POST,
-            ..LocConf::new()
+            ..LocationConfiguration::new()
         };
         let mut args = vec![
             b"on".to_vec(),
@@ -2542,8 +2542,8 @@ mod tests {
     }
 
     fn captcha_machine(
-        conf: &mut LocConf,
-        method: NgxWafMethod,
+        conf: &mut LocationConfiguration,
+        method: NgxWafHttpMethod,
         uri: &[u8],
         body: &[u8],
         cookies: Vec<Vec<u8>>,
@@ -2551,34 +2551,34 @@ mod tests {
         let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
         let (uri, uri_len) = leaked(uri);
         let (body, body_len) = leaked(body);
-        let raw = RawReq {
-            ip: RawStr {
+        let raw = RawRequestView {
+            ip: RawStringView {
                 data: ip,
                 len: ip_len,
             },
             method,
-            uri: RawStr {
+            uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStr {
+            args: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            user_agent: RawStr {
+            user_agent: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            referer: RawStr {
+            referer: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            body: RawStr {
+            body: RawStringView {
                 data: body,
                 len: body_len,
             },
             now: 1_000,
-            modsec: None,
+            modsecurity: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -2608,7 +2608,7 @@ mod tests {
     #[test]
     fn captcha_challenges_a_visitor_without_cookies() {
         let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
-        let mut machine = captcha_machine(&mut conf, NgxWafMethod::Get, b"/", b"", Vec::new());
+        let mut machine = captcha_machine(&mut conf, NgxWafHttpMethod::Get, b"/", b"", Vec::new());
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             other => panic!(
@@ -2628,8 +2628,13 @@ mod tests {
     fn captcha_posts_the_token_to_the_provider_and_mints_cookies() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let body = b"g-recaptcha-response=token";
-        let mut machine =
-            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(
+            &mut conf,
+            NgxWafHttpMethod::Post,
+            b"/captcha",
+            body,
+            Vec::new(),
+        );
 
         assert!(matches!(
             machine.step(),
@@ -2672,8 +2677,13 @@ mod tests {
             good_cookie("__waf_captcha_hmac", hmac.as_bytes()),
         ];
         let mut conf2 = captcha_conf("reCAPTCHAv2:checkbox", &[]);
-        let mut machine =
-            captcha_machine(&mut conf2, NgxWafMethod::Get, b"/", b"", cookies.clone());
+        let mut machine = captcha_machine(
+            &mut conf2,
+            NgxWafHttpMethod::Get,
+            b"/",
+            b"",
+            cookies.clone(),
+        );
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             other => panic!(
@@ -2687,7 +2697,7 @@ mod tests {
         // ... but not with a cookie the server did not mint.
         let mut broken = cookies;
         broken[2] = good_cookie("__waf_captcha_hmac", b"deadbeef");
-        let mut machine = captcha_machine(&mut conf2, NgxWafMethod::Get, b"/", b"", broken);
+        let mut machine = captcha_machine(&mut conf2, NgxWafHttpMethod::Get, b"/", b"", broken);
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             other => panic!(
@@ -2721,8 +2731,13 @@ mod tests {
         ] {
             let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
             let body = b"g-recaptcha-response=token";
-            let mut machine =
-                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+            let mut machine = captcha_machine(
+                &mut conf,
+                NgxWafHttpMethod::Post,
+                b"/captcha",
+                body,
+                Vec::new(),
+            );
             assert!(matches!(
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
@@ -2743,8 +2758,13 @@ mod tests {
     fn captcha_resumes_on_a_split_answer() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let body = b"g-recaptcha-response=token";
-        let mut machine =
-            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(
+            &mut conf,
+            NgxWafHttpMethod::Post,
+            b"/captcha",
+            body,
+            Vec::new(),
+        );
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::HttpRequest)
@@ -2787,8 +2807,13 @@ mod tests {
         ] {
             let mut conf = captcha_conf("reCAPTCHAv3", &["score=0.5"]);
             let body = b"g-recaptcha-response=token";
-            let mut machine =
-                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+            let mut machine = captcha_machine(
+                &mut conf,
+                NgxWafHttpMethod::Post,
+                b"/captcha",
+                body,
+                Vec::new(),
+            );
             assert!(matches!(
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
@@ -2819,8 +2844,13 @@ mod tests {
         ] {
             let mut conf = captcha_conf("Turnstile", &[]);
             let body = b"cf-turnstile-response=token";
-            let mut machine =
-                captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+            let mut machine = captcha_machine(
+                &mut conf,
+                NgxWafHttpMethod::Post,
+                b"/captcha",
+                body,
+                Vec::new(),
+            );
             assert!(matches!(
                 machine.step(),
                 Step::Pending(Pending::HttpRequest)
@@ -2843,8 +2873,13 @@ mod tests {
     fn captcha_turnstile_accepts_the_recaptcha_field() {
         let mut conf = captcha_conf("Turnstile", &[]);
         let body = b"g-recaptcha-response=token";
-        let mut machine =
-            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(
+            &mut conf,
+            NgxWafHttpMethod::Post,
+            b"/captcha",
+            body,
+            Vec::new(),
+        );
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::HttpRequest)
@@ -2865,8 +2900,13 @@ mod tests {
     fn captcha_turnstile_prefers_the_native_field() {
         let mut conf = captcha_conf("Turnstile", &[]);
         let body = b"g-recaptcha-response=compat&cf-turnstile-response=native";
-        let mut machine =
-            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(
+            &mut conf,
+            NgxWafHttpMethod::Post,
+            b"/captcha",
+            body,
+            Vec::new(),
+        );
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::HttpRequest)
@@ -2882,7 +2922,7 @@ mod tests {
         // that it may continue.
         let mut machine = captcha_machine(
             &mut conf,
-            NgxWafMethod::Post,
+            NgxWafHttpMethod::Post,
             b"/captcha",
             b"g-recaptcha-response=t",
             Vec::new(),
@@ -2905,7 +2945,8 @@ mod tests {
             .map(|(name, value)| good_cookie(name, value.as_bytes()))
             .collect();
 
-        let mut machine = captcha_machine(&mut conf, NgxWafMethod::Get, b"/captcha", b"", cookies);
+        let mut machine =
+            captcha_machine(&mut conf, NgxWafHttpMethod::Get, b"/captcha", b"", cookies);
         let outcome = match machine.step() {
             Step::Decision(outcome) => outcome,
             _ => panic!("decided"),
@@ -2919,8 +2960,13 @@ mod tests {
     fn captcha_posts_the_last_token_of_the_form() {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let body = b"g-recaptcha-response=first&g-recaptcha-response=second";
-        let mut machine =
-            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(
+            &mut conf,
+            NgxWafHttpMethod::Post,
+            b"/captcha",
+            body,
+            Vec::new(),
+        );
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::HttpRequest)
@@ -2937,7 +2983,7 @@ mod tests {
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
         let mut machine = captcha_machine(
             &mut conf,
-            NgxWafMethod::Post,
+            NgxWafHttpMethod::Post,
             b"/captcha",
             b"g-recaptcha-response=t",
             Vec::new(),
@@ -2971,7 +3017,7 @@ mod tests {
         ];
 
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
-        let mut machine = captcha_machine(&mut conf, NgxWafMethod::Get, b"/", b"", cookies);
+        let mut machine = captcha_machine(&mut conf, NgxWafHttpMethod::Get, b"/", b"", cookies);
         match machine.step() {
             Step::Decision(outcome) => {
                 assert_eq!(outcome.kind, OutcomeKind::Allow);
@@ -3022,7 +3068,7 @@ mod tests {
         let (zone, _shm) = captcha_counter_zone();
         let tag = b"anyaction_captcha";
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[]);
-        conf.action.captcha_zone = Some(crate::config::ZoneRef {
+        conf.action.captcha_zone = Some(crate::config::ZoneReference {
             name: b"any".to_vec(),
             tag: tag.to_vec(),
         });
@@ -3032,8 +3078,13 @@ mod tests {
         assert!(action::action_entry(zone_ref, tag, &ip, false, 999, 600, 1).is_some());
 
         let body = b"g-recaptcha-response=token";
-        let mut machine =
-            captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine = captcha_machine(
+            &mut conf,
+            NgxWafHttpMethod::Post,
+            b"/captcha",
+            body,
+            Vec::new(),
+        );
         machine.set_action_zone(zone);
         assert!(matches!(
             machine.step(),
@@ -3064,7 +3115,7 @@ mod tests {
         assert!(action::entry_flags(zone_ref, tag, &ip, false).is_none());
 
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { shm::zone_free(zone) };
+        unsafe { shared_memory::zone_free(zone) };
     }
 
     /// A plain allocation the zone callbacks hand out, so the tests do not need
@@ -3112,9 +3163,9 @@ mod tests {
 
     /// A shared memory zone for the captcha fail counters.  The allocation is
     /// owned by the caller, it has to outlive the zone.
-    fn captcha_counter_zone() -> (*mut shm::ZoneHandle, Box<FakeZone>) {
+    fn captcha_counter_zone() -> (*mut shared_memory::ZoneHandle, Box<FakeZone>) {
         let shm = FakeZone::new(1024 * 1024);
-        let ops = shm::ShmOps {
+        let ops = shared_memory::NgxWafSharedMemoryCallbacks {
             lock: None,
             unlock: None,
             alloc_locked: Some(fake_zone_alloc_locked),
@@ -3124,18 +3175,18 @@ mod tests {
         let size = shm.memory.len();
         // SAFETY: `shm` is returned to the caller and stays alive while the
         // handle is used.
-        let zone = unsafe { shm::zone_init(addr, size, std::ptr::null_mut(), ops) };
+        let zone = unsafe { shared_memory::zone_init(addr, size, std::ptr::null_mut(), ops) };
         assert!(!zone.is_null(), "the zone header must be allocated");
         (zone, shm)
     }
 
     /// A configuration with `waf_captcha on`, a fail counter and its zone.
-    fn captcha_counter_conf(max_fails: i64) -> LocConf {
+    fn captcha_counter_conf(max_fails: i64) -> LocationConfiguration {
         let max_fails = format!("max_fails={max_fails}:1m");
         let mut conf = captcha_conf("reCAPTCHAv2:checkbox", &[&max_fails, "zone=any:tag"]);
         // The zone lookup needs a zone in the main configuration; patch the two
         // fields the checks read.
-        conf.captcha.zone = Some(crate::config::ZoneRef {
+        conf.captcha.zone = Some(crate::config::ZoneReference {
             name: b"any".to_vec(),
             tag: b"captchatag".to_vec(),
         });
@@ -3143,10 +3194,15 @@ mod tests {
     }
 
     /// Drive one verify request through the provider answer.
-    fn captcha_verify(conf: &mut LocConf, zone: *mut shm::ZoneHandle, answer: &[u8]) -> Outcome {
+    fn captcha_verify(
+        conf: &mut LocationConfiguration,
+        zone: *mut shared_memory::ZoneHandle,
+        answer: &[u8],
+    ) -> Outcome {
         let body = b"g-recaptcha-response=token";
         let answer = provider_answer("200 OK", answer);
-        let mut machine = captcha_machine(conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+        let mut machine =
+            captcha_machine(conf, NgxWafHttpMethod::Post, b"/captcha", body, Vec::new());
         machine.set_captcha_zone(zone);
         assert!(
             matches!(machine.step(), Step::Pending(Pending::HttpRequest)),
@@ -3171,8 +3227,13 @@ mod tests {
             // answers 429.
             for attempt in 1..=max_fails + 1 {
                 let body = b"g-recaptcha-response=token";
-                let mut machine =
-                    captcha_machine(&mut conf, NgxWafMethod::Post, b"/captcha", body, Vec::new());
+                let mut machine = captcha_machine(
+                    &mut conf,
+                    NgxWafHttpMethod::Post,
+                    b"/captcha",
+                    body,
+                    Vec::new(),
+                );
                 machine.set_captcha_zone(zone);
                 assert!(matches!(
                     machine.step(),
@@ -3201,7 +3262,7 @@ mod tests {
             }
 
             // SAFETY: the handle came from `zone_init()` and is not used after.
-            unsafe { shm::zone_free(zone) };
+            unsafe { shared_memory::zone_free(zone) };
         }
     }
 
@@ -3228,16 +3289,16 @@ mod tests {
         assert_eq!(outcome.rule_details, b"bad");
 
         // SAFETY: the handle came from `zone_init()` and is not used after.
-        unsafe { shm::zone_free(zone) };
+        unsafe { shared_memory::zone_free(zone) };
     }
 
     /// A configuration with `waf_under_attack on`.
-    fn under_attack_conf() -> LocConf {
-        let mut main = crate::config::MainConf::default();
-        let mut conf = LocConf {
-            waf: Some(Waf::On),
+    fn under_attack_conf() -> LocationConfiguration {
+        let mut main = crate::config::MainConfiguration::default();
+        let mut conf = LocationConfiguration {
+            waf: Some(WafSwitch::On),
             waf_mode: WafMode::FULL,
-            ..LocConf::new()
+            ..LocationConfiguration::new()
         };
         crate::config::directive(
             &mut main,
@@ -3250,37 +3311,41 @@ mod tests {
         conf
     }
 
-    fn under_attack_machine(conf: &mut LocConf, now: i64, cookies: Vec<Vec<u8>>) -> Machine {
+    fn under_attack_machine(
+        conf: &mut LocationConfiguration,
+        now: i64,
+        cookies: Vec<Vec<u8>>,
+    ) -> Machine {
         let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
         let (uri, uri_len) = leaked(b"/");
-        let raw = RawReq {
-            ip: RawStr {
+        let raw = RawRequestView {
+            ip: RawStringView {
                 data: ip,
                 len: ip_len,
             },
-            method: NgxWafMethod::Get,
-            uri: RawStr {
+            method: NgxWafHttpMethod::Get,
+            uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStr {
+            args: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            user_agent: RawStr {
+            user_agent: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            referer: RawStr {
+            referer: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
-            body: RawStr {
+            body: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
             now,
-            modsec: None,
+            modsecurity: None,
             log: std::ptr::null_mut(),
             cc_zone: std::ptr::null(),
             action_zone: std::ptr::null(),
@@ -3389,62 +3454,62 @@ mod tests {
     }
 
     /// A configuration with `waf_modsecurity on` and the rules above.
-    fn modsecurity_conf(rules: &std::path::Path) -> LocConf {
-        let instance = modsec::Instance::create(&[rules.to_str().unwrap().as_bytes()], None)
+    fn modsecurity_conf(rules: &std::path::Path) -> LocationConfiguration {
+        let instance = modsecurity::Instance::create(&[rules.to_str().unwrap().as_bytes()], None)
             .expect("the rules load");
-        LocConf {
-            waf: Some(Waf::On),
+        LocationConfiguration {
+            waf: Some(WafSwitch::On),
             waf_mode: WafMode::FULL,
-            modsecurity: crate::config::ModSecurity {
+            modsecurity: crate::config::ModSecurityConfiguration {
                 enabled: Some(true),
                 instance: Some(Rc::new(instance)),
             },
-            ..LocConf::new()
+            ..LocationConfiguration::new()
         }
     }
 
     /// A machine whose request is complete enough for the request phases of
     /// libmodsecurity.
-    fn modsecurity_machine(conf: &mut LocConf, uri: &[u8]) -> Machine {
+    fn modsecurity_machine(conf: &mut LocationConfiguration, uri: &[u8]) -> Machine {
         let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
         let (uri, uri_len) = leaked(uri);
         let (method, method_len) = leaked(b"GET");
         let (client, client_len) = leaked(b"127.0.0.1");
         let (server, server_len) = leaked(b"127.0.0.1");
-        let raw = RawReq {
-            ip: RawStr {
+        let raw = RawRequestView {
+            ip: RawStringView {
                 data: ip,
                 len: ip_len,
             },
-            method: NgxWafMethod::Get,
-            uri: RawStr {
+            method: NgxWafHttpMethod::Get,
+            uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStr::EMPTY,
-            user_agent: RawStr::EMPTY,
-            referer: RawStr::EMPTY,
-            body: RawStr::EMPTY,
+            args: RawStringView::EMPTY,
+            user_agent: RawStringView::EMPTY,
+            referer: RawStringView::EMPTY,
+            body: RawStringView::EMPTY,
             now: 1_000,
-            modsec: Some(RawModsecReq {
+            modsecurity: Some(RawModSecurityRequestView {
                 headers: std::ptr::null(),
                 header_count: 0,
                 trans_id: None,
-                unparsed_uri: RawStr {
+                unparsed_uri: RawStringView {
                     data: uri,
                     len: uri_len,
                 },
-                method_name: RawStr {
+                method_name: RawStringView {
                     data: method,
                     len: method_len,
                 },
                 http_version: NgxWafHttpVersion::Http11,
-                client_addr: RawStr {
+                client_addr: RawStringView {
                     data: client,
                     len: client_len,
                 },
                 client_port: 12_345,
-                server_addr: RawStr {
+                server_addr: RawStringView {
                     data: server,
                     len: server_len,
                 },
@@ -3460,7 +3525,7 @@ mod tests {
 
     #[test]
     fn modsecurity_answers_with_the_status_of_the_intervention() {
-        let _guard = modsec::test_lock();
+        let _guard = modsecurity::test_lock();
         let rules = modsecurity_rules();
         let mut conf = modsecurity_conf(&rules);
 
@@ -3494,7 +3559,7 @@ mod tests {
 
     #[test]
     fn modsecurity_follow_uses_the_block_page() {
-        let _guard = modsec::test_lock();
+        let _guard = modsecurity::test_lock();
         let rules = modsecurity_rules();
         let mut conf = modsecurity_conf(&rules);
         conf.block_page = Rc::new(b"<html>blocked</html>".to_vec());
@@ -3522,7 +3587,7 @@ mod tests {
 
     #[test]
     fn modsecurity_takes_the_nul_of_a_complex_transaction_id() {
-        let _guard = modsec::test_lock();
+        let _guard = modsecurity::test_lock();
         let rules = modsecurity_rules();
         let mut conf = modsecurity_conf(&rules);
 
@@ -3530,7 +3595,7 @@ mod tests {
         // nginx compiled it: with `zero = 1`, so the length carries the
         // terminating NUL; the inspection has to run instead of answering 500.
         let (id, id_len) = leaked(b"0123456789abcdef0123456789abcdef\0");
-        let id = RawStr {
+        let id = RawStringView {
             data: id,
             len: id_len,
         };
@@ -3538,7 +3603,7 @@ mod tests {
         let mut machine = modsecurity_machine(&mut conf, b"/");
         machine
             .req
-            .modsec
+            .modsecurity
             .as_mut()
             .expect("the view is there")
             .trans_id = Some(id);
@@ -3551,7 +3616,7 @@ mod tests {
         let mut machine = modsecurity_machine(&mut conf, b"/blocked");
         machine
             .req
-            .modsec
+            .modsecurity
             .as_mut()
             .expect("the view is there")
             .trans_id = Some(id);
@@ -3565,12 +3630,12 @@ mod tests {
 
     #[test]
     fn modsecurity_applies_the_configured_policy() {
-        let _guard = modsec::test_lock();
+        let _guard = modsecurity::test_lock();
         let rules = modsecurity_rules();
         let mut conf = modsecurity_conf(&rules);
         set_policy(
             &mut conf,
-            TriggerKind::Modsecurity,
+            TriggerKind::ModSecurity,
             Policy::Return { status: 400 },
         );
 
@@ -3584,12 +3649,12 @@ mod tests {
 
     #[test]
     fn modsecurity_redirects_whatever_the_policy_says() {
-        let _guard = modsec::test_lock();
+        let _guard = modsecurity::test_lock();
         let rules = modsecurity_rules();
         let mut conf = modsecurity_conf(&rules);
         set_policy(
             &mut conf,
-            TriggerKind::Modsecurity,
+            TriggerKind::ModSecurity,
             Policy::Return { status: 400 },
         );
 
@@ -3600,7 +3665,7 @@ mod tests {
 
         // The default FOLLOW policy with a block page still redirects: the URL
         // of the intervention wins over the configured page.
-        set_policy(&mut conf, TriggerKind::Modsecurity, Policy::Follow);
+        set_policy(&mut conf, TriggerKind::ModSecurity, Policy::Follow);
         conf.block_page = Rc::new(b"<html>blocked</html>".to_vec());
         let mut machine = modsecurity_machine(&mut conf, b"/moved");
         let outcome = decide(&mut machine);
@@ -3639,7 +3704,7 @@ mod tests {
 
     #[test]
     fn modsecurity_stops_at_the_first_phase_that_intervenes() {
-        let _guard = modsec::test_lock();
+        let _guard = modsecurity::test_lock();
         let rules = modsecurity_phase_rules();
         let mut conf = modsecurity_conf(&rules);
 

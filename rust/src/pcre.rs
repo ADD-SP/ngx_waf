@@ -12,7 +12,7 @@
 
 use std::os::raw::c_void;
 
-/// The engine of the glue, `ngx_waf_regex_ops_t` in the generated header.
+/// The engine of the glue, `ngx_waf_regex_callbacks_t` in the generated header.
 ///
 /// * `compile(ctx, pattern, len)` returns an opaque handle for the pattern, or
 ///   null when the engine refused it.
@@ -23,22 +23,22 @@ use std::os::raw::c_void;
 /// configuration pool the compiled patterns live in.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct RegexOps {
+pub struct NgxWafRegexCallbacks {
     pub compile: Option<unsafe extern "C" fn(*mut c_void, *const u8, usize) -> *mut c_void>,
     pub exec: Option<unsafe extern "C" fn(*mut c_void, *const u8, usize) -> isize>,
     pub ctx: *mut c_void,
 }
 
-impl RegexOps {
+impl NgxWafRegexCallbacks {
     /// Whether the table can compile and run a pattern.
     pub fn usable(&self) -> bool {
         self.compile.is_some() && self.exec.is_some()
     }
 }
 
-impl std::fmt::Debug for RegexOps {
+impl std::fmt::Debug for NgxWafRegexCallbacks {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RegexOps")
+        f.debug_struct("NgxWafRegexCallbacks")
             .field("compile", &self.compile.is_some())
             .field("exec", &self.exec.is_some())
             .finish()
@@ -58,7 +58,7 @@ pub struct PcreRegex {
 
 impl PcreRegex {
     /// Compile `pattern`, or return `None` when the engine refused it.
-    pub fn compile(pattern: &[u8], ops: &RegexOps) -> Option<Self> {
+    pub fn compile(pattern: &[u8], ops: &NgxWafRegexCallbacks) -> Option<Self> {
         let compile = ops.compile?;
         let exec = ops.exec?;
 

@@ -3,10 +3,10 @@
 //! A `waf_action X=CAPTCHA` policy with a `zone=` keeps one entry per address
 //! in the table of its tag: the entry is created when the address is
 //! challenged for the first time and carries the `error_page` flag of the
-//! challenge.  The entry lives in the shared memory zone, [`crate::shm`]
+//! challenge.  The entry lives in the shared memory zone, [`crate::shared_memory`]
 //! owns its table and this module is the only place that reads and writes it.
 
-use crate::shm::ZoneHandle;
+use crate::shared_memory::ZoneHandle;
 
 /// The state of one captcha action entry, created on demand.
 pub struct ActionEntry {
@@ -60,7 +60,7 @@ pub fn remove_entry(handle: &ZoneHandle, tag: &[u8], addr: &[u8], ipv6: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shm::testing::{setup, zone};
+    use crate::shared_memory::testing::{setup, zone};
 
     /// The first challenge of an address creates its entry with the initial
     /// flags, the following ones find it.

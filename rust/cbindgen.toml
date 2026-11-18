@@ -18,7 +18,7 @@ prefix = ""
 item_types = ["enums", "structs", "opaque", "functions"]
 # cbindgen exports every function of an `extern "C"` block, whatever the
 # `include` list says, so the raw bindings of libmodsecurity (see
-# rust/src/modsec.rs) are excluded by name here.  The internal types the crate
+# rust/src/modsecurity.rs) are excluded by name here.  The internal types the crate
 # still declares `pub` are excluded as well, they are not part of the ABI.
 exclude = [
     "msc_init",
@@ -44,69 +44,69 @@ exclude = [
     "ngx_http_waf_log_error",
     "free",
     "BotId",
-    "CheckId",
+    "CheckKind",
     "TriggerKind",
 ]
 include = [
-    "NgxWafStr",
-    "NgxWafHeader",
-    "NgxWafModsecReq",
-    "NgxWafReq",
+    "NgxWafStringView",
+    "NgxWafHeaderView",
+    "NgxWafModSecurityRequestView",
+    "NgxWafRequestView",
     "NgxWafStep",
     "NgxWafDecision",
     "NgxWafPending",
     "NgxWafEvent",
-    "NgxWafZoneRefs",
+    "NgxWafZoneReferences",
     "NgxWafZoneHandles",
-    "ShmOps",
-    "RegexOps",
+    "NgxWafSharedMemoryCallbacks",
+    "NgxWafRegexCallbacks",
     "ngx_waf_version",
     "ngx_waf_string_free",
-    "ngx_waf_main_create",
-    "ngx_waf_main_free",
-    "ngx_waf_conf_create",
-    "ngx_waf_conf_free",
-    "ngx_waf_conf_enabled",
-    "ngx_waf_conf_modsecurity_enabled",
-    "ngx_waf_conf_zone_refs",
-    "ngx_waf_conf_captcha_api",
-    "ngx_waf_conf_take_warning",
-    "ngx_waf_directive",
-    "ngx_waf_zone_directive",
-    "ngx_waf_conf_merge",
-    "ngx_waf_check_begin",
-    "ngx_waf_check_step",
-    "ngx_waf_check_resume",
-    "ngx_waf_check_log",
-    "ngx_waf_check_free",
-    "ngx_waf_shm_zone_init",
-    "ngx_waf_shm_zone_free",
-    "ngx_waf_shm_zone_gc",
-    "ngx_waf_should_gc",
-    "ngx_waf_gc",
+    "ngx_waf_main_configuration_create",
+    "ngx_waf_main_configuration_free",
+    "ngx_waf_location_configuration_create",
+    "ngx_waf_location_configuration_free",
+    "ngx_waf_location_configuration_enabled",
+    "ngx_waf_location_configuration_modsecurity_enabled",
+    "ngx_waf_location_configuration_zone_references",
+    "ngx_waf_location_configuration_captcha_api",
+    "ngx_waf_location_configuration_take_warning",
+    "ngx_waf_directive_apply",
+    "ngx_waf_zone_directive_apply",
+    "ngx_waf_location_configuration_merge",
+    "ngx_waf_inspection_begin",
+    "ngx_waf_inspection_step",
+    "ngx_waf_inspection_resume",
+    "ngx_waf_inspection_log",
+    "ngx_waf_inspection_free",
+    "ngx_waf_shared_memory_zone_initialize",
+    "ngx_waf_shared_memory_zone_free",
+    "ngx_waf_shared_memory_zone_collect_garbage",
+    "ngx_waf_should_collect_garbage",
+    "ngx_waf_cache_collect_garbage",
 ]
 
 [export.rename]
-"NgxWafStr" = "ngx_waf_str_t"
-"NgxWafHeader" = "ngx_waf_header_t"
-"NgxWafModsecReq" = "ngx_waf_modsec_req_t"
-"NgxWafReq" = "ngx_waf_req_t"
+"NgxWafStringView" = "ngx_waf_string_view_t"
+"NgxWafHeaderView" = "ngx_waf_header_view_t"
+"NgxWafModSecurityRequestView" = "ngx_waf_modsecurity_request_view_t"
+"NgxWafRequestView" = "ngx_waf_request_view_t"
 "NgxWafStep" = "ngx_waf_step_t"
 "NgxWafDecision" = "ngx_waf_decision_t"
 "NgxWafPending" = "ngx_waf_pending_t"
 "NgxWafEvent" = "ngx_waf_event_t"
-"NgxWafZoneRefs" = "ngx_waf_zone_refs_t"
+"NgxWafZoneReferences" = "ngx_waf_zone_references_t"
 "NgxWafZoneHandles" = "ngx_waf_zone_handles_t"
-"NgxWafMethod" = "ngx_waf_method"
+"NgxWafHttpMethod" = "ngx_waf_http_method"
 "NgxWafHttpVersion" = "ngx_waf_http_version"
 "NgxWafStepKind" = "ngx_waf_step_kind"
 "NgxWafEventKind" = "ngx_waf_event_kind"
 "NgxWafContentType" = "ngx_waf_content_type"
-"NgxWafMain" = "ngx_waf_main_t"
-"NgxWafConf" = "ngx_waf_conf_t"
-"NgxWafCheck" = "ngx_waf_check_t"
-"ShmOps" = "ngx_waf_shm_ops_t"
-"RegexOps" = "ngx_waf_regex_ops_t"
+"NgxWafMainConfiguration" = "ngx_waf_main_configuration_t"
+"NgxWafLocationConfiguration" = "ngx_waf_location_configuration_t"
+"NgxWafInspectionHandle" = "ngx_waf_inspection_handle_t"
+"NgxWafSharedMemoryCallbacks" = "ngx_waf_shared_memory_callbacks_t"
+"NgxWafRegexCallbacks" = "ngx_waf_regex_callbacks_t"
 
 [enum]
 # `NGX_WAF_STEP_KIND_ALLOW`, the spelling the C glue uses for the values that

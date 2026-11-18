@@ -14,6 +14,21 @@ checked in header is not up to date.  Only that vocabulary crosses the
 boundary: the constants and the internal types of the implementation are never
 exported, and the glue only reads the memory this crate owns.
 
+## Naming
+
+The C glue and the Rust core share concepts, not spellings.  The nginx glue
+uses nginx identifiers such as `ngx_http_waf_loc_conf_t`, `cf`, `mcf` and
+`ctx`.  The C ABI uses `ngx_waf_*` with full words and `_t` on struct and
+opaque typedefs; enum tags stay unsuffixed so their values have the natural
+`NGX_WAF_<ENUM>_<VALUE>` form.  The Rust definitions use UpperCamelCase and
+keep the `NgxWaf` prefix only for types that cross the ABI.
+
+The core vocabulary is `Request`, `Configuration`, `Inspection`,
+`SharedMemory`, `ModSecurity`, `StringView`, `References` and `Callbacks`.
+Established abbreviations such as `WAF`, `HTTP`, `URI`, `IP`, `PCRE`, `CC`,
+`FFI` and `ABI` stay abbreviated.  Rust implementation types outside the ABI
+do not carry the C prefix.
+
 ## Layout
 
 | file | contents |
@@ -29,12 +44,12 @@ exported, and the glue only reads the memory this crate owns.
 | `src/rules/load.rs` | rule-file reading/parsing, warnings and errors |
 | `src/pcre.rs` | rule matching through the PCRE engine of nginx |
 | `src/cache.rs` | per-worker inspection caches, an `lru` cache plus expiration |
-| `src/shm.rs` | the shared memory zone: the frozen layout, the lock guard and the tables |
+| `src/shared_memory.rs` | the shared memory zone: the frozen layout, the lock guard and the tables |
 | `src/cc.rs` | the CC counters of `waf_cc_deny` (rate, cycle, duration) |
 | `src/action.rs` | the client entries of the captcha action table |
 | `src/config.rs` | directive parsing/validation, conf creation and merging |
 | `src/check.rs` | the detection chain and the action chain |
-| `src/modsec.rs` | the raw bindings and the thin wrapper around libmodsecurity |
+| `src/modsecurity.rs` | the raw bindings and the thin wrapper around libmodsecurity |
 | `src/ffi.rs` | the `extern "C"` entry points of the C ABI |
 | `data/` | the pages and captcha templates the module ships, edit them here |
 
@@ -67,9 +82,9 @@ this port cannot remove:
 
 * `src/abi.rs` and `src/ffi.rs`: the `#[repr(C)]` types and the `extern "C"`
   entry points.  The C side owns the configurations, the request views and the
-  check handle; the module turns them into references once and keeps every raw
-  pointer operation in a documented block.
-* `src/shm.rs`: the `#[repr(C)]` layout of the shared memory zone and the
+  inspection handle; the module turns them into references once and keeps every
+  raw pointer operation in a documented block.
+* `src/shared_memory.rs`: the `#[repr(C)]` layout of the shared memory zone and the
   callback table of nginx.  The layout is frozen (a change means bumping
   `VERSION`); the tables of the segment are reached through the view the zone
   lock hands out, and the operations of the other modules run inside the
@@ -81,11 +96,11 @@ this port cannot remove:
   `lock`, `unlock` and an allocation that expects the caller to hold the lock.
   `src/cc.rs` and `src/action.rs` are safe code on top of it: they see one
   address entry at a time, never the pointers of the segment.
-* `src/modsec.rs`: the hand written libmodsecurity C API bindings.  The
+* `src/modsecurity.rs`: the hand written libmodsecurity C API bindings.  The
   `Instance`/`Transaction` wrappers own the pointers and release them in
   `Drop`.
 * `src/pcre.rs` and `src/rules.rs`: the PCRE callbacks of the glue, which are
-  only used through the safe `RegexOps`/`PcreRegex` wrappers.
+  only used through the safe `NgxWafRegexCallbacks`/`PcreRegex` wrappers.
 
 The crate enables `unsafe_op_in_unsafe_fn` and
 `clippy::undocumented_unsafe_blocks`; CI runs clippy with `-D warnings`, so an
@@ -148,7 +163,7 @@ links the crate against libmodsecurity, whose C API the `waf_modsecurity`
 inspection calls: the development files (headers and the shared library) have to
 be installed, `LIB_MODSECURITY` can point at a prefix when they are not in the
 system directories.  The bindings are the raw declarations of the C API in
-`src/modsec.rs` (libmodsecurity 3.0.x, tested with 3.0.12), not a separate
+`src/modsecurity.rs` (libmodsecurity 3.0.x, tested with 3.0.12), not a separate
 `-sys` crate.
 
 ## Status
@@ -428,7 +443,7 @@ only those and leaves the end to end half out.
 target directory of its own (the nightly toolchain and an explicit `--target`
 are what `-Zsanitizer` needs) and lifts the leak detection, which needs ptrace
 in some environments and is what valgrind does for the module.  `mise run
-test-miri` runs the tables of `src/shm.rs` under Miri with
+test-miri` runs the tables of `src/shared_memory.rs` under Miri with
 `-Zmiri-permissive-provenance` (the fake segment hands over the address of a
 vector, like nginx hands over its mapping) and leaves the floods of the tests
 out.  `mise run fuzz` drives `rust/fuzz/fuzz_targets/table.rs` with cargo-fuzz,

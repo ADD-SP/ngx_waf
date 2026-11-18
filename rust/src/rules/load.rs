@@ -4,7 +4,7 @@
 use super::ip_matcher::{parse_ipv4, parse_ipv6};
 use super::regex::RegexRule;
 use super::{new_rule_set, Builder, RuleKind, RuleSet, RULE_FILES};
-use crate::pcre::RegexOps;
+use crate::pcre::NgxWafRegexCallbacks;
 use cidr::{Ipv4Cidr, Ipv6Cidr};
 use std::fmt::Write as _;
 use std::path::Path;
@@ -40,7 +40,7 @@ impl Builders {
 
 /// Load every rule file of `dir` into a fresh container.  On failure the
 /// returned message is what the C side logs with `ngx_conf_log_error()`.
-pub fn load_all(dir: &[u8], ops: Option<&RegexOps>) -> Result<Loaded, String> {
+pub fn load_all(dir: &[u8], ops: Option<&NgxWafRegexCallbacks>) -> Result<Loaded, String> {
     let mut rules = new_rule_set();
     let mut builders = Builders::new();
     let mut warnings = Vec::new();
@@ -97,7 +97,7 @@ fn load_into_container(
     rules: &mut RuleSet,
     builders: &mut Builders,
     warnings: &mut Vec<String>,
-    ops: Option<&RegexOps>,
+    ops: Option<&NgxWafRegexCallbacks>,
 ) -> Result<(), String> {
     let mut line_number = 0usize;
     let mut rest = content;
@@ -422,7 +422,7 @@ mod tests {
         std::fs::write(dir.join("url"), b"(?!evil)www\\.bak\n").unwrap();
         let path = format!("{}/", dir.display());
 
-        let ops = RegexOps {
+        let ops = NgxWafRegexCallbacks {
             compile: Some(fake_compile),
             exec: Some(fake_exec),
             ctx: std::ptr::null_mut(),
@@ -435,7 +435,7 @@ mod tests {
         assert!(!rules.url[0].is_match(b"/other/www.bak"));
 
         // Without the callbacks of the glue there is no engine to use.
-        let unusable = RegexOps {
+        let unusable = NgxWafRegexCallbacks {
             compile: None,
             exec: None,
             ctx: std::ptr::null_mut(),
@@ -463,7 +463,7 @@ mod tests {
         std::fs::write(dir.join("url"), b"/plain\n").unwrap();
         let path = format!("{}/", dir.display());
 
-        let ops = RegexOps {
+        let ops = NgxWafRegexCallbacks {
             compile: Some(refuse),
             exec: Some(fake_exec),
             ctx: std::ptr::null_mut(),

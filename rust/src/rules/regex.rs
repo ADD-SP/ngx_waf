@@ -1,6 +1,6 @@
 //! The compiled regex rules and the engine that runs them.
 
-use crate::pcre::{PcreRegex, RegexOps};
+use crate::pcre::{NgxWafRegexCallbacks, PcreRegex};
 use ::regex::Regex;
 
 /// A compiled regex rule plus the text reported when it matches.
@@ -28,8 +28,8 @@ pub struct RegexError;
 
 impl RegexRule {
     /// Compile `line` with the engine of the glue, or with the `regex` crate
-    /// when there is no glue (see [`RegexOps`]).
-    pub fn compile(line: &[u8], ops: Option<&RegexOps>) -> Result<Self, RegexError> {
+    /// when there is no glue (see [`NgxWafRegexCallbacks`]).
+    pub fn compile(line: &[u8], ops: Option<&NgxWafRegexCallbacks>) -> Result<Self, RegexError> {
         let engine = match ops.filter(|ops| ops.usable()) {
             Some(ops) => match PcreRegex::compile(line, ops) {
                 Some(regex) => RegexEngine::Pcre(regex),

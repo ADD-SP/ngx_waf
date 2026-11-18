@@ -103,21 +103,21 @@ typedef struct {
 
 
 typedef struct {
-    ngx_waf_conf_t            *core;
+    ngx_waf_location_configuration_t            *core;
     ngx_http_complex_value_t  *modsecurity_transaction_id;
     ngx_http_waf_captcha_api_t captcha_api;
 } ngx_http_waf_loc_conf_t;
 
 
 typedef struct {
-    ngx_waf_main_t *core;
+    ngx_waf_main_configuration_t *core;
     ngx_array_t  *zones;
 } ngx_http_waf_main_conf_t;
 
 
 typedef struct {
     /** The inspection of this request, owned by the core. */
-    ngx_waf_check_t       *check;
+    ngx_waf_inspection_handle_t       *check;
     /** The step last published by the core, read-only for this module. */
     const ngx_waf_step_t  *step;
     /** The provider request in flight, when the machine parked on one. */
@@ -139,12 +139,12 @@ typedef struct {
 
 /*
  * The glue hands nginx strings to the core with a cast (`ngx_str_t *` to
- * `ngx_waf_str_t *`), the two types have to stay layout compatible.
+ * `ngx_waf_string_view_t *`), the two types have to stay layout compatible.
  */
 typedef char ngx_http_waf_str_layout_must_match[
-    (sizeof(ngx_str_t) == sizeof(ngx_waf_str_t)
-     && offsetof(ngx_str_t, len) == offsetof(ngx_waf_str_t, len)
-     && offsetof(ngx_str_t, data) == offsetof(ngx_waf_str_t, data)) ? 1 : -1];
+    (sizeof(ngx_str_t) == sizeof(ngx_waf_string_view_t)
+     && offsetof(ngx_str_t, len) == offsetof(ngx_waf_string_view_t, len)
+     && offsetof(ngx_str_t, data) == offsetof(ngx_waf_string_view_t, data)) ? 1 : -1];
 
 
 /** The module itself, defined once in `ngx_http_waf_module.c`. */
@@ -182,7 +182,7 @@ ngx_int_t ngx_http_waf_shm_zone_init(ngx_shm_zone_t* zone, void* data);
 /**
  * Resolve the zone a configuration refers to into the handle of this worker.
  */
-void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, ngx_waf_str_t name);
+void *ngx_http_waf_zone_handle(ngx_http_waf_main_conf_t* mcf, ngx_waf_string_view_t name);
 
 
 /*

@@ -1,14 +1,14 @@
 //! The CC counters of `waf_cc_deny`.
 //!
 //! Every counter lives in the shared memory zone the directive names: the
-//! table, the address entries and the zone lock are [`crate::shm`]'s, this
+//! table, the address entries and the zone lock are [`crate::shared_memory`]'s, this
 //! module owns the counting policy.  An entry is expired only when
 //! `expire < now`, so the second an entry expires in still counts; a per IP
 //! counter stops counting one second after the configured cycle, a client is
 //! blocked for `duration` once the limit is exceeded, and `$waf_rate` is the
 //! counter.
 
-use crate::shm::ZoneHandle;
+use crate::shared_memory::ZoneHandle;
 
 /// The outcome of one CC inspection.
 pub struct CcResult {
@@ -97,7 +97,7 @@ pub fn reset_counter(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shm::testing::{setup, zone};
+    use crate::shared_memory::testing::{setup, zone};
 
     #[test]
     fn counts_and_blocks() {
@@ -130,7 +130,7 @@ mod tests {
         increment(zone(ctx), b"cc", &addr, false, 1, 60, 60, 0).unwrap();
         let blocked = increment(zone(ctx), b"cc", &addr, false, 1, 60, 60, 1).unwrap();
         assert!(blocked.blocked);
-        crate::shm::gc(zone(ctx), 2);
+        crate::shared_memory::collect_garbage(zone(ctx), 2);
         // The block is still active.
         let still = increment(zone(ctx), b"cc", &addr, false, 1, 60, 60, 3).unwrap();
         assert!(still.blocked);
