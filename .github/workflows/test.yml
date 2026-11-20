@@ -52,9 +52,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get --yes update
-          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison
+          sudo apt-get install --yes libsodium23 libsodium-dev build-essential zlib1g-dev libssl-dev libxslt1-dev libxml2-dev libgeoip-dev libgd-dev libperl-dev uthash-dev flex bison
           sudo apt-get remove --yes python3-urllib3
           sudo pip install lastversion
+
+      - name: Checkout PCRE1 sources
+        run: |
+          # Ubuntu 26 no longer provides libpcre3-dev. PCRE1 8.45 is the final
+          # release, so let nginx build the official source tree statically.
+          git clone --depth 1 https://github.com/PCRE2Project/pcre1.git pcre1
+          (cd pcre1 && ./autogen.sh)
 
       - name: Install libinjection
         run: |
@@ -79,7 +86,7 @@ jobs:
           else \
             opt='--add-dynamic-module' ;\
           fi
-          LIB_INJECTION=${{ env.LIB_INJECTION }} ./configure ${opt}=.. --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong -Wno-sign-compare' --with-http_realip_module
+          LIB_INJECTION=${{ env.LIB_INJECTION }} ./configure ${opt}=.. --with-pcre="${{ github.workspace }}/pcre1" --with-cc-opt='-Wno-unused-but-set-variable -Wno-unused-function -fstack-protector-strong -Wno-sign-compare' --with-http_realip_module
 
       - name: Install ${{ matrix.nginx-version }}
         run: |
