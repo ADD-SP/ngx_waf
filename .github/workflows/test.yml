@@ -101,7 +101,12 @@ jobs:
 
       - name: Install Test::Nginx
         run: |
-          sudo cpan Test::Nginx
+          if [ "${{ matrix.nginx-version }}" = "1.18.0" ]; then
+            # Test::Nginx 0.31+ passes -e, which nginx 1.18 does not support.
+            sudo cpan AGENT/Test-Nginx-0.30.tar.gz
+          else
+            sudo cpan Test::Nginx
+          fi
 
       - name: Test
         run: |
