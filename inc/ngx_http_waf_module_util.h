@@ -12,6 +12,22 @@
 #ifndef NGX_HTTP_WAF_MODULE_UTIL_H
 #define NGX_HTTP_WAF_MODULE_UTIL_H
 
+/*
+ * nginx 1.29.6 introduced ngx_http_parse_cookie_lines().  Unlike
+ * ngx_http_parse_multi_header_lines(), it treats only ';' as a Cookie
+ * separator, which is what under-attack cookies use.
+ */
+#if (nginx_version >= 1029006)
+#define ngx_http_waf_parse_cookie_lines(r, cookies, key, value) \
+    (ngx_http_parse_cookie_lines((r), (cookies), (key), (value)) != NULL)
+#elif (nginx_version >= 1023000)
+#define ngx_http_waf_parse_cookie_lines(r, cookies, key, value) \
+    (ngx_http_parse_multi_header_lines((r), (cookies), (key), (value)) != NULL)
+#else
+#define ngx_http_waf_parse_cookie_lines(r, cookies, key, value) \
+    (ngx_http_parse_multi_header_lines((cookies), (key), (value)) != NGX_DECLINED)
+#endif
+
 
 /**
  * @defgroup util 工具代码

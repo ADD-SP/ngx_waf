@@ -22,7 +22,7 @@ waf_under_attack on uri=/;
 --- more_headers eval
 [
     "",
-    "Cookie: __waf_under_attack_time=123456; __waf_under_attack_uid=123456; __waf_under_attack_hmac=123456"
+    "Cookie: __waf_under_attack_time=123456; __waf_under_attack_uid=123456; __waf_under_attack_verification=123456"
 ]
 
 --- error_code eval
@@ -30,3 +30,28 @@ waf_under_attack on uri=/;
     200,
     303
 ]
+
+
+=== TEST: Browser cookie header is parsed
+
+nginx 1.29.6 made ngx_http_parse_multi_header_lines() use a comma as the
+separator.  The synthetic trio only needs to be found here; its verification
+value is checked separately.
+
+--- config
+waf on;
+waf_mode FULL !CC;
+waf_rule_path ${base_dir}/waf/rules/;
+waf_under_attack on uri=/;
+
+--- request
+GET /test
+
+--- more_headers
+Cookie: __waf_under_attack_time=123456; __waf_under_attack_uid=123456; __waf_under_attack_verification=123456
+
+--- error_log chomp
+Successfully parsed all cookies.
+
+--- error_code chomp
+303
