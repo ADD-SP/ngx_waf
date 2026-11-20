@@ -50,11 +50,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         ngx_str_set(&key, "__waf_under_attack_time");
         ngx_str_null(&value);
 
-#if (nginx_version >= 1023000)
-        if (ngx_http_parse_multi_header_lines(r, cookies, &key, &value) != NULL) {
-#else
-        if (ngx_http_parse_multi_header_lines(cookies, &key, &value) != NGX_DECLINED) {
-#endif
+        if (ngx_http_waf_parse_cookie_lines(r, cookies, &key, &value)) {
             __waf_under_attack_time.data = ngx_pcalloc(r->pool, value.len + 1);
             __waf_under_attack_time.len = value.len;
             ngx_memcpy(__waf_under_attack_time.data, value.data, value.len);
@@ -64,11 +60,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         ngx_str_set(&key, "__waf_under_attack_uid");
         ngx_str_null(&value);
 
-#if (nginx_version >= 1023000)
-        if (ngx_http_parse_multi_header_lines(r, cookies, &key, &value) != NULL) {
-#else
-        if (ngx_http_parse_multi_header_lines(cookies, &key, &value) != NGX_DECLINED) {
-#endif
+        if (ngx_http_waf_parse_cookie_lines(r, cookies, &key, &value)) {
             __waf_under_attack_uid.data = ngx_pcalloc(r->pool, value.len + 1);
             __waf_under_attack_uid.len = value.len;
             ngx_memcpy(__waf_under_attack_uid.data, value.data, value.len);
@@ -78,11 +70,7 @@ ngx_int_t ngx_http_waf_check_under_attack(ngx_http_request_t* r, ngx_int_t* out_
         ngx_str_set(&key, "__waf_under_attack_verification");
         ngx_str_null(&value);
 
-#if (nginx_version >= 1023000)
-        if (ngx_http_parse_multi_header_lines(r, cookies, &key, &value) != NULL) {
-#else
-        if (ngx_http_parse_multi_header_lines(cookies, &key, &value) != NGX_DECLINED) {
-#endif
+        if (ngx_http_waf_parse_cookie_lines(r, cookies, &key, &value)) {
             __waf_under_attack_verification.data = ngx_pcalloc(r->pool, value.len + 1);
             __waf_under_attack_verification.len = value.len;
             ngx_memcpy(__waf_under_attack_verification.data, value.data, value.len);
