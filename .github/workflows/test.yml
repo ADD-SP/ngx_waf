@@ -28,16 +28,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: stable
           # `llvm-tools-preview` carries the llvm-profdata and llvm-cov of the
           # toolchain, the coverage task needs them.
           components: rustfmt, clippy, llvm-tools-preview
 
       - name: Cache the cargo artefacts
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -47,7 +48,7 @@ jobs:
 
       # The action installs mise and the tools of mise.toml (cbindgen); the
       # cache above lets the cargo backend reuse the crate sources.
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
       - name: Trust the mise configuration
         run: mise trust
@@ -89,11 +90,13 @@ jobs:
       PLAYWRIGHT_VERSION: '1.65.2'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
       - name: Trust the mise configuration
         run: mise trust
@@ -103,12 +106,12 @@ jobs:
           sudo apt-get --yes update
           mise bootstrap -y
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
       - name: Cache the Playwright browser
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}-${{ hashFiles('test/e2e/anubis-browser.py') }}
@@ -130,7 +133,7 @@ jobs:
 
       - name: Upload the browser failure screenshot
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anubis-browser-failure
           path: test-results/
@@ -142,25 +145,28 @@ jobs:
     needs: [rust]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
 
       # AddressSanitizer, Miri and cargo-fuzz are nightly only; the module
       # itself keeps being built by the stable toolchain of rust-toolchain.toml.
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: nightly
           components: miri
 
       - name: Cache the cargo artefacts
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-sanitizers-${{ hashFiles('rust/Cargo.toml') }}
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
       - name: Trust the mise configuration
         run: mise trust
@@ -199,11 +205,13 @@ jobs:
         module-type:  ['static', 'dynamic']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
 
       - name: Trust the mise configuration
         run: mise trust
@@ -221,6 +229,8 @@ jobs:
           mise run test-nginx-deps
 
       - name: Download the nginx sources
+        env:
+          GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           # A `sudo pip install` fails on a runner whose python3 carries the
           # Debian packages: pip tries to replace urllib3 and cannot uninstall
