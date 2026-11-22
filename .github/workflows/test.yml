@@ -229,6 +229,8 @@ jobs:
           mise run test-nginx-deps
 
       - name: Download the nginx sources
+        env:
+          GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           # A `sudo pip install` fails on a runner whose python3 carries the
           # Debian packages: pip tries to replace urllib3 and cannot uninstall
