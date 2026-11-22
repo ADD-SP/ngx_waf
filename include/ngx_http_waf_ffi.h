@@ -99,6 +99,17 @@ typedef enum ngx_waf_event_kind {
 } ngx_waf_event_kind;
 
 /**
+ * The friendly crawler each `BotId` stands for, in the order the C
+ * implementation walks them.
+ */
+typedef struct BotId BotId;
+
+/**
+ * The inspection identifiers that `waf_priority` can reorder.
+ */
+typedef struct CheckKind CheckKind;
+
+/**
  * One request inspection, owned by the glue, opaque to it.
  */
 typedef struct ngx_waf_inspection_handle_t ngx_waf_inspection_handle_t;
@@ -113,6 +124,11 @@ typedef struct ngx_waf_location_configuration_t ngx_waf_location_configuration_t
  * glue.
  */
 typedef struct ngx_waf_main_configuration_t ngx_waf_main_configuration_t;
+
+/**
+ * The three sources that can be configured with `waf_action`.
+ */
+typedef struct TriggerKind TriggerKind;
 
 /**
  * `ngx_str_t` compatible string view: nginx declares the length first, so the
@@ -133,23 +149,6 @@ typedef struct ngx_waf_zone_references_t {
     struct ngx_waf_string_view_t captcha;
     struct ngx_waf_string_view_t action;
 } ngx_waf_zone_references_t;
-
-/**
- * The engine of the glue, `ngx_waf_regex_callbacks_t` in the generated header.
- *
- * * `compile(ctx, pattern, len)` returns an opaque handle for the pattern, or
- *   null when the engine refused it.
- * * `exec(handle, value, len)` returns 1 when the value matches, 0 when it
- *   does not, and -1 when the engine failed.
- *
- * Both callbacks are provided by `src/ngx_http_waf_config.c`, and `ctx` is the
- * configuration pool the compiled patterns live in.
- */
-typedef struct ngx_waf_regex_callbacks_t {
-    void *(*compile)(void*, const uint8_t*, size_t);
-    ptrdiff_t (*exec)(void*, const uint8_t*, size_t);
-    void *ctx;
-} ngx_waf_regex_callbacks_t;
 
 /**
  * One request header, the `ngx_table_elt_t` list of nginx.
@@ -191,9 +190,7 @@ typedef struct ngx_waf_request_view_t {
     struct ngx_waf_string_view_t ip;
     enum ngx_waf_http_method method;
     struct ngx_waf_string_view_t uri;
-    struct ngx_waf_string_view_t args;
     struct ngx_waf_string_view_t user_agent;
-    struct ngx_waf_string_view_t referer;
     /**
      * One view per `Cookie` header, the raw header values.
      */
@@ -360,14 +357,6 @@ bool ngx_waf_location_configuration_modsecurity_enabled(const struct ngx_waf_loc
 struct ngx_waf_zone_references_t ngx_waf_location_configuration_zone_references(const struct ngx_waf_location_configuration_t *conf);
 
 /**
- * One message the core wants nginx to log while it keeps the configuration
- * (see [`crate::config::LocationConfiguration::warnings`]), or NULL when there is none.
- * The C side drains the list after every directive and frees the message with
- * [`ngx_waf_string_free`].
- */
-char *ngx_waf_location_configuration_take_warning(struct ngx_waf_location_configuration_t *conf);
-
-/**
  * The endpoint the captcha provider of this configuration is asked on: the
  * `api=` of `waf_captcha`, or the default of the provider it named.  This is
  * the very URL the core puts into a `STEP_HTTP_REQUEST`, so the C glue parses
@@ -386,8 +375,7 @@ char *ngx_waf_directive_apply(struct ngx_waf_main_configuration_t *main,
                               struct ngx_waf_location_configuration_t *conf,
                               struct ngx_waf_string_view_t name,
                               const struct ngx_waf_string_view_t *args,
-                              size_t nargs,
-                              const struct ngx_waf_regex_callbacks_t *regex_ops);
+                              size_t nargs);
 
 /**
  * Parse and validate `waf_zone`.  On success the returned name pointer stays
@@ -468,10 +456,5 @@ void ngx_waf_shared_memory_zone_collect_garbage(void *handle);
  * worker.
  */
 bool ngx_waf_should_collect_garbage(uint32_t worker_processes);
-
-/**
- * Garbage collect the per-worker inspection caches.
- */
-void ngx_waf_cache_collect_garbage(struct ngx_waf_location_configuration_t *conf);
 
 #endif  /* NGX_HTTP_WAF_FFI_H */

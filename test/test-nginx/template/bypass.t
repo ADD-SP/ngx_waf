@@ -9,8 +9,6 @@ __DATA__
 
 --- config
 waf bypass;
-waf_mode FULL;
-waf_rule_path ${base_dir}/waf/rules/;
 
 --- request
 GET /www.bak

@@ -9,10 +9,7 @@ __DATA__
 
 --- config
 waf off;
-waf_mode FULL;
-waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny on rate=100r/m;
-waf_cache on capacity=50;
 
 --- request
 GET /www.bak

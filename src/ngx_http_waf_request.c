@@ -324,7 +324,7 @@ static ngx_int_t ngx_http_waf_make_body(ngx_http_request_t* r, ngx_waf_string_vi
      * A body above `client_body_buffer_size` is written to a temporary file by
      * nginx: the chain holds one buffer whose bytes are in the file instead of
      * in memory.  Reading it back is what keeps the inspections that look at
-     * the body (the POST list, ModSecurity) effective for larger requests; the
+     * the body (ModSecurity and CAPTCHA) effective for larger requests; the
      * size is bounded by `client_max_body_size`, which nginx enforces before
      * the access phase runs.
      */
@@ -514,7 +514,7 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     ngx_memzero(&req, sizeof(ngx_waf_request_view_t));
 
     /* A body this module cannot read (or could not allocate) is not a body it
-     * may skip: the POST list and ModSecurity have to see it, so the request
+     * may skip: ModSecurity and CAPTCHA have to see it, so the request
      * is refused instead of being served uninspected. */
     if (ngx_http_waf_make_body(r, &body) != NGX_OK) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -536,9 +536,9 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         req.ip.len = 4;
     } else {
         /*
-         * A unix domain connection has no address: the IP lists, the CC
-         * counters and the captcha tables see nothing to match on (the C
-         * implementation read whatever the memory of another family held).
+         * A unix domain connection has no address: the CC counters and the
+         * captcha tables see nothing to match on (the C implementation read
+         * whatever the memory of another family held).
          */
         req.ip.data = NULL;
         req.ip.len = 0;
@@ -547,16 +547,10 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     req.method = ngx_http_waf_method(r->method);
     req.uri.data = r->uri.data;
     req.uri.len = r->uri.len;
-    req.args.data = r->args.data;
-    req.args.len = r->args.len;
 
     if (r->headers_in.user_agent != NULL) {
         req.user_agent.data = r->headers_in.user_agent->value.data;
         req.user_agent.len = r->headers_in.user_agent->value.len;
-    }
-    if (r->headers_in.referer != NULL) {
-        req.referer.data = r->headers_in.referer->value.data;
-        req.referer.len = r->headers_in.referer->value.len;
     }
 
     req.cookies = (const ngx_waf_string_view_t *) cookies->elts;
@@ -995,8 +989,6 @@ ngx_int_t ngx_http_waf_handler_log_phase(ngx_http_request_t* r) {
     }
 
     if (ngx_waf_should_collect_garbage(ccf != NULL ? (uint32_t) ccf->worker_processes : 1)) {
-        ngx_waf_cache_collect_garbage(conf->core);
-
         if (mcf != NULL && mcf->zones != NULL) {
             ngx_http_waf_zone_t** zones = mcf->zones->elts;
             ngx_uint_t i;

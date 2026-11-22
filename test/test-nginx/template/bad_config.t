@@ -16,7 +16,7 @@ waf bad;
 === TEST: Bad directive waf_rule_path
 
 --- config
-waf_rule_path ${base_dir}/waf/rules;
+waf_rule_path ${base_dir}/waf/rules/;
 
 --- must_die
 
@@ -24,7 +24,7 @@ waf_rule_path ${base_dir}/waf/rules;
 === TEST: Bad directive waf_mode
 
 --- config
-waf_mode BAD;
+waf_mode FULL;
 
 --- must_die
 
@@ -119,7 +119,7 @@ waf_cc_deny rate=100r/m;
 === TEST: Bad directive waf_cache (1)
 
 --- config
-waf_cache capacity=50;
+waf_cache on;
 
 --- must_die
 
@@ -127,7 +127,7 @@ waf_cache capacity=50;
 === TEST: Bad directive waf_cache (2)
 
 --- config
-waf_cache on capacity=-1;
+waf_cache off;
 
 --- must_die
 
@@ -135,7 +135,7 @@ waf_cache on capacity=-1;
 === TEST: Bad directive waf_cache (3)
 
 --- config
-waf_cache on bad=bad;
+waf_cache on capacity=50;
 
 --- must_die
 
@@ -160,6 +160,14 @@ waf_modsecurity on file=${base_dir}/waf/modsec/bad.conf;
 
 --- config
 waf_modsecurity on bad=bad;
+
+--- must_die
+
+
+=== TEST: Empty waf_modsecurity
+
+--- config
+waf_modsecurity on;
 
 --- must_die
 
@@ -223,7 +231,7 @@ waf_http_status bad;
 === TEST: Bad directive waf_priority
 
 --- config
-waf_priority "W-IP IP VERIFY-BOT CC CAPTCHA UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE POST"
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK URL";
 
 --- must_die
 

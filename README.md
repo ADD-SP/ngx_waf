@@ -17,30 +17,29 @@ Handy, High performance Nginx firewall module.
 
 ## Why ngx_waf
 
-* Basic protection: such as black and white list of IPs or IP range, uri black and white list, and request body black list, etc.
-* Easy to use: configuration files and rule files are easy to write and readable.
-* High performance: Efficient algorithms and caching.
-* Advanced protection: [ModSecurity](https://github.com/SpiderLabs/ModSecurity) compatible, you can use [OWASP(Open Web Application Security Project®) ModSecurity Core Rule Set](https://owasp.org/www-project-modsecurity-core-rule-set/).
+* One rule engine: [ModSecurity](https://github.com/SpiderLabs/ModSecurity) handles every request-matching rule and can load the [OWASP ModSecurity Core Rule Set](https://owasp.org/www-project-modsecurity-core-rule-set/).
+* Stateful protection: CC, CAPTCHA, Under Attack and friendly crawler verification stay separate from regular-expression rules.
 * Friendly crawler verification: Supports verifying Google, Bing, Baidu and Yandex crawlers and allowing them automatically to avoid false positives.
 * Captcha: Supports hCaptcha, Cloudflare Turnstile, reCAPTCHAv2 and reCAPTCHAv3.
 
 ## Features
 
-* [ModSecurity](https://github.com/SpiderLabs/ModSecurity) compatible.
-* IPV4 and IPV6 support.
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity) is the only request-matching and blocking rule engine. IP, URL, header, argument and body rules are SecRules.
+* `waf_priority` orders `VERIFY-BOT`, `CC`, `CAPTCHA`, `UNDER-ATTACK` and `MODSECURITY`.
 * Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha).
 * Support authentication-friendly crawlers (based on user agent and IP identification) to avoid blocking of these crawlers (e.g. GoogleBot).
 * CC protection, if the request rate exceeds the limit, the IP will be automatically banned for a period of time, or use CAPTCHA to do human identification and allow it if successful.
-* Exceptional allow on specific IP address.
-* Block the specified IP address.
-* Block the specified request body.
-* Exceptional allow on specific URL.
-* Block the specified URL.
-* Block the specified query string.
-* Block the specified UserAgent.
-* Block the specified Cookie.
-* Exceptional allow on specific Referer.
-* Block the specified Referer.
+* Under Attack wait page.
+
+The native `waf_rule_path`, `waf_mode`, `waf_cache` and black/white rule files
+are removed. `waf_modsecurity on` requires at least one `file=`, or a matching
+`remote_key=`/`remote_url=` pair.
+
+```nginx
+waf on;
+waf_modsecurity on file=/etc/nginx/modsec/main.conf;
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY";
+```
 
 ## Docs
 
@@ -144,13 +143,5 @@ access.
 ## Thanks
 
 * [ModSecurity](https://github.com/SpiderLabs/ModSecurity): An open source, cross platform web application firewall (WAF) engine.
-* [uthash](https://github.com/troydhanson/uthash): C macros for hash tables and more.
-* [libcurl](https://curl.se/libcurl/): The multiprotocol file transfer library .
-* [cJSON](https://github.com/DaveGamble/cJSON): Ultralightweight JSON parser in ANSI C.
-* [libinjection](https://github.com/libinjection/libinjection): SQL / SQLI tokenizer parser analyzer.
-* [libsodium](https://github.com/jedisct1/libsodium): A modern, portable, easy to use crypto library.
 * [test-nginx](https://github.com/openresty/test-nginx): Data-driven test scaffold for Nginx C module and OpenResty Lua library development.
-* [lastversion](https://github.com/dvershinin/lastversion): A command line tool that helps you download or install a specific version of a project.
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf): A web application firewall based on the lua-nginx-module (openresty).
-* [nginx-book](https://github.com/taobao/nginx-book): The Chinese language development guide for nginx.
-* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide): The Chinese language development guide for nginx.

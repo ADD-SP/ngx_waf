@@ -9,12 +9,11 @@ __DATA__
 
 --- config
 waf on;
-waf_mode STD;
-waf_rule_path ${base_dir}/waf/rules/;
+waf_modsecurity on file=${base_dir}/waf/modsec/modsecurity.conf;
 waf_block_page default;
 
 --- request
-GET /www.bak
+GET /t?test=deny
 
 --- response_body_like chomp
 WAF

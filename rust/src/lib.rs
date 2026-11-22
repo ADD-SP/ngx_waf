@@ -15,7 +15,6 @@
 // internal.
 mod abi;
 mod action;
-mod cache;
 mod cc;
 mod check;
 mod config;
@@ -25,7 +24,5 @@ mod flags;
 mod http;
 mod http_response;
 mod modsecurity;
-mod pcre;
-mod rules;
 mod shared_memory;
 mod util;

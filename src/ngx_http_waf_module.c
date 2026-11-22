@@ -70,28 +70,7 @@ static ngx_command_t ngx_http_waf_commands[] = {
       0,
       NULL },
 
-    { ngx_string("waf_rule_path"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      ngx_http_waf_directive_conf,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      0,
-      NULL },
-
-    { ngx_string("waf_mode"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
-      ngx_http_waf_directive_conf,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      0,
-      NULL },
-
     { ngx_string("waf_cc_deny"),
-      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
-      ngx_http_waf_directive_conf,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      0,
-      NULL },
-
-    { ngx_string("waf_cache"),
       NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
       ngx_http_waf_directive_conf,
       NGX_HTTP_LOC_CONF_OFFSET,

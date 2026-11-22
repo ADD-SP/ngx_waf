@@ -3,8 +3,7 @@
 #
 #   NGINX_BIN=/path/to/objs/nginx test/e2e/run.sh
 #
-# The fixtures mirror test/test-nginx/template/*.t: the rule files are the ones
-# of assets/rules plus the extra entries test/test-nginx/init.sh appends.
+# The fixtures mirror test/test-nginx/template/*.t.
 
 set -u
 
@@ -19,6 +18,8 @@ prefix_created=0
 if [ -z "$prefix" ]; then
     prefix=$(mktemp -d)
     prefix_created=1
+else
+    rm -rf "$prefix"
 fi
 
 nginx_bin=${NGINX_BIN:-$root/test/nginx-1.27.2/objs/nginx}
@@ -52,22 +53,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-rm -rf "$prefix"
-mkdir -p "$prefix/conf" "$prefix/logs" "$prefix/html/t" "$prefix/rules"
-
-cp "$root/assets/rules/"* "$prefix/rules/"
-# The second block is covered by the first one: the C implementation logs the
-# overlap and keeps the configuration, the redundant block is dropped.
-printf '1.1.1.1\n2.0.0.0/8\n2.1.0.0/16\n' >> "$prefix/rules/ipv4"
-printf '3.3.3.3\n4.0.0.0/8\n'            >> "$prefix/rules/white-ipv4"
-printf 'AAAA::\nBBBB::/16\n'             >> "$prefix/rules/ipv6"
-printf 'CCCC::\nDDDD::/16\n'             >> "$prefix/rules/white-ipv6"
-printf '/white/\n'                       >> "$prefix/rules/white-url"
-printf '/white/\n'                       >> "$prefix/rules/white-referer"
-# A pattern only PCRE accepts: the rules go through the engine of nginx, like
-# the ones of the C implementation did (`rust/src/pcre.rs`).  The leading
-# newline ends the last line of the shipped file, which has none.
-printf '\n^/(?!allowed/)www\\.pcre$\n'   >> "$prefix/rules/url"
+mkdir -p "$prefix/conf" "$prefix/logs" "$prefix/html/t"
 # The CA and the server certificate of the TLS provider stub; without openssl
 # the TLS cases are skipped.
 # nginx resolves a relative certificate path against the configuration
@@ -137,19 +123,23 @@ mv "$prefix/conf/nginx.conf.tmp" "$prefix/conf/nginx.conf"
 
 printf 'backend\n' > "$prefix/html/index.html"
 printf 'static error page\n' > "$prefix/html/403.html"
-# The ModSecurity rules of the `waf_priority` servers: one rule in phase 2,
-# enough to compare the two orderings (no CRS needed).
-printf 'SecRuleEngine On\nSecRule ARGS:test "@streq deny" "id:1,phase:2,deny,status:403,log"\n' \
-    > "$prefix/modsec.conf"
+# The local ModSecurity rules cover the base request, URL and body checks.
+printf 'SecRuleEngine On\nSecRequestBodyAccess On\n' > "$prefix/modsec.conf"
+printf 'SecRule REQUEST_URI "@contains /www.bak" "id:1,phase:2,deny,status:403,log,msg:blocked-url"\n' \
+    >> "$prefix/modsec.conf"
+printf 'SecRule ARGS:test "@streq deny" "id:2,phase:2,deny,status:403,log,msg:blocked-args"\n' \
+    >> "$prefix/modsec.conf"
+printf 'SecRule REQUEST_BODY "@contains onload=" "id:3,phase:2,deny,status:403,log,msg:blocked-body"\n' \
+    >> "$prefix/modsec.conf"
 # The two rules of the phase comparison: both match `/phase?phase=1`, the first
 # one runs in phase 1 and has to answer on its own.
-printf 'SecRule REQUEST_URI "@contains /phase" "id:2,phase:1,deny,status:403,log,msg:phase one"\n' \
+printf 'SecRule REQUEST_URI "@contains /phase" "id:4,phase:1,deny,status:403,log,msg:phase one"\n' \
     >> "$prefix/modsec.conf"
-printf 'SecRule ARGS:phase "@streq 1" "id:3,phase:2,redirect:/moved,status:302,log,msg:phase two"\n' \
+printf 'SecRule ARGS:phase "@streq 1" "id:5,phase:2,redirect:/moved,status:302,log,msg:phase two"\n' \
     >> "$prefix/modsec.conf"
 # A second rule file: `waf_modsecurity` takes more than one `file=`, every one
 # of them has to reach the library.
-printf 'SecRule REQUEST_URI "@contains /second" "id:4,phase:2,deny,status:419,log,msg:second file"\n' \
+printf 'SecRule REQUEST_URI "@contains /second" "id:6,phase:2,deny,status:419,log,msg:second file"\n' \
     > "$prefix/modsec-second.conf"
 
 # A provider that accepts the connection and never answers: the module has to
@@ -272,11 +262,20 @@ PY
 fi
 
 "$nginx_bin" -p "$prefix" -c conf/nginx.conf -t > /dev/null || exit 1
-"$nginx_bin" -p "$prefix" -c conf/nginx.conf > "$prefix/logs/stdout.log" 2>&1 &
+setsid "$nginx_bin" -p "$prefix" -c conf/nginx.conf \
+    > "$prefix/logs/stdout.log" 2>&1 &
 nginx_pid=$!
+sleep 0.1
 
 i=0
-while [ "$i" -lt 50 ]; do
+while [ "$i" -lt 300 ]; do
+    if ! kill -0 "$nginx_pid" 2>/dev/null; then
+        wait "$nginx_pid"
+        status=$?
+        echo "nginx exited before becoming reachable (status $status), stdout:"
+        tail -n 20 "$prefix/logs/stdout.log"
+        exit 1
+    fi
     if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/"; then
         break
     fi
@@ -284,10 +283,12 @@ while [ "$i" -lt 50 ]; do
     sleep 0.1
 done
 
-if [ "$i" -ge 50 ]; then
+if [ "$i" -ge 300 ]; then
     echo "nginx did not become reachable, error log:"
     tail -n 20 "$prefix/logs/error.log"
     tail -n 5 "$prefix/logs/stdout.log"
+    ps -o pid=,ppid=,stat=,wchan=,cmd= -p "$nginx_pid" 2>&1 || true
+    ps -ef | grep -F "$prefix" | grep -v grep || true
     exit 1
 fi
 
@@ -407,31 +408,16 @@ check 200 "allowed request"                  "$base/"
 # request was blocked, which is what the C implementation reports as well.
 check_body 404 '\[true\]\[\]\[false\]\[\]\[\]\[0\]' \
     "variables of an allowed request"        -H 'X-Real-IP: 9.9.9.2' "$base/test0"
-check 403 "black url"                        "$base/www.bak"
-# The rule files are matched with the PCRE engine of nginx: a look around assert
-# (which the `regex` crate cannot compile) has to load and to be honoured.
-check 403 "a rule only the PCRE engine accepts" "$base/www.pcre"
-check_body 403 '(?!allowed/)' \
-    "the blocked page carries that rule"     "$base/www.pcre"
-check 404 "the look around assert is honoured" "$base/allowed/www.pcre"
-check 403 "black args"                       "$base/?s=onload="
-check 403 "black user agent"                 -H 'User-Agent: / SF/' "$base/"
-check 403 "black referer"                    -H 'Referer: /www.bak' "$base/"
-check 200 "white referer"                    -H 'Referer: /white/www.bak' "$base/"
-check 404 "white url"                        "$base/white/www.bak"
-check 403 "black cookie"                     -H 'Cookie: s=../' "$base/"
+check 403 "blocked url"                      "$base/www.bak"
+check_body 403 'blocked-url' "the URL rule is reported" "$base/www.bak"
+check 403 "black args"                       "$base/?test=deny"
 check 403 "black post body"                  -d 'onload=' "$base/"
 check 405 "harmless post body"               -d 's=test' "$base/"
 # A chunked body has no Content-Length: nginx decodes it, the module still has
 # to see it (and the body above the buffer threshold lands in a temp file).
 check 403 "black chunked post body" \
     -H 'Transfer-Encoding: chunked' -d 'onload=' "$base/"
-check 403 "black url with HEAD"              -I "$base/www.bak"
-# Long values are inspected as they are, nothing is truncated on the way to the
-# checks (the caches of the C implementation were keyed on the whole value).
-long_ua=$(head -c 4096 /dev/zero | tr '\0' a)
-check 403 "4k user agent with a rule"        -H "User-Agent: $long_ua/ SF/" "$base/"
-check 200 "4k user agent without a rule"     -H "User-Agent: $long_ua" "$base/"
+check 403 "blocked url with HEAD"            -I "$base/www.bak"
 # The body comes from a file: a single command line argument cannot be that
 # big (the kernel limits one to 128k), `curl -d @file` reads it instead.
 head -c 262144 /dev/zero | tr '\0' a > "$prefix/big.body"
@@ -439,30 +425,8 @@ cat "$prefix/big.body" > "$prefix/big.with-rule"
 printf 'onload=' >> "$prefix/big.with-rule"
 check 403 "256k body with a rule"            -d "@$prefix/big.with-rule" "$base/"
 check 405 "256k body without a rule"         -d "@$prefix/big.body" "$base/"
-check 403 "black ipv4"                       -H 'X-Real-IP: 1.1.1.1' "$base/"
-check 403 "black ipv4 block"                 -H 'X-Real-IP: 2.1.0.0' "$base/"
-# `rules/ipv4` has 2.0.0.0/8 and then the covered 2.1.0.0/16: nginx logged the
-# overlap while it read the configuration and kept the covering block.
-if grep -q 'have overlapping parts.' "$prefix/logs/error.log"; then
-    pass=$((pass + 1))
-    printf 'ok   %-52s %s\n' "overlapping address block is logged" "kept 2.0.0.0/8"
-else
-    fail=$((fail + 1))
-    printf 'FAIL %-52s (no message in the error log)\n' \
-        "overlapping address block is logged"
-fi
-check_body 403 '\[BLACK-IPV4\]\[2.0.0.0/8\]' \
-    "overlapping address block keeps the covering rule" -H 'X-Real-IP: 2.1.0.0' "$base/"
-check 403 "black ipv4 host bit"              -H 'X-Real-IP: 2.0.0.1' "$base/"
-check 404 "white ipv4"                       -H 'X-Real-IP: 3.3.3.3' "$base/www.bak"
-check 404 "white ipv4 block"                 -H 'X-Real-IP: 4.1.0.0' "$base/www.bak"
-check 403 "black ipv6"                       -H 'X-Real-IP: AAAA::' "$base/"
-check 403 "black ipv6 block"                 -H 'X-Real-IP: BBBB::1' "$base/"
-check 404 "white ipv6"                       -H 'X-Real-IP: CCCC::' "$base/www.bak"
-check 404 "white ipv6 block"                 -H 'X-Real-IP: DDDD::1' "$base/www.bak"
 check 404 "waf off"                          "http://127.0.0.1:18082/www.bak"
 check 404 "waf bypass"                       "http://127.0.0.1:18081/www.bak"
-check 404 "mode without the URL bit"         "http://127.0.0.1:18083/www.bak"
 check_body 403 'WAF' "block page"            "$base/bp/www.bak"
 check_page "$root/rust/data/block.html" \
     "the block page is byte for byte the C page" "$base/bp/www.bak"
@@ -479,7 +443,7 @@ check 503 "under attack holds the visitor back" \
 sleep 6
 check 200 "under attack lets the waited visitor through" \
     -b "$prefix/under.cookies" "http://127.0.0.1:18099/"
-check_body 403 '\[true\]\[true\]\[true\]\[BLACK-URL\]' \
+check_body 403 '\[true\]\[true\]\[true\]\[ModSecurity\]' \
     "variables of a blocked request"         -H 'X-Real-IP: 9.9.9.1' "$base/www.bak"
 # An `error_page` that is a file (nginx internally redirects to it) has to be
 # the response, the decision must not be applied a second time.
@@ -502,9 +466,8 @@ check 200 "cc first request before the reload" -H "$reload_ip" "$cc_base/"
 sleep 0.5
 check 200 "cc second request after the reload" -H "$reload_ip" "$cc_base/"
 check 503 "cc denial survives the reload"      -H "$reload_ip" "$cc_base/"
-# The patterns of the new cycle were compiled again, in the pool of that cycle.
+# The ModSecurity rules of the new cycle replaced the old instance.
 check 403 "the rules of the reloaded configuration are used" "$base/www.bak"
-check 403 "a PCRE rule of the reloaded configuration is used" "$base/www.pcre"
 
 # `rate=02r/m` and `duration=01h`: nginx' `ngx_atoi()` (and therefore the C
 # implementation) accepts the leading zeros, the limit is two requests.
@@ -548,7 +511,7 @@ fi
 
 # The fail counter of that server lives in a fourth zone: `max_fails=3:1m`
 # means three failures are allowed, the fourth blocks.  Counting needs a
-# visitor the action table challenges, so it is blacklisted first, and every
+# visitor the action table challenges, so ModSecurity matches first, and every
 # following request to the verification URL has no token.
 check 403 "captcha fail counter visitor is challenged" \
     -H 'X-Real-IP: 9.9.9.42' "$multi/www.bak"
@@ -586,14 +549,14 @@ check_body 404 '\[3\]\[\]' "cc counter on its zone survives the reload" \
 check_body 200 'bad' "captcha action entry survives the reload" \
     -H 'X-Real-IP: 9.9.9.43' -X POST -d 'x=1' "$multi/captcha"
 
-# `waf_priority` decides which inspection answers first: both servers have the
-# ModSecurity rule below and use a blacklisted address, only the order differs.
+# `waf_priority` decides which inspection answers first: both servers enable
+# ModSecurity and Under Attack, only the order differs.
 priority_base="http://127.0.0.1:18097"
 default_base="http://127.0.0.1:18098"
-check 400 "waf_priority runs ModSecurity before the address list" \
-    -H 'X-Real-IP: 1.1.1.1' "$priority_base/?test=deny"
-check 403 "the default order keeps the address list first" \
-    -H 'X-Real-IP: 1.1.1.1' "$default_base/?test=deny"
+check 400 "waf_priority runs ModSecurity before under attack" \
+    "$priority_base/www.bak"
+check 503 "the default order runs under attack before ModSecurity" \
+    "$default_base/www.bak"
 
 # The inspection stops at the first phase of the library that intervenes: the
 # phase 1 rule answers even though the phase 2 rule matches as well, and a
@@ -624,8 +587,8 @@ check 419 "modsecurity loads the second rule file" \
 check_page "$root/rust/data/block.html" \
     "modsecurity follows the block page" "http://127.0.0.1:18101/second"
 
-# A connection over a unix domain socket carries no client address at all: a
-# blacklisted URL is still refused, while no address list or counter matches.
+# A connection over a unix domain socket carries no client address at all:
+# ModSecurity still refuses the URL, while the CC counter sees nothing.
 check 403 "unix socket request is still inspected" \
     --unix-socket "$prefix/waf.sock" "http://localhost/www.bak"
 check 200 "unix socket request is served" \
@@ -633,30 +596,17 @@ check 200 "unix socket request is served" \
 check 200 "unix socket connection is not counted" \
     --unix-socket "$prefix/waf.sock" "http://localhost/"
 
-# `waf_mode FULL !GET` clears the bit of the method: the URL list is gated by
-# it, the address list is not, so the blacklist still answers.
-check 403 "mode without the GET bit keeps the address list" \
-    -H 'X-Real-IP: 1.1.1.1' "http://127.0.0.1:18102/"
-check 404 "mode without the GET bit skips the URL list" \
-    -H 'X-Real-IP: 9.9.9.60' "http://127.0.0.1:18102/www.bak"
-
 # The provider answers with a chunked body: the module has to decode it.
 check_body 200 'good' "captcha accepts a chunked provider answer" \
     -X POST -d 'g-recaptcha-response=token' "http://127.0.0.1:18103/captcha"
 
 # `waf_action` must not disarm the triggers it does not mention.
-check 403 "waf_action cc_deny keeps the blacklist" \
+check 403 "waf_action cc_deny keeps ModSecurity" \
     -H 'X-Real-IP: 9.9.9.10' "http://127.0.0.1:18085/www.bak"
 check 200 "waf_action cc_deny allows the first request" \
     -H 'X-Real-IP: 9.9.9.11' "http://127.0.0.1:18085/"
 check 400 "waf_action cc_deny uses the configured status" \
     -H 'X-Real-IP: 9.9.9.11' "http://127.0.0.1:18085/"
-check 405 "waf_action blacklist uses the configured status" \
-    -H 'X-Real-IP: 9.9.9.12' "http://127.0.0.1:18086/www.bak"
-check 200 "waf_action blacklist allows the first request" \
-    -H 'X-Real-IP: 9.9.9.13' "http://127.0.0.1:18086/"
-check 503 "waf_action blacklist keeps the cc denial" \
-    -H 'X-Real-IP: 9.9.9.13' "http://127.0.0.1:18086/"
 check 500 "cc without a zone blocks" \
     -H 'X-Real-IP: 9.9.9.14' "http://127.0.0.1:18087/"
 
@@ -803,7 +753,7 @@ check_body_slow 200 'bad' 0 "captcha without api= fails closed" \
     -X POST -d 'g-recaptcha-response=token' "$action_cap/default/captcha"
 
 # `waf_action cc_deny=CAPTCHA`: the counter denial is answered with the captcha
-# page (a blacklist challenge serves the 403 block page first, a CC one never
+# page (a ModSecurity challenge serves the 403 block page first, a CC one never
 # does), the challenge resets the counter of the address and the action table
 # then holds the visitor back until the provider accepts a token.
 #

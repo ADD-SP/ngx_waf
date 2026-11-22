@@ -176,9 +176,7 @@ pub struct NgxWafRequestView {
     pub ip: NgxWafStringView,
     pub method: NgxWafHttpMethod,
     pub uri: NgxWafStringView,
-    pub args: NgxWafStringView,
     pub user_agent: NgxWafStringView,
-    pub referer: NgxWafStringView,
     /// One view per `Cookie` header, the raw header values.
     pub cookies: *const NgxWafStringView,
     pub cookie_count: usize,
