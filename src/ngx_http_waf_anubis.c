@@ -46,6 +46,10 @@ static ngx_int_t ngx_http_waf_anubis_add_header(ngx_http_request_t* r,
     ngx_str_t* key, ngx_str_t* value, ngx_table_elt_t** result);
 
 
+static void ngx_http_waf_anubis_rewrite_cookie_path(ngx_http_request_t* r,
+    ngx_str_t* value);
+
+
 ngx_uint_t ngx_http_waf_is_anubis_path(ngx_http_request_t* r,
     ngx_http_waf_loc_conf_t* conf)
 {
@@ -351,6 +355,84 @@ static ngx_uint_t ngx_http_waf_anubis_hop_header(ngx_str_t* key)
 }
 
 
+/*
+ * Anubis scopes its auth cookie to BASE_PREFIX because it assumes that all
+ * protected requests also carry that prefix.  This module uses Anubis as a
+ * subrequest sidecar, so the protected application may live above the
+ * challenge prefix.  Restore the cookie to the site root or browsers will not
+ * send it on those requests.
+ */
+static void ngx_http_waf_anubis_rewrite_cookie_path(ngx_http_request_t* r,
+    ngx_str_t* value)
+{
+    ngx_http_waf_loc_conf_t* conf =
+        ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    ngx_str_t base;
+    u_char* p;
+    u_char* end;
+    u_char* next;
+    u_char* path;
+    u_char* path_end;
+    size_t base_len;
+
+    if (conf == NULL || !conf->anubis_api.configured) {
+        return;
+    }
+
+    base = conf->anubis_api.uri;
+    base_len = base.len;
+    while (base_len > 1 && base.data[base_len - 1] == '/') {
+        base_len--;
+    }
+    if (base_len == 0 || (base_len == 1 && base.data[0] == '/')) {
+        return;
+    }
+
+    p = value->data;
+    end = value->data + value->len;
+
+    for ( ;; ) {
+        while (p < end && (*p == ' ' || *p == '\t')) {
+            p++;
+        }
+        if ((size_t) (end - p) >= sizeof("Path=") - 1
+            && ngx_strncasecmp(p, (u_char*) "Path=", sizeof("Path=") - 1) == 0)
+        {
+            path = p + sizeof("Path=") - 1;
+            while (path < end && (*path == ' ' || *path == '\t')) {
+                path++;
+            }
+
+            path_end = ngx_strlchr(path, end, ';');
+            if (path_end == NULL) {
+                path_end = end;
+            }
+            while (path_end > path
+                   && (path_end[-1] == ' ' || path_end[-1] == '\t'))
+            {
+                path_end--;
+            }
+
+            if ((size_t) (path_end - path) == base_len + 1
+                && ngx_strncmp(path, base.data, base_len) == 0
+                && path[base_len] == '/')
+            {
+                ngx_memmove(path + 1, path_end, end - path_end);
+                path[0] = '/';
+                value->len -= base_len;
+                return;
+            }
+        }
+
+        next = ngx_strlchr(p, end, ';');
+        if (next == NULL) {
+            return;
+        }
+        p = next + 1;
+    }
+}
+
+
 static ngx_int_t ngx_http_waf_anubis_add_header(ngx_http_request_t* r,
     ngx_str_t* key, ngx_str_t* value, ngx_table_elt_t** result)
 {
@@ -503,6 +585,12 @@ static ngx_int_t ngx_http_waf_anubis_process_header(ngx_http_request_t* r)
                 u->headers_in.connection_close = 1;
             }
         } else if (!ngx_http_waf_anubis_hop_header(&key)) {
+            if (key.len == sizeof("Set-Cookie") - 1
+                && ngx_strncasecmp(key.data, (u_char*) "Set-Cookie", key.len) == 0)
+            {
+                ngx_http_waf_anubis_rewrite_cookie_path(r, &value);
+            }
+
             rc = ngx_http_waf_anubis_add_header(r, &key, &value, &header);
             if (rc != NGX_OK) {
                 return rc;

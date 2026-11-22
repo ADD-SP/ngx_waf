@@ -41,7 +41,9 @@ class Client:
         }
         if self.cookies:
             headers["Cookie"] = "; ".join(
-                f"{name}={value}" for name, value in self.cookies.items()
+                f"{cookie['name']}={cookie['value']}"
+                for cookie in self.cookies.values()
+                if cookie_matches(path, cookie["path"])
             )
 
         connection.request(method, path, headers=headers)
@@ -50,10 +52,29 @@ class Client:
         response_headers = response.getheaders()
         for name, value in response_headers:
             if name.lower() == "set-cookie":
-                cookie_name, cookie_value = value.split(";", 1)[0].split("=", 1)
-                self.cookies[cookie_name] = cookie_value
+                parts = value.split(";")
+                cookie_name, cookie_value = parts[0].split("=", 1)
+                cookie_path = "/"
+                for attribute in parts[1:]:
+                    key, separator, attribute_value = attribute.strip().partition("=")
+                    if separator and key.lower() == "path" and attribute_value:
+                        cookie_path = attribute_value
+                self.cookies[(cookie_name, cookie_path)] = {
+                    "name": cookie_name,
+                    "value": cookie_value,
+                    "path": cookie_path,
+                }
         connection.close()
         return response.status, response_headers, body
+
+
+def cookie_matches(request_target, cookie_path):
+    request_path = urllib.parse.urlsplit(request_target).path or "/"
+    if request_path == cookie_path:
+        return True
+    if not request_path.startswith(cookie_path):
+        return False
+    return cookie_path.endswith("/") or request_path[len(cookie_path)] == "/"
 
 
 def header(headers, name):
@@ -114,6 +135,15 @@ def solve(args):
     status, headers, _ = client.request("GET", pass_path)
     if status not in {302, 303, 307}:
         raise RuntimeError(f"pass-challenge returned HTTP {status}")
+    auth_cookies = [
+        cookie
+        for cookie in client.cookies.values()
+        if "-auth" in cookie["name"]
+    ]
+    if not auth_cookies:
+        raise RuntimeError("pass-challenge did not set the auth cookie")
+    if any(cookie["path"] != "/" for cookie in auth_cookies):
+        raise RuntimeError("auth cookie is not scoped to the protected site root")
 
     status, headers, body = client.request("GET", args.protected)
     if status != 200:
@@ -126,9 +156,12 @@ def solve(args):
             f"unexpected backend Anubis risk header: {risk!r}"
         )
 
+    cookie_paths = ",".join(
+        sorted(f"{cookie['name']}:{cookie['path']}" for cookie in client.cookies.values())
+    )
     print(
         f"anubis challenge passed: difficulty={difficulty} "
-        f"nonce={nonce} cookies={len(client.cookies)}"
+        f"nonce={nonce} cookies={len(client.cookies)} [{cookie_paths}]"
     )
 
 
