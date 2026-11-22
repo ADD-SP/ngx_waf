@@ -23,6 +23,15 @@ use std::rc::Rc;
 use std::time::Instant;
 use subtle::ConstantTimeEq;
 
+/// The same-origin path namespace reserved by Anubis for challenge pages,
+/// assets and API endpoints.
+const ANUBIS_RESERVED_PATH: &[u8] = b"/.within.website";
+/// The Anubis auth-check endpoint below `ANUBIS_RESERVED_PATH`.
+const ANUBIS_CHECK_PATH: &[u8] = b"/x/cmd/anubis/api/check";
+/// The Anubis challenge endpoint below `ANUBIS_RESERVED_PATH`, including the
+/// query key for the original request target.
+const ANUBIS_CHALLENGE_REDIRECT: &[u8] = b"/?redir=";
+
 /// The request data the C glue provides.
 pub struct Request<'a> {
     /// Network order address, 4 or 16 bytes.
@@ -983,7 +992,8 @@ fn check_anubis(state: &mut State) -> CheckResult {
     while url.ends_with(b"/") {
         url.pop();
     }
-    url.extend_from_slice(b"/.within.website/x/cmd/anubis/api/check");
+    url.extend_from_slice(ANUBIS_RESERVED_PATH);
+    url.extend_from_slice(ANUBIS_CHECK_PATH);
 
     CheckResult::Fetch {
         continuation: Continuation::Anubis,
@@ -1020,7 +1030,8 @@ fn anubis_error(state: &mut State) -> CheckResult {
 /// redirect.
 fn anubis_challenge_location(conf: &LocationConfiguration, unparsed_uri: &[u8]) -> Vec<u8> {
     let mut location = conf.anubis.base_path.clone();
-    location.extend_from_slice(b"/.within.website/?redir=");
+    location.extend_from_slice(ANUBIS_RESERVED_PATH);
+    location.extend_from_slice(ANUBIS_CHALLENGE_REDIRECT);
 
     for byte in unparsed_uri {
         if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'.' | b'_' | b'~') {

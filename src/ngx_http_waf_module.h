@@ -19,6 +19,16 @@
 
 
 /*
+ * The same-origin path namespace reserved by Anubis for challenge pages,
+ * assets and API endpoints.  Keep the Rust side of the protocol in sync with
+ * `ANUBIS_RESERVED_PATH` in `rust/src/check.rs`.
+ */
+#define NGX_HTTP_WAF_ANUBIS_RESERVED_PATH "/.within.website"
+#define NGX_HTTP_WAF_ANUBIS_CHECK_PATH \
+    NGX_HTTP_WAF_ANUBIS_RESERVED_PATH "/x/cmd/anubis/api/check"
+
+
+/*
  * The captcha provider client is an SSL client of nginx itself and the
  * configuration holds an `ngx_ssl_t`, so an nginx without SSL support cannot
  * compile the module.  The `config` script refuses such a tree as well; this is

@@ -582,9 +582,6 @@ static ngx_int_t ngx_http_waf_start_http_peer(ngx_http_request_t* r, ngx_http_wa
 }
 
 
-#define NGX_HTTP_WAF_ANUBIS_CHECK_PATH "/.within.website/x/cmd/anubis/api/check"
-
-
 ngx_str_t ngx_http_waf_original_host(ngx_http_request_t* r)
 {
     if (r->headers_in.host != NULL) {

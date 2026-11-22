@@ -51,11 +51,13 @@ ngx_uint_t ngx_http_waf_is_anubis_path(ngx_http_request_t* r,
 {
     ngx_str_t prefix;
     size_t base_len;
+    size_t reserved_len;
 
     if (!conf->anubis_api.configured || r->uri.len == 0) {
         return 0;
     }
 
+    reserved_len = sizeof(NGX_HTTP_WAF_ANUBIS_RESERVED_PATH) - 1;
     prefix.data = conf->anubis_api.uri.data;
     prefix.len = conf->anubis_api.uri.len;
     base_len = prefix.len;
@@ -67,19 +69,19 @@ ngx_uint_t ngx_http_waf_is_anubis_path(ngx_http_request_t* r,
         }
     }
 
-    if (r->uri.len < base_len + sizeof("/.within.website") - 1
+    if (r->uri.len < base_len + reserved_len
         || ngx_strncmp(r->uri.data, prefix.data, base_len) != 0
-        || ngx_strncmp(r->uri.data + base_len, "/.within.website",
-                       sizeof("/.within.website") - 1) != 0)
+        || ngx_strncmp(r->uri.data + base_len, NGX_HTTP_WAF_ANUBIS_RESERVED_PATH,
+                       reserved_len) != 0)
     {
         return 0;
     }
 
-    if (r->uri.len == base_len + sizeof("/.within.website") - 1) {
+    if (r->uri.len == base_len + reserved_len) {
         return 1;
     }
 
-    return r->uri.data[base_len + sizeof("/.within.website") - 1] == '/';
+    return r->uri.data[base_len + reserved_len] == '/';
 }
 
 
