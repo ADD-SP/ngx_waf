@@ -330,8 +330,9 @@ python3 "$root/test/e2e/anubis-solve.py" \
     --client 203.0.113.12 \
     --base-prefix /base \
     --expect-difficulty 4 \
+    --pass-redir 'https://example.test/base/.within.website/?redir=%2Fwp-login.php' \
     --protected '/wp-login.php'
-ok "challenge keeps the path-specific policy rule"
+ok "challenge keeps the path-specific policy rule for an absolute self redir"
 
 python3 "$root/test/e2e/anubis-solve.py" \
     --port "$tls_waf_port" \
