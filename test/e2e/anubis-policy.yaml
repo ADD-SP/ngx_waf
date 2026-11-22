@@ -8,6 +8,12 @@ bots:
   - name: robots
     path_regex: ^/robots\.txt$
     action: ALLOW
+  - name: wordpress-login
+    path_regex: ^/wp-login\.php$
+    action: CHALLENGE
+    challenge:
+      algorithm: fast
+      difficulty: 2
   - name: generic-browser
     user_agent_regex: Mozilla|Opera
     action: CHALLENGE
