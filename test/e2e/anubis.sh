@@ -73,6 +73,7 @@ fi
 
 mkdir -p "$prefix/www" "$prefix/body"
 printf 'backend' >"$prefix/www/index.html"
+printf 'backend' >"$prefix/www/wp-login.php"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
     -subj '/CN=127.0.0.1' \
     -addext 'subjectAltName=IP:127.0.0.1' \
@@ -322,6 +323,15 @@ python3 "$root/test/e2e/anubis-solve.py" \
     --base-prefix /base \
     --protected '/index.html?x=1'
 ok "real proof-of-work challenge and auth cookie"
+
+python3 "$root/test/e2e/anubis-solve.py" \
+    --port "$nginx_port" \
+    --host example.test \
+    --client 203.0.113.12 \
+    --base-prefix /base \
+    --expect-difficulty 4 \
+    --protected '/wp-login.php'
+ok "challenge keeps the path-specific policy rule"
 
 python3 "$root/test/e2e/anubis-solve.py" \
     --port "$tls_waf_port" \

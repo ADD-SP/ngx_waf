@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument("--protected", default="/index.html?x=1")
     parser.add_argument("--expect-body", default="backend")
     parser.add_argument("--expect-risk", default="")
+    parser.add_argument("--expect-difficulty", type=int)
     return parser.parse_args()
 
 
@@ -109,6 +110,11 @@ def solve(args):
     payload = json.loads(match.group(1))
     challenge = payload["challenge"]
     difficulty = int(payload["rules"]["difficulty"])
+    if args.expect_difficulty is not None and difficulty != args.expect_difficulty:
+        raise RuntimeError(
+            f"unexpected challenge difficulty: {difficulty} "
+            f"(want {args.expect_difficulty})"
+        )
     prefix = "0" * difficulty
 
     nonce = 0
