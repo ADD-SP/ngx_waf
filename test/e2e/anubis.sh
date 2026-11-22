@@ -253,6 +253,9 @@ done
 base_url="http://127.0.0.1:$nginx_port"
 headers=(-H 'Host: example.test' -H 'X-Real-IP: 203.0.113.10')
 
+python3 "$root/test/e2e/anubis-redirect-security.py" --port "$nginx_port"
+ok "ambiguous redirect queries are rejected before proxying"
+
 status=$(curl -sS -D "$prefix/challenge.headers" -o "$prefix/challenge.html" \
     -w '%{http_code}' --max-time 15 -A 'Mozilla/5.0' \
     "${headers[@]}" "$base_url/index.html?x=1")

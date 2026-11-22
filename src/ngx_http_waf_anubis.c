@@ -12,6 +12,8 @@ typedef struct {
     ngx_http_request_t* request;
     ngx_http_chunked_t  chunked;
     off_t               body_length;
+    ngx_str_t           original_uri;
+    ngx_str_t           request_uri;
 } ngx_http_waf_anubis_ctx_t;
 
 
@@ -46,31 +48,8 @@ static ngx_int_t ngx_http_waf_anubis_add_header(ngx_http_request_t* r,
     ngx_str_t* key, ngx_str_t* value, ngx_table_elt_t** result);
 
 
-static ngx_int_t ngx_http_waf_anubis_original_uri(ngx_http_request_t* r,
-    ngx_str_t* uri, ngx_uint_t* have_target);
-
-
-static ngx_int_t ngx_http_waf_anubis_rewrite_request_uri(ngx_http_request_t* r,
-    ngx_str_t* target, ngx_str_t* uri);
-
-
-static ngx_int_t ngx_http_waf_anubis_decode_form(ngx_http_request_t* r,
-    ngx_str_t* encoded, ngx_str_t* decoded);
-
-
-static ngx_int_t ngx_http_waf_anubis_normalize_absolute(ngx_http_request_t* r,
-    ngx_http_waf_loc_conf_t* conf, ngx_str_t* absolute, ngx_str_t* uri);
-
-
-static ngx_int_t ngx_http_waf_anubis_query_arg(ngx_str_t* args, u_char* name,
-    size_t name_len, ngx_str_t* value);
-
-
-static ngx_uint_t ngx_http_waf_anubis_is_origin_form(ngx_str_t* uri);
-
-
-static ngx_uint_t ngx_http_waf_anubis_is_challenge_path(ngx_str_t* path,
-    ngx_http_waf_loc_conf_t* conf);
+static ngx_int_t ngx_http_waf_anubis_prepare(ngx_http_request_t* r,
+    ngx_http_waf_loc_conf_t* conf, ngx_http_waf_anubis_ctx_t* anubis);
 
 
 static void ngx_http_waf_anubis_rewrite_cookie_path(ngx_http_request_t* r,
@@ -118,9 +97,15 @@ ngx_uint_t ngx_http_waf_is_anubis_path(ngx_http_request_t* r,
 
 ngx_int_t ngx_http_waf_anubis_proxy_handler(ngx_http_request_t* r)
 {
+    ngx_http_waf_loc_conf_t* conf;
     ngx_http_waf_ctx_t* ctx;
     ngx_http_waf_anubis_ctx_t* anubis;
     ngx_int_t rc;
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    if (conf == NULL || !conf->anubis_api.configured) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
 
     ctx = ngx_http_waf_get_ctx(r);
     if (ctx == NULL) {
@@ -137,6 +122,11 @@ ngx_int_t ngx_http_waf_anubis_proxy_handler(ngx_http_request_t* r)
     }
     anubis->request = r;
     ctx->anubis_proxy = anubis;
+
+    rc = ngx_http_waf_anubis_prepare(r, conf, anubis);
+    if (rc != NGX_OK) {
+        return rc;
+    }
 
     r->request_body_in_single_buf = 1;
     r->request_body_in_persistent_file = 1;
@@ -271,390 +261,64 @@ static off_t ngx_http_waf_anubis_body_length(ngx_chain_t* chain)
 }
 
 
-static ngx_int_t ngx_http_waf_anubis_decode_form(ngx_http_request_t* r,
-    ngx_str_t* encoded, ngx_str_t* decoded)
+static ngx_int_t ngx_http_waf_anubis_prepare(ngx_http_request_t* r,
+    ngx_http_waf_loc_conf_t* conf, ngx_http_waf_anubis_ctx_t* anubis)
 {
-    u_char ch;
-    u_char value;
-    u_char hi;
-    u_char lo;
-    u_char* dst;
-    u_char* last;
-    u_char* src;
-
-    dst = ngx_pnalloc(r->pool, encoded->len + 1);
-    if (dst == NULL) {
-        return NGX_ERROR;
-    }
-
-    decoded->data = dst;
-    src = encoded->data;
-    last = encoded->data + encoded->len;
-
-    while (src < last) {
-        ch = *src++;
-
-        if (ch == '+') {
-            *dst++ = ' ';
-            continue;
-        }
-
-        if (ch != '%') {
-            *dst++ = ch;
-            continue;
-        }
-
-        if (last - src < 2) {
-            break;
-        }
-
-        hi = src[0];
-        lo = src[1];
-        if (hi >= '0' && hi <= '9') {
-            value = (u_char) (hi - '0');
-        } else if ((hi | 0x20) >= 'a' && (hi | 0x20) <= 'f') {
-            value = (u_char) ((hi | 0x20) - 'a' + 10);
-        } else {
-            break;
-        }
-        value <<= 4;
-        if (lo >= '0' && lo <= '9') {
-            value += (u_char) (lo - '0');
-        } else if ((lo | 0x20) >= 'a' && (lo | 0x20) <= 'f') {
-            value += (u_char) ((lo | 0x20) - 'a' + 10);
-        } else {
-            break;
-        }
-
-        *dst++ = value;
-        src += 2;
-    }
-
-    if (src != last) {
-        return NGX_DECLINED;
-    }
-    decoded->len = dst - decoded->data;
-
-    return NGX_OK;
-}
-
-
-static ngx_int_t ngx_http_waf_anubis_query_arg(ngx_str_t* args, u_char* name,
-    size_t name_len, ngx_str_t* value)
-{
-    u_char* end;
-    u_char* equal;
-    u_char* p;
-    u_char* last;
-
-    p = args->data;
-    last = args->data + args->len;
-
-    while (p < last) {
-        end = ngx_strlchr(p, last, '&');
-        if (end == NULL) {
-            end = last;
-        }
-
-        equal = ngx_strlchr(p, end, '=');
-        if (equal != NULL && (size_t) (equal - p) == name_len
-            && ngx_strncmp(p, name, name_len) == 0)
-        {
-            value->data = equal + 1;
-            value->len = end - value->data;
-            return NGX_OK;
-        }
-
-        if (end == last) {
-            break;
-        }
-        p = end + 1;
-    }
-
-    return NGX_DECLINED;
-}
-
-
-static ngx_uint_t ngx_http_waf_anubis_is_origin_form(ngx_str_t* uri)
-{
-    size_t i;
-
-    if (uri->len == 0 || uri->data[0] != '/'
-        || (uri->len > 1 && uri->data[1] == '/'))
-    {
-        return 0;
-    }
-
-    for (i = 0; i < uri->len; i++) {
-        if (uri->data[i] < 0x20 || uri->data[i] == 0x7f
-            || uri->data[i] == '\\')
-        {
-            return 0;
-        }
-    }
-
-    return 1;
-}
-
-
-static ngx_uint_t ngx_http_waf_anubis_is_challenge_path(ngx_str_t* path,
-    ngx_http_waf_loc_conf_t* conf)
-{
-    ngx_str_t base;
-    size_t base_len;
-    size_t reserved_len;
-
-    base = conf->anubis_api.uri;
-    base_len = base.len;
-    if (base_len == 1 && base.data[0] == '/') {
-        base_len = 0;
-    } else {
-        while (base_len > 0 && base.data[base_len - 1] == '/') {
-            base_len--;
-        }
-    }
-    reserved_len = sizeof(NGX_HTTP_WAF_ANUBIS_RESERVED_PATH) - 1;
-
-    if (path->len < base_len + reserved_len
-        || ngx_strncmp(path->data, base.data, base_len) != 0
-        || ngx_strncmp(path->data + base_len,
-                       NGX_HTTP_WAF_ANUBIS_RESERVED_PATH, reserved_len) != 0)
-    {
-        return 0;
-    }
-
-    return path->len == base_len + reserved_len
-           || path->data[base_len + reserved_len] == '/';
-}
-
-
-static ngx_int_t ngx_http_waf_anubis_normalize_absolute(ngx_http_request_t* r,
-    ngx_http_waf_loc_conf_t* conf, ngx_str_t* absolute, ngx_str_t* uri)
-{
-    ngx_str_t args;
+    ngx_waf_anubis_redirect_input_t input;
+    ngx_waf_anubis_redirect_output_t output;
+    ngx_waf_anubis_redirect_status status;
     ngx_str_t host;
-    ngx_str_t nested;
-    ngx_str_t path;
-    ngx_str_t redir;
-    u_char* authority;
-    u_char* end;
-    u_char* last;
-    u_char* query;
-    u_char* slash;
-    ngx_int_t rc;
-
-    authority = absolute->data;
-    if (absolute->len > sizeof("https://") - 1
-        && ngx_strncasecmp(authority, (u_char*) "https://",
-                           sizeof("https://") - 1) == 0)
-    {
-        authority += sizeof("https://") - 1;
-
-    } else if (absolute->len > sizeof("http://") - 1
-               && ngx_strncasecmp(authority, (u_char*) "http://",
-                                  sizeof("http://") - 1) == 0)
-    {
-        authority += sizeof("http://") - 1;
-
-    } else {
-        return NGX_DECLINED;
-    }
-
-    last = absolute->data + absolute->len;
-    slash = ngx_strlchr(authority, last, '/');
-    if (slash == NULL) {
-        return NGX_DECLINED;
-    }
 
     host = ngx_http_waf_original_host(r);
-    if ((size_t) (slash - authority) != host.len
-        || ngx_strncasecmp(authority, host.data, host.len) != 0)
-    {
-        return NGX_DECLINED;
-    }
+    input = (ngx_waf_anubis_redirect_input_t) {
+        .host = {
+            .len = host.len,
+            .data = host.data,
+        },
+        .base_prefix = {
+            .len = conf->anubis_api.uri.len,
+            .data = conf->anubis_api.uri.data,
+        },
+        .unparsed_uri = {
+            .len = r->unparsed_uri.len,
+            .data = r->unparsed_uri.data,
+        },
+    };
 
-    end = ngx_strlchr(slash, last, '#');
-    if (end == NULL) {
-        end = last;
-    }
-    query = ngx_strlchr(slash, end, '?');
-    path.data = slash;
-    path.len = (query != NULL ? query : end) - slash;
+    ngx_memzero(&output, sizeof(output));
+    status = ngx_waf_anubis_redirect_normalize(&input, NULL, 0, &output);
 
-    if (!ngx_http_waf_anubis_is_challenge_path(&path, conf)) {
-        uri->data = slash;
-        uri->len = end - slash;
-        return ngx_http_waf_anubis_is_origin_form(uri)
-               ? NGX_OK : NGX_DECLINED;
-    }
-
-    if (query == NULL) {
-        return NGX_DECLINED;
-    }
-
-    args.data = query + 1;
-    args.len = end - args.data;
-    if (ngx_http_waf_anubis_query_arg(&args, (u_char*) "redir",
-                                      sizeof("redir") - 1, &redir)
-        != NGX_OK)
-    {
-        return NGX_DECLINED;
-    }
-
-    rc = ngx_http_waf_anubis_decode_form(r, &redir, &nested);
-    if (rc != NGX_OK) {
-        return rc;
-    }
-    if (!ngx_http_waf_anubis_is_origin_form(&nested)) {
-        return NGX_DECLINED;
-    }
-
-    *uri = nested;
-    return NGX_OK;
-}
-
-
-/*
- * The challenge page and pass-challenge endpoint carry the protected request
- * target in `redir`.  Anubis checks path rules against X-Original-Uri while it
- * issues a challenge and again while it validates the solution.
- *
- * Anubis emits a relative target through ngx_waf, but with PUBLIC_URL unset its
- * browser code can submit the absolute challenge URL itself.  Unwrap that URL
- * so the protected path, not the challenge endpoint, is checked both times.
- */
-static ngx_int_t ngx_http_waf_anubis_original_uri(ngx_http_request_t* r,
-    ngx_str_t* uri, ngx_uint_t* have_target)
-{
-    ngx_http_waf_loc_conf_t* conf =
-        ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
-    ngx_str_t decoded;
-    ngx_str_t redir;
-    ngx_int_t rc;
-
-    if (conf == NULL
-        || ngx_http_arg(r, (u_char*) "redir", sizeof("redir") - 1, &redir)
-           != NGX_OK
-        || redir.len == 0)
-    {
-        *uri = r->unparsed_uri;
-        *have_target = 0;
+    if (status == NGX_WAF_ANUBIS_REDIRECT_STATUS_NO_REDIRECT) {
+        anubis->original_uri = r->unparsed_uri;
+        anubis->request_uri = r->unparsed_uri;
         return NGX_OK;
     }
-
-    rc = ngx_http_waf_anubis_decode_form(r, &redir, &decoded);
-    if (rc != NGX_OK) {
-        if (rc == NGX_ERROR) {
-            return NGX_ERROR;
-        }
-        *uri = r->unparsed_uri;
-        *have_target = 0;
-        return NGX_OK;
+    if (status == NGX_WAF_ANUBIS_REDIRECT_STATUS_REJECTED) {
+        return NGX_HTTP_BAD_REQUEST;
+    }
+    if (status != NGX_WAF_ANUBIS_REDIRECT_STATUS_BUFFER_TOO_SMALL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    if (ngx_http_waf_anubis_is_origin_form(&decoded)) {
-        *uri = decoded;
-        *have_target = 1;
-        return NGX_OK;
+    anubis->request_uri.data = ngx_pnalloc(r->pool, output.required);
+    if (anubis->request_uri.data == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    anubis->request_uri.len = output.required;
+
+    status = ngx_waf_anubis_redirect_normalize(
+        &input, anubis->request_uri.data, anubis->request_uri.len, &output);
+    if (status == NGX_WAF_ANUBIS_REDIRECT_STATUS_REJECTED) {
+        return NGX_HTTP_BAD_REQUEST;
+    }
+    if (status != NGX_WAF_ANUBIS_REDIRECT_STATUS_NORMALIZED) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    rc = ngx_http_waf_anubis_normalize_absolute(r, conf, &decoded, uri);
-    if (rc == NGX_OK) {
-        *have_target = 1;
-        return NGX_OK;
-    }
-    if (rc == NGX_ERROR) {
-        return NGX_ERROR;
-    }
-
-    *uri = r->unparsed_uri;
-    *have_target = 0;
-    return NGX_OK;
-}
-
-
-/*
- * pass-challenge's Location comes directly from the `redir` form value.
- * Replace that value with the normalized target so Anubis redirects to the
- * protected page instead of the self-referential challenge URL.
- */
-static ngx_int_t ngx_http_waf_anubis_rewrite_request_uri(ngx_http_request_t* r,
-    ngx_str_t* target, ngx_str_t* uri)
-{
-    u_char ch;
-    u_char* args;
-    u_char* dst;
-    u_char* end;
-    u_char* equal;
-    u_char* last;
-    u_char* path_end;
-    u_char* segment;
-    static u_char hex[] = "0123456789ABCDEF";
-
-    if (r->args.len == 0) {
-        args = NULL;
-        last = NULL;
-    } else {
-        args = r->args.data;
-        last = r->args.data + r->args.len;
-    }
-    path_end = ngx_strlchr(r->unparsed_uri.data,
-                           r->unparsed_uri.data + r->unparsed_uri.len, '?');
-    if (path_end == NULL) {
-        path_end = r->unparsed_uri.data + r->unparsed_uri.len;
-    }
-
-    dst = ngx_pnalloc(r->pool,
-                      r->unparsed_uri.len + target->len * 3
-                      + sizeof("redir=&") + 1);
-    if (dst == NULL) {
-        return NGX_ERROR;
-    }
-    uri->data = dst;
-
-    dst = ngx_cpymem(dst, r->unparsed_uri.data,
-                     path_end - r->unparsed_uri.data);
-    *dst++ = '?';
-
-    while (args != NULL && args < last) {
-        end = ngx_strlchr(args, last, '&');
-        if (end == NULL) {
-            end = last;
-        }
-
-        equal = ngx_strlchr(args, end, '=');
-        if (equal == NULL || (size_t) (equal - args) != sizeof("redir") - 1
-            || ngx_strncasecmp(args, (u_char*) "redir",
-                               sizeof("redir") - 1) != 0)
-        {
-            dst = ngx_cpymem(dst, args, end - args);
-            *dst++ = '&';
-        }
-
-        if (end == last) {
-            break;
-        }
-        args = end + 1;
-    }
-
-    dst = ngx_cpymem(dst, "redir=", sizeof("redir=") - 1);
-    for (segment = target->data; segment < target->data + target->len;
-         segment++)
-    {
-        ch = *segment;
-        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
-            || (ch >= '0' && ch <= '9') || ch == '-' || ch == '.'
-            || ch == '_' || ch == '~')
-        {
-            *dst++ = ch;
-        } else {
-            *dst++ = '%';
-            *dst++ = hex[ch >> 4];
-            *dst++ = hex[ch & 0x0f];
-        }
-    }
-
-    uri->len = dst - uri->data;
+    anubis->original_uri.data = (u_char*) output.original_uri.data;
+    anubis->original_uri.len = output.original_uri.len;
+    anubis->request_uri.data = (u_char*) output.request_uri.data;
+    anubis->request_uri.len = output.request_uri.len;
     return NGX_OK;
 }
 
@@ -671,10 +335,7 @@ static ngx_int_t ngx_http_waf_anubis_create_request(ngx_http_request_t* r)
     ngx_chain_t* cl;
     ngx_buf_t* b;
     ngx_str_t host;
-    ngx_str_t original_uri;
     ngx_str_t proto;
-    ngx_str_t request_uri;
-    ngx_uint_t have_target;
     u_char* p;
     size_t len;
 
@@ -684,21 +345,6 @@ static ngx_int_t ngx_http_waf_anubis_create_request(ngx_http_request_t* r)
 
     anubis = ctx->anubis_proxy;
     host = ngx_http_waf_original_host(r);
-    if (ngx_http_waf_anubis_original_uri(r, &original_uri, &have_target)
-        != NGX_OK)
-    {
-        return NGX_ERROR;
-    }
-    if (have_target) {
-        if (ngx_http_waf_anubis_rewrite_request_uri(r, &original_uri,
-                                                    &request_uri)
-            != NGX_OK)
-        {
-            return NGX_ERROR;
-        }
-    } else {
-        request_uri = r->unparsed_uri;
-    }
     proto = r->connection->ssl != NULL
         ? (ngx_str_t) ngx_string("https")
         : (ngx_str_t) ngx_string("http");
@@ -710,10 +356,10 @@ static ngx_int_t ngx_http_waf_anubis_create_request(ngx_http_request_t* r)
         anubis->body_length = 0;
     }
 
-    len = r->method_name.len + request_uri.len + host.len
+    len = r->method_name.len + anubis->request_uri.len + host.len
         + ngx_http_waf_forwarded_header_size(r)
         + r->connection->addr_text.len * 2
-        + original_uri.len * 2
+        + anubis->original_uri.len * 2
         + 1024;
     b = ngx_create_temp_buf(r->pool, len);
     if (b == NULL) {
@@ -723,7 +369,7 @@ static ngx_int_t ngx_http_waf_anubis_create_request(ngx_http_request_t* r)
     p = b->last;
     p = ngx_cpymem(p, r->method_name.data, r->method_name.len);
     *p++ = ' ';
-    p = ngx_cpymem(p, request_uri.data, request_uri.len);
+    p = ngx_cpymem(p, anubis->request_uri.data, anubis->request_uri.len);
     p = ngx_cpymem(p, " HTTP/1.0" CRLF, sizeof(" HTTP/1.0" CRLF) - 1);
     p = ngx_sprintf(p, "Host: %V" CRLF, &host);
     p = ngx_http_waf_copy_forwarded_headers(r, p);
@@ -731,8 +377,8 @@ static ngx_int_t ngx_http_waf_anubis_create_request(ngx_http_request_t* r)
     p = ngx_sprintf(p, "X-Forwarded-For: %V" CRLF, &r->connection->addr_text);
     p = ngx_sprintf(p, "X-Forwarded-Host: %V" CRLF, &host);
     p = ngx_sprintf(p, "X-Forwarded-Proto: %V" CRLF, &proto);
-    p = ngx_sprintf(p, "X-Forwarded-Uri: %V" CRLF, &original_uri);
-    p = ngx_sprintf(p, "X-Original-Uri: %V" CRLF, &original_uri);
+    p = ngx_sprintf(p, "X-Forwarded-Uri: %V" CRLF, &anubis->original_uri);
+    p = ngx_sprintf(p, "X-Original-Uri: %V" CRLF, &anubis->original_uri);
     if (anubis->body_length != 0) {
         p = ngx_sprintf(p, "Content-Length: %O" CRLF, anubis->body_length);
     }

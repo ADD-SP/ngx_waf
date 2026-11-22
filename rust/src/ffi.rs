@@ -3,11 +3,13 @@
 //! message instead.
 
 use crate::abi::{
-    HeaderView, NgxWafContentType, NgxWafEvent, NgxWafEventKind, NgxWafHeaderView,
-    NgxWafHttpMethod, NgxWafHttpRequestKind, NgxWafHttpVersion, NgxWafInspectionHandle,
-    NgxWafLocationConfiguration, NgxWafMainConfiguration, NgxWafRequestView, NgxWafStep,
-    NgxWafStepKind, NgxWafStringView, NgxWafZoneHandles, NgxWafZoneReferences,
+    HeaderView, NgxWafAnubisRedirectInput, NgxWafAnubisRedirectOutput, NgxWafAnubisRedirectStatus,
+    NgxWafContentType, NgxWafEvent, NgxWafEventKind, NgxWafHeaderView, NgxWafHttpMethod,
+    NgxWafHttpRequestKind, NgxWafHttpVersion, NgxWafInspectionHandle, NgxWafLocationConfiguration,
+    NgxWafMainConfiguration, NgxWafRequestView, NgxWafStep, NgxWafStepKind, NgxWafStringView,
+    NgxWafZoneHandles, NgxWafZoneReferences,
 };
+use crate::anubis_redirect;
 use crate::check;
 use crate::config::{self, LocationConfiguration, MainConfiguration, WafSwitch};
 use crate::shared_memory::{self, NgxWafSharedMemoryCallbacks};
@@ -319,6 +321,86 @@ pub extern "C" fn ngx_waf_string_free(text: *mut c_char) {
         // `error_string()` and is freed exactly once.
         unsafe { drop(CString::from_raw(text)) };
     }
+}
+
+/// Normalize the `redir` parameter of an Anubis challenge request.
+///
+/// Call once with a NULL/empty output buffer to obtain the required length,
+/// then again with caller-owned storage.  The returned views point into that
+/// storage and remain valid for as long as the caller keeps it alive.
+///
+/// # Safety
+/// `input` and `output` must be valid for this call.  Every view in `input`
+/// must point to readable memory.  When `capacity` is non-zero, `buffer` must
+/// point to that many writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ngx_waf_anubis_redirect_normalize(
+    input: *const NgxWafAnubisRedirectInput,
+    buffer: *mut u8,
+    capacity: usize,
+    output: *mut NgxWafAnubisRedirectOutput,
+) -> NgxWafAnubisRedirectStatus {
+    if input.is_null() || output.is_null() {
+        return NgxWafAnubisRedirectStatus::InternalError;
+    }
+
+    // SAFETY: the caller passes a live output structure for this call.
+    let output = unsafe { &mut *output };
+    *output = NgxWafAnubisRedirectOutput {
+        required: 0,
+        original_uri: NgxWafStringView::EMPTY,
+        request_uri: NgxWafStringView::EMPTY,
+    };
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: the caller passes a live input structure for this call.
+        let input = unsafe { &*input };
+        // SAFETY: every view belongs to a live nginx request.
+        let host = unsafe { input.host.as_slice() };
+        // SAFETY: see above.
+        let base_prefix = unsafe { input.base_prefix.as_slice() };
+        // SAFETY: see above.
+        let unparsed_uri = unsafe { input.unparsed_uri.as_slice() };
+        anubis_redirect::normalize(host, base_prefix, unparsed_uri)
+    }));
+
+    let normalized = match result {
+        Ok(Ok(None)) => return NgxWafAnubisRedirectStatus::NoRedirect,
+        Ok(Ok(Some(normalized))) => normalized,
+        Ok(Err(())) => return NgxWafAnubisRedirectStatus::Rejected,
+        Err(_) => return NgxWafAnubisRedirectStatus::InternalError,
+    };
+
+    let Some(required) = normalized
+        .original_uri
+        .len()
+        .checked_add(normalized.request_uri.len())
+    else {
+        return NgxWafAnubisRedirectStatus::InternalError;
+    };
+    output.required = required;
+
+    if buffer.is_null() || capacity < required {
+        return NgxWafAnubisRedirectStatus::BufferTooSmall;
+    }
+
+    // SAFETY: the caller promises `capacity` writable bytes and `required`
+    // was checked against it.
+    let buffer = unsafe { slice::from_raw_parts_mut(buffer, required) };
+    let original_len = normalized.original_uri.len();
+    buffer[..original_len].copy_from_slice(&normalized.original_uri);
+    buffer[original_len..].copy_from_slice(&normalized.request_uri);
+
+    output.original_uri = NgxWafStringView {
+        len: original_len,
+        data: buffer.as_ptr(),
+    };
+    output.request_uri = NgxWafStringView {
+        len: normalized.request_uri.len(),
+        // SAFETY: `original_len` is inside the allocation.
+        data: unsafe { buffer.as_ptr().add(original_len) },
+    };
+    NgxWafAnubisRedirectStatus::Normalized
 }
 
 #[no_mangle]
@@ -998,6 +1080,60 @@ mod tests {
             ],
             [0, 1, 2, 3]
         );
+        assert_eq!(
+            [
+                NgxWafAnubisRedirectStatus::NoRedirect as u32,
+                NgxWafAnubisRedirectStatus::Normalized as u32,
+                NgxWafAnubisRedirectStatus::Rejected as u32,
+                NgxWafAnubisRedirectStatus::BufferTooSmall as u32,
+                NgxWafAnubisRedirectStatus::InternalError as u32,
+            ],
+            [0, 1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn redirect_normalization_uses_the_callers_buffer() {
+        let host = b"example.test";
+        let base = b"/base";
+        let uri =
+            b"/base/.within.website/?redir=https%3A%2F%2Fexample.test%2Fbase%2F.within.website%2F\
+              %3Fredir%3D%252Fwp-admin%252F";
+        let input = NgxWafAnubisRedirectInput {
+            host: NgxWafStringView::from_slice(host),
+            base_prefix: NgxWafStringView::from_slice(base),
+            unparsed_uri: NgxWafStringView::from_slice(uri),
+        };
+        let mut output = NgxWafAnubisRedirectOutput {
+            required: 0,
+            original_uri: NgxWafStringView::EMPTY,
+            request_uri: NgxWafStringView::EMPTY,
+        };
+
+        // SAFETY: the views point at live local buffers and the output is live.
+        let status = unsafe {
+            ngx_waf_anubis_redirect_normalize(&input, std::ptr::null_mut(), 0, &mut output)
+        };
+        assert_eq!(status, NgxWafAnubisRedirectStatus::BufferTooSmall);
+        assert!(output.required >= b"/wp-admin/".len());
+
+        let mut buffer = vec![0; output.required];
+        // SAFETY: `buffer` has exactly the required capacity and all views in
+        // `input` remain live.
+        let status = unsafe {
+            ngx_waf_anubis_redirect_normalize(
+                &input,
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &mut output,
+            )
+        };
+        assert_eq!(status, NgxWafAnubisRedirectStatus::Normalized);
+        // SAFETY: the views point into `buffer`, which is alive.
+        assert_eq!(unsafe { output.original_uri.as_slice() }, b"/wp-admin/");
+        // SAFETY: see above.
+        let request_uri = unsafe { output.request_uri.as_slice() };
+        assert_eq!(request_uri, b"/base/.within.website/?redir=%2Fwp-admin%2F");
     }
 
     /// The views of a published step point into buffers the handle owns: a
