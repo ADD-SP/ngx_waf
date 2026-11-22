@@ -1,5 +1,12 @@
 ## Unreleased
 
+* Breaking redesign: ModSecurity is now the only request-rule engine. The
+  native `waf_rule_path`, `waf_mode`, `waf_cache`, IP/URL/Args/UA/Referer/
+  Cookie/POST lists and `waf_action blacklist=...` are removed. CC, CAPTCHA,
+  Under Attack, friendly crawler verification and ModSecurity remain.
+  `waf_priority` now requires each of `VERIFY-BOT`, `CC`, `CAPTCHA`,
+  `UNDER-ATTACK` and `MODSECURITY` exactly once. `waf_modsecurity on` requires
+  a rule source. No compatibility aliases or rule-file converter are provided.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.
@@ -15,7 +22,7 @@
   configurations and the inspection, and semantic queries for the
   configuration.  The constants and the types of the implementation no longer
   cross it.
-* Every inspection is ported, including the asynchronous ones: the captcha and
+* Every retained stateful inspection is ported, including the asynchronous ones: the captcha and
   the friendly crawler verification use reverse DNS through the nginx resolver
   and a non blocking request to the captcha provider.  The response phases of
   ModSecurity are not ported.  The HTTP framing of the provider answer is

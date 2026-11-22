@@ -324,73 +324,6 @@ char *ngx_http_waf_zone_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf) {
 
 
 /*
- * The regex engine of the rules.  Every rule of `waf_rule_path` is compiled
- * with `ngx_regex_compile()` and matched with `ngx_regex_exec()`, so a rule
- * file may use the whole PCRE syntax; the core uses these two callbacks for the
- * same engine instead of a regex library of its own.  They are handed to the
- * core with the directive that needs them, and `ctx` is the pool the compiled
- * patterns live in.
- */
-static void* ngx_http_waf_regex_compile(void* ctx, const uint8_t* pattern, size_t len) {
-    ngx_regex_compile_t  rc;
-    u_char               errstr[NGX_MAX_CONF_ERRSTR];
-    ngx_pool_t*          pool = ctx;
-    u_char*              terminated;
-
-    /*
-     * The core hands the pattern over as a slice of a rule file, and the
-     * engine of nginx expects a NUL terminated string with PCRE1 (its
-     * `ngx_regex_compile()` passes `rc.pattern.data` to `pcre_compile()`,
-     * which has no length): without the copy PCRE1 reads whatever follows the
-     * pattern in the file, and a rule is refused, or compiled with the bytes
-     * behind it.  The copy lives in the configuration pool, which is also the
-     * lifetime `ngx_regex_studies` keeps for its name.
-     */
-    terminated = ngx_pnalloc(pool, len + 1);
-    if (terminated == NULL) {
-        return NULL;
-    }
-    ngx_memcpy(terminated, pattern, len);
-    terminated[len] = '\0';
-
-    ngx_memzero(&rc, sizeof(ngx_regex_compile_t));
-
-    rc.pattern.data = terminated;
-    rc.pattern.len = len;
-    rc.pool = pool;
-    rc.options = 0;
-    rc.err.data = errstr;
-    rc.err.len = NGX_MAX_CONF_ERRSTR;
-
-    if (ngx_regex_compile(&rc) != NGX_OK) {
-        /* `rc.err` carries the reason of the engine, the core only sees that
-         * the pattern was refused. */
-        ngx_log_error(NGX_LOG_EMERG, pool->log, 0, "%V", &rc.err);
-        return NULL;
-    }
-
-    return rc.regex;
-}
-
-
-static ptrdiff_t ngx_http_waf_regex_exec(void* regex, const uint8_t* value, size_t len) {
-    ngx_str_t subject;
-    ngx_int_t rc;
-
-    subject.data = (u_char*) value;
-    subject.len = len;
-
-    rc = ngx_regex_exec((ngx_regex_t*) regex, &subject, NULL, 0);
-
-    if (rc == NGX_REGEX_NO_MATCHED) {
-        return 0;
-    }
-
-    return rc < 0 ? -1 : 1;
-}
-
-
-/*
  * Call one directive of the core.  With PCRE1 the allocator globals of libpcre
  * point at the pool of the configuration for the call: libmodsecurity parses
  * the rules while a `waf_modsecurity` directive is handled and allocates
@@ -401,7 +334,7 @@ static ptrdiff_t ngx_http_waf_regex_exec(void* regex, const uint8_t* value, size
  */
 static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
     ngx_waf_main_configuration_t* main, ngx_waf_location_configuration_t* conf, ngx_waf_string_view_t name,
-    const ngx_waf_string_view_t* args, size_t nargs, ngx_waf_regex_callbacks_t* regex_ops)
+    const ngx_waf_string_view_t* args, size_t nargs)
 {
 #if !(NGX_PCRE2)
     ngx_pool_t* old_pcre_pool = NULL;
@@ -410,7 +343,7 @@ static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
         old_pcre_pool = ngx_http_waf_modsecurity_pcre_acquire(cf->pool);
     }
 
-    char* error = ngx_waf_directive_apply(main, conf, name, args, nargs, regex_ops);
+    char* error = ngx_waf_directive_apply(main, conf, name, args, nargs);
 
     if (ngx_strcmp(cmd->name.data, "waf_modsecurity") == 0) {
         ngx_http_waf_modsecurity_pcre_release(old_pcre_pool);
@@ -418,7 +351,7 @@ static char* ngx_http_waf_directive_call(ngx_conf_t* cf, ngx_command_t* cmd,
 
     return error;
 #else
-    return ngx_waf_directive_apply(main, conf, name, args, nargs, regex_ops);
+    return ngx_waf_directive_apply(main, conf, name, args, nargs);
 #endif
 }
 
@@ -427,50 +360,14 @@ char *ngx_http_waf_directive_conf(ngx_conf_t* cf, ngx_command_t* cmd, void* conf
     ngx_http_waf_main_conf_t* mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_waf_module);
     ngx_http_waf_loc_conf_t* loc_conf = conf;
     ngx_str_t* elts = cf->args->elts;
-    ngx_str_t expanded;
-    ngx_waf_regex_callbacks_t regex_ops;
     const ngx_waf_string_view_t* args = (const ngx_waf_string_view_t*)(elts + 1);
     ngx_uint_t nargs = cf->args->nelts - 1;
 
-    /*
-     * A relative `waf_rule_path` is resolved against the nginx prefix, like
-     * every other file path of a nginx configuration.
-     */
-    if (ngx_strcmp(cmd->name.data, "waf_rule_path") == 0 && elts[1].len != 0
-        && elts[1].data[0] != '/')
-    {
-        expanded = elts[1];
-        if (ngx_conf_full_name(cf->cycle, &expanded, 0) != NGX_OK) {
-            return NGX_CONF_ERROR;
-        }
-        args = (const ngx_waf_string_view_t*) &expanded;
-    }
-
-    regex_ops.compile = ngx_http_waf_regex_compile;
-    regex_ops.exec = ngx_http_waf_regex_exec;
-    regex_ops.ctx = cf->pool;
-
     char* error = ngx_http_waf_directive_call(cf, cmd, mcf->core, loc_conf->core,
-        *(const ngx_waf_string_view_t*)(elts), args, nargs, &regex_ops);
+        *(const ngx_waf_string_view_t*)(elts), args, nargs);
 
     if (error != NULL) {
         return ngx_http_waf_report(cf, error);
-    }
-
-    /*
-     * Problems that are only logged, e.g. an address block that is already
-     * covered by one read before it: nginx keeps the configuration and the
-     * block is dropped.
-     */
-    for ( ;; ) {
-        char* warning = ngx_waf_location_configuration_take_warning(loc_conf->core);
-
-        if (warning == NULL) {
-            break;
-        }
-
-        ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "%s", warning);
-        ngx_waf_string_free(warning);
     }
 
     /*

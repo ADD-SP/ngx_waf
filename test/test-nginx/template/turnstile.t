@@ -14,10 +14,7 @@ __DATA__
 
 --- config
 waf on;
-waf_mode FULL;
-waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=Turnstile secret=1x0000000000000000000000000000000AA sitekey=1x00000000000000000000AA;
 
 --- request
@@ -32,10 +29,7 @@ cf-turnstile-response=dummy
 
 --- config
 waf on;
-waf_mode FULL;
-waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=Turnstile secret=1x0000000000000000000000000000000AA sitekey=1x00000000000000000000AA;
 
 --- request
@@ -50,10 +44,7 @@ g-recaptcha-response=dummy
 
 --- config
 waf on;
-waf_mode FULL;
-waf_rule_path ${base_dir}/waf/rules/;
 waf_cc_deny off rate=100r/m;
-waf_cache off capacity=50;
 waf_captcha on prov=Turnstile secret=2x0000000000000000000000000000000AA sitekey=1x00000000000000000000AA;
 
 --- request

@@ -9,14 +9,9 @@ prefix=/tmp/waf-debug
 port=18090
 
 rm -rf "$prefix"
-mkdir -p "$prefix/conf" "$prefix/logs" "$prefix/html/bp" "$prefix/rules"
-cp "$root/assets/rules/"* "$prefix/rules/"
-printf '1.1.1.1\n2.0.0.0/8\n' >> "$prefix/rules/ipv4"
-printf '3.3.3.3\n4.0.0.0/8\n' >> "$prefix/rules/white-ipv4"
-printf 'AAAA::\nBBBB::/16\n' >> "$prefix/rules/ipv6"
-printf 'CCCC::\nDDDD::/16\n' >> "$prefix/rules/white-ipv6"
-printf '/white/\n' >> "$prefix/rules/white-url"
-printf '/white/\n' >> "$prefix/rules/white-referer"
+mkdir -p "$prefix/conf" "$prefix/logs" "$prefix/html/bp"
+printf 'SecRuleEngine On\nSecRule REQUEST_URI "@contains /www.bak" "id:1,phase:2,deny,status:403,log,msg:blocked-url"\n' \
+    > "$prefix/modsec.conf"
 printf 'backend\n' > "$prefix/html/index.html"
 printf "bp\n" > "$prefix/html/bp/index.html"; mkdir -p "$prefix/html/ok"; printf "ok\n" > "$prefix/html/ok/index.html"
 
@@ -37,9 +32,8 @@ http {
         root html;
 
         waf on;
-        waf_mode FULL;
-        waf_rule_path $prefix/rules/;
         waf_cc_deny on rate=2r/m duration=1h zone=z:cc;
+        waf_modsecurity on file=$prefix/modsec.conf;
 
         location /ok {
         }

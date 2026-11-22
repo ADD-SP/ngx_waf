@@ -3,22 +3,17 @@
 
 use crate::abi::{HeaderView, NgxWafHttpMethod, NgxWafHttpVersion};
 use crate::action;
-use crate::cache::{CacheKind, CachedResult};
 use crate::cc;
 use crate::config::{
     BotId, CaptchaProvider, CaptchaSource, CheckKind, LocationConfiguration, Policy, TriggerKind,
     VerifyBotMode, WafSwitch, BOTS,
 };
-#[cfg(test)]
-use crate::data::HTML_BLOCK;
 use crate::ffi::RawRequestView;
 #[cfg(test)]
 use crate::ffi::{RawModSecurityRequestView, RawStringView};
-use crate::flags::WafMode;
 use crate::http::{FORBIDDEN, INTERNAL_SERVER_ERROR, OK, SERVICE_UNAVAILABLE, TOO_MANY_REQUESTS};
 use crate::http_response::{self, Response};
 use crate::modsecurity;
-use crate::rules::RuleKind;
 use crate::shared_memory;
 use crate::util;
 use hmac::{Hmac, Mac};
@@ -35,9 +30,7 @@ pub struct Request<'a> {
     pub ipv6: bool,
     pub method: NgxWafHttpMethod,
     pub uri: &'a [u8],
-    pub args: &'a [u8],
     pub user_agent: &'a [u8],
-    pub referer: &'a [u8],
     /// One entry per `Cookie` header, the raw header values.
     pub cookies: &'a [Vec<u8>],
     pub body: &'a [u8],
@@ -322,20 +315,6 @@ impl State<'_, '_> {
 
         Decision::page(SERVICE_UNAVAILABLE, Rc::clone(&self.conf.captcha.html))
     }
-
-    /// Let the request through, used by the white lists.
-    fn allow(&mut self) {
-        *self.decision = Some(Decision::allow());
-    }
-
-    fn mode_enabled(&self, flag: WafMode) -> bool {
-        self.conf.waf_mode.contains(flag)
-    }
-
-    fn method_enabled(&self, flag: WafMode) -> bool {
-        let requested = flag | WafMode::for_method(self.req.method);
-        self.conf.waf_mode.contains(requested)
-    }
 }
 
 /// Run the whole inspection.
@@ -527,14 +506,6 @@ impl Machine {
         }
 
         let req = self.req.view(&self.cookies);
-
-        // A configuration that set no mode bit at all (`waf_mode !FULL`) lets a
-        // request whose method is unknown through.  Every request whose method
-        // is known runs the inspections, each of them gated by its own method
-        // bit.
-        if conf.waf_mode.is_empty() && req.method == NgxWafHttpMethod::Unknown {
-            return Step::Decision(Outcome::allow(false, 0.0));
-        }
 
         let result = run_checks(
             conf,
@@ -881,17 +852,9 @@ pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
                 data: req.uri.as_ptr(),
                 len: req.uri.len(),
             },
-            args: RawStringView {
-                data: req.args.as_ptr(),
-                len: req.args.len(),
-            },
             user_agent: RawStringView {
                 data: req.user_agent.as_ptr(),
                 len: req.user_agent.len(),
-            },
-            referer: RawStringView {
-                data: req.referer.as_ptr(),
-                len: req.referer.len(),
             },
             body: RawStringView {
                 data: req.body.as_ptr(),
@@ -930,16 +893,6 @@ pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
 fn run_check(state: &mut State, id: CheckKind) -> CheckResult {
     match id {
         CheckKind::Cc => check_cc(state).into(),
-        CheckKind::WhiteIp => check_ip(state, true).into(),
-        CheckKind::Ip => check_ip(state, false).into(),
-        CheckKind::WhiteUrl => check_regex(state, RuleKind::WhiteUrl, true).into(),
-        CheckKind::Url => check_regex(state, RuleKind::Url, false).into(),
-        CheckKind::Args => check_regex(state, RuleKind::Args, false).into(),
-        CheckKind::Ua => check_regex(state, RuleKind::UserAgent, false).into(),
-        CheckKind::WhiteReferer => check_regex(state, RuleKind::WhiteReferer, true).into(),
-        CheckKind::Referer => check_regex(state, RuleKind::Referer, false).into(),
-        CheckKind::Cookie => check_cookie(state).into(),
-        CheckKind::Post => check_post(state).into(),
         CheckKind::VerifyBot => check_verify_bot(state),
         CheckKind::Captcha => check_captcha(state),
         CheckKind::UnderAttack => check_under_attack(state),
@@ -953,11 +906,6 @@ fn check_modsecurity(state: &mut State) -> CheckResult {
     if state.conf.modsecurity.enabled != Some(true) {
         return CheckResult::NotMatched;
     }
-    // The method bit of the request must be part of `waf_mode`.
-    if !state.mode_enabled(WafMode::for_method(state.req.method)) {
-        return CheckResult::NotMatched;
-    }
-
     // The glue only leaves the view out when the inspection cannot run; an
     // enabled inspection without it is a bug at the boundary, answer like
     // every other inspection that cannot run.
@@ -1571,220 +1519,6 @@ fn check_verify_bot(state: &mut State) -> CheckResult {
     CheckResult::NotMatched
 }
 
-fn check_ip(state: &mut State, white: bool) -> bool {
-    if !state.mode_enabled(WafMode::IP) {
-        return false;
-    }
-    // A connection without an address (`listen unix:...`) matches no block.
-    if state.req.ip.is_empty() {
-        return false;
-    }
-    let kind = match (white, state.req.ipv6) {
-        (true, false) => RuleKind::Ipv4White,
-        (true, true) => RuleKind::Ipv6White,
-        (false, false) => RuleKind::Ipv4Black,
-        (false, true) => RuleKind::Ipv6Black,
-    };
-    let Some(detail) = state.conf.rules().ip_match(state.req.ip, kind) else {
-        return false;
-    };
-    let detail = detail.to_vec();
-
-    let rule_type: &[u8] = match (white, state.req.ipv6) {
-        (true, false) => b"WHITE-IPV4",
-        (true, true) => b"WHITE-IPV6",
-        (false, false) => b"BLACK-IPV4",
-        (false, true) => b"BLACK-IPV6",
-    };
-    state.set_rule_info(rule_type, &detail, true, !white);
-    if white {
-        state.allow();
-    } else {
-        state.trigger(TriggerKind::Blacklist);
-    }
-    true
-}
-
-fn lookup_regex(rules: &crate::rules::RuleSet, kind: RuleKind, value: &[u8]) -> Option<Vec<u8>> {
-    rules
-        .regex_list(kind)
-        .iter()
-        .find(|rule| rule.is_match(value))
-        .map(|rule| rule.pattern.clone())
-}
-
-/// The cache one of the lists of `check_regex()` uses: every list this function
-/// is called with has one (the white lists included), the cookie list has a
-/// cache of its own in `check_cookie()` and the post list has none at all.
-fn cache_kind(kind: RuleKind) -> Option<CacheKind> {
-    Some(match kind {
-        RuleKind::Url => CacheKind::Url,
-        RuleKind::Args => CacheKind::Args,
-        RuleKind::UserAgent => CacheKind::UserAgent,
-        RuleKind::Referer => CacheKind::Referer,
-        RuleKind::WhiteUrl => CacheKind::WhiteUrl,
-        RuleKind::WhiteReferer => CacheKind::WhiteReferer,
-        _ => return None,
-    })
-}
-
-/// The regex based inspections, including the per-worker cache.
-fn check_regex(state: &mut State, kind: RuleKind, white: bool) -> bool {
-    let gate = match kind {
-        RuleKind::WhiteUrl | RuleKind::Url => WafMode::URL,
-        RuleKind::Args => WafMode::ARGS,
-        RuleKind::UserAgent => WafMode::UA,
-        RuleKind::WhiteReferer | RuleKind::Referer => WafMode::REFERER,
-        _ => WafMode::URL,
-    };
-    if !state.method_enabled(gate) {
-        return false;
-    }
-
-    let value: &[u8] = match kind {
-        RuleKind::WhiteUrl | RuleKind::Url => state.req.uri,
-        RuleKind::Args => state.req.args,
-        RuleKind::UserAgent => state.req.user_agent,
-        RuleKind::WhiteReferer | RuleKind::Referer => state.req.referer,
-        _ => unreachable!(),
-    };
-    if value.is_empty() {
-        return false;
-    }
-
-    let rule_type: &[u8] = match kind {
-        RuleKind::WhiteUrl => b"WHITE-URL",
-        RuleKind::Url => b"BLACK-URL",
-        RuleKind::Args => b"BLACK-ARGS",
-        RuleKind::UserAgent => b"BLACK-UA",
-        RuleKind::WhiteReferer => b"WHITE-REFERER",
-        RuleKind::Referer => b"BLACK-REFERER",
-        _ => unreachable!(),
-    };
-
-    let value_vec = value.to_vec();
-    let mut matched_detail: Option<Vec<u8>> = None;
-    let mut cache_miss = true;
-    let cache_kind = cache_kind(kind);
-
-    if let Some(cache_kind) = cache_kind {
-        if state.conf.caching() {
-            if let Some(hit) = state
-                .conf
-                .caches
-                .find(cache_kind, &value_vec, state.req.now)
-            {
-                cache_miss = false;
-                if hit.matched {
-                    matched_detail = Some(hit.detail.clone());
-                }
-            }
-        }
-    }
-
-    if cache_miss {
-        matched_detail = lookup_regex(state.conf.rules(), kind, value);
-        if let Some(cache_kind) = cache_kind {
-            if state.conf.caching() {
-                let expire = state.req.now + 60 * 5 + util::random_uniform(60 * 5) as i64;
-                let result = CachedResult {
-                    matched: matched_detail.is_some(),
-                    detail: matched_detail.clone().unwrap_or_default(),
-                };
-                state
-                    .conf
-                    .caches
-                    .insert(cache_kind, &value_vec, expire, result);
-            }
-        }
-    }
-
-    let Some(detail) = matched_detail else {
-        return false;
-    };
-
-    state.set_rule_info(rule_type, &detail, true, !white);
-    if white {
-        state.allow();
-    } else {
-        state.trigger(TriggerKind::Blacklist);
-    }
-    true
-}
-
-fn check_cookie(state: &mut State) -> bool {
-    if !state.method_enabled(WafMode::COOKIE) {
-        return false;
-    }
-    if state.req.cookies.is_empty() {
-        return false;
-    }
-    let cookies: Vec<Vec<u8>> = state.req.cookies.to_vec();
-    for cookie in &cookies {
-        if cookie.is_empty() {
-            continue;
-        }
-        // The rule list matches the header line, `Cookie=<value>`, the shape
-        // nginx 1.23 and later hand over.
-        let mut text = Vec::with_capacity(b"Cookie=".len() + cookie.len());
-        text.extend_from_slice(b"Cookie=");
-        text.extend_from_slice(cookie);
-        let cached = state.conf.caching();
-        let mut matched_detail: Option<Vec<u8>> = None;
-        let mut cache_miss = true;
-        if cached {
-            if let Some(hit) = state
-                .conf
-                .caches
-                .find(CacheKind::Cookie, &text, state.req.now)
-            {
-                cache_miss = false;
-                if hit.matched {
-                    matched_detail = Some(hit.detail.clone());
-                }
-            }
-        }
-        if cache_miss {
-            matched_detail = lookup_regex(state.conf.rules(), RuleKind::Cookie, &text);
-            if cached {
-                let expire = state.req.now + 60 * 5 + util::random_uniform(60 * 5) as i64;
-                let result = CachedResult {
-                    matched: matched_detail.is_some(),
-                    detail: matched_detail.clone().unwrap_or_default(),
-                };
-                state
-                    .conf
-                    .caches
-                    .insert(CacheKind::Cookie, &text, expire, result);
-            }
-        }
-        let Some(detail) = matched_detail else {
-            continue;
-        };
-        // The detail is the text of the rule that matched, like in every other
-        // list.
-        state.set_rule_info(b"BLACK-COOKIE", &detail, true, true);
-        state.trigger(TriggerKind::Blacklist);
-        return true;
-    }
-    false
-}
-
-fn check_post(state: &mut State) -> bool {
-    if !state.mode_enabled(WafMode::RBODY) {
-        return false;
-    }
-    if state.req.body.is_empty() {
-        return false;
-    }
-    let Some(detail) = lookup_regex(state.conf.rules(), RuleKind::Post, state.req.body) else {
-        return false;
-    };
-    state.set_rule_info(b"BLACK-POST", &detail, true, true);
-    state.trigger(TriggerKind::Blacklist);
-    true
-}
-
 fn check_cc(state: &mut State) -> bool {
     // A connection without an address has no counter to keep.
     if state.conf.cc_deny.enabled != Some(true) || state.req.ip.is_empty() {
@@ -1933,7 +1667,6 @@ pub fn log_line(outcome: &Outcome) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::{self, RegexRule};
     use std::rc::Rc;
 
     fn set_policy(conf: &mut LocationConfiguration, kind: TriggerKind, policy: Policy) {
@@ -1952,21 +1685,11 @@ mod tests {
         );
     }
 
-    fn conf_with_rules(rules: rules::RuleSet) -> LocationConfiguration {
+    fn active_conf() -> LocationConfiguration {
         LocationConfiguration {
             waf: Some(WafSwitch::On),
-            waf_mode: WafMode::FULL,
-            rules: Some(Rc::new(rules)),
             ..LocationConfiguration::default()
         }
-    }
-
-    fn url_rules() -> rules::RuleSet {
-        let mut rules = rules::new_rule_set();
-        rules
-            .url
-            .push(RegexRule::compile(b"/www\\.bak", None).unwrap());
-        rules
     }
 
     fn request<'a>(uri: &'a [u8], cookies: &'a [Vec<u8>]) -> Request<'a> {
@@ -1975,9 +1698,7 @@ mod tests {
             ipv6: false,
             method: NgxWafHttpMethod::Get,
             uri,
-            args: b"",
             user_agent: b"",
-            referer: b"",
             cookies,
             body: b"",
             now: 1_000,
@@ -1991,135 +1712,34 @@ mod tests {
 
     #[test]
     fn disabled_waf_does_not_check() {
-        let mut conf = conf_with_rules(url_rules());
+        let mut conf = active_conf();
         conf.waf = Some(WafSwitch::Off);
         let cookies = Vec::new();
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
+        let outcome = check(&mut conf, &request(b"/", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.checked);
         assert!(!outcome.blocked);
     }
 
     #[test]
-    fn black_url_returns_the_status() {
-        let mut conf = conf_with_rules(url_rules());
-        set_policy(
-            &mut conf,
-            TriggerKind::Blacklist,
-            Policy::Return { status: FORBIDDEN },
-        );
-        let cookies = Vec::new();
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, FORBIDDEN);
-        assert_eq!(outcome.rule_type, b"BLACK-URL");
-        assert_eq!(outcome.rule_details, b"/www\\.bak");
-        assert!(outcome.blocked);
-        assert!(outcome.checked);
-        assert!(outcome.general_log);
-        assert!(!outcome.register_content_handler);
-        assert!(outcome.body.is_empty());
-        assert_eq!(log_line(&outcome), b"ngx_waf: [BLACK-URL][/www\\.bak]");
-    }
-
-    #[test]
-    fn block_page_registers_the_content_handler() {
-        let mut conf = conf_with_rules(url_rules());
-        conf.block_page = Rc::new(HTML_BLOCK.to_vec());
-        let page = Rc::clone(&conf.block_page);
-        set_policy(
-            &mut conf,
-            TriggerKind::Blacklist,
-            Policy::Page {
-                status: FORBIDDEN,
-                body: page,
-            },
-        );
-        let cookies = Vec::new();
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, FORBIDDEN);
-        assert!(outcome.register_content_handler);
-        assert_eq!(outcome.content_type, ContentType::Html);
-        assert_eq!(outcome.body, HTML_BLOCK);
-    }
-
-    #[test]
-    fn whitelist_declines() {
-        let mut conf = conf_with_rules(url_rules());
-        set_policy(
-            &mut conf,
-            TriggerKind::Blacklist,
-            Policy::Return { status: FORBIDDEN },
-        );
-        // A whitelisted URL wins before the blacklist is inspected.
-        conf.rules = Some(Rc::new({
-            let mut rules = url_rules();
-            rules
-                .white_url
-                .push(RegexRule::compile(b"^/white/", None).unwrap());
-            rules
-        }));
-        conf.priority = Some(vec![CheckKind::WhiteUrl, CheckKind::Url]);
-        let cookies = Vec::new();
-        let outcome = check(&mut conf, &request(b"/white/www.bak", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Allow);
-        assert!(outcome.checked);
-        assert!(!outcome.blocked);
-        assert_eq!(outcome.rule_type, b"WHITE-URL");
-    }
-
-    #[test]
     fn bypass_mode_reports_but_never_blocks() {
-        let mut conf = conf_with_rules(url_rules());
+        let mut conf = active_conf();
         conf.waf = Some(WafSwitch::Bypass);
-        conf.block_page = Rc::new(HTML_BLOCK.to_vec());
-        let page = Rc::clone(&conf.block_page);
-        set_policy(
-            &mut conf,
-            TriggerKind::Blacklist,
-            Policy::Page {
-                status: FORBIDDEN,
-                body: page,
-            },
-        );
+        conf.under_attack.enabled = Some(true);
+        conf.under_attack.html = Rc::new(b"<html>hold</html>".to_vec());
+        conf.priority = Some(vec![CheckKind::UnderAttack]);
         let cookies = Vec::new();
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
+        let outcome = check(&mut conf, &request(b"/", &cookies));
         assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(outcome.blocked);
-        assert_eq!(outcome.rule_type, b"BLACK-URL");
+        assert_eq!(outcome.rule_type, b"UNDER-ATTACK");
         assert!(!outcome.register_content_handler);
         assert!(outcome.body.is_empty());
-    }
-
-    #[test]
-    fn cookies_are_inspected_one_by_one() {
-        let mut conf = conf_with_rules({
-            let mut rules = rules::new_rule_set();
-            rules
-                .cookie
-                .push(RegexRule::compile(b"\\.\\./", None).unwrap());
-            rules
-        });
-        set_policy(
-            &mut conf,
-            TriggerKind::Blacklist,
-            Policy::Return { status: FORBIDDEN },
-        );
-        let cookies = vec![b"a=1".to_vec(), b"s=../".to_vec()];
-        let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.rule_type, b"BLACK-COOKIE");
-
-        let cookies = vec![b"a=1".to_vec(), b"b=2".to_vec()];
-        let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Allow);
-        assert!(!outcome.blocked);
     }
 
     #[test]
     fn cc_without_a_zone_blocks() {
-        let mut conf = conf_with_rules(rules::new_rule_set());
+        let mut conf = active_conf();
         conf.cc_deny.enabled = Some(true);
         conf.cc_deny.limit = Some(2);
         conf.cc_deny.cycle = Some(60);
@@ -2179,7 +1799,7 @@ mod tests {
             "the tag directory allocation must succeed"
         );
 
-        let mut conf = conf_with_rules(rules::new_rule_set());
+        let mut conf = active_conf();
         conf.cc_deny.enabled = Some(true);
         conf.cc_deny.limit = Some(2);
         conf.cc_deny.cycle = Some(60);
@@ -2202,19 +1822,10 @@ mod tests {
     }
 
     #[test]
-    fn a_connection_without_an_address_skips_the_address_checks() {
-        let mut rules = rules::new_rule_set();
-        let mut list = crate::rules::Builder::new();
-        list.add(
-            crate::rules::parse_ipv4(b"0.0.0.0/0").unwrap(),
-            b"0.0.0.0/0",
-        )
-        .unwrap();
-        rules.ipv4_black = Some(list.freeze());
-        let mut conf = conf_with_rules(rules);
+    fn a_connection_without_an_address_skips_cc() {
+        let mut conf = active_conf();
         // A CC protection that cannot count answers 500 for a client with an
-        // address; a connection without one (`listen unix:...`) is not counted
-        // at all, and no block of the IP lists may match it either.
+        // address; a connection without one (`listen unix:...`) is not counted.
         conf.cc_deny.enabled = Some(true);
         conf.cc_deny.limit = Some(1);
         conf.cc_deny.cycle = Some(60);
@@ -2227,65 +1838,6 @@ mod tests {
         assert_eq!(outcome.kind, OutcomeKind::Allow);
         assert!(!outcome.blocked);
         assert!(outcome.rule_type.is_empty());
-
-        // The same configuration still matches the address of a connection
-        // that has one.
-        conf.cc_deny.enabled = Some(false);
-        let outcome = check(&mut conf, &request(b"/", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.rule_type, b"BLACK-IPV4");
-    }
-
-    #[test]
-    fn mode_gates_the_inspections() {
-        let mut conf = conf_with_rules(url_rules());
-        conf.waf_mode = WafMode::GET; // URL inspection disabled
-        let cookies = Vec::new();
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Allow);
-        assert!(!outcome.blocked);
-    }
-
-    #[test]
-    fn a_mode_without_the_method_bit_keeps_the_other_inspections() {
-        // `waf_mode FULL !GET`: the URL list needs the bit of the method
-        // (`check_flag(waf_mode, INSPECT_URL | r->method)`), the address list
-        // does not (`check_flag(waf_mode, INSPECT_IP)`), exactly like the C
-        // implementation.
-        let mut rules = rules::new_rule_set();
-        rules
-            .url
-            .push(RegexRule::compile(b"www\\.bak$", None).unwrap());
-        let mut list = crate::rules::Builder::new();
-        list.add(
-            crate::rules::parse_ipv4(b"9.9.9.0/24").unwrap(),
-            b"9.9.9.0/24",
-        )
-        .unwrap();
-        rules.ipv4_black = Some(list.freeze());
-        let mut conf = conf_with_rules(rules);
-        conf.waf_mode = WafMode::FULL.difference(WafMode::GET);
-        let cookies = Vec::new();
-
-        // The URL rule is skipped for a GET request without its mode bit.
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Allow);
-        assert!(outcome.checked);
-
-        // The address list is not gated by the method.
-        let mut view = request(b"/", &cookies);
-        view.ip = &[9, 9, 9, 9];
-        let outcome = check(&mut conf, &view);
-        assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.rule_type, b"BLACK-IPV4");
-
-        // A mode without any bit at all runs the inspections as well, every
-        // one of them gated by its own bit; the request counts as inspected.
-        conf.waf_mode = WafMode::empty();
-        let outcome = check(&mut conf, &request(b"/www.bak", &cookies));
-        assert_eq!(outcome.kind, OutcomeKind::Allow);
-        assert!(outcome.checked);
-        assert!(!outcome.blocked);
     }
 
     /// The raw request buffers have to outlive the machine, exactly like the
@@ -2313,17 +1865,9 @@ mod tests {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
             user_agent: RawStringView {
                 data: user_agent,
                 len: user_agent_len,
-            },
-            referer: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
             },
             body: RawStringView {
                 data: std::ptr::null(),
@@ -2343,11 +1887,10 @@ mod tests {
         let mut main = crate::config::MainConfiguration::default();
         let mut conf = LocationConfiguration {
             waf: Some(WafSwitch::On),
-            waf_mode: WafMode::GET | WafMode::UA,
             ..LocationConfiguration::default()
         };
         let args: Vec<Vec<u8>> = vec![mode.as_bytes().to_vec(), b"GoogleBot".to_vec()];
-        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args, None).unwrap();
+        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args).unwrap();
         conf
     }
 
@@ -2448,59 +1991,11 @@ mod tests {
 
     #[test]
     fn verify_bot_continues_with_the_next_inspection() {
-        // `on` mode lets a fake bot through, and the rest of the chain still
-        // runs: the blacklist is inspected afterwards.
-        let mut rules = rules::new_rule_set();
-        rules
-            .url
-            .push(RegexRule::compile(b"/www\\.bak", None).unwrap());
-        let mut main = crate::config::MainConfiguration::default();
-        let mut conf = LocationConfiguration {
-            waf: Some(WafSwitch::On),
-            waf_mode: WafMode::UA | WafMode::URL | WafMode::GET,
-            rules: Some(Rc::new(rules)),
-            ..LocationConfiguration::default()
-        };
-        let args: Vec<Vec<u8>> = vec![b"on".to_vec(), b"GoogleBot".to_vec()];
-        crate::config::directive(&mut main, &mut conf, b"waf_verify_bot", &args, None).unwrap();
-
-        let user_agent = b"Googlebot";
-        let uri = b"/www.bak";
-        let ip = [1u8, 2, 3, 4];
-        let raw = RawRequestView {
-            ip: RawStringView {
-                data: ip.as_ptr(),
-                len: ip.len(),
-            },
-            method: NgxWafHttpMethod::Get,
-            uri: RawStringView {
-                data: uri.as_ptr(),
-                len: uri.len(),
-            },
-            args: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
-            user_agent: RawStringView {
-                data: user_agent.as_ptr(),
-                len: user_agent.len(),
-            },
-            referer: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
-            body: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
-            now: 1_000,
-            modsecurity: None,
-            log: std::ptr::null_mut(),
-            cc_zone: std::ptr::null(),
-            action_zone: std::ptr::null(),
-            captcha_zone: std::ptr::null(),
-        };
-        let mut machine = Machine::new(NonNull::from(&mut conf), raw, Vec::new(), true);
+        let mut conf = verify_bot_conf("on");
+        conf.under_attack.enabled = Some(true);
+        conf.under_attack.html = Rc::new(b"<html>under attack</html>".to_vec());
+        conf.priority = Some(vec![CheckKind::VerifyBot, CheckKind::UnderAttack]);
+        let mut machine = machine_for_user_agent(&mut conf, b"Googlebot");
         assert!(matches!(
             machine.step(),
             Step::Pending(Pending::ResolveAddr)
@@ -2510,8 +2005,8 @@ mod tests {
             _ => panic!("the machine must decide after the lookup"),
         };
         assert_eq!(outcome.kind, OutcomeKind::Response);
-        assert_eq!(outcome.status, FORBIDDEN);
-        assert_eq!(outcome.rule_type, b"BLACK-URL");
+        assert_eq!(outcome.status, SERVICE_UNAVAILABLE);
+        assert_eq!(outcome.rule_type, b"UNDER-ATTACK");
     }
 
     /// A configuration with `waf_captcha on` (and a bogus provider URL, the
@@ -2522,7 +2017,6 @@ mod tests {
             .unwrap();
         let mut conf = LocationConfiguration {
             waf: Some(WafSwitch::On),
-            waf_mode: WafMode::GET | WafMode::POST,
             ..LocationConfiguration::new()
         };
         let mut args = vec![
@@ -2533,7 +2027,7 @@ mod tests {
             b"api=http://127.0.0.1:1/verify".to_vec(),
         ];
         args.extend(extra.iter().map(|value| value.as_bytes().to_vec()));
-        crate::config::directive(&mut main, &mut conf, b"waf_captcha", &args, None).unwrap();
+        crate::config::directive(&mut main, &mut conf, b"waf_captcha", &args).unwrap();
         conf
     }
 
@@ -2557,15 +2051,7 @@ mod tests {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
             user_agent: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
-            referer: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
@@ -3293,17 +2779,10 @@ mod tests {
         let mut main = crate::config::MainConfiguration::default();
         let mut conf = LocationConfiguration {
             waf: Some(WafSwitch::On),
-            waf_mode: WafMode::FULL,
             ..LocationConfiguration::new()
         };
-        crate::config::directive(
-            &mut main,
-            &mut conf,
-            b"waf_under_attack",
-            &[b"on".to_vec()],
-            None,
-        )
-        .unwrap();
+        crate::config::directive(&mut main, &mut conf, b"waf_under_attack", &[b"on".to_vec()])
+            .unwrap();
         conf
     }
 
@@ -3324,15 +2803,7 @@ mod tests {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
             user_agent: RawStringView {
-                data: std::ptr::null(),
-                len: 0,
-            },
-            referer: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
             },
@@ -3455,7 +2926,6 @@ mod tests {
             .expect("the rules load");
         LocationConfiguration {
             waf: Some(WafSwitch::On),
-            waf_mode: WafMode::FULL,
             modsecurity: crate::config::ModSecurityConfiguration {
                 enabled: Some(true),
                 instance: Some(Rc::new(instance)),
@@ -3482,9 +2952,7 @@ mod tests {
                 data: uri,
                 len: uri_len,
             },
-            args: RawStringView::EMPTY,
             user_agent: RawStringView::EMPTY,
-            referer: RawStringView::EMPTY,
             body: RawStringView::EMPTY,
             now: 1_000,
             modsecurity: Some(RawModSecurityRequestView {

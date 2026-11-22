@@ -13,13 +13,11 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 bitflags = "2"
-cidr = { version = "0.3", default-features = false }
 # Parsing the cookie trio of the captcha and of the under attack pages.
 cookie = { version = "0.18", default-features = false }
 hmac = "0.12"
 # Parsing the HTTP framing of the captcha provider answer.
 httparse = "1"
-lru = { version = "0.16", default-features = false }
 rand = { version = "0.9", default-features = false, features = ["std", "os_rng"] }
 regex = "1"
 # Parsing the JSON of the captcha provider answer.

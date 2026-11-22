@@ -1,5 +1,11 @@
 ## Unreleased
 
+* 破坏性重构：ModSecurity 成为唯一的请求规则引擎。删除 `waf_rule_path`、
+  `waf_mode`、`waf_cache`、原生 IP/URL/Args/UA/Referer/Cookie/POST 名单和
+  `waf_action blacklist=...`；保留 CC、CAPTCHA、Under Attack、友好爬虫验证和
+  ModSecurity。`waf_priority` 缩减为 `VERIFY-BOT`、`CC`、`CAPTCHA`、
+  `UNDER-ATTACK`、`MODSECURITY`，并要求五项各出现一次。`waf_modsecurity on`
+  现在必须提供规则来源。本次不提供兼容别名或旧规则转换器。
 * 模块逻辑正在用 Rust 重写：C 代码只保留 nginx 胶水层（模块与指令注册、请求数据
   打包、响应与变量落地），其余逻辑位于 `rust/`。
 * 使用 nginx `config` 脚本、cargo 与 mise 任务取代 Bazel。
@@ -9,7 +15,7 @@
   仍由 rustup 与 `rust-toolchain.toml` 提供。
 * C ABI 只保留边界本身的词汇：step、事件、请求方法与协议版本的枚举，配置与
   请求检测的不透明句柄，以及语义化的配置查询。实现的常量与内部类型不再跨边界。
-* 所有检测项均已移植，包括异步部分：验证码与友好爬虫校验通过 nginx 的
+* 所有保留的状态化功能均已移植，包括异步部分：验证码与友好爬虫校验通过 nginx 的
   resolver 做反向解析、通过与验证码服务商的非阻塞请求完成验证。
   服务商响应的 HTTP 报文框架由核心解析，胶水层只负责读取字节并转交。
   ModSecurity 的响应阶段尚未移植。与 C 实现的差异见 `rust/README.md`。

@@ -75,19 +75,4 @@ else
 fi
 
 
-echo "1.1.1.1" >> ./rules/ipv4
-echo "2.0.0.0/8" >> ./rules/ipv4
-
-echo "3.3.3.3" >> ./rules/white-ipv4
-echo "4.0.0.0/8" >> ./rules/white-ipv4
-
-echo "AAAA::" >> ./rules/ipv6
-echo "BBBB::/16" >> ./rules/ipv6
-
-echo "CCCC::" >> ./rules/white-ipv6
-echo "DDDD::/16" >> ./rules/white-ipv6
-
-echo "/white/" >> ./rules/white-url
-echo "/white/" >> ./rules/white-referer
-
 cd "$origin_dir"

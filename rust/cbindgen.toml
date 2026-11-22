@@ -43,9 +43,6 @@ exclude = [
     "ngx_http_waf_modsecurity_log",
     "ngx_http_waf_log_error",
     "free",
-    "BotId",
-    "CheckKind",
-    "TriggerKind",
 ]
 include = [
     "NgxWafStringView",
@@ -59,7 +56,6 @@ include = [
     "NgxWafZoneReferences",
     "NgxWafZoneHandles",
     "NgxWafSharedMemoryCallbacks",
-    "NgxWafRegexCallbacks",
     "ngx_waf_version",
     "ngx_waf_string_free",
     "ngx_waf_main_configuration_create",
@@ -70,7 +66,6 @@ include = [
     "ngx_waf_location_configuration_modsecurity_enabled",
     "ngx_waf_location_configuration_zone_references",
     "ngx_waf_location_configuration_captcha_api",
-    "ngx_waf_location_configuration_take_warning",
     "ngx_waf_directive_apply",
     "ngx_waf_zone_directive_apply",
     "ngx_waf_location_configuration_merge",
@@ -83,7 +78,6 @@ include = [
     "ngx_waf_shared_memory_zone_free",
     "ngx_waf_shared_memory_zone_collect_garbage",
     "ngx_waf_should_collect_garbage",
-    "ngx_waf_cache_collect_garbage",
 ]
 
 [export.rename]
@@ -106,7 +100,6 @@ include = [
 "NgxWafLocationConfiguration" = "ngx_waf_location_configuration_t"
 "NgxWafInspectionHandle" = "ngx_waf_inspection_handle_t"
 "NgxWafSharedMemoryCallbacks" = "ngx_waf_shared_memory_callbacks_t"
-"NgxWafRegexCallbacks" = "ngx_waf_regex_callbacks_t"
 
 [enum]
 # `NGX_WAF_STEP_KIND_ALLOW`, the spelling the C glue uses for the values that

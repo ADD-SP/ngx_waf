@@ -2,16 +2,14 @@
 //! merging.  Every message returned here is exactly what the C side reports
 //! through `ngx_conf_log_error()`.
 
-use crate::cache::Caches;
 use crate::data::{
     embedded_page, HTML_BLOCK, HTML_CAPTCHA_HCAPTCHA, HTML_CAPTCHA_RECAPTCHA_V2_CHECKBOX,
     HTML_CAPTCHA_RECAPTCHA_V2_INVISIBLE, HTML_CAPTCHA_RECAPTCHA_V3, HTML_CAPTCHA_TURNSTILE,
     HTML_SPONGE_BOB, HTML_UNDER_ATTACK,
 };
-use crate::flags::{BotTypes, WafMode};
+use crate::flags::BotTypes;
 use crate::http::{FORBIDDEN, SERVICE_UNAVAILABLE};
 use crate::modsecurity;
-use crate::rules::{self, RuleSet};
 use crate::util;
 use regex::Regex;
 use std::rc::Rc;
@@ -52,17 +50,7 @@ impl MainConfiguration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CheckKind {
     Cc,
-    WhiteIp,
-    Ip,
-    WhiteUrl,
-    Url,
-    Args,
-    Ua,
-    WhiteReferer,
-    Referer,
-    Cookie,
     UnderAttack,
-    Post,
     Captcha,
     VerifyBot,
     ModSecurity,
@@ -73,17 +61,7 @@ impl CheckKind {
         let name = String::from_utf8_lossy(name).to_ascii_lowercase();
         Some(match name.as_str() {
             "cc" => CheckKind::Cc,
-            "w-ip" => CheckKind::WhiteIp,
-            "ip" => CheckKind::Ip,
-            "w-url" => CheckKind::WhiteUrl,
-            "url" => CheckKind::Url,
-            "args" => CheckKind::Args,
-            "ua" => CheckKind::Ua,
-            "w-referer" => CheckKind::WhiteReferer,
-            "referer" => CheckKind::Referer,
-            "cookie" => CheckKind::Cookie,
             "under-attack" => CheckKind::UnderAttack,
-            "post" => CheckKind::Post,
             "captcha" => CheckKind::Captcha,
             "verify-bot" => CheckKind::VerifyBot,
             "modsecurity" => CheckKind::ModSecurity,
@@ -93,21 +71,11 @@ impl CheckKind {
 }
 
 /// The default order of `check_proc[]`, without the implicit first item.
-pub const DEFAULT_PRIORITY: [CheckKind; 15] = [
-    CheckKind::WhiteIp,
-    CheckKind::Ip,
+pub const DEFAULT_PRIORITY: [CheckKind; 5] = [
     CheckKind::VerifyBot,
     CheckKind::Cc,
     CheckKind::Captcha,
     CheckKind::UnderAttack,
-    CheckKind::WhiteUrl,
-    CheckKind::Url,
-    CheckKind::Args,
-    CheckKind::Ua,
-    CheckKind::WhiteReferer,
-    CheckKind::Referer,
-    CheckKind::Cookie,
-    CheckKind::Post,
     CheckKind::ModSecurity,
 ];
 
@@ -133,22 +101,19 @@ pub enum Policy {
 /// counter, the others answer 403 with the block page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptchaSource {
-    Blacklist,
     CcDeny,
     VerifyBot,
 }
 
-/// The four sources that can be configured with `waf_action`.
+/// The three sources that can be configured with `waf_action`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TriggerKind {
-    Blacklist,
     CcDeny,
     ModSecurity,
     VerifyBot,
 }
 
-pub const TRIGGER_KINDS: [TriggerKind; 4] = [
-    TriggerKind::Blacklist,
+pub const TRIGGER_KINDS: [TriggerKind; 3] = [
     TriggerKind::CcDeny,
     TriggerKind::ModSecurity,
     TriggerKind::VerifyBot,
@@ -157,17 +122,15 @@ pub const TRIGGER_KINDS: [TriggerKind; 4] = [
 impl TriggerKind {
     pub fn index(self) -> usize {
         match self {
-            TriggerKind::Blacklist => 0,
-            TriggerKind::CcDeny => 1,
-            TriggerKind::ModSecurity => 2,
-            TriggerKind::VerifyBot => 3,
+            TriggerKind::CcDeny => 0,
+            TriggerKind::ModSecurity => 1,
+            TriggerKind::VerifyBot => 2,
         }
     }
 
     /// The built in policy of a trigger no `waf_action` sets.
     pub fn default_policy(self) -> Policy {
         match self {
-            TriggerKind::Blacklist => Policy::Return { status: FORBIDDEN },
             TriggerKind::CcDeny => Policy::Return {
                 status: SERVICE_UNAVAILABLE,
             },
@@ -178,7 +141,6 @@ impl TriggerKind {
 
     fn captcha_source(self) -> CaptchaSource {
         match self {
-            TriggerKind::Blacklist => CaptchaSource::Blacklist,
             TriggerKind::CcDeny => CaptchaSource::CcDeny,
             TriggerKind::ModSecurity | TriggerKind::VerifyBot => CaptchaSource::VerifyBot,
         }
@@ -402,20 +364,6 @@ impl CcDenyConfiguration {
     }
 }
 
-/// The `waf_cache` configuration.
-#[derive(Debug, Default)]
-pub struct CacheConfiguration {
-    pub enabled: Option<bool>,
-    pub capacity: Option<i64>,
-}
-
-impl CacheConfiguration {
-    fn merge(&mut self, parent: &Self) {
-        self.enabled = self.enabled.or(parent.enabled);
-        self.capacity = self.capacity.or(parent.capacity);
-    }
-}
-
 /// The `waf_verify_bot` configuration.
 #[derive(Debug, Default)]
 pub struct VerifyBotConfiguration {
@@ -518,7 +466,7 @@ pub struct ActionConfiguration {
     /// The policy of each trigger, indexed by `TriggerKind::index()`.  `None`
     /// means "nothing configured here", which the merge resolves by inheriting
     /// from the parent and finally falling back to the built in default.
-    pub policies: [Option<Policy>; 4],
+    pub policies: [Option<Policy>; 3],
 }
 
 impl ActionConfiguration {
@@ -541,10 +489,7 @@ impl ActionConfiguration {
 /// The `loc`/`srv` level configuration.
 pub struct LocationConfiguration {
     pub waf: Option<WafSwitch>,
-    pub waf_rule_path: Vec<u8>,
-    pub waf_mode: WafMode,
     pub cc_deny: CcDenyConfiguration,
-    pub cache: CacheConfiguration,
     pub verify_bot: VerifyBotConfiguration,
     pub under_attack: UnderAttackConfiguration,
     pub captcha: CaptchaConfiguration,
@@ -558,12 +503,6 @@ pub struct LocationConfiguration {
     /// A random string generated once per process, the salt of the captcha
     /// cookie HMAC, so every worker agrees on it.
     pub random_str: Vec<u8>,
-    pub rules: Option<Rc<RuleSet>>,
-    /// Messages the core wants nginx to log while it keeps the configuration
-    /// (an overlapping address block is logged and dropped, it does not fail
-    /// the configuration).  The C side drains them after every directive.
-    pub warnings: Vec<String>,
-    pub caches: Caches,
 }
 
 impl LocationConfiguration {
@@ -580,10 +519,7 @@ impl Default for LocationConfiguration {
     fn default() -> Self {
         LocationConfiguration {
             waf: None,
-            waf_rule_path: Vec::new(),
-            waf_mode: WafMode::empty(),
             cc_deny: CcDenyConfiguration::default(),
-            cache: CacheConfiguration::default(),
             verify_bot: VerifyBotConfiguration::default(),
             under_attack: UnderAttackConfiguration::default(),
             captcha: CaptchaConfiguration::default(),
@@ -592,9 +528,6 @@ impl Default for LocationConfiguration {
             block_page: Rc::new(Vec::new()),
             priority: None,
             random_str: Vec::new(),
-            rules: None,
-            warnings: Vec::new(),
-            caches: Caches::default(),
         }
     }
 }
@@ -639,21 +572,6 @@ fn starts_with_keyword(value: &[u8], keyword: &str) -> bool {
 }
 
 impl LocationConfiguration {
-    /// Ensure the rule containers exist.
-    pub fn ensure_rules(&mut self) {
-        if self.rules.is_none() {
-            self.rules = Some(Rc::new(rules::new_rule_set()));
-        }
-    }
-
-    pub fn rules(&self) -> &RuleSet {
-        static EMPTY: std::sync::OnceLock<RuleSet> = std::sync::OnceLock::new();
-        match self.rules.as_deref() {
-            Some(rules) => rules,
-            None => EMPTY.get_or_init(RuleSet::default),
-        }
-    }
-
     /// The policy of a trigger.  It is always concrete: a configuration that
     /// still has no policy (it was never merged into anything) answers with the
     /// built in default instead of "no action".
@@ -662,16 +580,6 @@ impl LocationConfiguration {
             Some(policy) => policy.clone(),
             None => kind.default_policy(),
         }
-    }
-
-    /// Whether the inspections may use their cache.
-    ///
-    /// Whether the inspections may use their cache: `waf_cache on` in this
-    /// context and caches in the merged configuration.  A `waf_cache off` of a
-    /// context below a `waf_cache on` one stops the caching there, although
-    /// that context still inherits the caches of its parent.
-    pub fn caching(&self) -> bool {
-        self.cache.enabled == Some(true) && self.caches.enabled
     }
 
     fn set_policy(&mut self, kind: TriggerKind, policy: Policy) {
@@ -687,14 +595,10 @@ pub fn directive(
     conf: &mut LocationConfiguration,
     name: &[u8],
     args: &[Vec<u8>],
-    regex_ops: Option<&crate::pcre::NgxWafRegexCallbacks>,
 ) -> Result<(), String> {
     match name {
         b"waf" => directive_waf(conf, args),
-        b"waf_rule_path" => directive_rule_path(conf, args, regex_ops),
-        b"waf_mode" => directive_mode(conf, args),
         b"waf_cc_deny" => directive_cc_deny(main, conf, args),
-        b"waf_cache" => directive_cache(conf, args),
         b"waf_priority" => directive_priority(conf, args),
         b"waf_under_attack" => directive_under_attack(conf, args),
         b"waf_captcha" => directive_captcha(main, conf, args),
@@ -748,113 +652,13 @@ fn directive_waf(conf: &mut LocationConfiguration, args: &[Vec<u8>]) -> Result<(
     }
     if value == b"on" {
         conf.waf = Some(WafSwitch::On);
-        conf.ensure_rules();
         return Ok(());
     }
     if value == b"bypass" {
         conf.waf = Some(WafSwitch::Bypass);
-        conf.ensure_rules();
         return Ok(());
     }
     Err(INVALID.to_string())
-}
-
-fn directive_rule_path(
-    conf: &mut LocationConfiguration,
-    args: &[Vec<u8>],
-    ops: Option<&crate::pcre::NgxWafRegexCallbacks>,
-) -> Result<(), String> {
-    if args.len() != 1 {
-        return Err("ngx_waf: the path of the rule files is not specified".to_string());
-    }
-    conf.waf_rule_path = args[0].clone();
-    conf.ensure_rules();
-    let loaded = rules::load_all(&conf.waf_rule_path, ops)?;
-    conf.rules = Some(Rc::new(loaded.rules));
-    conf.warnings.extend(loaded.warnings);
-    Ok(())
-}
-
-fn directive_mode(conf: &mut LocationConfiguration, args: &[Vec<u8>]) -> Result<(), String> {
-    for value in args {
-        let negative = value.first() == Some(&b'!');
-        let keyword = if negative {
-            &value[1..]
-        } else {
-            value.as_slice()
-        };
-        let bits: WafMode = if eq_ci(keyword, "GET") {
-            WafMode::GET
-        } else if eq_ci(keyword, "HEAD") {
-            WafMode::HEAD
-        } else if eq_ci(keyword, "POST") {
-            WafMode::POST
-        } else if eq_ci(keyword, "PUT") {
-            WafMode::PUT
-        } else if eq_ci(keyword, "DELETE") {
-            WafMode::DELETE
-        } else if eq_ci(keyword, "MKCOL") {
-            WafMode::MKCOL
-        } else if eq_ci(keyword, "COPY") {
-            WafMode::COPY
-        } else if eq_ci(keyword, "MOVE") {
-            WafMode::MOVE
-        } else if eq_ci(keyword, "OPTIONS") {
-            WafMode::OPTIONS
-        } else if eq_ci(keyword, "PROPFIND") {
-            WafMode::PROPFIND
-        } else if eq_ci(keyword, "PROPPATCH") {
-            WafMode::PROPPATCH
-        } else if eq_ci(keyword, "LOCK") {
-            WafMode::LOCK
-        } else if eq_ci(keyword, "UNLOCK") {
-            WafMode::UNLOCK
-        } else if eq_ci(keyword, "PATCH") {
-            WafMode::PATCH
-        } else if eq_ci(keyword, "TRACE") {
-            WafMode::TRACE
-        } else if eq_ci(keyword, "CMN-METH") {
-            WafMode::CMN_METH
-        } else if eq_ci(keyword, "ALL-METH") {
-            WafMode::ALL_METH
-        } else if eq_ci(keyword, "IP") {
-            WafMode::IP
-        } else if eq_ci(keyword, "URL") {
-            WafMode::URL
-        } else if eq_ci(keyword, "RBODY") {
-            WafMode::RBODY
-        } else if eq_ci(keyword, "ARGS") {
-            WafMode::ARGS
-        } else if eq_ci(keyword, "UA") {
-            WafMode::UA
-        } else if eq_ci(keyword, "COOKIE") {
-            WafMode::COOKIE
-        } else if eq_ci(keyword, "REFERER") {
-            WafMode::REFERER
-        } else if eq_ci(keyword, "STD") {
-            WafMode::STD
-        } else if eq_ci(keyword, "STATIC") {
-            WafMode::STATIC
-        } else if eq_ci(keyword, "DYNAMIC") {
-            WafMode::DYNAMIC
-        } else if eq_ci(keyword, "FULL") {
-            WafMode::FULL
-        } else if value == b"NICO" {
-            // The C implementation accepted this exact value and printed its
-            // ASCII art to stderr without changing the inspection mode.
-            crate::data::print_nico_banner();
-            continue;
-        } else {
-            return Err("ngx_waf: invalid value.".to_string());
-        };
-
-        if negative {
-            conf.waf_mode.remove(bits);
-        } else {
-            conf.waf_mode.insert(bits);
-        }
-    }
-    Ok(())
 }
 
 fn directive_cc_deny(
@@ -932,57 +736,27 @@ fn directive_cc_deny(
     Ok(())
 }
 
-fn directive_cache(conf: &mut LocationConfiguration, args: &[Vec<u8>]) -> Result<(), String> {
-    conf.cache.capacity = Some(50);
-
-    let first = args.first().map(Vec::as_slice).unwrap_or(b"");
-    if starts_with_keyword(first, "on") {
-        conf.cache.enabled = Some(true);
-    } else if starts_with_keyword(first, "off") {
-        conf.cache.enabled = Some(false);
-    } else {
-        return Err(INVALID.to_string());
-    }
-    if conf.cache.enabled == Some(false) {
-        return Ok(());
-    }
-
-    for arg in &args[1..] {
-        let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
-        if key != b"capacity" {
-            return Err(INVALID.to_string());
-        }
-        match util::atoi(&value) {
-            Some(capacity) if capacity > 0 => conf.cache.capacity = Some(capacity),
-            _ => return Err(INVALID.to_string()),
-        }
-    }
-
-    conf.caches = Caches::new(
-        conf.cache
-            .capacity
-            .expect("the directive sets the capacity") as usize,
-    );
-    Ok(())
-}
-
 fn directive_priority(conf: &mut LocationConfiguration, args: &[Vec<u8>]) -> Result<(), String> {
     let text = args.first().map(Vec::as_slice).unwrap_or(b"");
     let parts = split(text, b' ', 20).ok_or_else(|| INVALID.to_string())?;
-    if parts.len() != 15 {
+    if parts.len() != DEFAULT_PRIORITY.len() {
         return Err("ngx_waf: you must specify the priority of all inspections".to_string());
     }
-    let mut priority = Vec::with_capacity(15);
+    let mut priority = Vec::with_capacity(DEFAULT_PRIORITY.len());
     for part in parts {
-        match CheckKind::parse(&part) {
-            Some(id) => priority.push(id),
-            None => {
-                return Err(format!(
-                    "ngx_waf: ngx_waf: invalid value [{}]",
-                    String::from_utf8_lossy(&part)
-                ))
-            }
+        let Some(id) = CheckKind::parse(&part) else {
+            return Err(format!(
+                "ngx_waf: invalid value [{}]",
+                String::from_utf8_lossy(&part)
+            ));
+        };
+        if priority.contains(&id) {
+            return Err(format!(
+                "ngx_waf: duplicate inspection [{}]",
+                String::from_utf8_lossy(&part)
+            ));
         }
+        priority.push(id);
     }
     conf.priority = Some(priority);
     Ok(())
@@ -1287,7 +1061,6 @@ fn directive_action(
     for arg in args {
         let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
         let kind = match key.as_slice() {
-            b"blacklist" => Some(TriggerKind::Blacklist),
             b"cc_deny" => Some(TriggerKind::CcDeny),
             b"modsecurity" => Some(TriggerKind::ModSecurity),
             b"verify_bot" => Some(TriggerKind::VerifyBot),
@@ -1395,10 +1168,15 @@ fn directive_modsecurity(conf: &mut LocationConfiguration, args: &[Vec<u8>]) -> 
     // file the library cannot parse aborts the start up.  A second
     // `waf_modsecurity` directive in the same context replaces the instance of
     // the first one.
-    let remote = match (remote_key.as_deref(), remote_url.as_deref()) {
-        (Some(key), Some(url)) => Some((key, url)),
-        _ => None,
-    };
+    let remote =
+        match (remote_key.as_deref(), remote_url.as_deref()) {
+            (Some(key), Some(url)) => Some((key, url)),
+            (None, None) if !files.is_empty() => None,
+            _ => return Err(
+                "ngx_waf: waf_modsecurity on needs a file= or remote_key=/remote_url= rule source"
+                    .to_string(),
+            ),
+        };
     let files: Vec<&[u8]> = files.iter().map(Vec::as_slice).collect();
     let instance = modsecurity::Instance::create(&files, remote)?;
     conf.modsecurity.instance = Some(Rc::new(instance));
@@ -1413,12 +1191,7 @@ pub fn merge(
 ) -> Result<(), String> {
     child.waf = child.waf.or(parent.waf);
 
-    if child.rules.is_none() {
-        child.rules = parent.rules.clone();
-    }
-
     child.cc_deny.merge(&parent.cc_deny);
-    child.cache.merge(&parent.cache);
     child.verify_bot.merge(&parent.verify_bot);
     child.under_attack.merge(&parent.under_attack);
     child.captcha.merge(&parent.captcha);
@@ -1428,23 +1201,11 @@ pub fn merge(
     // itself), then let the child inherit what it did not configure.
     child.action.merge(&mut parent.action);
 
-    if child.waf_mode.is_empty() {
-        child.waf_mode = parent.waf_mode;
-    }
-    if child.waf_rule_path.is_empty() {
-        child.waf_rule_path = parent.waf_rule_path.clone();
-    }
     if child.priority.is_none() {
         child.priority = parent.priority.clone();
     }
     if child.block_page.is_empty() {
         child.block_page = Rc::clone(&parent.block_page);
-    }
-
-    if !child.caches.enabled && parent.caches.enabled {
-        if let Some(capacity) = parent.cache.capacity.filter(|capacity| *capacity > 0) {
-            child.caches = Caches::new(capacity as usize);
-        }
     }
 
     check_captcha_requirement(parent)?;
@@ -1504,7 +1265,6 @@ e.g. [waf_captcha off prov=reCAPTCHAv3 secret=your_secret sitekey=you_site_key]"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::CacheKind;
 
     fn dir(conf: &mut LocationConfiguration, name: &str, args: &[&str]) -> Result<(), String> {
         let mut main = MainConfiguration::default();
@@ -1518,7 +1278,7 @@ mod tests {
         args: &[&str],
     ) -> Result<(), String> {
         let args: Vec<Vec<u8>> = args.iter().map(|arg| arg.as_bytes().to_vec()).collect();
-        directive(main, conf, name.as_bytes(), &args, None)
+        directive(main, conf, name.as_bytes(), &args)
     }
 
     fn zone_directive_main(
@@ -1534,7 +1294,6 @@ mod tests {
         let mut conf = LocationConfiguration::default();
         dir(&mut conf, "waf", &["on"]).unwrap();
         assert_eq!(conf.waf, Some(WafSwitch::On));
-        assert!(conf.rules.is_some());
         dir(&mut conf, "waf", &["bypass"]).unwrap();
         assert_eq!(conf.waf, Some(WafSwitch::Bypass));
         dir(&mut conf, "waf", &["off"]).unwrap();
@@ -1554,33 +1313,6 @@ mod tests {
 
         let mut conf = LocationConfiguration::default();
         assert!(dir(&mut conf, "waf", &["o"]).is_err());
-    }
-
-    #[test]
-    fn mode_flags() {
-        let mut conf = LocationConfiguration::default();
-        dir(&mut conf, "waf_mode", &["FULL", "!GET"]).unwrap();
-        assert_eq!(conf.waf_mode, WafMode::FULL.difference(WafMode::GET));
-        dir(&mut conf, "waf_mode", &["std"]).unwrap();
-        assert_eq!(
-            conf.waf_mode,
-            WafMode::FULL.difference(WafMode::GET) | WafMode::STD
-        );
-        assert!(dir(&mut conf, "waf_mode", &["BAD"]).is_err());
-    }
-
-    #[test]
-    fn the_nico_easter_egg_is_accepted_without_a_mode() {
-        let mut conf = LocationConfiguration::default();
-        dir(&mut conf, "waf_mode", &["NICO"]).unwrap();
-        assert!(conf.waf_mode.is_empty());
-
-        dir(&mut conf, "waf_mode", &["FULL", "NICO"]).unwrap();
-        assert_eq!(conf.waf_mode, WafMode::FULL);
-
-        // The C implementation compared the value byte for byte.
-        assert!(dir(&mut conf, "waf_mode", &["nico"]).is_err());
-        assert!(dir(&mut conf, "waf_mode", &["!NICO"]).is_err());
     }
 
     #[test]
@@ -1681,54 +1413,8 @@ mod tests {
     }
 
     #[test]
-    fn cache_validation() {
-        let mut conf = LocationConfiguration::default();
-        assert!(dir(&mut conf, "waf_cache", &["capacity=50"]).is_err());
-        assert!(dir(&mut conf, "waf_cache", &["on", "capacity=-1"]).is_err());
-        assert!(dir(&mut conf, "waf_cache", &["on", "bad=bad"]).is_err());
-
-        let mut conf = LocationConfiguration::default();
-        dir(&mut conf, "waf_cache", &["on", "capacity=1"]).unwrap();
-        assert_eq!(conf.cache.capacity, Some(1));
-        assert!(conf.caches.enabled);
-        assert_eq!(conf.caches.len(CacheKind::Url), 0);
-    }
-
-    /// `waf_cache off` below a `waf_cache on` stops the caching of that
-    /// context, a context that inherits the caches of its parent included.
-    #[test]
-    fn a_waf_cache_off_below_an_on_disables_the_caching() {
-        let mut parent = LocationConfiguration::default();
-        dir(&mut parent, "waf_cache", &["on", "capacity=7"]).unwrap();
-        assert!(parent.caching());
-
-        // A context that does not configure `waf_cache` inherits it, caches and
-        // gate included.
-        let mut inherits = LocationConfiguration::default();
-        merge(&mut inherits, &mut parent).unwrap();
-        assert_eq!(inherits.cache.enabled, Some(true));
-        assert!(inherits.caching());
-
-        // A context that turns it off keeps the caches of its parent but must
-        // not use them.
-        let mut off = LocationConfiguration::default();
-        dir(&mut off, "waf_cache", &["off"]).unwrap();
-        merge(&mut off, &mut parent).unwrap();
-        assert_eq!(off.cache.enabled, Some(false));
-        assert!(off.caches.enabled);
-        assert!(!off.caching());
-
-        // And a context that turns it on again has a cache to use.
-        let mut on = LocationConfiguration::default();
-        dir(&mut on, "waf_cache", &["on", "capacity=3"]).unwrap();
-        merge(&mut on, &mut parent).unwrap();
-        assert!(on.caching());
-        assert_eq!(on.cache.capacity, Some(3));
-    }
-
-    #[test]
     fn priority_validation() {
-        let order = "W-IP IP VERIFY-BOT CC CAPTCHA UNDER-ATTACK W-URL URL ARGS UA W-REFERER REFERER COOKIE POST";
+        let order = "VERIFY-BOT CC CAPTCHA UNDER-ATTACK";
         let mut conf = LocationConfiguration::default();
         assert_eq!(
             dir(&mut conf, "waf_priority", &[order]),
@@ -1738,13 +1424,17 @@ mod tests {
         let full = format!("{order} MODSECURITY");
         dir(&mut conf, "waf_priority", &[&full]).unwrap();
         let priority = conf.priority.as_ref().expect("configured");
-        assert_eq!(priority[0], CheckKind::WhiteIp);
-        assert_eq!(priority[14], CheckKind::ModSecurity);
+        assert_eq!(priority, &DEFAULT_PRIORITY);
 
         let bad = format!("{order} BAD");
         assert_eq!(
             dir(&mut conf, "waf_priority", &[&bad]),
-            Err("ngx_waf: ngx_waf: invalid value [BAD]".to_string())
+            Err("ngx_waf: invalid value [BAD]".to_string())
+        );
+        let duplicate = "VERIFY-BOT CC CAPTCHA UNDER-ATTACK CC";
+        assert_eq!(
+            dir(&mut conf, "waf_priority", &[duplicate]),
+            Err("ngx_waf: duplicate inspection [CC]".to_string())
         );
     }
 
@@ -1797,6 +1487,13 @@ mod tests {
         let _guard = modsecurity::test_lock();
         let mut conf = LocationConfiguration::default();
         assert!(dir(&mut conf, "waf_modsecurity", &["bad"]).is_err());
+        assert_eq!(
+            dir(&mut conf, "waf_modsecurity", &["on"]),
+            Err(
+                "ngx_waf: waf_modsecurity on needs a file= or remote_key=/remote_url= rule source"
+                    .to_string()
+            )
+        );
         assert!(dir(&mut conf, "waf_modsecurity", &["on", "bad"]).is_err());
         // The library reports a rule file it cannot open itself, so the path
         // is handed over as it is.
@@ -1983,28 +1680,25 @@ mod tests {
     #[test]
     fn action_directive() {
         let mut conf = LocationConfiguration::default();
-        dir(&mut conf, "waf_action", &["blacklist=405"]).unwrap();
+        dir(&mut conf, "waf_action", &["cc_deny=405"]).unwrap();
         assert_eq!(
-            conf.policy(TriggerKind::Blacklist),
+            conf.policy(TriggerKind::CcDeny),
             Policy::Return { status: 405 }
         );
         // The triggers the directive does not mention fall back to their
         // built-in default instead of staying empty.
-        assert_eq!(
-            conf.policy(TriggerKind::CcDeny),
-            Policy::Return {
-                status: SERVICE_UNAVAILABLE
-            }
-        );
         assert_eq!(conf.policy(TriggerKind::ModSecurity), Policy::Follow);
-        assert!(dir(&mut conf, "waf_action", &["blacklist=100"]).is_err());
+        assert!(dir(&mut conf, "waf_action", &["blacklist=405"]).is_err());
+        assert!(dir(&mut conf, "waf_action", &["cc_deny=100"]).is_err());
 
         let mut conf = LocationConfiguration::default();
         dir(&mut conf, "waf_action", &["modsecurity=FOLLOW"]).unwrap();
         assert_eq!(conf.policy(TriggerKind::ModSecurity), Policy::Follow);
         assert_eq!(
-            conf.policy(TriggerKind::Blacklist),
-            Policy::Return { status: FORBIDDEN }
+            conf.policy(TriggerKind::CcDeny),
+            Policy::Return {
+                status: SERVICE_UNAVAILABLE
+            }
         );
 
         let mut conf = LocationConfiguration::default();
@@ -2015,16 +1709,11 @@ mod tests {
         );
         assert!(dir(&mut conf, "waf_action", &["bad=400"]).is_err());
 
-        // `waf_action zone=...` keeps every trigger at its default, which used
-        // to leave four empty chains behind (and serve blocked requests).
+        // `waf_action zone=...` keeps every trigger at its default.
         let mut main = MainConfiguration::default();
         zone_directive_main(&mut main, &["name=test", "size=10m"]).unwrap();
         let mut conf = LocationConfiguration::default();
         dir_main(&mut main, &mut conf, "waf_action", &["zone=test:tag"]).unwrap();
-        assert_eq!(
-            conf.policy(TriggerKind::Blacklist),
-            Policy::Return { status: FORBIDDEN }
-        );
         assert_eq!(
             conf.policy(TriggerKind::CcDeny),
             Policy::Return {
@@ -2093,15 +1782,16 @@ mod tests {
     fn merge_inherits_values() {
         let mut parent = LocationConfiguration::default();
         dir(&mut parent, "waf", &["on"]).unwrap();
-        dir(&mut parent, "waf_mode", &["FULL"]).unwrap();
+        dir(
+            &mut parent,
+            "waf_priority",
+            &["VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY"],
+        )
+        .unwrap();
         let mut child = LocationConfiguration::default();
         merge(&mut child, &mut parent).unwrap();
         assert_eq!(child.waf, Some(WafSwitch::On));
-        assert_eq!(child.waf_mode, WafMode::FULL);
-        assert_eq!(
-            child.policy(TriggerKind::Blacklist),
-            Policy::Return { status: FORBIDDEN }
-        );
+        assert_eq!(child.priority, parent.priority);
     }
 
     #[test]
@@ -2112,17 +1802,12 @@ mod tests {
         let mut child = LocationConfiguration::default();
         merge(&mut child, &mut parent).unwrap();
         assert_eq!(child.block_page.as_slice(), embedded_page(HTML_BLOCK));
-        match child.policy(TriggerKind::Blacklist) {
+        // The CC trigger is converted, the modsecurity one keeps `FOLLOW`.
+        match child.policy(TriggerKind::CcDeny) {
             Policy::Page { status, body } => {
-                assert_eq!(status, FORBIDDEN);
+                assert_eq!(status, SERVICE_UNAVAILABLE);
                 assert_eq!(body.as_slice(), embedded_page(HTML_BLOCK));
             }
-            other => panic!("unexpected policy {other:?}"),
-        }
-        // The CC trigger of the same context is converted as well, the
-        // modsecurity one keeps its `FOLLOW` policy.
-        match child.policy(TriggerKind::CcDeny) {
-            Policy::Page { status, .. } => assert_eq!(status, SERVICE_UNAVAILABLE),
             other => panic!("unexpected policy {other:?}"),
         }
         assert_eq!(child.policy(TriggerKind::ModSecurity), Policy::Follow);
@@ -2209,10 +1894,6 @@ mod tests {
     #[test]
     fn merge_inherits_the_other_groups() {
         let mut parent = LocationConfiguration {
-            cache: CacheConfiguration {
-                enabled: Some(true),
-                capacity: Some(7),
-            },
             verify_bot: VerifyBotConfiguration {
                 mode: Some(VerifyBotMode::Strict),
                 types: Some(BotTypes::GOOGLE),
@@ -2237,10 +1918,6 @@ mod tests {
         };
 
         let mut child = LocationConfiguration {
-            cache: CacheConfiguration {
-                capacity: Some(1),
-                ..CacheConfiguration::default()
-            },
             verify_bot: VerifyBotConfiguration {
                 mode: Some(VerifyBotMode::Off),
                 ..VerifyBotConfiguration::default()
@@ -2249,8 +1926,6 @@ mod tests {
         };
         merge(&mut child, &mut parent).unwrap();
 
-        assert_eq!(child.cache.enabled, Some(true));
-        assert_eq!(child.cache.capacity, Some(1));
         assert_eq!(child.verify_bot.mode, Some(VerifyBotMode::Off));
         assert_eq!(child.verify_bot.types, Some(BotTypes::GOOGLE));
         assert_eq!(child.under_attack.enabled, Some(true));
@@ -2261,7 +1936,7 @@ mod tests {
     #[test]
     fn merge_keeps_a_configured_priority() {
         let mut parent = LocationConfiguration {
-            priority: Some(vec![CheckKind::Url, CheckKind::Ip]),
+            priority: Some(vec![CheckKind::VerifyBot, CheckKind::Cc]),
             ..LocationConfiguration::default()
         };
 
@@ -2269,7 +1944,7 @@ mod tests {
         merge(&mut child, &mut parent).unwrap();
         assert_eq!(
             child.priority.as_deref(),
-            Some(&[CheckKind::Url, CheckKind::Ip][..])
+            Some(&[CheckKind::VerifyBot, CheckKind::Cc][..])
         );
 
         let mut child = LocationConfiguration {
@@ -2288,12 +1963,12 @@ mod tests {
         dir(&mut child, "waf_block_page", &["default"]).unwrap();
         merge(&mut child, &mut parent).unwrap();
         // Only the context that configured the page answers with it.
-        assert_eq!(
-            parent.policy(TriggerKind::Blacklist),
-            Policy::Return { status: FORBIDDEN }
-        );
         assert!(matches!(
-            child.policy(TriggerKind::Blacklist),
+            parent.policy(TriggerKind::CcDeny),
+            Policy::Return { .. }
+        ));
+        assert!(matches!(
+            child.policy(TriggerKind::CcDeny),
             Policy::Page { .. }
         ));
     }
@@ -2302,11 +1977,11 @@ mod tests {
     fn a_context_without_waf_action_inherits_the_parent_policy() {
         let mut parent = LocationConfiguration::default();
         dir(&mut parent, "waf", &["on"]).unwrap();
-        dir(&mut parent, "waf_action", &["blacklist=405"]).unwrap();
+        dir(&mut parent, "waf_action", &["cc_deny=405"]).unwrap();
         let mut child = LocationConfiguration::default();
         merge(&mut child, &mut parent).unwrap();
         assert_eq!(
-            child.policy(TriggerKind::Blacklist),
+            child.policy(TriggerKind::CcDeny),
             Policy::Return { status: 405 }
         );
 
@@ -2316,7 +1991,7 @@ mod tests {
         dir(&mut other, "waf_action", &["cc_deny=400"]).unwrap();
         merge(&mut other, &mut parent).unwrap();
         assert_eq!(
-            other.policy(TriggerKind::Blacklist),
+            other.policy(TriggerKind::VerifyBot),
             Policy::Return { status: FORBIDDEN }
         );
         assert_eq!(
@@ -2329,7 +2004,13 @@ mod tests {
     fn merge_requires_captcha_for_captcha_actions() {
         let mut parent = LocationConfiguration::default();
         let mut main = MainConfiguration::default();
-        dir_main(&mut main, &mut parent, "waf_action", &["blacklist=CAPTCHA"]).unwrap();
+        dir_main(
+            &mut main,
+            &mut parent,
+            "waf_action",
+            &["modsecurity=CAPTCHA"],
+        )
+        .unwrap();
         let mut child = LocationConfiguration::default();
         let error = merge(&mut child, &mut parent).unwrap_err();
         assert!(error.contains("waf_action xxx=CAPTCHA"), "{error}");

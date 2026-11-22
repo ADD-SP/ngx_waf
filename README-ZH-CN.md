@@ -19,27 +19,29 @@
 
 ## 为什么选择 ngx_waf
 
-* 基础防护：如 IP 或 IP 网段的黑白名单、URI 黑白名单和请求体黑名单等。
-* 使用简单：配置文件和规则文件书写简单，可读性强。
-* 高性能：使用高效的 IP 检查算法和缓存机制。
-* 高级防护：兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity)，因此你可以使用[开放式网络应用安全项目（OWASP）® 的核心规则库](https://owasp.org/www-project-modsecurity-core-rule-set/)。
+* 规则统一：[ModSecurity](https://github.com/SpiderLabs/ModSecurity) 是唯一的请求规则引擎，可直接加载[开放式网络应用安全项目（OWASP）® 的核心规则库](https://owasp.org/www-project-modsecurity-core-rule-set/)。
+* 状态化防护：内置 CC、CAPTCHA、Under Attack 和友好爬虫验证，不把这些流程与正则规则混在一起。
 * 友好爬虫验证：支持验证 Google、Bing、Baidu 和 Yandex 的爬虫并自动放行，避免错误拦截。
 * 验证码：支持 hCaptcha、Cloudflare Turnstile、reCAPTCHAv2 和 reCAPTCHAv3。
 
 ## 功能
 
-* 兼容 [ModSecurity](https://github.com/SpiderLabs/ModSecurity)。
-* 支持 IPV4 和 IPV6。
+* [ModSecurity](https://github.com/SpiderLabs/ModSecurity) 是唯一的请求匹配与阻断规则引擎；IP、URL、Header、参数和 Body 规则均使用 SecRule。
+* `waf_priority` 可在 `VERIFY-BOT`、`CC`、`CAPTCHA`、`UNDER-ATTACK`、`MODSECURITY` 五项之间调整顺序。
 * 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。
 * 支持识别友好爬虫（如 BaiduSpider）并自动放行（基于 User-Agent 和 IP 的识别）。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间或者使用验证码做人机识别。
-* IP 黑白名单，同时支持类似 `192.168.0.0/16` 和 `fe80::/10`，即支持点分十进制和冒号十六进制表示法和网段划分。
-* POST 黑名单。
-* URL 黑白名单
-* 查询字符串（Query String）黑名单。
-* UserAgent 黑名单。
-* Cookie 黑名单。
-* Referer 黑白名单。
+* Under Attack 五秒等待页。
+
+不再提供 `waf_rule_path`、`waf_mode`、`waf_cache` 或原生 black/white 规则文件。
+`waf_modsecurity on` 必须至少提供一个 `file=`，或者成对的
+`remote_key=` 与 `remote_url=`。
+
+```nginx
+waf on;
+waf_modsecurity on file=/etc/nginx/modsec/main.conf;
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY";
+```
 
 ## 使用文档
 
@@ -136,13 +138,5 @@ mise run test-nginx t/modsecurity.t
 ## 感谢
 
 * [ModSecurity](https://github.com/SpiderLabs/ModSecurity)：开源且跨平台的 WAF 引擎。
-* [uthash](https://github.com/troydhanson/uthash)：C 语言的哈希表、数组、链表等容器库。
-* [libcurl](https://curl.se/libcurl/)：支持多种协议文件传输库。
-* [cJSON](https://github.com/DaveGamble/cJSON)：C 语言的轻量级 JSON 解析库。
-* [libinjection](https://github.com/libinjection/libinjection)：SQL 注入检测库。
-* [libsodium](https://github.com/jedisct1/libsodium)：C 语言密码函数库。
 * [test-nginx](https://github.com/openresty/test-nginx): 数据驱动的 nginx 测试套件，可用于 nginx C 模块的开发和 OpenResty Lua 库的开发。 
-* [lastversion](https://github.com/dvershinin/lastversion)：一个轻巧的命令行工具，帮助你下载或安装一个项目的特定版本。
 * [ngx_lua_waf](https://github.com/loveshell/ngx_lua_waf)：一个基于 lua-nginx-module (openresty) 的 web 应用防火墙。
-* [nginx-book](https://github.com/taobao/nginx-book)：Nginx开发从入门到精通 
-* [nginx-development-guide](https://github.com/baishancloud/nginx-development-guide)：Nginx 开发指南。

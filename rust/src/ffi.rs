@@ -10,7 +10,6 @@ use crate::abi::{
 };
 use crate::check;
 use crate::config::{self, LocationConfiguration, MainConfiguration, WafSwitch};
-use crate::pcre::NgxWafRegexCallbacks;
 use crate::shared_memory::{self, NgxWafSharedMemoryCallbacks};
 use crate::util;
 use std::ffi::CString;
@@ -90,9 +89,7 @@ pub(crate) struct RawRequestView {
     pub(crate) ip: RawStringView,
     pub(crate) method: NgxWafHttpMethod,
     pub(crate) uri: RawStringView,
-    pub(crate) args: RawStringView,
     pub(crate) user_agent: RawStringView,
-    pub(crate) referer: RawStringView,
     pub(crate) body: RawStringView,
     pub(crate) now: i64,
     /// The view `waf_modsecurity` reads, `None` when the inspection cannot
@@ -136,9 +133,7 @@ impl RawRequestView {
             ip: RawStringView::from_view(&req.ip),
             method: req.method,
             uri: RawStringView::from_view(&req.uri),
-            args: RawStringView::from_view(&req.args),
             user_agent: RawStringView::from_view(&req.user_agent),
-            referer: RawStringView::from_view(&req.referer),
             body: RawStringView::from_view(&req.body),
             now: req.now,
             modsecurity,
@@ -158,9 +153,7 @@ impl RawRequestView {
             ipv6: self.ip.len == 16,
             method: self.method,
             uri: self.uri.view(),
-            args: self.args.view(),
             user_agent: self.user_agent.view(),
-            referer: self.referer.view(),
             cookies,
             body: self.body.view(),
             now: self.now,
@@ -422,32 +415,6 @@ pub extern "C" fn ngx_waf_location_configuration_zone_references(
     })
 }
 
-/// One message the core wants nginx to log while it keeps the configuration
-/// (see [`crate::config::LocationConfiguration::warnings`]), or NULL when there is none.
-/// The C side drains the list after every directive and frees the message with
-/// [`ngx_waf_string_free`].
-#[no_mangle]
-pub extern "C" fn ngx_waf_location_configuration_take_warning(
-    conf: *mut NgxWafLocationConfiguration,
-) -> *mut c_char {
-    if conf.is_null() {
-        return std::ptr::null_mut();
-    }
-    let warning = guard(None, || {
-        // SAFETY: the C side owns a live configuration for this call.
-        let warnings = unsafe { &mut (*(conf as *mut LocationConfiguration)).warnings };
-        if warnings.is_empty() {
-            None
-        } else {
-            Some(warnings.remove(0))
-        }
-    });
-    match warning {
-        Some(message) => error_string(&message),
-        None => std::ptr::null_mut(),
-    }
-}
-
 /// The endpoint the captcha provider of this configuration is asked on: the
 /// `api=` of `waf_captcha`, or the default of the provider it named.  This is
 /// the very URL the core puts into a `STEP_HTTP_REQUEST`, so the C glue parses
@@ -479,7 +446,6 @@ pub unsafe extern "C" fn ngx_waf_directive_apply(
     name: NgxWafStringView,
     args: *const NgxWafStringView,
     nargs: usize,
-    regex_ops: *const NgxWafRegexCallbacks,
 ) -> *mut c_char {
     if main.is_null() || conf.is_null() {
         return error_string("ngx_waf: unexpected error");
@@ -503,15 +469,7 @@ pub unsafe extern "C" fn ngx_waf_directive_apply(
             // SAFETY: every view of `args` is valid for this call.
             .map(|arg| unsafe { arg.as_slice() }.to_vec())
             .collect();
-        let ops = if regex_ops.is_null() {
-            None
-        } else {
-            // SAFETY: the glue passes either NULL or a table that stays valid
-            // for the whole call (it lives on the stack of the directive
-            // handler).
-            Some(unsafe { &*regex_ops })
-        };
-        config::directive(main, conf, name, &args, ops)
+        config::directive(main, conf, name, &args)
     })
 }
 
@@ -911,20 +869,6 @@ pub extern "C" fn ngx_waf_should_collect_garbage(worker_processes: u32) -> bool 
     })
 }
 
-/// Garbage collect the per-worker inspection caches.
-#[no_mangle]
-pub unsafe extern "C" fn ngx_waf_cache_collect_garbage(conf: *mut NgxWafLocationConfiguration) {
-    guard((), || {
-        let now = util::now();
-        if conf.is_null() {
-            return;
-        }
-        // SAFETY: the C side owns a live configuration for this call.
-        let conf = unsafe { &mut *(conf as *mut LocationConfiguration) };
-        conf.caches.collect_garbage(now);
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1041,7 +985,7 @@ mod tests {
             blocked: true,
             checked: true,
             general_log: true,
-            rule_type: b"BLACK-URL".to_vec(),
+            rule_type: b"ModSecurity".to_vec(),
             rule_details: body.to_vec(),
             rate: 7,
             spend: 1.5,
