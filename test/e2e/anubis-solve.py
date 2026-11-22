@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument("--client", default="203.0.113.10")
     parser.add_argument("--base-prefix", default="/base")
     parser.add_argument("--protected", default="/index.html?x=1")
+    parser.add_argument("--pass-redir", default="")
     parser.add_argument("--expect-body", default="backend")
     parser.add_argument("--expect-risk", default="")
     parser.add_argument("--expect-difficulty", type=int)
@@ -133,7 +134,7 @@ def solve(args):
                 "id": challenge["id"],
                 "response": response,
                 "nonce": nonce,
-                "redir": args.protected,
+                "redir": args.pass_redir or args.protected,
                 "elapsedTime": "100",
             }
         )
