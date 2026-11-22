@@ -8,6 +8,33 @@
 #include <stdlib.h>
 
 /**
+ * The result of normalizing the `redir` query of an Anubis challenge proxy
+ * request.
+ */
+typedef enum ngx_waf_anubis_redirect_status {
+    /**
+     * The request has no `redir` parameter and must be proxied unchanged.
+     */
+    NGX_WAF_ANUBIS_REDIRECT_STATUS_NO_REDIRECT = 0,
+    /**
+     * The output buffer holds the normalized views.
+     */
+    NGX_WAF_ANUBIS_REDIRECT_STATUS_NORMALIZED = 1,
+    /**
+     * The request has ambiguous or unsafe redirect parameters.
+     */
+    NGX_WAF_ANUBIS_REDIRECT_STATUS_REJECTED = 2,
+    /**
+     * The output buffer is too small; `required` is the needed size.
+     */
+    NGX_WAF_ANUBIS_REDIRECT_STATUS_BUFFER_TOO_SMALL = 3,
+    /**
+     * The Rust side could not complete the operation.
+     */
+    NGX_WAF_ANUBIS_REDIRECT_STATUS_INTERNAL_ERROR = 4,
+} ngx_waf_anubis_redirect_status;
+
+/**
  * The method of one request.  The glue owns the mapping from the bits of
  * nginx (`NGX_HTTP_*`) onto this enum, so the core never spells an nginx
  * value.
@@ -151,6 +178,42 @@ typedef struct ngx_waf_string_view_t {
     size_t len;
     const uint8_t *data;
 } ngx_waf_string_view_t;
+
+/**
+ * The request data Anubis redirect normalization needs.
+ */
+typedef struct ngx_waf_anubis_redirect_input_t {
+    /**
+     * The original `Host` header.
+     */
+    struct ngx_waf_string_view_t host;
+    /**
+     * The configured Anubis base prefix, such as `/base`.
+     */
+    struct ngx_waf_string_view_t base_prefix;
+    /**
+     * The request target received by nginx, including its query string.
+     */
+    struct ngx_waf_string_view_t unparsed_uri;
+} ngx_waf_anubis_redirect_input_t;
+
+/**
+ * Views into the output buffer and the size the normalized result needs.
+ */
+typedef struct ngx_waf_anubis_redirect_output_t {
+    /**
+     * Bytes needed for both views, even when the supplied buffer is too small.
+     */
+    size_t required;
+    /**
+     * The protected request target for `X-Original-Uri`.
+     */
+    struct ngx_waf_string_view_t original_uri;
+    /**
+     * The rewritten request target sent to Anubis.
+     */
+    struct ngx_waf_string_view_t request_uri;
+} ngx_waf_anubis_redirect_output_t;
 
 /**
  * The shared memory zone of every use of the configuration, by name.  An
@@ -348,6 +411,23 @@ typedef struct ngx_waf_shared_memory_callbacks_t {
 const char *ngx_waf_version(void);
 
 void ngx_waf_string_free(char *text);
+
+/**
+ * Normalize the `redir` parameter of an Anubis challenge request.
+ *
+ * Call once with a NULL/empty output buffer to obtain the required length,
+ * then again with caller-owned storage.  The returned views point into that
+ * storage and remain valid for as long as the caller keeps it alive.
+ *
+ * # Safety
+ * `input` and `output` must be valid for this call.  Every view in `input`
+ * must point to readable memory.  When `capacity` is non-zero, `buffer` must
+ * point to that many writable bytes.
+ */
+enum ngx_waf_anubis_redirect_status ngx_waf_anubis_redirect_normalize(const struct ngx_waf_anubis_redirect_input_t *input,
+                                                                      uint8_t *buffer,
+                                                                      size_t capacity,
+                                                                      struct ngx_waf_anubis_redirect_output_t *output);
 
 struct ngx_waf_main_configuration_t *ngx_waf_main_configuration_create(void);
 

@@ -52,6 +52,47 @@ impl NgxWafStringView {
     }
 }
 
+/// The result of normalizing the `redir` query of an Anubis challenge proxy
+/// request.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NgxWafAnubisRedirectStatus {
+    /// The request has no `redir` parameter and must be proxied unchanged.
+    NoRedirect = 0,
+    /// The output buffer holds the normalized views.
+    Normalized = 1,
+    /// The request has ambiguous or unsafe redirect parameters.
+    Rejected = 2,
+    /// The output buffer is too small; `required` is the needed size.
+    BufferTooSmall = 3,
+    /// The Rust side could not complete the operation.
+    InternalError = 4,
+}
+
+/// The request data Anubis redirect normalization needs.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NgxWafAnubisRedirectInput {
+    /// The original `Host` header.
+    pub host: NgxWafStringView,
+    /// The configured Anubis base prefix, such as `/base`.
+    pub base_prefix: NgxWafStringView,
+    /// The request target received by nginx, including its query string.
+    pub unparsed_uri: NgxWafStringView,
+}
+
+/// Views into the output buffer and the size the normalized result needs.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NgxWafAnubisRedirectOutput {
+    /// Bytes needed for both views, even when the supplied buffer is too small.
+    pub required: usize,
+    /// The protected request target for `X-Original-Uri`.
+    pub original_uri: NgxWafStringView,
+    /// The rewritten request target sent to Anubis.
+    pub request_uri: NgxWafStringView,
+}
+
 /// One request header, the `ngx_table_elt_t` list of nginx.
 #[repr(C)]
 #[derive(Clone, Copy)]

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Fuzz the table state machine with cargo-fuzz (nightly)"
+#MISE description="Fuzz the shared-memory table and Anubis redirect parser"
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cargo="${CARGO:-cargo}"
 rustc="${RUSTC:-rustc}"
 seconds="${FUZZ_TIME:-60}"
+targets="${FUZZ_TARGETS:-table anubis-redirect}"
 
 # AddressSanitizer, which cargo-fuzz turns on, is incompatible with a
 # statically linked libc: the target is named explicitly instead of letting
@@ -25,8 +26,14 @@ fi
 # The corpus and the artefacts live below `rust/target` (ignored by git), the
 # `CARGO_TARGET_DIR` keeps the build of the fuzz crate out of the normal one.
 export CARGO_TARGET_DIR="${FUZZ_DIR:-$root/rust/target/fuzz}"
-corpus="$root/rust/target/fuzz-corpus/table"
-mkdir -p "$corpus"
-
+# LeakSanitizer needs ptrace, which many CI sandboxes disallow; leaks are
+# covered by the valgrind task instead.
+export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 cd "$root/rust"
-exec "$cargo" +nightly fuzz run table "$corpus" --target "$host" -- -max_total_time="$seconds"
+
+for target in $targets; do
+    corpus="$root/rust/target/fuzz-corpus/$target"
+    mkdir -p "$corpus"
+    "$cargo" +nightly fuzz run "$target" "$corpus" \
+        --target "$host" -- -max_total_time="$seconds"
+done

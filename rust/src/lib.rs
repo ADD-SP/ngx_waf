@@ -15,6 +15,7 @@
 // internal.
 mod abi;
 mod action;
+mod anubis_redirect;
 mod cc;
 mod check;
 mod config;

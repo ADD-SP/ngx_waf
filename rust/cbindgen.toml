@@ -46,6 +46,9 @@ exclude = [
 ]
 include = [
     "NgxWafStringView",
+    "NgxWafAnubisRedirectInput",
+    "NgxWafAnubisRedirectOutput",
+    "NgxWafAnubisRedirectStatus",
     "NgxWafHeaderView",
     "NgxWafModSecurityRequestView",
     "NgxWafRequestView",
@@ -58,6 +61,7 @@ include = [
     "NgxWafSharedMemoryCallbacks",
     "ngx_waf_version",
     "ngx_waf_string_free",
+    "ngx_waf_anubis_redirect_normalize",
     "ngx_waf_main_configuration_create",
     "ngx_waf_main_configuration_free",
     "ngx_waf_location_configuration_create",
@@ -83,6 +87,9 @@ include = [
 
 [export.rename]
 "NgxWafStringView" = "ngx_waf_string_view_t"
+"NgxWafAnubisRedirectInput" = "ngx_waf_anubis_redirect_input_t"
+"NgxWafAnubisRedirectOutput" = "ngx_waf_anubis_redirect_output_t"
+"NgxWafAnubisRedirectStatus" = "ngx_waf_anubis_redirect_status"
 "NgxWafHeaderView" = "ngx_waf_header_view_t"
 "NgxWafModSecurityRequestView" = "ngx_waf_modsecurity_request_view_t"
 "NgxWafRequestView" = "ngx_waf_request_view_t"
