@@ -329,6 +329,7 @@ python3 "$root/test/e2e/anubis-solve.py" \
     --host example.test \
     --client 203.0.113.12 \
     --base-prefix /base \
+    --expect-difficulty 4 \
     --protected '/wp-login.php'
 ok "challenge keeps the path-specific policy rule"
 
