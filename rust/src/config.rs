@@ -49,6 +49,7 @@ impl MainConfiguration {
 /// The inspection identifiers that `waf_priority` can reorder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CheckKind {
+    Anubis,
     Cc,
     UnderAttack,
     Captcha,
@@ -60,6 +61,7 @@ impl CheckKind {
     fn parse(name: &[u8]) -> Option<CheckKind> {
         let name = String::from_utf8_lossy(name).to_ascii_lowercase();
         Some(match name.as_str() {
+            "anubis" => CheckKind::Anubis,
             "cc" => CheckKind::Cc,
             "under-attack" => CheckKind::UnderAttack,
             "captcha" => CheckKind::Captcha,
@@ -71,13 +73,43 @@ impl CheckKind {
 }
 
 /// The default order of `check_proc[]`, without the implicit first item.
-pub const DEFAULT_PRIORITY: [CheckKind; 5] = [
+pub const DEFAULT_PRIORITY: [CheckKind; 6] = [
     CheckKind::VerifyBot,
     CheckKind::Cc,
     CheckKind::Captcha,
     CheckKind::UnderAttack,
+    CheckKind::Anubis,
     CheckKind::ModSecurity,
 ];
+
+/// What `waf_anubis` does when Anubis cannot give a verdict.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AnubisErrorPolicy {
+    #[default]
+    Allow,
+    Deny,
+}
+
+/// The `waf_anubis` configuration.
+#[derive(Debug, Default)]
+pub struct AnubisConfiguration {
+    pub enabled: Option<bool>,
+    pub url: Vec<u8>,
+    /// The path Anubis is mounted under, without a trailing slash.
+    pub base_path: Vec<u8>,
+    pub on_error: Option<AnubisErrorPolicy>,
+}
+
+impl AnubisConfiguration {
+    fn merge(&mut self, parent: &Self) {
+        self.enabled = self.enabled.or(parent.enabled);
+        if self.url.is_empty() {
+            self.url = parent.url.clone();
+            self.base_path = parent.base_path.clone();
+        }
+        self.on_error = self.on_error.or(parent.on_error);
+    }
+}
 
 /// What an inspection does once it matched.
 ///
@@ -493,6 +525,7 @@ pub struct LocationConfiguration {
     pub verify_bot: VerifyBotConfiguration,
     pub under_attack: UnderAttackConfiguration,
     pub captcha: CaptchaConfiguration,
+    pub anubis: AnubisConfiguration,
     pub modsecurity: ModSecurityConfiguration,
     pub action: ActionConfiguration,
     pub block_page: Rc<Vec<u8>>,
@@ -523,6 +556,7 @@ impl Default for LocationConfiguration {
             verify_bot: VerifyBotConfiguration::default(),
             under_attack: UnderAttackConfiguration::default(),
             captcha: CaptchaConfiguration::default(),
+            anubis: AnubisConfiguration::default(),
             modsecurity: ModSecurityConfiguration::default(),
             action: ActionConfiguration::default(),
             block_page: Rc::new(Vec::new()),
@@ -602,6 +636,7 @@ pub fn directive(
         b"waf_priority" => directive_priority(conf, args),
         b"waf_under_attack" => directive_under_attack(conf, args),
         b"waf_captcha" => directive_captcha(main, conf, args),
+        b"waf_anubis" => directive_anubis(conf, args),
         b"waf_verify_bot" => directive_verify_bot(conf, args),
         b"waf_action" => directive_action(main, conf, args),
         b"waf_block_page" => directive_block_page(conf, args),
@@ -983,6 +1018,110 @@ fn directive_captcha(
     Ok(())
 }
 
+fn anubis_url_parts(value: &[u8]) -> Option<Vec<u8>> {
+    if value.is_empty()
+        || value
+            .iter()
+            .any(|byte| byte.is_ascii_control() || *byte == b' ' || *byte == b'\\')
+        || value.iter().any(|byte| matches!(*byte, b'?' | b'#'))
+    {
+        return None;
+    }
+
+    let (authority, path) = if value
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"http://"))
+    {
+        (&value[7..], &b""[..])
+    } else if value
+        .get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"https://"))
+    {
+        (&value[8..], &b""[..])
+    } else {
+        return None;
+    };
+
+    let slash = authority.iter().position(|byte| *byte == b'/');
+    let (host, path) = match slash {
+        Some(index) => (&authority[..index], &authority[index..]),
+        None => (authority, path),
+    };
+
+    if host.is_empty() || host.contains(&b'@') {
+        return None;
+    }
+
+    if path.is_empty() || path == b"/" {
+        return Some(Vec::new());
+    }
+    if path[0] != b'/' || path.contains(&b'?') {
+        return None;
+    }
+
+    let mut base = path;
+    while base.len() > 1 && base.ends_with(b"/") {
+        base = &base[..base.len() - 1];
+    }
+    if base
+        .split(|byte| *byte == b'/')
+        .any(|part| part == b"." || part == b"..")
+    {
+        return None;
+    }
+
+    Some(base.to_vec())
+}
+
+/// The `waf_anubis` configuration.
+fn directive_anubis(conf: &mut LocationConfiguration, args: &[Vec<u8>]) -> Result<(), String> {
+    conf.anubis.enabled = None;
+    conf.anubis.on_error = None;
+
+    let first = args.first().map(Vec::as_slice).unwrap_or(b"");
+    if starts_with_keyword(first, "on") {
+        conf.anubis.enabled = Some(true);
+    } else if starts_with_keyword(first, "off") {
+        conf.anubis.enabled = Some(false);
+        if args.len() != 1 {
+            return Err(INVALID.to_string());
+        }
+        return Ok(());
+    } else {
+        return Err(INVALID.to_string());
+    }
+
+    for arg in &args[1..] {
+        let (key, value) = key_value(arg).ok_or_else(|| INVALID.to_string())?;
+        match key.as_slice() {
+            b"url" => {
+                let base_path = anubis_url_parts(&value).ok_or_else(|| INVALID.to_string())?;
+                conf.anubis.url = value;
+                conf.anubis.base_path = base_path;
+            }
+            b"on_error" => {
+                conf.anubis.on_error = Some(if eq_ci(&value, "allow") {
+                    AnubisErrorPolicy::Allow
+                } else if eq_ci(&value, "deny") {
+                    AnubisErrorPolicy::Deny
+                } else {
+                    return Err(INVALID.to_string());
+                });
+            }
+            _ => return Err(INVALID.to_string()),
+        }
+    }
+
+    if conf.anubis.url.is_empty() {
+        return Err("ngx_waf: you must set the parameter [url]".to_string());
+    }
+    if conf.anubis.on_error.is_none() {
+        conf.anubis.on_error = Some(AnubisErrorPolicy::Allow);
+    }
+
+    Ok(())
+}
+
 /// Replace the single `%V` placeholder, the equivalent of
 /// `ngx_sprintf(buf, template, &sitekey)`.
 fn render_template(template: &[u8], sitekey: &[u8]) -> Vec<u8> {
@@ -1195,6 +1334,7 @@ pub fn merge(
     child.verify_bot.merge(&parent.verify_bot);
     child.under_attack.merge(&parent.under_attack);
     child.captcha.merge(&parent.captcha);
+    child.anubis.merge(&parent.anubis);
     child.modsecurity.merge(&parent.modsecurity);
 
     // Policies: materialise the defaults on the parent (it serves requests
@@ -1421,21 +1561,81 @@ mod tests {
             Err("ngx_waf: you must specify the priority of all inspections".to_string())
         );
 
-        let full = format!("{order} MODSECURITY");
+        let legacy = format!("{order} MODSECURITY");
+        assert_eq!(
+            dir(&mut conf, "waf_priority", &[&legacy]),
+            Err("ngx_waf: you must specify the priority of all inspections".to_string())
+        );
+
+        let full = format!("{order} ANUBIS MODSECURITY");
         dir(&mut conf, "waf_priority", &[&full]).unwrap();
         let priority = conf.priority.as_ref().expect("configured");
         assert_eq!(priority, &DEFAULT_PRIORITY);
 
-        let bad = format!("{order} BAD");
+        let bad = format!("{order} ANUBIS BAD");
         assert_eq!(
             dir(&mut conf, "waf_priority", &[&bad]),
             Err("ngx_waf: invalid value [BAD]".to_string())
         );
-        let duplicate = "VERIFY-BOT CC CAPTCHA UNDER-ATTACK CC";
+        let duplicate = "VERIFY-BOT CC CAPTCHA UNDER-ATTACK ANUBIS CC";
         assert_eq!(
             dir(&mut conf, "waf_priority", &[duplicate]),
             Err("ngx_waf: duplicate inspection [CC]".to_string())
         );
+    }
+
+    #[test]
+    fn anubis_validation() {
+        let mut conf = LocationConfiguration::default();
+        assert!(dir(&mut conf, "waf_anubis", &["on"]).is_err());
+        assert!(dir(&mut conf, "waf_anubis", &["bad"]).is_err());
+        assert!(dir(
+            &mut conf,
+            "waf_anubis",
+            &["on", "url=https://anubis.example/path", "on_error=bad"]
+        )
+        .is_err());
+        assert!(dir(
+            &mut conf,
+            "waf_anubis",
+            &["on", "url=https://anubis.example/path?query=1"]
+        )
+        .is_err());
+        assert!(dir(
+            &mut conf,
+            "waf_anubis",
+            &["on", "url=https://user@anubis.example"]
+        )
+        .is_err());
+        assert!(dir(
+            &mut conf,
+            "waf_anubis",
+            &["on", "url=https://anubis.example/a/../b"]
+        )
+        .is_err());
+
+        dir(
+            &mut conf,
+            "waf_anubis",
+            &["on", "url=https://anubis.example:8923/base/"],
+        )
+        .unwrap();
+        assert_eq!(conf.anubis.enabled, Some(true));
+        assert_eq!(conf.anubis.url, b"https://anubis.example:8923/base/");
+        assert_eq!(conf.anubis.base_path, b"/base");
+        assert_eq!(conf.anubis.on_error, Some(AnubisErrorPolicy::Allow));
+
+        dir(
+            &mut conf,
+            "waf_anubis",
+            &["on", "url=http://127.0.0.1:8923", "on_error=deny"],
+        )
+        .unwrap();
+        assert!(conf.anubis.base_path.is_empty());
+        assert_eq!(conf.anubis.on_error, Some(AnubisErrorPolicy::Deny));
+
+        dir(&mut conf, "waf_anubis", &["off"]).unwrap();
+        assert_eq!(conf.anubis.enabled, Some(false));
     }
 
     #[test]
@@ -1785,7 +1985,7 @@ mod tests {
         dir(
             &mut parent,
             "waf_priority",
-            &["VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY"],
+            &["VERIFY-BOT CC CAPTCHA UNDER-ATTACK ANUBIS MODSECURITY"],
         )
         .unwrap();
         let mut child = LocationConfiguration::default();
@@ -1914,6 +2114,12 @@ mod tests {
                 }),
                 ..ActionConfiguration::default()
             },
+            anubis: AnubisConfiguration {
+                enabled: Some(true),
+                url: b"https://anubis.example/base".to_vec(),
+                base_path: b"/base".to_vec(),
+                on_error: Some(AnubisErrorPolicy::Deny),
+            },
             ..LocationConfiguration::default()
         };
 
@@ -1931,6 +2137,10 @@ mod tests {
         assert_eq!(child.under_attack.enabled, Some(true));
         assert_eq!(child.modsecurity.enabled, Some(true));
         assert_eq!(child.action.captcha_zone, parent.action.captcha_zone);
+        assert_eq!(child.anubis.enabled, Some(true));
+        assert_eq!(child.anubis.url, b"https://anubis.example/base");
+        assert_eq!(child.anubis.base_path, b"/base");
+        assert_eq!(child.anubis.on_error, Some(AnubisErrorPolicy::Deny));
     }
 
     #[test]

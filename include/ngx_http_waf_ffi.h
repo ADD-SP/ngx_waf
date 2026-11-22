@@ -77,6 +77,14 @@ typedef enum ngx_waf_content_type {
 } ngx_waf_content_type;
 
 /**
+ * The HTTP request a parked inspection asks the glue to perform.
+ */
+typedef enum NgxWafHttpRequestKind {
+    NGX_WAF_HTTP_REQUEST_KIND_CAPTCHA = 0,
+    NGX_WAF_HTTP_REQUEST_KIND_ANUBIS = 1,
+} NgxWafHttpRequestKind;
+
+/**
  * The events that wake a parked machine up.
  */
 typedef enum ngx_waf_event_kind {
@@ -96,6 +104,10 @@ typedef enum ngx_waf_event_kind {
      * The captcha provider could not be reached.
      */
     NGX_WAF_EVENT_KIND_HTTP_FAILED = 3,
+    /**
+     * The status line of an Anubis auth check was read.
+     */
+    NGX_WAF_EVENT_KIND_HTTP_STATUS = 4,
 } ngx_waf_event_kind;
 
 /**
@@ -190,6 +202,10 @@ typedef struct ngx_waf_request_view_t {
     struct ngx_waf_string_view_t ip;
     enum ngx_waf_http_method method;
     struct ngx_waf_string_view_t uri;
+    /**
+     * The request target as received, including the query string.
+     */
+    struct ngx_waf_string_view_t unparsed_uri;
     struct ngx_waf_string_view_t user_agent;
     /**
      * One view per `Cookie` header, the raw header values.
@@ -271,6 +287,7 @@ typedef struct ngx_waf_pending_t {
     /**
      * `HTTP_REQUEST`: the request the glue has to perform.
      */
+    enum NgxWafHttpRequestKind request_kind;
     struct ngx_waf_string_view_t url;
     struct ngx_waf_string_view_t body;
 } ngx_waf_pending_t;
@@ -305,6 +322,10 @@ typedef struct ngx_waf_event_t {
      * and the glue reads on and feeds the bytes again.
      */
     bool eof;
+    /**
+     * `HTTP_STATUS`: the status code of an Anubis auth check.
+     */
+    uint16_t status;
 } ngx_waf_event_t;
 
 /**
@@ -367,6 +388,11 @@ struct ngx_waf_zone_references_t ngx_waf_location_configuration_zone_references(
  * request; it is empty when no `waf_captcha` was configured.
  */
 struct ngx_waf_string_view_t ngx_waf_location_configuration_captcha_api(const struct ngx_waf_location_configuration_t *conf);
+
+/**
+ * The configured `waf_anubis` URL, empty when Anubis is off or unset.
+ */
+struct ngx_waf_string_view_t ngx_waf_location_configuration_anubis_url(const struct ngx_waf_location_configuration_t *conf);
 
 /**
  * Apply one directive, returns NULL on success or an error message.

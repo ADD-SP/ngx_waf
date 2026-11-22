@@ -23,12 +23,14 @@
 * 状态化防护：内置 CC、CAPTCHA、Under Attack 和友好爬虫验证，不把这些流程与正则规则混在一起。
 * 友好爬虫验证：支持验证 Google、Bing、Baidu 和 Yandex 的爬虫并自动放行，避免错误拦截。
 * 验证码：支持 hCaptcha、Cloudflare Turnstile、reCAPTCHAv2 和 reCAPTCHAv3。
+* Anubis：一条指令即可接入 [Anubis](https://github.com/TecharoHQ/anubis) 工作证明挑战，并由模块同源代理挑战资源。
 
 ## 功能
 
 * [ModSecurity](https://github.com/SpiderLabs/ModSecurity) 是唯一的请求匹配与阻断规则引擎；IP、URL、Header、参数和 Body 规则均使用 SecRule。
-* `waf_priority` 可在 `VERIFY-BOT`、`CC`、`CAPTCHA`、`UNDER-ATTACK`、`MODSECURITY` 五项之间调整顺序。
+* `waf_priority` 可在 `VERIFY-BOT`、`CC`、`CAPTCHA`、`UNDER-ATTACK`、`ANUBIS`、`MODSECURITY` 六项之间调整顺序。
 * 支持开启验证码（CAPTCHA)，支持 [hCaptcha](https://www.hcaptcha.com/)、[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)、[reCAPTCHAv2](https://developers.google.com/recaptcha) 和 [reCAPTCHAv3](https://developers.google.com/recaptcha)。
+* [Anubis](https://github.com/TecharoHQ/anubis) 集成：模块负责 auth check，并透明代理 `/.within.website/` 到 Anubis，用户无需自行编写 `auth_request`、`proxy_pass` 或重定向 location。
 * 支持识别友好爬虫（如 BaiduSpider）并自动放行（基于 User-Agent 和 IP 的识别）。
 * CC 防御，超出限制后自动拉黑对应 IP 一段时间或者使用验证码做人机识别。
 * Under Attack 五秒等待页。
@@ -40,8 +42,30 @@
 ```nginx
 waf on;
 waf_modsecurity on file=/etc/nginx/modsec/main.conf;
-waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY";
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK ANUBIS MODSECURITY";
 ```
+
+### Anubis
+
+Anubis 需要以 subrequest 模式运行，即设置 `TARGET=" "`，并配置
+`status_codes.DENY: 403`；建议不要设置 `PUBLIC_URL`。如果 Anubis 挂载在
+子路径下，设置相同的 `BASE_PREFIX`，并在 URL 中提供该路径：
+
+```nginx
+waf on;
+waf_anubis on url=https://anubis.internal:8923/base;
+```
+
+默认行为是 `on_error=allow`。如果 Anubis 不可达或返回无法使用的鉴权响应时
+需要拒绝请求，使用：
+
+```nginx
+waf_anubis on url=https://anubis.internal:8923 on_error=deny;
+```
+
+`waf_anubis` 只允许放在 `http` 与 `server` 作用域。启用后，
+`<BASE_PREFIX>/.within.website/` 保留给 Anubis 挑战流量。已有的
+`waf_priority` 配置必须增加第六项 `ANUBIS`。
 
 ## 使用文档
 
@@ -63,9 +87,14 @@ mise bootstrap -y  # 安装系统依赖与固定版本的 cbindgen
 mise run build     # 在 test/nginx-<version> 中构建带静态模块的 nginx
 mise run test      # Rust 单元测试与 nginx 集成测试
 mise run test-e2e  # 自研端到端检查，单 worker 与四 worker 各跑一轮
+mise run test-anubis  # 真实 Anubis Docker 挑战测试（需要 Docker）
+mise run test-anubis-browser  # 真实 Chromium 挑战与认证复用测试
 mise run coverage  # Rust 单元测试的覆盖率，每个模块一行
 mise run test-valgrind  # 在 valgrind 下跑模板套件与端到端检查
 ```
+
+浏览器任务还需要 Python Playwright 及其 Chromium；CI 会自动安装，并在浏览器流程
+失败时上传截图。
 
 `mise run doctor` 检查 cargo、rustc 与 cbindgen 是否在 PATH 上。需要 stable
 Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如

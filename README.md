@@ -21,12 +21,14 @@ Handy, High performance Nginx firewall module.
 * Stateful protection: CC, CAPTCHA, Under Attack and friendly crawler verification stay separate from regular-expression rules.
 * Friendly crawler verification: Supports verifying Google, Bing, Baidu and Yandex crawlers and allowing them automatically to avoid false positives.
 * Captcha: Supports hCaptcha, Cloudflare Turnstile, reCAPTCHAv2 and reCAPTCHAv3.
+* Anubis: one directive adds the [Anubis](https://github.com/TecharoHQ/anubis) proof-of-work challenge, including its same-origin challenge assets.
 
 ## Features
 
 * [ModSecurity](https://github.com/SpiderLabs/ModSecurity) is the only request-matching and blocking rule engine. IP, URL, header, argument and body rules are SecRules.
-* `waf_priority` orders `VERIFY-BOT`, `CC`, `CAPTCHA`, `UNDER-ATTACK` and `MODSECURITY`.
+* `waf_priority` orders `VERIFY-BOT`, `CC`, `CAPTCHA`, `UNDER-ATTACK`, `ANUBIS` and `MODSECURITY`.
 * Support for enabling CAPTCHAs, including [hCaptcha](https://www.hcaptcha.com/), [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/), [reCAPTCHAv2](https://developers.google.com/recaptcha) and [reCAPTCHAv3](https://developers.google.com/recaptcha).
+* [Anubis](https://github.com/TecharoHQ/anubis) integration: the module performs the auth check and transparently proxies `/.within.website/` to Anubis, so users do not add `auth_request`, `proxy_pass`, or redirect locations themselves.
 * Support authentication-friendly crawlers (based on user agent and IP identification) to avoid blocking of these crawlers (e.g. GoogleBot).
 * CC protection, if the request rate exceeds the limit, the IP will be automatically banned for a period of time, or use CAPTCHA to do human identification and allow it if successful.
 * Under Attack wait page.
@@ -38,8 +40,30 @@ are removed. `waf_modsecurity on` requires at least one `file=`, or a matching
 ```nginx
 waf on;
 waf_modsecurity on file=/etc/nginx/modsec/main.conf;
-waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY";
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK ANUBIS MODSECURITY";
 ```
+
+### Anubis
+
+Run Anubis in subrequest mode with `TARGET=" "`, configure
+`status_codes.DENY: 403`, and leave `PUBLIC_URL` unset.  If Anubis is mounted
+under a path, set its `BASE_PREFIX` and use the same path in the URL:
+
+```nginx
+waf on;
+waf_anubis on url=https://anubis.internal:8923/base;
+```
+
+The default is `on_error=allow`.  Use `on_error=deny` to answer `503` when
+Anubis cannot be reached or returns an unusable auth response:
+
+```nginx
+waf_anubis on url=https://anubis.internal:8923 on_error=deny;
+```
+
+`waf_anubis` is allowed at `http` and `server` scope.  While enabled,
+`<BASE_PREFIX>/.within.website/` is reserved for Anubis challenge traffic.
+Existing `waf_priority` configurations must add the sixth `ANUBIS` item.
 
 ## Docs
 
@@ -62,9 +86,14 @@ mise bootstrap -y  # install the system packages and the pinned cbindgen
 mise run build     # build nginx with the static module in test/nginx-<version>
 mise run test      # the Rust unit tests and the nginx integration tests
 mise run test-e2e  # the end to end checks, with one worker and with four
+mise run test-anubis  # real Anubis Docker challenge test (requires Docker)
+mise run test-anubis-browser  # real Chromium challenge and cookie reuse test
 mise run coverage  # the Rust unit tests with coverage, one row per module
 mise run test-valgrind  # the templates and the end to end checks under valgrind
 ```
+
+The browser task additionally requires Python Playwright and its Chromium
+browser.  CI installs both and uploads a screenshot when the browser flow fails.
 
 `mise run doctor` checks that cargo, rustc and cbindgen are on PATH.  A stable
 Rust toolchain (with cargo) and the development files of libmodsecurity 3 (for

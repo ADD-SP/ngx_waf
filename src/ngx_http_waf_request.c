@@ -46,9 +46,9 @@ static void ngx_http_waf_free_check(void* data);
 
 
 /*
- * The `Location` header of a ModSecurity redirect.  `hash` stays 0: nginx
- * turns `r->headers_out.location` into the header and the body of a 3xx
- * response itself (see `ngx_http_special_response_handler()`).
+ * The `Location` header of a redirect.  Nginx handles the absolute form of a
+ * relative location itself when `absolute_redirect` is on.  Keep `hash` set
+ * so nginx emits the relative value when `absolute_redirect` is off.
  */
 static void ngx_http_waf_add_location(ngx_http_request_t* r, const ngx_waf_step_t* step) {
     ngx_table_elt_t* location;
@@ -69,7 +69,7 @@ static void ngx_http_waf_add_location(ngx_http_request_t* r, const ngx_waf_step_
     location->lowcase_key = (u_char*)"location";
     location->value.data = (u_char*) step->decision.location.data;
     location->value.len = step->decision.location.len;
-    location->hash = 0;
+    location->hash = 1;
 }
 
 
@@ -107,6 +107,16 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
     ngx_int_t rc;
 
     if (conf == NULL || conf->core == NULL) {
+        return NGX_DECLINED;
+    }
+
+    /*
+     * `/.within.website/` belongs to Anubis whenever waf_anubis is enabled.
+     * It has to bypass every WAF inspection, including the Anubis auth check,
+     * or a challenge would challenge itself.
+     */
+    if (ngx_http_waf_is_anubis_path(r, conf)) {
+        r->content_handler = ngx_http_waf_anubis_proxy_handler;
         return NGX_DECLINED;
     }
 
@@ -547,6 +557,8 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     req.method = ngx_http_waf_method(r->method);
     req.uri.data = r->uri.data;
     req.uri.len = r->uri.len;
+    req.unparsed_uri.data = r->unparsed_uri.data;
+    req.unparsed_uri.len = r->unparsed_uri.len;
 
     if (r->headers_in.user_agent != NULL) {
         req.user_agent.data = r->headers_in.user_agent->value.data;

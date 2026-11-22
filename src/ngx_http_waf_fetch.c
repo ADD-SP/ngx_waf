@@ -1,5 +1,5 @@
 /*
- * The client that reaches the captcha provider: a non blocking request
+ * The client that reaches captcha providers and Anubis: non blocking requests
  * built on the event loop and the TLS machinery of nginx.
  */
 
@@ -16,6 +16,10 @@ static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc);
 
 static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
     struct sockaddr* sockaddr, socklen_t socklen);
+
+
+static ngx_int_t ngx_http_waf_fetch_anubis_head(ngx_http_request_t* r,
+    ngx_http_waf_ctx_t* ctx);
 
 
 /* -------------------------------------------------------------------------
@@ -285,8 +289,8 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
 
-    if (conf == NULL
-        || ngx_http_waf_fetch_check_name(c, &conf->captcha_api.host) != NGX_OK)
+    if (conf == NULL || ctx->fetch.api == NULL
+        || ngx_http_waf_fetch_check_name(c, &ctx->fetch.api->host) != NGX_OK)
     {
         ngx_log_error(NGX_LOG_ERR, c->log, 0,
                       "ngx_waf: the captcha provider certificate does not match "
@@ -308,11 +312,86 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
 }
 
 
+static ngx_int_t ngx_http_waf_fetch_status(ngx_http_request_t* r,
+    ngx_http_waf_ctx_t* ctx, uint16_t status)
+{
+    ngx_waf_event_t event;
+
+    ngx_memzero(&event, sizeof(ngx_waf_event_t));
+    event.kind = NGX_WAF_EVENT_KIND_HTTP_STATUS;
+    event.status = status;
+
+    ngx_http_waf_resume(r, ctx, &event);
+    ngx_http_waf_fetch_settle(ctx);
+    ngx_http_waf_fetch_wake(r, ctx);
+
+    return NGX_OK;
+}
+
+
+static void ngx_http_waf_remove_client_risk_headers(ngx_http_request_t* r)
+{
+    ngx_list_part_t* part = &r->headers_in.headers.part;
+    ngx_table_elt_t* header = part->elts;
+    ngx_uint_t i;
+
+    for ( ;; ) {
+        for (i = 0; i < part->nelts; i++) {
+            if (header[i].key.len >= sizeof("X-Anubis-") - 1
+                && ngx_strncasecmp(header[i].key.data, (u_char*) "X-Anubis-",
+                                   sizeof("X-Anubis-") - 1) == 0)
+            {
+                header[i].hash = 0;
+            }
+        }
+        if (part->next == NULL) {
+            break;
+        }
+        part = part->next;
+        header = part->elts;
+    }
+}
+
+
+static ngx_int_t ngx_http_waf_fetch_anubis_head(ngx_http_request_t* r,
+    ngx_http_waf_ctx_t* ctx)
+{
+    ngx_buf_t* b = ctx->fetch.response;
+    ngx_buf_t probe;
+    ngx_http_status_t status;
+    u_char* end = NULL;
+    u_char* p;
+    ngx_int_t rc;
+
+    for (p = b->pos; p + 3 < b->last; p++) {
+        if (p[0] == CR && p[1] == LF && p[2] == CR && p[3] == LF) {
+            end = p + 4;
+            break;
+        }
+    }
+
+    if (end == NULL) {
+        return b->last == b->end ? NGX_ERROR : NGX_AGAIN;
+    }
+
+    probe = *b;
+    probe.last = end;
+    ngx_memzero(&status, sizeof(ngx_http_status_t));
+    rc = ngx_http_parse_status_line(r, &probe, &status);
+    if (rc != NGX_OK || status.code < 100 || status.code > 599) {
+        return NGX_ERROR;
+    }
+
+    return ngx_http_waf_fetch_status(r, ctx, (uint16_t) status.code);
+}
+
+
 static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
     ngx_connection_t* c = rev->data;
     ngx_http_request_t* r = c->data;
     ngx_http_waf_ctx_t* ctx = ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_buf_t* b;
+    ngx_int_t rc;
     ssize_t n;
 
     if (ctx == NULL || ctx->step == NULL || ctx->fetch.response == NULL || ctx->fetch.finished) {
@@ -332,6 +411,17 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
         if (n > 0) {
             b->last += n;
 
+            if (ctx->fetch.anubis) {
+                rc = ngx_http_waf_fetch_anubis_head(r, ctx);
+                if (rc == NGX_AGAIN) {
+                    continue;
+                }
+                if (rc == NGX_ERROR) {
+                    ngx_http_waf_fetch_failed(r, ctx);
+                }
+                return;
+            }
+
             if (b->last == b->end) {
                 /* a provider answer bigger than the buffer is not one we can use */
                 ngx_http_waf_fetch_failed(r, ctx);
@@ -347,6 +437,10 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
         }
 
         if (n == 0) {
+            if (ctx->fetch.anubis) {
+                ngx_http_waf_fetch_failed(r, ctx);
+                return;
+            }
             /*
              * The provider is done (the request asked to close): the machine
              * settles the request, an answer it cannot read included.  A step
@@ -459,6 +553,8 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
 static ngx_int_t ngx_http_waf_start_http_peer(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
     ngx_http_waf_loc_conf_t* conf)
 {
+    (void) conf;
+
     if (ctx->fetch.resolved_valid) {
         struct sockaddr* resolved = ctx->fetch.resolved_sockaddr;
         socklen_t resolved_len = ctx->fetch.resolved_socklen;
@@ -477,12 +573,122 @@ static ngx_int_t ngx_http_waf_start_http_peer(ngx_http_request_t* r, ngx_http_wa
         return NGX_OK;
     }
 
-    if (conf->captcha_api.resolved) {
-        return ngx_http_waf_fetch_connect(r, ctx, conf->captcha_api.sockaddr,
-                                          conf->captcha_api.socklen);
+    if (ctx->fetch.api->resolved) {
+        return ngx_http_waf_fetch_connect(r, ctx, ctx->fetch.api->sockaddr,
+                                          ctx->fetch.api->socklen);
     }
 
     return NGX_AGAIN;
+}
+
+
+ngx_str_t ngx_http_waf_original_host(ngx_http_request_t* r)
+{
+    if (r->headers_in.host != NULL) {
+        return r->headers_in.host->value;
+    }
+    return r->headers_in.server;
+}
+
+
+ngx_uint_t ngx_http_waf_forward_header(ngx_table_elt_t* header)
+{
+    ngx_str_t name = header->key;
+    static const char* skipped[] = {
+        "host",
+        "connection",
+        "keep-alive",
+        "proxy-connection",
+        "content-length",
+        "transfer-encoding",
+        "te",
+        "trailer",
+        "upgrade",
+        "expect",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "forwarded",
+        NULL
+    };
+    ngx_uint_t i;
+
+    for (i = 0; skipped[i] != NULL; i++) {
+        size_t len = ngx_strlen(skipped[i]);
+        if (name.len == len
+            && ngx_strncasecmp(name.data, (u_char*) skipped[i], len) == 0)
+        {
+            return 0;
+        }
+    }
+
+    if (name.len == 9 && ngx_strncasecmp(name.data, (u_char*) "x-real-ip", 9) == 0) {
+        return 0;
+    }
+    if (name.len == 15 && ngx_strncasecmp(name.data, (u_char*) "x-forwarded-for", 15) == 0) {
+        return 0;
+    }
+    if (name.len == 14 && ngx_strncasecmp(name.data, (u_char*) "x-original-uri", 14) == 0) {
+        return 0;
+    }
+    if (name.len >= 12 && ngx_strncasecmp(name.data, (u_char*) "x-forwarded-", 12) == 0) {
+        return 0;
+    }
+    if (name.len >= 9 && ngx_strncasecmp(name.data, (u_char*) "x-anubis-", 9) == 0) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+size_t ngx_http_waf_forwarded_header_size(ngx_http_request_t* r)
+{
+    ngx_list_part_t* part = &r->headers_in.headers.part;
+    ngx_table_elt_t* header = part->elts;
+    ngx_uint_t i;
+    size_t len = 0;
+
+    for ( ;; ) {
+        for (i = 0; i < part->nelts; i++) {
+            if (header[i].hash && ngx_http_waf_forward_header(&header[i])) {
+                len += header[i].key.len + header[i].value.len + 4;
+            }
+        }
+        if (part->next == NULL) {
+            break;
+        }
+        part = part->next;
+        header = part->elts;
+    }
+
+    return len;
+}
+
+
+u_char* ngx_http_waf_copy_forwarded_headers(ngx_http_request_t* r, u_char* p)
+{
+    ngx_list_part_t* part = &r->headers_in.headers.part;
+    ngx_table_elt_t* header = part->elts;
+    ngx_uint_t i;
+
+    for ( ;; ) {
+        for (i = 0; i < part->nelts; i++) {
+            if (!header[i].hash || !ngx_http_waf_forward_header(&header[i])) {
+                continue;
+            }
+            p = ngx_cpymem(p, header[i].key.data, header[i].key.len);
+            *p++ = ':'; *p++ = ' ';
+            p = ngx_cpymem(p, header[i].value.data, header[i].value.len);
+            *p++ = CR; *p++ = LF;
+        }
+        if (part->next == NULL) {
+            break;
+        }
+        part = part->next;
+        header = part->elts;
+    }
+
+    return p;
 }
 
 
@@ -501,14 +707,14 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
 
     ctx->fetch.in_drive = 1;
 
-    if (conf == NULL || !conf->captcha_api.configured) {
+    if (conf == NULL) {
         /*
          * `waf_captcha` prepares the endpoint while the configuration is read,
          * so this only happens when a request reaches the provider without a
          * captcha configuration at all.
          */
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-            "ngx_waf: the captcha provider endpoint is not configured");
+            "ngx_waf: the Anubis or captcha endpoint is not configured");
         ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
@@ -520,8 +726,45 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
      * when the resolver of the enclosing context answered from its cache.
      */
     if (ctx->fetch.request == NULL) {
-        len = conf->captcha_api.uri.len + conf->captcha_api.host.len
-            + step->pending.body.len + 512;
+        if (step->pending.request_kind == NGX_WAF_HTTP_REQUEST_KIND_ANUBIS) {
+            /*
+             * Anubis only emits its risk headers in reverse-proxy mode.  A
+             * client-supplied value must never reach the backend, whether the
+             * auth check passes, fails, or is allowed through on error.
+             */
+            ngx_http_waf_remove_client_risk_headers(r);
+            if (!conf->anubis_api.configured) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "ngx_waf: the Anubis endpoint is not configured");
+                ngx_http_waf_fetch_failed(r, ctx);
+                ctx->fetch.in_drive = 0;
+                return NGX_OK;
+            }
+            ctx->fetch.api = &conf->anubis_api;
+            ctx->fetch.anubis = 1;
+        } else {
+            if (!conf->captcha_api.configured) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "ngx_waf: the captcha endpoint is not configured");
+                ngx_http_waf_fetch_failed(r, ctx);
+                ctx->fetch.in_drive = 0;
+                return NGX_OK;
+            }
+            ctx->fetch.api = &conf->captcha_api;
+            ctx->fetch.anubis = 0;
+        }
+
+        if (ctx->fetch.anubis) {
+            ngx_str_t host = ngx_http_waf_original_host(r);
+            len = ctx->fetch.api->uri.len + host.len
+                + ngx_http_waf_forwarded_header_size(r)
+                + r->connection->addr_text.len
+                + r->unparsed_uri.len * 2
+                + sizeof(NGX_HTTP_WAF_ANUBIS_CHECK_PATH) + 1024;
+        } else {
+            len = ctx->fetch.api->uri.len + ctx->fetch.api->host.len
+                + step->pending.body.len + 512;
+        }
         b = ngx_create_temp_buf(r->pool, len);
         if (b == NULL) {
             ngx_http_waf_fetch_failed(r, ctx);
@@ -530,23 +773,55 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         }
 
         p = b->last;
-        p = ngx_sprintf(p, "POST %V HTTP/1.0" CRLF, &conf->captcha_api.uri);
-        p = ngx_sprintf(p, "Host: %V" CRLF, &conf->captcha_api.host);
-        p = ngx_sprintf(p, "Content-Type: application/x-www-form-urlencoded" CRLF);
-        p = ngx_sprintf(p, "Content-Length: %uz" CRLF, step->pending.body.len);
-        p = ngx_sprintf(p, "Connection: close" CRLF CRLF);
-        if (step->pending.body.len != 0) {
-            p = ngx_cpymem(p, step->pending.body.data, step->pending.body.len);
+        if (ctx->fetch.anubis) {
+            ngx_str_t host = ngx_http_waf_original_host(r);
+            ngx_str_t proto = r->connection->ssl != NULL
+                ? (ngx_str_t) ngx_string("https")
+                : (ngx_str_t) ngx_string("http");
+
+            p = ngx_cpymem(p, "GET ", sizeof("GET ") - 1);
+            if (ctx->fetch.api->uri.len > 1) {
+                size_t base_len = ctx->fetch.api->uri.len;
+                if (ctx->fetch.api->uri.data[base_len - 1] == '/') {
+                    base_len--;
+                }
+                p = ngx_cpymem(p, ctx->fetch.api->uri.data, base_len);
+            }
+            p = ngx_cpymem(p, NGX_HTTP_WAF_ANUBIS_CHECK_PATH,
+                           sizeof(NGX_HTTP_WAF_ANUBIS_CHECK_PATH) - 1);
+            p = ngx_cpymem(p, " HTTP/1.0" CRLF, sizeof(" HTTP/1.0" CRLF) - 1);
+            p = ngx_sprintf(p, "Host: %V" CRLF, &host);
+            p = ngx_http_waf_copy_forwarded_headers(r, p);
+            p = ngx_sprintf(p, "X-Real-IP: %V" CRLF,
+                            &r->connection->addr_text);
+            p = ngx_sprintf(p, "X-Forwarded-For: %V" CRLF,
+                            &r->connection->addr_text);
+            p = ngx_sprintf(p, "X-Forwarded-Host: %V" CRLF, &host);
+            p = ngx_sprintf(p, "X-Forwarded-Proto: %V" CRLF, &proto);
+            p = ngx_sprintf(p, "X-Forwarded-Uri: %V" CRLF, &r->unparsed_uri);
+            p = ngx_sprintf(p, "X-Original-Uri: %V" CRLF, &r->unparsed_uri);
+            p = ngx_cpymem(p, "Connection: close" CRLF CRLF,
+                           sizeof("Connection: close" CRLF CRLF) - 1);
+        } else {
+            p = ngx_sprintf(p, "POST %V HTTP/1.0" CRLF, &ctx->fetch.api->uri);
+            p = ngx_sprintf(p, "Host: %V" CRLF, &ctx->fetch.api->host);
+            p = ngx_sprintf(p, "Content-Type: application/x-www-form-urlencoded" CRLF);
+            p = ngx_sprintf(p, "Content-Length: %uz" CRLF, step->pending.body.len);
+            p = ngx_sprintf(p, "Connection: close" CRLF CRLF);
+            if (step->pending.body.len != 0) {
+                p = ngx_cpymem(p, step->pending.body.data, step->pending.body.len);
+            }
         }
         b->last = p;
 
         ctx->fetch.request = b;
-        ctx->fetch.use_ssl = conf->captcha_api.use_ssl;
-        ctx->fetch.host = conf->captcha_api.host;
+        ctx->fetch.use_ssl = ctx->fetch.api->use_ssl;
+        ctx->fetch.host = ctx->fetch.api->host;
     }
 
     if (ctx->fetch.response == NULL) {
-        ctx->fetch.response = ngx_create_temp_buf(r->pool, NGX_HTTP_WAF_FETCH_BUFFER);
+        ctx->fetch.response = ngx_create_temp_buf(r->pool,
+            ctx->fetch.anubis ? 16 * 1024 : NGX_HTTP_WAF_FETCH_BUFFER);
         if (ctx->fetch.response == NULL) {
             ngx_http_waf_fetch_failed(r, ctx);
             ctx->fetch.in_drive = 0;
@@ -576,7 +851,7 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         return NGX_OK;
     }
 
-    rc->name = conf->captcha_api.host;
+    rc->name = ctx->fetch.api->host;
     rc->handler = ngx_http_waf_fetch_resolved;
     rc->data = r;
     rc->timeout = clcf->resolver_timeout;
@@ -646,12 +921,12 @@ static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc) {
 #if (NGX_HAVE_INET6)
             case AF_INET6:
                 ((struct sockaddr_in6*) ctx->fetch.resolved_sockaddr)->sin6_port =
-                    htons(conf->captcha_api.port);
+                    htons(ctx->fetch.api->port);
                 break;
 #endif
             default:
                 ((struct sockaddr_in*) ctx->fetch.resolved_sockaddr)->sin_port =
-                    htons(conf->captcha_api.port);
+                    htons(ctx->fetch.api->port);
             }
 
             ctx->fetch.resolved_socklen = socklen;
@@ -690,7 +965,6 @@ static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc) {
 static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx,
     struct sockaddr* sockaddr, socklen_t socklen)
 {
-    ngx_http_waf_loc_conf_t* conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
     ngx_peer_connection_t peer;
     ngx_connection_t* c;
     ngx_pool_cleanup_t* cln;
@@ -742,7 +1016,7 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
     cln->data = ctx;
 
     if (ctx->fetch.use_ssl) {
-        if (ngx_ssl_create_connection(&conf->captcha_api.ssl, c,
+        if (ngx_ssl_create_connection(&ctx->fetch.api->ssl, c,
                                       NGX_SSL_BUFFER|NGX_SSL_CLIENT) != NGX_OK)
         {
             ctx->fetch.connection = c;
@@ -750,7 +1024,7 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
             return NGX_OK;
         }
         c->sendfile = 0;
-        if (SSL_set_tlsext_host_name(c->ssl->connection, (char*) conf->captcha_api.host.data)
+        if (SSL_set_tlsext_host_name(c->ssl->connection, (char*) ctx->fetch.api->host.data)
             == 0)
         {
             ngx_http_waf_fetch_failed(r, ctx);

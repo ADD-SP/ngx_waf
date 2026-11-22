@@ -5,8 +5,15 @@
   Cookie/POST lists and `waf_action blacklist=...` are removed. CC, CAPTCHA,
   Under Attack, friendly crawler verification and ModSecurity remain.
   `waf_priority` now requires each of `VERIFY-BOT`, `CC`, `CAPTCHA`,
-  `UNDER-ATTACK` and `MODSECURITY` exactly once. `waf_modsecurity on` requires
-  a rule source. No compatibility aliases or rule-file converter are provided.
+  `UNDER-ATTACK`, `ANUBIS` and `MODSECURITY` exactly once.
+  `waf_modsecurity on` requires a rule source. No compatibility aliases or
+  rule-file converter are provided.
+* Add one-directive [Anubis](https://github.com/TecharoHQ/anubis) integration:
+  `waf_anubis on url=...` performs the auth check and transparently proxies
+  the reserved same-origin `/.within.website/` challenge paths. URL base
+  paths, `http`/`https`, IPv4/IPv6 and the Anubis `BASE_PREFIX` are supported.
+  Transport failures and unusable auth responses fail open by default, or
+  answer 503 with `on_error=deny`.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.
@@ -36,6 +43,9 @@
 * `mise run test-valgrind` runs the `Test::Nginx` templates and the end to end
   checks under valgrind, and CI runs it for the static module of the stable
   nginx branch.
+* CI runs a real Chromium Anubis flow: the browser completes the proof of work,
+  follows the challenge redirect, checks the auth cookie scope and verifies
+  that a second navigation reuses the authenticated session.
 * The shared memory of the core is only reached through a guard that holds the
   zone lock: the glue no longer offers an allocation that takes the lock
   itself, and an operation that leaves early (or panics) cannot keep the zone

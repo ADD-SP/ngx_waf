@@ -4,9 +4,9 @@
 
 use crate::abi::{
     HeaderView, NgxWafContentType, NgxWafEvent, NgxWafEventKind, NgxWafHeaderView,
-    NgxWafHttpMethod, NgxWafHttpVersion, NgxWafInspectionHandle, NgxWafLocationConfiguration,
-    NgxWafMainConfiguration, NgxWafRequestView, NgxWafStep, NgxWafStepKind, NgxWafStringView,
-    NgxWafZoneHandles, NgxWafZoneReferences,
+    NgxWafHttpMethod, NgxWafHttpRequestKind, NgxWafHttpVersion, NgxWafInspectionHandle,
+    NgxWafLocationConfiguration, NgxWafMainConfiguration, NgxWafRequestView, NgxWafStep,
+    NgxWafStepKind, NgxWafStringView, NgxWafZoneHandles, NgxWafZoneReferences,
 };
 use crate::check;
 use crate::config::{self, LocationConfiguration, MainConfiguration, WafSwitch};
@@ -89,6 +89,7 @@ pub(crate) struct RawRequestView {
     pub(crate) ip: RawStringView,
     pub(crate) method: NgxWafHttpMethod,
     pub(crate) uri: RawStringView,
+    pub(crate) unparsed_uri: RawStringView,
     pub(crate) user_agent: RawStringView,
     pub(crate) body: RawStringView,
     pub(crate) now: i64,
@@ -133,6 +134,7 @@ impl RawRequestView {
             ip: RawStringView::from_view(&req.ip),
             method: req.method,
             uri: RawStringView::from_view(&req.uri),
+            unparsed_uri: RawStringView::from_view(&req.unparsed_uri),
             user_agent: RawStringView::from_view(&req.user_agent),
             body: RawStringView::from_view(&req.body),
             now: req.now,
@@ -153,6 +155,7 @@ impl RawRequestView {
             ipv6: self.ip.len == 16,
             method: self.method,
             uri: self.uri.view(),
+            unparsed_uri: self.unparsed_uri.view(),
             user_agent: self.user_agent.view(),
             cookies,
             body: self.body.view(),
@@ -438,6 +441,26 @@ pub extern "C" fn ngx_waf_location_configuration_captcha_api(
     })
 }
 
+/// The configured `waf_anubis` URL, empty when Anubis is off or unset.
+#[no_mangle]
+pub extern "C" fn ngx_waf_location_configuration_anubis_url(
+    conf: *const NgxWafLocationConfiguration,
+) -> NgxWafStringView {
+    let empty = NgxWafStringView::EMPTY;
+    if conf.is_null() {
+        return empty;
+    }
+    guard(empty, || {
+        // SAFETY: the C side owns a live configuration for this call.
+        let anubis = unsafe { &(*(conf as *const LocationConfiguration)).anubis };
+        if anubis.enabled == Some(true) {
+            NgxWafStringView::from_slice(&anubis.url)
+        } else {
+            empty
+        }
+    })
+}
+
 /// Apply one directive, returns NULL on success or an error message.
 #[no_mangle]
 pub unsafe extern "C" fn ngx_waf_directive_apply(
@@ -632,6 +655,7 @@ pub unsafe extern "C" fn ngx_waf_inspection_resume(
                 data: unsafe { event.data.as_slice() },
                 eof: event.eof,
             },
+            NgxWafEventKind::HttpStatus => check::Event::HttpStatus(event.status),
             NgxWafEventKind::HttpFailed => check::Event::HttpFailed,
             NgxWafEventKind::ResolveFailed => check::Event::ResolveFailed,
         };
@@ -705,14 +729,18 @@ impl InspectionState {
                 check::Pending::HttpRequest => {
                     self.step.kind = NgxWafStepKind::HttpRequest;
                     if let Some(machine) = self.machine.as_ref() {
-                        if let Some((url, body)) = machine.fetch() {
+                        if let Some(request) = machine.fetch() {
                             self.step.pending.url = NgxWafStringView {
-                                len: url.len(),
-                                data: url.as_ptr(),
+                                len: request.url.len(),
+                                data: request.url.as_ptr(),
                             };
                             self.step.pending.body = NgxWafStringView {
-                                len: body.len(),
-                                data: body.as_ptr(),
+                                len: request.body.len(),
+                                data: request.body.as_ptr(),
+                            };
+                            self.step.pending.request_kind = match request.kind {
+                                check::HttpRequestKind::Captcha => NgxWafHttpRequestKind::Captcha,
+                                check::HttpRequestKind::Anubis => NgxWafHttpRequestKind::Anubis,
                             };
                         }
                     }
@@ -934,9 +962,10 @@ mod tests {
                 NgxWafEventKind::ResolvedName as u32,
                 NgxWafEventKind::ResolveFailed as u32,
                 NgxWafEventKind::HttpData as u32,
-                NgxWafEventKind::HttpFailed as u32
+                NgxWafEventKind::HttpFailed as u32,
+                NgxWafEventKind::HttpStatus as u32
             ],
-            [0, 1, 2, 3]
+            [0, 1, 2, 3, 4]
         );
         assert_eq!(
             [
@@ -952,6 +981,13 @@ mod tests {
                 NgxWafHttpMethod::Trace as u32
             ],
             [0, 1, 15]
+        );
+        assert_eq!(
+            [
+                NgxWafHttpRequestKind::Captcha as u32,
+                NgxWafHttpRequestKind::Anubis as u32
+            ],
+            [0, 1]
         );
         assert_eq!(
             [

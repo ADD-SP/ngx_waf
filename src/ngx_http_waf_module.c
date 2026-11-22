@@ -7,8 +7,9 @@
  * reaches back through; `ngx_http_waf_config.c` handles the configuration,
  * `ngx_http_waf_request.c` the request path, `ngx_http_waf_shm.c` the shared
  * memory zones, `ngx_http_waf_variables.c` the `$waf_*` variables and
- * `ngx_http_waf_fetch.c` the captcha provider request.  Every rule, action,
- * configuration semantic and protocol parse lives in `rust/`.
+ * `ngx_http_waf_fetch.c` the captcha and Anubis auth requests, and
+ * `ngx_http_waf_anubis.c` the same-origin challenge proxy.  Every rule,
+ * action, configuration semantic and protocol parse lives in `rust/`.
  */
 
 
@@ -86,6 +87,13 @@ static ngx_command_t ngx_http_waf_commands[] = {
 
     { ngx_string("waf_captcha"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234|NGX_CONF_TAKE5|NGX_CONF_TAKE6|NGX_CONF_TAKE7,
+      ngx_http_waf_directive_conf,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("waf_anubis"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE123,
       ngx_http_waf_directive_conf,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,

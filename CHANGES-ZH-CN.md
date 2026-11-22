@@ -4,8 +4,13 @@
   `waf_mode`、`waf_cache`、原生 IP/URL/Args/UA/Referer/Cookie/POST 名单和
   `waf_action blacklist=...`；保留 CC、CAPTCHA、Under Attack、友好爬虫验证和
   ModSecurity。`waf_priority` 缩减为 `VERIFY-BOT`、`CC`、`CAPTCHA`、
-  `UNDER-ATTACK`、`MODSECURITY`，并要求五项各出现一次。`waf_modsecurity on`
-  现在必须提供规则来源。本次不提供兼容别名或旧规则转换器。
+  `UNDER-ATTACK`、`ANUBIS`、`MODSECURITY`，并要求六项各出现一次。
+  `waf_modsecurity on` 现在必须提供规则来源。本次不提供兼容别名或旧规则转换器。
+* 新增一条指令接入 [Anubis](https://github.com/TecharoHQ/anubis)：
+  `waf_anubis on url=...` 负责 auth check，并透明代理同源保留路径
+  `/.within.website/` 下的挑战资源。支持 URL base path、`http`/`https`、
+  IPv4/IPv6 与 Anubis `BASE_PREFIX`。传输失败或鉴权响应不可用时默认放行，
+  也可以通过 `on_error=deny` 返回 503。
 * 模块逻辑正在用 Rust 重写：C 代码只保留 nginx 胶水层（模块与指令注册、请求数据
   打包、响应与变量落地），其余逻辑位于 `rust/`。
 * 使用 nginx `config` 脚本、cargo 与 mise 任务取代 Bazel。
@@ -26,6 +31,8 @@
   此前每次配置加载都会泄漏一份。
 * `mise run test-valgrind` 在 valgrind 下运行 `Test::Nginx` 模板与自研端到端
   检查；CI 在 stable 分支的静态模块组合上运行它。
+* CI 使用真实 Chromium 跑 Anubis 流程：浏览器完成工作证明、跟随挑战重定向、
+  检查认证 Cookie 作用域，并验证第二次导航直接复用已认证会话。
 * 核心对共享内存的访问统一经过持有 zone 锁的守卫：胶水不再提供"自己加锁"的
   分配入口，操作提前返回（或 panic）也不会把 zone 锁死；顺带修掉三处提前返回
   未解锁的路径。

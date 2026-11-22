@@ -66,6 +66,7 @@ include = [
     "ngx_waf_location_configuration_modsecurity_enabled",
     "ngx_waf_location_configuration_zone_references",
     "ngx_waf_location_configuration_captcha_api",
+    "ngx_waf_location_configuration_anubis_url",
     "ngx_waf_directive_apply",
     "ngx_waf_zone_directive_apply",
     "ngx_waf_location_configuration_merge",

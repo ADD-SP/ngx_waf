@@ -1,0 +1,24 @@
+bots:
+  - name: test-deny
+    user_agent_regex: AnubisDenyTest
+    action: DENY
+  - name: well-known
+    path_regex: ^/\.well-known/.*$
+    action: ALLOW
+  - name: robots
+    path_regex: ^/robots\.txt$
+    action: ALLOW
+  - name: generic-browser
+    user_agent_regex: Mozilla|Opera
+    action: CHALLENGE
+    challenge:
+      algorithm: fast
+      difficulty: 2
+
+status_codes:
+  CHALLENGE: 200
+  DENY: 403
+
+store:
+  backend: memory
+  parameters: {}

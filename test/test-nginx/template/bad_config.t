@@ -231,7 +231,37 @@ waf_http_status bad;
 === TEST: Bad directive waf_priority
 
 --- config
-waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK URL";
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK ANUBIS URL";
+
+--- must_die
+
+=== TEST: Five-item waf_priority
+
+--- config
+waf_priority "VERIFY-BOT CC CAPTCHA UNDER-ATTACK MODSECURITY";
+
+--- must_die
+
+=== TEST: waf_anubis without url
+
+--- config
+waf_anubis on;
+
+--- must_die
+
+=== TEST: waf_anubis with non-http url
+
+--- config
+waf_anubis on url=ftp://anubis.example;
+
+--- must_die
+
+=== TEST: waf_anubis in location
+
+--- config
+location /private {
+    waf_anubis on url=http://127.0.0.1:8923;
+}
 
 --- must_die
 

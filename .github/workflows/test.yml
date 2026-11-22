@@ -81,6 +81,61 @@ jobs:
           mise run header
           git diff --exit-code -- include/ngx_http_waf_ffi.h
 
+  anubis_browser:
+    name: Anubis browser E2E
+    runs-on: ubuntu-latest
+    needs: [rust]
+    env:
+      PLAYWRIGHT_VERSION: '1.65.2'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: jdx/mise-action@v2
+
+      - name: Trust the mise configuration
+        run: mise trust
+
+      - name: Install the system packages
+        run: |
+          sudo apt-get --yes update
+          mise bootstrap -y
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache the Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}-${{ hashFiles('test/e2e/anubis-browser.py') }}
+
+      - name: Install Playwright
+        run: |
+          python3 -m venv /tmp/playwright
+          /tmp/playwright/bin/pip install --disable-pip-version-check \
+            "playwright==${PLAYWRIGHT_VERSION}"
+          /tmp/playwright/bin/playwright install --with-deps chromium
+
+      - name: Run the browser end-to-end test
+        env:
+          ANUBIS_BROWSER_SCREENSHOT: ${{ github.workspace }}/test-results/anubis-browser.png
+        run: |
+          export PATH="/tmp/playwright/bin:$PATH"
+          mkdir -p test-results
+          mise run test-anubis-browser
+
+      - name: Upload the browser failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anubis-browser-failure
+          path: test-results/
+          if-no-files-found: ignore
+
   sanitizers:
     name: Sanitizers and fuzzing
     runs-on: ubuntu-latest

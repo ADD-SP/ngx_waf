@@ -32,11 +32,11 @@ static void        *ngx_http_waf_modsecurity_pcre_free_old;
 #endif
 
 /**
- * Parse `api=<url>` of the `waf_captcha` directive.  The host is resolved once,
- * here, so that a request never has to block on DNS.
+ * Parse one provider endpoint.  The host is resolved once, here, so that a
+ * request never has to block on DNS.
  */
-static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
-    ngx_str_t value)
+static ngx_int_t ngx_http_waf_endpoint_parse(ngx_conf_t* cf,
+    ngx_http_waf_endpoint_t* endpoint, ngx_str_t value)
 {
     ngx_pool_cleanup_t* cln;
     ngx_url_t url;
@@ -46,9 +46,9 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
 
     /* The same directive is handled again only when it is repeated in one
      * context; parsing the same endpoint twice is wasted work. */
-    if (conf->captcha_api.configured
-        && conf->captcha_api.url.len == value.len
-        && ngx_strncmp(conf->captcha_api.url.data, value.data, value.len) == 0)
+    if (endpoint->configured
+        && endpoint->url.len == value.len
+        && ngx_strncmp(endpoint->url.data, value.data, value.len) == 0)
     {
         return NGX_OK;
     }
@@ -89,21 +89,21 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
          * SSL context of the previous one is released here, the pool cleanup
          * registered for the struct releases the one that takes its place.
          */
-        if (conf->captcha_api.ssl.ctx != NULL) {
-            ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
+        if (endpoint->ssl.ctx != NULL) {
+            ngx_ssl_cleanup_ctx(&endpoint->ssl);
         }
 
-        ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
-        conf->captcha_api.ssl.log = cf->log;
-        if (ngx_ssl_create(&conf->captcha_api.ssl, NGX_SSL_TLSv1_2, NULL) != NGX_OK) {
+        ngx_memzero(&endpoint->ssl, sizeof(ngx_ssl_t));
+        endpoint->ssl.log = cf->log;
+        if (ngx_ssl_create(&endpoint->ssl, NGX_SSL_TLSv1_2, NULL) != NGX_OK) {
             /*
              * `ngx_ssl_create()` leaves a partially built context behind on
              * some of its failures; the cleanup that may already be
              * registered for this struct has to find none.
              */
-            if (conf->captcha_api.ssl.ctx != NULL) {
-                ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
-                ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
+            if (endpoint->ssl.ctx != NULL) {
+                ngx_ssl_cleanup_ctx(&endpoint->ssl);
+                ngx_memzero(&endpoint->ssl, sizeof(ngx_ssl_t));
             }
             return NGX_ERROR;
         }
@@ -116,23 +116,23 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
          * the configuration goes away.  The merge copies the context into the
          * contexts below, which never register a cleanup of their own.
          */
-        if (!conf->captcha_api.ssl_cleanup_registered) {
+        if (!endpoint->ssl_cleanup_registered) {
             cln = ngx_pool_cleanup_add(cf->pool, 0);
 
             if (cln == NULL) {
-                ngx_ssl_cleanup_ctx(&conf->captcha_api.ssl);
-                ngx_memzero(&conf->captcha_api.ssl, sizeof(ngx_ssl_t));
+                ngx_ssl_cleanup_ctx(&endpoint->ssl);
+                ngx_memzero(&endpoint->ssl, sizeof(ngx_ssl_t));
                 return NGX_ERROR;
             }
 
             cln->handler = ngx_ssl_cleanup_ctx;
-            cln->data = &conf->captcha_api.ssl;
-            conf->captcha_api.ssl_cleanup_registered = 1;
+            cln->data = &endpoint->ssl;
+            endpoint->ssl_cleanup_registered = 1;
         }
 
         ciphers.data = (u_char*) "HIGH:!aNULL:!MD5";
         ciphers.len = sizeof("HIGH:!aNULL:!MD5") - 1;
-        if (ngx_ssl_ciphers(cf, &conf->captcha_api.ssl, &ciphers, 0) != NGX_OK) {
+        if (ngx_ssl_ciphers(cf, &endpoint->ssl, &ciphers, 0) != NGX_OK) {
             return NGX_ERROR;
         }
 
@@ -143,17 +143,17 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
          * of the module; there is no bundle to fall back on, so a tree that
          * cannot load its default paths refuses the configuration.
          */
-        if (SSL_CTX_set_default_verify_paths(conf->captcha_api.ssl.ctx) != 1) {
+        if (SSL_CTX_set_default_verify_paths(endpoint->ssl.ctx) != 1) {
             ngx_ssl_error(NGX_LOG_EMERG, cf->log, 0,
                           "SSL_CTX_set_default_verify_paths() failed");
             return NGX_ERROR;
         }
 
-        SSL_CTX_set_verify(conf->captcha_api.ssl.ctx, SSL_VERIFY_PEER, NULL);
+        SSL_CTX_set_verify(endpoint->ssl.ctx, SSL_VERIFY_PEER, NULL);
     }
 
-    conf->captcha_api.use_ssl = ssl;
-    conf->captcha_api.port = url.port != 0 ? url.port : (in_port_t) (ssl ? 443 : 80);
+    endpoint->use_ssl = ssl;
+    endpoint->port = url.port != 0 ? url.port : (in_port_t) (ssl ? 443 : 80);
 
     /*
      * `SSL_set_tlsext_host_name()` is a macro that runs `strlen()` over the
@@ -161,31 +161,72 @@ static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_
      * terminator: copy the host with one, it is what the ClientHello carries as
      * the server name.
      */
-    conf->captcha_api.host.data = ngx_pnalloc(cf->pool, url.host.len + 1);
-    if (conf->captcha_api.host.data == NULL) {
+    endpoint->host.data = ngx_pnalloc(cf->pool, url.host.len + 1);
+    if (endpoint->host.data == NULL) {
         return NGX_ERROR;
     }
-    ngx_memcpy(conf->captcha_api.host.data, url.host.data, url.host.len);
-    conf->captcha_api.host.data[url.host.len] = '\0';
-    conf->captcha_api.host.len = url.host.len;
+    ngx_memcpy(endpoint->host.data, url.host.data, url.host.len);
+    endpoint->host.data[url.host.len] = '\0';
+    endpoint->host.len = url.host.len;
 
-    conf->captcha_api.uri = url.uri.len != 0 ? url.uri : (ngx_str_t) ngx_string("/");
+    endpoint->uri = url.uri.len != 0 ? url.uri : (ngx_str_t) ngx_string("/");
 
     if (url.naddrs) {
-        conf->captcha_api.sockaddr = url.addrs[0].sockaddr;
-        conf->captcha_api.socklen = url.addrs[0].socklen;
-        conf->captcha_api.resolved = 1;
+        endpoint->sockaddr = url.addrs[0].sockaddr;
+        endpoint->socklen = url.addrs[0].socklen;
+        endpoint->resolved = 1;
     }
 
-    conf->captcha_api.configured = 1;
-    conf->captcha_api.url.data = ngx_pnalloc(cf->pool, value.len);
-    if (conf->captcha_api.url.data == NULL) {
+    endpoint->configured = 1;
+    endpoint->url.data = ngx_pnalloc(cf->pool, value.len);
+    if (endpoint->url.data == NULL) {
         return NGX_ERROR;
     }
-    ngx_memcpy(conf->captcha_api.url.data, value.data, value.len);
-    conf->captcha_api.url.len = value.len;
+    ngx_memcpy(endpoint->url.data, value.data, value.len);
+    endpoint->url.len = value.len;
 
     return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_waf_captcha_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
+    ngx_str_t value)
+{
+    return ngx_http_waf_endpoint_parse(cf, &conf->captcha_api, value);
+}
+
+
+static ngx_int_t ngx_http_waf_anubis_api(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* conf,
+    ngx_str_t value)
+{
+    return ngx_http_waf_endpoint_parse(cf, &conf->anubis_api, value);
+}
+
+
+static ngx_int_t ngx_http_waf_anubis_sync(ngx_conf_t* cf, ngx_http_waf_loc_conf_t* child,
+    ngx_http_waf_loc_conf_t* parent)
+{
+    ngx_waf_string_view_t api;
+    ngx_str_t value;
+
+    api = ngx_waf_location_configuration_anubis_url(child->core);
+    if (api.len == 0) {
+        child->anubis_api.configured = 0;
+        return NGX_OK;
+    }
+
+    value.data = (u_char*) api.data;
+    value.len = api.len;
+
+    if (parent->anubis_api.configured
+        && parent->anubis_api.url.len == value.len
+        && ngx_strncmp(parent->anubis_api.url.data, value.data, value.len) == 0)
+    {
+        child->anubis_api = parent->anubis_api;
+        return NGX_OK;
+    }
+
+    return ngx_http_waf_anubis_api(cf, child, value);
 }
 
 
@@ -500,6 +541,10 @@ char *ngx_http_waf_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf) {
      */
     if (!child->captcha_api.configured && parent->captcha_api.configured) {
         child->captcha_api = parent->captcha_api;
+    }
+
+    if (ngx_http_waf_anubis_sync(cf, child, parent) != NGX_OK) {
+        return NGX_CONF_ERROR;
     }
 
     return NGX_CONF_OK;
