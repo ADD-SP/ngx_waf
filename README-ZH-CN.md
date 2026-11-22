@@ -88,9 +88,13 @@ mise run build     # 在 test/nginx-<version> 中构建带静态模块的 nginx
 mise run test      # Rust 单元测试与 nginx 集成测试
 mise run test-e2e  # 自研端到端检查，单 worker 与四 worker 各跑一轮
 mise run test-anubis  # 真实 Anubis Docker 挑战测试（需要 Docker）
+mise run test-anubis-browser  # 真实 Chromium 挑战与认证复用测试
 mise run coverage  # Rust 单元测试的覆盖率，每个模块一行
 mise run test-valgrind  # 在 valgrind 下跑模板套件与端到端检查
 ```
+
+浏览器任务还需要 Python Playwright 及其 Chromium；CI 会自动安装，并在浏览器流程
+失败时上传截图。
 
 `mise run doctor` 检查 cargo、rustc 与 cbindgen 是否在 PATH 上。需要 stable
 Rust 工具链（含 cargo）以及 libmodsecurity 3 的开发文件（例如

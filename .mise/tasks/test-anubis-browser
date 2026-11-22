@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run the real Anubis browser end-to-end test"
+#MISE depends=["build"]
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+ANUBIS_BROWSER=1 exec "$root/test/e2e/anubis.sh"

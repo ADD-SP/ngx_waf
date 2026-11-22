@@ -87,9 +87,13 @@ mise run build     # build nginx with the static module in test/nginx-<version>
 mise run test      # the Rust unit tests and the nginx integration tests
 mise run test-e2e  # the end to end checks, with one worker and with four
 mise run test-anubis  # real Anubis Docker challenge test (requires Docker)
+mise run test-anubis-browser  # real Chromium challenge and cookie reuse test
 mise run coverage  # the Rust unit tests with coverage, one row per module
 mise run test-valgrind  # the templates and the end to end checks under valgrind
 ```
+
+The browser task additionally requires Python Playwright and its Chromium
+browser.  CI installs both and uploads a screenshot when the browser flow fails.
 
 `mise run doctor` checks that cargo, rustc and cbindgen are on PATH.  A stable
 Rust toolchain (with cargo) and the development files of libmodsecurity 3 (for

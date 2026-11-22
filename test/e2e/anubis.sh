@@ -79,11 +79,17 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
     -keyout "$prefix/tls.key" -out "$prefix/tls.crt" \
     >/dev/null 2>&1
 
+public_url_env=()
+if [ "${ANUBIS_BROWSER:-0}" = 1 ]; then
+    public_url_env=(--env 'PUBLIC_URL=http://127.0.0.1')
+fi
+
 docker run -d --rm --name "$container" \
     -p "127.0.0.1:$anubis_port:8080" \
     --env 'BIND=:8080' \
     --env 'TARGET= ' \
     --env 'BASE_PREFIX=/base' \
+    "${public_url_env[@]}" \
     --env 'POLICY_FNAME=/data/policy.yaml' \
     --volume "$root/test/e2e/anubis-policy.yaml:/data/policy.yaml:ro" \
     "$image" >/dev/null
@@ -324,6 +330,21 @@ python3 "$root/test/e2e/anubis-solve.py" \
     --base-prefix /base \
     --protected '/index.html?x=1'
 ok "https auth check and challenge proxy"
+
+if [ "${ANUBIS_BROWSER:-0}" = 1 ]; then
+    if ! python3 -c 'from playwright.sync_api import sync_playwright' \
+        >/dev/null 2>&1
+    then
+        echo "Python Playwright is required for the browser test" >&2
+        exit 1
+    fi
+
+    python3 "$root/test/e2e/anubis-browser.py" \
+        --url "$base_url/index.html?browser_e2e=1" \
+        --expect-text backend \
+        --timeout "${ANUBIS_BROWSER_TIMEOUT:-60}"
+    ok "real Chromium challenge, redirect and authenticated reuse"
+fi
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 if [ "$fail" -ne 0 ]; then
