@@ -135,6 +135,14 @@ def solve(args):
     status, headers, _ = client.request("GET", pass_path)
     if status not in {302, 303, 307}:
         raise RuntimeError(f"pass-challenge returned HTTP {status}")
+    location = header(headers, "Location")
+    if not location:
+        raise RuntimeError("pass-challenge did not return a Location header")
+    redirect = urllib.parse.urlsplit(location)
+    redirect_target = redirect.path or "/"
+    if redirect.query:
+        redirect_target += f"?{redirect.query}"
+
     auth_cookies = [
         cookie
         for cookie in client.cookies.values()
@@ -145,7 +153,7 @@ def solve(args):
     if any(cookie["path"] != "/" for cookie in auth_cookies):
         raise RuntimeError("auth cookie is not scoped to the protected site root")
 
-    status, headers, body = client.request("GET", args.protected)
+    status, headers, body = client.request("GET", redirect_target)
     if status != 200:
         raise RuntimeError(f"protected request returned HTTP {status}")
     if body.strip() != args.expect_body.encode():
@@ -161,7 +169,8 @@ def solve(args):
     )
     print(
         f"anubis challenge passed: difficulty={difficulty} "
-        f"nonce={nonce} cookies={len(client.cookies)} [{cookie_paths}]"
+        f"nonce={nonce} redirect={location} "
+        f"cookies={len(client.cookies)} [{cookie_paths}]"
     )
 
 

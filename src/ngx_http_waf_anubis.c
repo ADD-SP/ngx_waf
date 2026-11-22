@@ -615,7 +615,8 @@ static ngx_int_t ngx_http_waf_anubis_process_header(ngx_http_request_t* r)
                        && ngx_strncasecmp(key.data, (u_char*) "Location", key.len) == 0)
             {
                 r->headers_out.location = header;
-                header->hash = 0;
+                /* Keep a relative Location when `absolute_redirect` is off. */
+                header->hash = 1;
             } else if (key.len == sizeof("Date") - 1
                        && ngx_strncasecmp(key.data, (u_char*) "Date", key.len) == 0)
             {
