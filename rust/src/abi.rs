@@ -129,6 +129,14 @@ impl NgxWafHttpVersion {
     }
 }
 
+/// The HTTP request a parked inspection asks the glue to perform.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NgxWafHttpRequestKind {
+    Captcha = 0,
+    Anubis = 1,
+}
+
 /// What the core asks the glue to do for one request.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,6 +165,8 @@ pub enum NgxWafEventKind {
     HttpData = 2,
     /// The captcha provider could not be reached.
     HttpFailed = 3,
+    /// The status line of an Anubis auth check was read.
+    HttpStatus = 4,
 }
 
 /// How the glue writes the body of a response.
@@ -176,6 +186,8 @@ pub struct NgxWafRequestView {
     pub ip: NgxWafStringView,
     pub method: NgxWafHttpMethod,
     pub uri: NgxWafStringView,
+    /// The request target as received, including the query string.
+    pub unparsed_uri: NgxWafStringView,
     pub user_agent: NgxWafStringView,
     /// One view per `Cookie` header, the raw header values.
     pub cookies: *const NgxWafStringView,
@@ -226,6 +238,8 @@ pub struct NgxWafEvent {
     /// answer that is merely incomplete leaves the step on `HTTP_REQUEST`,
     /// and the glue reads on and feeds the bytes again.
     pub eof: bool,
+    /// `HTTP_STATUS`: the status code of an Anubis auth check.
+    pub status: u16,
 }
 
 /// A decision: everything the glue needs for the response and the `$waf_*`
@@ -286,6 +300,7 @@ pub struct NgxWafPending {
     /// `RESOLVE_ADDR`: the address to reverse resolve.
     pub ip: NgxWafStringView,
     /// `HTTP_REQUEST`: the request the glue has to perform.
+    pub request_kind: NgxWafHttpRequestKind,
     pub url: NgxWafStringView,
     pub body: NgxWafStringView,
 }
@@ -294,6 +309,7 @@ impl NgxWafPending {
     pub(crate) fn empty() -> Self {
         NgxWafPending {
             ip: NgxWafStringView::EMPTY,
+            request_kind: NgxWafHttpRequestKind::Captcha,
             url: NgxWafStringView::EMPTY,
             body: NgxWafStringView::EMPTY,
         }

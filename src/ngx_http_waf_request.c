@@ -110,6 +110,16 @@ ngx_int_t ngx_http_waf_handler_access_phase(ngx_http_request_t* r) {
         return NGX_DECLINED;
     }
 
+    /*
+     * `/.within.website/` belongs to Anubis whenever waf_anubis is enabled.
+     * It has to bypass every WAF inspection, including the Anubis auth check,
+     * or a challenge would challenge itself.
+     */
+    if (ngx_http_waf_is_anubis_path(r, conf)) {
+        r->content_handler = ngx_http_waf_anubis_proxy_handler;
+        return NGX_DECLINED;
+    }
+
     if (!ngx_waf_location_configuration_enabled(conf->core)) {
         return NGX_DECLINED;
     }
@@ -547,6 +557,8 @@ static ngx_int_t ngx_http_waf_run(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     req.method = ngx_http_waf_method(r->method);
     req.uri.data = r->uri.data;
     req.uri.len = r->uri.len;
+    req.unparsed_uri.data = r->unparsed_uri.data;
+    req.unparsed_uri.len = r->unparsed_uri.len;
 
     if (r->headers_in.user_agent != NULL) {
         req.user_agent.data = r->headers_in.user_agent->value.data;

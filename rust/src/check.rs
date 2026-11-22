@@ -5,8 +5,8 @@ use crate::abi::{HeaderView, NgxWafHttpMethod, NgxWafHttpVersion};
 use crate::action;
 use crate::cc;
 use crate::config::{
-    BotId, CaptchaProvider, CaptchaSource, CheckKind, LocationConfiguration, Policy, TriggerKind,
-    VerifyBotMode, WafSwitch, BOTS,
+    AnubisErrorPolicy, BotId, CaptchaProvider, CaptchaSource, CheckKind, LocationConfiguration,
+    Policy, TriggerKind, VerifyBotMode, WafSwitch, BOTS,
 };
 use crate::ffi::RawRequestView;
 #[cfg(test)]
@@ -30,6 +30,8 @@ pub struct Request<'a> {
     pub ipv6: bool,
     pub method: NgxWafHttpMethod,
     pub uri: &'a [u8],
+    /// The request target as nginx received it, including the query string.
+    pub unparsed_uri: &'a [u8],
     pub user_agent: &'a [u8],
     /// One entry per `Cookie` header, the raw header values.
     pub cookies: &'a [Vec<u8>],
@@ -327,8 +329,7 @@ enum CheckResult {
     /// The inspection needs an HTTP request to be performed.
     Fetch {
         continuation: Continuation,
-        url: String,
-        body: Vec<u8>,
+        request: HttpRequest,
     },
 }
 
@@ -352,6 +353,18 @@ pub enum Pending {
     HttpRequest,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HttpRequestKind {
+    Captcha,
+    Anubis,
+}
+
+pub struct HttpRequest {
+    pub url: String,
+    pub body: Vec<u8>,
+    pub kind: HttpRequestKind,
+}
+
 /// The state kept while the request is parked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Continuation {
@@ -360,6 +373,8 @@ enum Continuation {
     VerifyBot { bot: BotId },
     /// Waiting for the captcha provider.
     Captcha { path: CaptchaPath },
+    /// Waiting for the Anubis auth check.
+    Anubis,
 }
 
 impl Continuation {
@@ -367,6 +382,7 @@ impl Continuation {
         match self {
             Continuation::VerifyBot { .. } => Pending::ResolveAddr,
             Continuation::Captcha { .. } => Pending::HttpRequest,
+            Continuation::Anubis => Pending::HttpRequest,
         }
     }
 }
@@ -418,6 +434,8 @@ pub enum Event<'a> {
     /// The bytes of the answer of the captcha provider read so far, and
     /// whether the provider closed the connection.
     HttpData { data: &'a [u8], eof: bool },
+    /// The status line of an Anubis auth check was read.
+    HttpStatus(u16),
     /// The captcha provider could not be reached.
     HttpFailed,
 }
@@ -458,7 +476,7 @@ pub struct Machine {
     continuation: Option<Continuation>,
     /// The request the C side has to perform when the machine parks on an HTTP
     /// step.
-    fetch: Option<(String, Vec<u8>)>,
+    fetch: Option<HttpRequest>,
     /// The ModSecurity transaction of this request.  It is created when the
     /// `waf_modsecurity` inspection runs and stays alive until the machine is
     /// released, which is after the log phase of nginx.
@@ -531,12 +549,11 @@ impl Machine {
             RunResult::Fetch {
                 index,
                 continuation,
-                url,
-                body,
+                request,
             } => {
                 self.index = index;
                 self.continuation = Some(continuation);
-                self.fetch = Some((url, body));
+                self.fetch = Some(request);
                 Step::Pending(Pending::HttpRequest)
             }
             RunResult::Finished => {
@@ -570,10 +587,8 @@ impl Machine {
     }
 
     /// The HTTP request of a parked step, `(url, body)`.
-    pub fn fetch(&self) -> Option<(&str, &[u8])> {
-        self.fetch
-            .as_ref()
-            .map(|(url, body)| (url.as_str(), body.as_slice()))
+    pub fn fetch(&self) -> Option<&HttpRequest> {
+        self.fetch.as_ref()
     }
 
     /// The log phase of nginx: let ModSecurity write the audit log of the
@@ -593,6 +608,7 @@ impl Machine {
         match continuation {
             Continuation::VerifyBot { bot } => self.resume_verify_bot(bot, event),
             Continuation::Captcha { path } => self.resume_captcha(path, event),
+            Continuation::Anubis => self.resume_anubis(event),
         }
     }
 
@@ -630,6 +646,59 @@ impl Machine {
         };
 
         self.finish_captcha(path, verdict)
+    }
+
+    /// Anubis answered the auth check with a status line, or the check could
+    /// not be completed.
+    fn resume_anubis(&mut self, event: Event<'_>) -> Step {
+        let conf = self.conf.get_mut();
+        let status = match event {
+            Event::HttpStatus(status) => status,
+            _ => 0,
+        };
+
+        if (200..300).contains(&status) {
+            return self.step();
+        }
+
+        if matches!(status, 401 | 307) {
+            let location =
+                anubis_challenge_location(conf, self.req.view(&self.cookies).unparsed_uri);
+            self.meta.rule_type = b"ANUBIS".to_vec();
+            self.meta.rule_details = b"CHALLENGE".to_vec();
+            self.meta.general_log = true;
+            self.meta.blocked = true;
+            self.decision = Some(Decision::redirect(307, location));
+            self.checked = true;
+            return Step::Decision(self.finish());
+        }
+
+        if status == 403 {
+            self.meta.rule_type = b"ANUBIS".to_vec();
+            self.meta.rule_details = b"DENY".to_vec();
+            self.meta.general_log = true;
+            self.meta.blocked = true;
+            self.decision = Some(if conf.block_page.is_empty() {
+                Decision::status(403)
+            } else {
+                Decision::page(403, Rc::clone(&conf.block_page))
+            });
+            self.checked = true;
+            return Step::Decision(self.finish());
+        }
+
+        self.meta.rule_type = b"ANUBIS".to_vec();
+        self.meta.rule_details = b"ERROR".to_vec();
+        self.meta.general_log = true;
+        if conf.anubis.on_error.unwrap_or(AnubisErrorPolicy::Allow) == AnubisErrorPolicy::Deny {
+            self.meta.blocked = true;
+            self.decision = Some(Decision::status(503));
+            self.checked = true;
+            return Step::Decision(self.finish());
+        }
+
+        self.decision = None;
+        self.step()
     }
 
     /// Apply the verdict of one captcha attempt.
@@ -769,14 +838,12 @@ fn run_checks(
             }
             CheckResult::Fetch {
                 continuation,
-                url,
-                body,
+                request,
             } => {
                 return RunResult::Fetch {
                     index,
                     continuation,
-                    url,
-                    body,
+                    request,
                 }
             }
             CheckResult::NotMatched => *state.decision = None,
@@ -802,14 +869,12 @@ fn run_checks(
             }
             CheckResult::Fetch {
                 continuation,
-                url,
-                body,
+                request,
             } => {
                 return RunResult::Fetch {
                     index: index + offset + 1,
                     continuation,
-                    url,
-                    body,
+                    request,
                 }
             }
             CheckResult::NotMatched => {
@@ -831,8 +896,7 @@ enum RunResult {
     Fetch {
         index: usize,
         continuation: Continuation,
-        url: String,
-        body: Vec<u8>,
+        request: HttpRequest,
     },
 }
 
@@ -851,6 +915,10 @@ pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
             uri: RawStringView {
                 data: req.uri.as_ptr(),
                 len: req.uri.len(),
+            },
+            unparsed_uri: RawStringView {
+                data: req.unparsed_uri.as_ptr(),
+                len: req.unparsed_uri.len(),
             },
             user_agent: RawStringView {
                 data: req.user_agent.as_ptr(),
@@ -896,8 +964,76 @@ fn run_check(state: &mut State, id: CheckKind) -> CheckResult {
         CheckKind::VerifyBot => check_verify_bot(state),
         CheckKind::Captcha => check_captcha(state),
         CheckKind::UnderAttack => check_under_attack(state),
+        CheckKind::Anubis => check_anubis(state),
         CheckKind::ModSecurity => check_modsecurity(state),
     }
+}
+
+/// `waf_anubis`: ask the sidecar whether the request may continue.
+fn check_anubis(state: &mut State) -> CheckResult {
+    if state.conf.anubis.enabled != Some(true) {
+        return CheckResult::NotMatched;
+    }
+
+    if !state.http_transport || state.conf.anubis.url.is_empty() {
+        return anubis_error(state);
+    }
+
+    let mut url = state.conf.anubis.url.clone();
+    while url.ends_with(b"/") {
+        url.pop();
+    }
+    url.extend_from_slice(b"/.within.website/x/cmd/anubis/api/check");
+
+    CheckResult::Fetch {
+        continuation: Continuation::Anubis,
+        request: HttpRequest {
+            url: String::from_utf8_lossy(&url).into_owned(),
+            body: Vec::new(),
+            kind: HttpRequestKind::Anubis,
+        },
+    }
+}
+
+/// Apply the configured policy to an auth check that could not produce a
+/// verdict.
+fn anubis_error(state: &mut State) -> CheckResult {
+    state.set_rule_info(b"ANUBIS", b"ERROR", true, false);
+    if state
+        .conf
+        .anubis
+        .on_error
+        .unwrap_or(AnubisErrorPolicy::Allow)
+        == AnubisErrorPolicy::Deny
+    {
+        state.meta.blocked = true;
+        *state.decision = Some(Decision::status(503));
+        CheckResult::Matched
+    } else {
+        *state.decision = None;
+        CheckResult::NotMatched
+    }
+}
+
+/// The same-origin challenge URL.  The redirect target is relative, so a
+/// client-supplied Host or forwarded scheme cannot turn it into an open
+/// redirect.
+fn anubis_challenge_location(conf: &LocationConfiguration, unparsed_uri: &[u8]) -> Vec<u8> {
+    let mut location = conf.anubis.base_path.clone();
+    location.extend_from_slice(b"/.within.website/?redir=");
+
+    for byte in unparsed_uri {
+        if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'.' | b'_' | b'~') {
+            location.push(*byte);
+        } else {
+            const HEX: &[u8; 16] = b"0123456789ABCDEF";
+            location.push(b'%');
+            location.push(HEX[usize::from(byte >> 4)]);
+            location.push(HEX[usize::from(byte & 0x0f)]);
+        }
+    }
+
+    location
 }
 
 /// `waf_modsecurity`: run the request phases of one transaction of the library
@@ -1121,8 +1257,11 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
 
     CheckResult::Fetch {
         continuation: Continuation::Captcha { path },
-        url: String::from_utf8_lossy(&state.conf.captcha.api).into_owned(),
-        body,
+        request: HttpRequest {
+            url: String::from_utf8_lossy(&state.conf.captcha.api).into_owned(),
+            body,
+            kind: HttpRequestKind::Captcha,
+        },
     }
 }
 
@@ -1698,6 +1837,7 @@ mod tests {
             ipv6: false,
             method: NgxWafHttpMethod::Get,
             uri,
+            unparsed_uri: uri,
             user_agent: b"",
             cookies,
             body: b"",
@@ -1862,6 +2002,10 @@ mod tests {
             },
             method: NgxWafHttpMethod::Get,
             uri: RawStringView {
+                data: uri,
+                len: uri_len,
+            },
+            unparsed_uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },
@@ -2031,6 +2175,135 @@ mod tests {
         conf
     }
 
+    fn anubis_conf(on_error: AnubisErrorPolicy) -> LocationConfiguration {
+        let mut conf = active_conf();
+        conf.anubis.enabled = Some(true);
+        conf.anubis.url = b"http://127.0.0.1:8923/base/".to_vec();
+        conf.anubis.base_path = b"/base".to_vec();
+        conf.anubis.on_error = Some(on_error);
+        conf.priority = Some(vec![CheckKind::Anubis]);
+        conf
+    }
+
+    fn anubis_machine(conf: &mut LocationConfiguration) -> Machine {
+        let (ip, ip_len) = leaked(&[1u8, 2, 3, 4]);
+        let (uri, uri_len) = leaked(b"/index.html?x=1");
+        let raw = RawRequestView {
+            ip: RawStringView {
+                data: ip,
+                len: ip_len,
+            },
+            method: NgxWafHttpMethod::Get,
+            uri: RawStringView {
+                data: uri,
+                len: uri_len,
+            },
+            unparsed_uri: RawStringView {
+                data: uri,
+                len: uri_len,
+            },
+            user_agent: RawStringView::EMPTY,
+            body: RawStringView::EMPTY,
+            now: 1_000,
+            modsecurity: None,
+            log: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
+        };
+        Machine::new(NonNull::from(conf), raw, Vec::new(), true)
+    }
+
+    #[test]
+    fn anubis_challenges_with_a_same_origin_redirect() {
+        let mut conf = anubis_conf(AnubisErrorPolicy::Allow);
+        let mut machine = anubis_machine(&mut conf);
+
+        match machine.step() {
+            Step::Pending(Pending::HttpRequest) => {}
+            _ => panic!("Anubis should park on its auth check"),
+        }
+        let request = machine.fetch().expect("Anubis auth check");
+        assert_eq!(request.kind, HttpRequestKind::Anubis);
+        assert_eq!(
+            request.url,
+            "http://127.0.0.1:8923/base/.within.website/x/cmd/anubis/api/check"
+        );
+        assert!(request.body.is_empty());
+
+        let Step::Decision(outcome) = machine.resume(Event::HttpStatus(401)) else {
+            panic!("Anubis should decide the challenge");
+        };
+        assert_eq!(outcome.status, 307);
+        assert_eq!(
+            outcome.location,
+            b"/base/.within.website/?redir=%2Findex.html%3Fx%3D1"
+        );
+        assert_eq!(outcome.rule_type, b"ANUBIS");
+        assert_eq!(outcome.rule_details, b"CHALLENGE");
+    }
+
+    #[test]
+    fn anubis_allows_after_a_successful_auth_check() {
+        let mut conf = anubis_conf(AnubisErrorPolicy::Deny);
+        let mut machine = anubis_machine(&mut conf);
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+
+        let Step::Decision(outcome) = machine.resume(Event::HttpStatus(200)) else {
+            panic!("Anubis should finish the request");
+        };
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
+        assert!(outcome.checked);
+    }
+
+    #[test]
+    fn anubis_denies_a_403() {
+        let mut conf = anubis_conf(AnubisErrorPolicy::Allow);
+        let mut machine = anubis_machine(&mut conf);
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+
+        let Step::Decision(outcome) = machine.resume(Event::HttpStatus(403)) else {
+            panic!("Anubis should decide the denial");
+        };
+        assert_eq!(outcome.status, 403);
+        assert!(outcome.blocked);
+        assert_eq!(outcome.rule_details, b"DENY");
+    }
+
+    #[test]
+    fn anubis_transport_errors_follow_the_configured_policy() {
+        let mut conf = anubis_conf(AnubisErrorPolicy::Allow);
+        let mut machine = anubis_machine(&mut conf);
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let Step::Decision(outcome) = machine.resume(Event::HttpFailed) else {
+            panic!("Anubis should finish the error");
+        };
+        assert_eq!(outcome.kind, OutcomeKind::Allow);
+        assert!(outcome.general_log);
+        assert_eq!(outcome.rule_details, b"ERROR");
+
+        let mut conf = anubis_conf(AnubisErrorPolicy::Deny);
+        let mut machine = anubis_machine(&mut conf);
+        assert!(matches!(
+            machine.step(),
+            Step::Pending(Pending::HttpRequest)
+        ));
+        let Step::Decision(outcome) = machine.resume(Event::HttpFailed) else {
+            panic!("Anubis should finish the error");
+        };
+        assert_eq!(outcome.status, 503);
+        assert!(outcome.blocked);
+    }
+
     fn captcha_machine(
         conf: &mut LocationConfiguration,
         method: NgxWafHttpMethod,
@@ -2048,6 +2321,10 @@ mod tests {
             },
             method,
             uri: RawStringView {
+                data: uri,
+                len: uri_len,
+            },
+            unparsed_uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },
@@ -2122,8 +2399,9 @@ mod tests {
             machine.step(),
             Step::Pending(Pending::HttpRequest)
         ));
-        let (url, fetch_body) = machine.fetch().expect("the provider request");
-        assert_eq!(url, "http://127.0.0.1:1/verify");
+        let request = machine.fetch().expect("the provider request");
+        assert_eq!(request.url, "http://127.0.0.1:1/verify");
+        let fetch_body = request.body.as_slice();
         assert_eq!(fetch_body, b"response=token&secret=secret");
 
         let answer = provider_answer("200 OK", br#"{"success":true}"#);
@@ -2263,8 +2541,9 @@ mod tests {
             });
             assert!(matches!(step, Step::Pending(Pending::HttpRequest)));
 
-            let (url, fetch_body) = machine.fetch().expect("the provider request");
-            assert_eq!(url, "http://127.0.0.1:1/verify");
+            let request = machine.fetch().expect("the provider request");
+            assert_eq!(request.url, "http://127.0.0.1:1/verify");
+            let fetch_body = request.body.as_slice();
             assert_eq!(fetch_body, b"response=token&secret=secret");
         }
 
@@ -2393,7 +2672,11 @@ mod tests {
             machine.step(),
             Step::Pending(Pending::HttpRequest)
         ));
-        let (_, fetch_body) = machine.fetch().expect("the provider request");
+        let fetch_body = machine
+            .fetch()
+            .expect("the provider request")
+            .body
+            .as_slice();
         assert_eq!(fetch_body, b"response=native&secret=secret");
     }
 
@@ -2453,7 +2736,11 @@ mod tests {
             machine.step(),
             Step::Pending(Pending::HttpRequest)
         ));
-        let (_, fetch_body) = machine.fetch().expect("the provider request");
+        let fetch_body = machine
+            .fetch()
+            .expect("the provider request")
+            .body
+            .as_slice();
         assert_eq!(fetch_body, b"response=second&secret=secret");
     }
 
@@ -2803,6 +3090,10 @@ mod tests {
                 data: uri,
                 len: uri_len,
             },
+            unparsed_uri: RawStringView {
+                data: uri,
+                len: uri_len,
+            },
             user_agent: RawStringView {
                 data: std::ptr::null(),
                 len: 0,
@@ -2949,6 +3240,10 @@ mod tests {
             },
             method: NgxWafHttpMethod::Get,
             uri: RawStringView {
+                data: uri,
+                len: uri_len,
+            },
+            unparsed_uri: RawStringView {
                 data: uri,
                 len: uri_len,
             },

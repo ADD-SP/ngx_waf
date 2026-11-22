@@ -5,8 +5,15 @@
   Cookie/POST lists and `waf_action blacklist=...` are removed. CC, CAPTCHA,
   Under Attack, friendly crawler verification and ModSecurity remain.
   `waf_priority` now requires each of `VERIFY-BOT`, `CC`, `CAPTCHA`,
-  `UNDER-ATTACK` and `MODSECURITY` exactly once. `waf_modsecurity on` requires
-  a rule source. No compatibility aliases or rule-file converter are provided.
+  `UNDER-ATTACK`, `ANUBIS` and `MODSECURITY` exactly once.
+  `waf_modsecurity on` requires a rule source. No compatibility aliases or
+  rule-file converter are provided.
+* Add one-directive [Anubis](https://github.com/TecharoHQ/anubis) integration:
+  `waf_anubis on url=...` performs the auth check and transparently proxies
+  the reserved same-origin `/.within.website/` challenge paths. URL base
+  paths, `http`/`https`, IPv4/IPv6 and the Anubis `BASE_PREFIX` are supported.
+  Transport failures and unusable auth responses fail open by default, or
+  answer 503 with `on_error=deny`.
 * The module logic is being rewritten in Rust: the C part is now only the nginx
   glue (module and directive registration, request packing, response and
   variable plumbing), everything else lives in `rust/`.

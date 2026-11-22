@@ -69,7 +69,11 @@ typedef struct {
      * cleanup that owns the context built in its place.
      */
     unsigned                   ssl_cleanup_registered:1;
-} ngx_http_waf_captcha_api_t;
+} ngx_http_waf_endpoint_t;
+
+typedef ngx_http_waf_endpoint_t ngx_http_waf_captcha_api_t;
+
+typedef ngx_http_waf_endpoint_t ngx_http_waf_anubis_api_t;
 
 
 /**
@@ -79,6 +83,7 @@ typedef struct {
     ngx_connection_t          *connection;
     ngx_buf_t                 *request;
     ngx_buf_t                 *response;
+    ngx_http_waf_endpoint_t   *api;
     struct sockaddr           *sockaddr;
     socklen_t                  socklen;
     ngx_str_t                  host;
@@ -99,6 +104,8 @@ typedef struct {
     unsigned                   in_drive:1;
     unsigned                   resolved_valid:1;
     unsigned                   resolved_failed:1;
+    /** The Anubis auth check reads headers only, not the response body. */
+    unsigned                   anubis:1;
 } ngx_http_waf_fetch_t;
 
 
@@ -106,6 +113,7 @@ typedef struct {
     ngx_waf_location_configuration_t            *core;
     ngx_http_complex_value_t  *modsecurity_transaction_id;
     ngx_http_waf_captcha_api_t captcha_api;
+    ngx_http_waf_anubis_api_t  anubis_api;
 } ngx_http_waf_loc_conf_t;
 
 
@@ -122,6 +130,8 @@ typedef struct {
     const ngx_waf_step_t  *step;
     /** The provider request in flight, when the machine parked on one. */
     ngx_http_waf_fetch_t fetch;
+    /** The Anubis challenge reverse proxy, when this request is using it. */
+    void             *anubis_proxy;
     /**
      * Set by a resolver handler that runs while its lookup is started, i.e.
      * while the drive loop is on the stack: the answer came from the cache of
@@ -222,6 +232,37 @@ ngx_uint_t ngx_http_waf_fetch_feed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ct
  * settles it as a failed attempt.
  */
 void ngx_http_waf_fetch_failed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx);
+
+
+/**
+ * The original Host header, shared by the auth request and the challenge
+ * proxy, and the end-to-end request headers they forward.
+ */
+ngx_str_t ngx_http_waf_original_host(ngx_http_request_t* r);
+
+
+ngx_uint_t ngx_http_waf_forward_header(ngx_table_elt_t* header);
+
+
+size_t ngx_http_waf_forwarded_header_size(ngx_http_request_t* r);
+
+
+u_char* ngx_http_waf_copy_forwarded_headers(ngx_http_request_t* r, u_char* p);
+
+
+/**
+ * Whether the request targets the same-origin challenge path reserved by
+ * `waf_anubis`.
+ */
+ngx_uint_t ngx_http_waf_is_anubis_path(ngx_http_request_t* r,
+    ngx_http_waf_loc_conf_t* conf);
+
+
+/**
+ * Serve the challenge assets and endpoints by proxying the reserved prefix to
+ * the configured Anubis endpoint.
+ */
+ngx_int_t ngx_http_waf_anubis_proxy_handler(ngx_http_request_t* r);
 
 
 /*
