@@ -126,6 +126,7 @@ http {
     server {
         listen 127.0.0.1:$nginx_port;
         server_name example.test;
+        absolute_redirect off;
         waf on;
         waf_anubis on url=http://127.0.0.1:$anubis_port/base;
         add_header X-Seen-Anubis \$http_x_anubis_status always;

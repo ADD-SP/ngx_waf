@@ -46,9 +46,9 @@ static void ngx_http_waf_free_check(void* data);
 
 
 /*
- * The `Location` header of a ModSecurity redirect.  `hash` stays 0: nginx
- * turns `r->headers_out.location` into the header and the body of a 3xx
- * response itself (see `ngx_http_special_response_handler()`).
+ * The `Location` header of a redirect.  Nginx handles the absolute form of a
+ * relative location itself when `absolute_redirect` is on.  Keep `hash` set
+ * so nginx emits the relative value when `absolute_redirect` is off.
  */
 static void ngx_http_waf_add_location(ngx_http_request_t* r, const ngx_waf_step_t* step) {
     ngx_table_elt_t* location;
@@ -69,7 +69,7 @@ static void ngx_http_waf_add_location(ngx_http_request_t* r, const ngx_waf_step_
     location->lowcase_key = (u_char*)"location";
     location->value.data = (u_char*) step->decision.location.data;
     location->value.len = step->decision.location.len;
-    location->hash = 0;
+    location->hash = 1;
 }
 
 
