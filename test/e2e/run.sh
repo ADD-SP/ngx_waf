@@ -715,6 +715,18 @@ if [ -n "$hang_pid" ]; then
     check_body_slow 200 'bad' 5 "captcha provider timeout fails closed" \
         -X POST -d 'g-recaptcha-response=token' "$cap/hang/captcha"
     check 200 "the worker survives a provider timeout" "$base/"
+    if grep -Eq \
+        '\[error\].*provider=captcha.*stage=receive.*cause=receive_timeout.*policy=fail-closed' \
+        "$prefix/logs/error.log"
+    then
+        pass=$((pass + 1))
+        printf 'ok   %-52s %s\n' \
+            "captcha timeout logs provider, stage and action" "actionable"
+    else
+        fail=$((fail + 1))
+        printf 'FAIL %-52s\n' \
+            "captcha timeout logs provider, stage and action"
+    fi
 
     # The same stub over TLS: the handshake never completes, and the request
     # (the token and the secret) must not be written into the socket in clear

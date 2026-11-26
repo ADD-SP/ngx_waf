@@ -87,6 +87,43 @@ typedef ngx_http_waf_endpoint_t ngx_http_waf_anubis_api_t;
 
 
 /**
+ * Why a provider or Anubis endpoint request could not produce an answer.
+ */
+typedef enum {
+    NGX_HTTP_WAF_FETCH_ERROR_NONE = 0,
+    NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT,
+    NGX_HTTP_WAF_FETCH_ERROR_RESOLVER_CONFIG,
+    NGX_HTTP_WAF_FETCH_ERROR_RESOLVER,
+    NGX_HTTP_WAF_FETCH_ERROR_CONNECT,
+    NGX_HTTP_WAF_FETCH_ERROR_CONNECT_TIMEOUT,
+    NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE,
+    NGX_HTTP_WAF_FETCH_ERROR_TLS_TIMEOUT,
+    NGX_HTTP_WAF_FETCH_ERROR_TLS_VERIFY,
+    NGX_HTTP_WAF_FETCH_ERROR_TLS_HOST,
+    NGX_HTTP_WAF_FETCH_ERROR_SEND,
+    NGX_HTTP_WAF_FETCH_ERROR_SEND_TIMEOUT,
+    NGX_HTTP_WAF_FETCH_ERROR_RECEIVE,
+    NGX_HTTP_WAF_FETCH_ERROR_RECEIVE_TIMEOUT,
+    NGX_HTTP_WAF_FETCH_ERROR_RESPONSE,
+    NGX_HTTP_WAF_FETCH_ERROR_RESPONSE_TOO_LARGE,
+    NGX_HTTP_WAF_FETCH_ERROR_STATUS,
+    NGX_HTTP_WAF_FETCH_ERROR_INTERNAL
+} ngx_http_waf_fetch_error_t;
+
+
+/**
+ * The transport operation in progress when an asynchronous failure occurred.
+ */
+typedef enum {
+    NGX_HTTP_WAF_FETCH_PHASE_IDLE = 0,
+    NGX_HTTP_WAF_FETCH_PHASE_CONNECT,
+    NGX_HTTP_WAF_FETCH_PHASE_HANDSHAKE,
+    NGX_HTTP_WAF_FETCH_PHASE_SEND,
+    NGX_HTTP_WAF_FETCH_PHASE_RECEIVE
+} ngx_http_waf_fetch_phase_t;
+
+
+/**
  * One provider request in flight.
  */
 typedef struct {
@@ -106,6 +143,10 @@ typedef struct {
      */
     struct sockaddr           *resolved_sockaddr;
     socklen_t                  resolved_socklen;
+    ngx_http_waf_fetch_error_t failure;
+    ngx_http_waf_fetch_phase_t phase;
+    ngx_err_t                  failure_errno;
+    ngx_uint_t                 failure_detail;
     unsigned                   use_ssl:1;
     unsigned                   handshake_done:1;
     /** Set once the machine was given the answer. */
@@ -114,6 +155,8 @@ typedef struct {
     unsigned                   in_drive:1;
     unsigned                   resolved_valid:1;
     unsigned                   resolved_failed:1;
+    /** The actionable failure line was written once. */
+    unsigned                   failure_logged:1;
     /** The Anubis auth check reads headers only, not the response body. */
     unsigned                   anubis:1;
 } ngx_http_waf_fetch_t;

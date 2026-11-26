@@ -14,6 +14,7 @@ typedef struct {
     off_t               body_length;
     ngx_str_t           original_uri;
     ngx_str_t           request_uri;
+    ngx_uint_t          failure_logged:1;
 } ngx_http_waf_anubis_ctx_t;
 
 
@@ -42,6 +43,11 @@ static void ngx_http_waf_anubis_abort(ngx_http_request_t* r);
 
 
 static void ngx_http_waf_anubis_finalize(ngx_http_request_t* r, ngx_int_t rc);
+
+
+static void ngx_http_waf_anubis_log_failure(ngx_http_request_t* r,
+    ngx_http_waf_anubis_ctx_t* anubis, ngx_http_waf_loc_conf_t* conf,
+    const char* stage, const char* cause, ngx_int_t rc);
 
 
 static ngx_int_t ngx_http_waf_anubis_add_header(ngx_http_request_t* r,
@@ -162,6 +168,7 @@ static ngx_int_t ngx_http_waf_anubis_upstream(ngx_http_request_t* r)
     ngx_http_waf_ctx_t* ctx =
         ngx_http_get_module_ctx(r, ngx_http_waf_module);
     ngx_http_waf_anubis_ctx_t* anubis;
+    ngx_http_core_loc_conf_t* clcf;
     ngx_http_upstream_t* u;
     ngx_http_upstream_conf_t* ucf;
 
@@ -236,6 +243,12 @@ static ngx_int_t ngx_http_waf_anubis_upstream(ngx_http_request_t* r)
         u->resolved->sockaddr = conf->anubis_api.sockaddr;
         u->resolved->socklen = conf->anubis_api.socklen;
         u->resolved->naddrs = 1;
+    } else {
+        clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+        if (clcf->resolver == NULL) {
+            ngx_http_waf_anubis_log_failure(
+                r, anubis, conf, "resolve", "resolver_not_configured", 0);
+        }
     }
 
     ngx_http_upstream_init(r);
@@ -834,6 +847,59 @@ static void ngx_http_waf_anubis_abort(ngx_http_request_t* r)
 
 static void ngx_http_waf_anubis_finalize(ngx_http_request_t* r, ngx_int_t rc)
 {
-    (void) r;
-    (void) rc;
+    ngx_http_waf_ctx_t* ctx;
+    ngx_http_waf_loc_conf_t* conf;
+    ngx_http_waf_anubis_ctx_t* anubis;
+
+    if (rc != NGX_ERROR
+        && rc != NGX_HTTP_INTERNAL_SERVER_ERROR
+        && rc != NGX_HTTP_BAD_GATEWAY
+        && rc != NGX_HTTP_GATEWAY_TIME_OUT
+        && rc != NGX_HTTP_SERVICE_UNAVAILABLE)
+    {
+        return;
+    }
+
+    ctx = ngx_http_waf_get_ctx(r);
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_waf_module);
+    if (ctx == NULL || conf == NULL || ctx->anubis_proxy == NULL) {
+        return;
+    }
+
+    anubis = ctx->anubis_proxy;
+    ngx_http_waf_anubis_log_failure(
+        r, anubis, conf, "proxy", "upstream_failed", rc);
+}
+
+
+static void ngx_http_waf_anubis_log_failure(ngx_http_request_t* r,
+    ngx_http_waf_anubis_ctx_t* anubis, ngx_http_waf_loc_conf_t* conf,
+    const char* stage, const char* cause, ngx_int_t rc)
+{
+    const char* hint;
+
+    if (anubis == NULL || anubis->failure_logged) {
+        return;
+    }
+
+    anubis->failure_logged = 1;
+
+    if (ngx_strncmp(stage, "resolve", sizeof("resolve") - 1) == 0
+        || !conf->anubis_api.resolved)
+    {
+        hint = "add resolver 127.0.0.11 valid=10s ipv6=off or use a resolvable host";
+    } else {
+        hint = "check that Anubis is running, shares a reachable network and listens on this port";
+    }
+
+    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+        "ngx_waf: Anubis challenge proxy failed mode=challenge "
+        "endpoint=\"%V\" stage=%s cause=%s resolved_at_startup=%s rc=%i "
+        "hint=\"%s\"",
+        &conf->anubis_api.url,
+        stage,
+        cause,
+        conf->anubis_api.resolved ? "yes" : "no",
+        rc,
+        hint);
 }

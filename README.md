@@ -61,6 +61,27 @@ Anubis cannot be reached or returns an unusable auth response:
 waf_anubis on url=https://anubis.internal:8923 on_error=deny;
 ```
 
+When the endpoint cannot be reached, the error log records one actionable
+line with the configured endpoint, failed stage, cause, effective policy and
+a remediation hint.  For example:
+
+```text
+ngx_waf: backend request failed provider=anubis endpoint="http://anubis:8080/base" stage=resolve cause=resolver_not_configured resolved_at_startup=no error="" detail=0 policy=fail-closed status=503 hint="add resolver 127.0.0.11 valid=10s ipv6=off or use a resolvable host"
+```
+
+`policy=fail-closed` is logged at error level; `policy=fail-open` is logged at
+warning level.  A DNS name that was not resolved while the configuration was
+read requires a working Nginx `resolver`, even if another client inside the
+container can resolve the same name:
+
+```nginx
+resolver 127.0.0.11 valid=10s ipv6=off;
+resolver_timeout 5s;
+```
+
+Failures of the same-origin challenge reverse proxy are logged separately with
+`mode=challenge`, the endpoint and the Nginx result code.
+
 `waf_anubis` is allowed at `http` and `server` scope.  While enabled,
 `<BASE_PREFIX>/.within.website/` is reserved for Anubis challenge traffic.
 Existing `waf_priority` configurations must add the sixth `ANUBIS` item.
