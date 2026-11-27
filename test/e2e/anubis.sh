@@ -14,6 +14,7 @@ allow_port=$((nginx_port + 1))
 deny_port=$((nginx_port + 2))
 tls_anubis_port=$((nginx_port + 3))
 tls_waf_port=$((nginx_port + 4))
+unresolved_port=$((nginx_port + 5))
 bad_port=$((nginx_port + 9))
 prefix=$(mktemp -d)
 container="ngx-waf-anubis-e2e-$$"
@@ -155,6 +156,13 @@ http {
     }
 
     server {
+        listen 127.0.0.1:$unresolved_port;
+        server_name unresolved.test;
+        waf on;
+        waf_anubis on url=http://anubis.invalid:8080 on_error=deny;
+    }
+
+    server {
         listen 127.0.0.1:$tls_anubis_port ssl;
         ssl_certificate $prefix/tls.crt;
         ssl_certificate_key $prefix/tls.key;
@@ -268,6 +276,8 @@ else
     bad "unverified request redirect"
 fi
 
+failure_logs_before=$(grep -c 'backend request failed' "$prefix/error.log" || true)
+
 status=$(curl -sS -D "$prefix/page.headers" -o "$prefix/page.html" \
     -w '%{http_code}' --max-time 15 -A 'Mozilla/5.0' \
     "${headers[@]}" "$base_url/base/.within.website/?redir=%2Findex.html%3Fx%3D1")
@@ -298,6 +308,13 @@ else
     bad "large chunked challenge asset"
 fi
 
+failure_logs_after=$(grep -c 'backend request failed' "$prefix/error.log" || true)
+if [ "${failure_logs_after:-0}" = "${failure_logs_before:-0}" ]; then
+    ok "successful challenge proxying does not log a backend failure"
+else
+    bad "successful challenge proxying logged a backend failure"
+fi
+
 expect_status 403 "Anubis deny policy is forwarded" \
     -A 'AnubisDenyTest' "${headers[@]}" "$base_url/index.html"
 expect_status 200 "auth timeout fails open by default" \
@@ -318,6 +335,50 @@ fi
 expect_status 503 "on_error=deny fails closed" \
     -A 'Mozilla/5.0' -H 'Host: example.test' -H 'X-Real-IP: 203.0.113.10' \
     "http://127.0.0.1:$deny_port/index.html"
+
+if grep -Eq \
+    '\[warn\].*provider=anubis.*stage=connect.*cause=connect_failed.*policy=fail-open' \
+    "$prefix/error.log"
+then
+    ok "Anubis connect failure logs the fail-open action"
+else
+    bad "Anubis connect failure logs the fail-open action"
+fi
+
+if grep -Eq \
+    '\[error\].*provider=anubis.*stage=connect.*cause=connect_failed.*policy=fail-closed.*status=503' \
+    "$prefix/error.log"
+then
+    ok "Anubis connect failure logs the fail-closed action"
+else
+    bad "Anubis connect failure logs the fail-closed action"
+fi
+
+expect_status 503 "an unresolved Anubis host fails closed" \
+    -A 'Mozilla/5.0' -H 'Host: unresolved.test' -H 'X-Real-IP: 203.0.113.10' \
+    "http://127.0.0.1:$unresolved_port/index.html"
+
+if grep -Eq \
+    '\[error\].*provider=anubis.*stage=resolve.*cause=resolution_failed.*policy=fail-closed.*status=503.*hint="configure resolver' \
+    "$prefix/error.log"
+then
+    ok "Anubis resolver failure includes the remediation hint"
+else
+    bad "Anubis resolver failure includes the remediation hint"
+fi
+
+curl -sS -o /dev/null --max-time 5 \
+    -H 'Host: unresolved.test' \
+    "http://127.0.0.1:$unresolved_port/.within.website/"
+
+if grep -Eq \
+    '\[error\].*Anubis challenge proxy failed mode=challenge.*resolved_at_startup=no.*hint="add resolver' \
+    "$prefix/error.log"
+then
+    ok "Anubis challenge proxy resolver failure is actionable"
+else
+    bad "Anubis challenge proxy resolver failure is actionable"
+fi
 
 python3 "$root/test/e2e/anubis-solve.py" \
     --port "$nginx_port" \

@@ -22,6 +22,21 @@ static ngx_int_t ngx_http_waf_fetch_anubis_head(ngx_http_request_t* r,
     ngx_http_waf_ctx_t* ctx);
 
 
+static void ngx_http_waf_fetch_note_error(ngx_http_waf_ctx_t* ctx,
+    ngx_http_waf_fetch_error_t error, ngx_err_t err, ngx_uint_t detail);
+
+
+static void ngx_http_waf_fetch_note_timeout(ngx_http_waf_ctx_t* ctx);
+
+
+static ngx_http_waf_fetch_error_t ngx_http_waf_fetch_io_error(
+    ngx_err_t error, ngx_http_waf_fetch_error_t fallback);
+
+
+static void ngx_http_waf_fetch_log_failure(ngx_http_request_t* r,
+    ngx_http_waf_ctx_t* ctx);
+
+
 /* -------------------------------------------------------------------------
  * The captcha provider request.
  *
@@ -36,6 +51,265 @@ static ngx_int_t ngx_http_waf_fetch_anubis_head(ngx_http_request_t* r,
 
 /** The answer of a provider has to be much smaller than this. */
 #define NGX_HTTP_WAF_FETCH_BUFFER 8192
+
+
+static const char* ngx_http_waf_fetch_stage(ngx_http_waf_fetch_error_t error)
+{
+    switch (error) {
+    case NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT:
+        return "config";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESOLVER_CONFIG:
+    case NGX_HTTP_WAF_FETCH_ERROR_RESOLVER:
+        return "resolve";
+    case NGX_HTTP_WAF_FETCH_ERROR_CONNECT:
+    case NGX_HTTP_WAF_FETCH_ERROR_CONNECT_TIMEOUT:
+        return "connect";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE:
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_TIMEOUT:
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_VERIFY:
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_HOST:
+        return "tls";
+    case NGX_HTTP_WAF_FETCH_ERROR_SEND:
+    case NGX_HTTP_WAF_FETCH_ERROR_SEND_TIMEOUT:
+        return "send";
+    case NGX_HTTP_WAF_FETCH_ERROR_RECEIVE:
+    case NGX_HTTP_WAF_FETCH_ERROR_RECEIVE_TIMEOUT:
+        return "receive";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESPONSE:
+    case NGX_HTTP_WAF_FETCH_ERROR_RESPONSE_TOO_LARGE:
+    case NGX_HTTP_WAF_FETCH_ERROR_STATUS:
+        return "response";
+    case NGX_HTTP_WAF_FETCH_ERROR_NONE:
+    case NGX_HTTP_WAF_FETCH_ERROR_INTERNAL:
+        return "internal";
+    }
+
+    return "internal";
+}
+
+
+static const char* ngx_http_waf_fetch_cause(ngx_http_waf_fetch_error_t error)
+{
+    switch (error) {
+    case NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT:
+        return "endpoint_not_configured";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESOLVER_CONFIG:
+        return "resolver_not_configured";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESOLVER:
+        return "resolution_failed";
+    case NGX_HTTP_WAF_FETCH_ERROR_CONNECT:
+        return "connect_failed";
+    case NGX_HTTP_WAF_FETCH_ERROR_CONNECT_TIMEOUT:
+        return "connect_timeout";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE:
+        return "tls_handshake_failed";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_TIMEOUT:
+        return "tls_handshake_timeout";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_VERIFY:
+        return "certificate_verify_failed";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_HOST:
+        return "certificate_host_mismatch";
+    case NGX_HTTP_WAF_FETCH_ERROR_SEND:
+        return "send_failed";
+    case NGX_HTTP_WAF_FETCH_ERROR_SEND_TIMEOUT:
+        return "send_timeout";
+    case NGX_HTTP_WAF_FETCH_ERROR_RECEIVE:
+        return "receive_failed";
+    case NGX_HTTP_WAF_FETCH_ERROR_RECEIVE_TIMEOUT:
+        return "receive_timeout";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESPONSE:
+        return "invalid_response";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESPONSE_TOO_LARGE:
+        return "response_too_large";
+    case NGX_HTTP_WAF_FETCH_ERROR_STATUS:
+        return "unusable_status";
+    case NGX_HTTP_WAF_FETCH_ERROR_NONE:
+    case NGX_HTTP_WAF_FETCH_ERROR_INTERNAL:
+        return "internal_error";
+    }
+
+    return "internal_error";
+}
+
+
+static const char* ngx_http_waf_fetch_hint(ngx_http_waf_fetch_error_t error)
+{
+    switch (error) {
+    case NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT:
+        return "configure the provider endpoint before enabling the inspection";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESOLVER_CONFIG:
+        return "add resolver 127.0.0.11 valid=10s ipv6=off or use a resolvable host";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESOLVER:
+        return "configure resolver 127.0.0.11 valid=10s ipv6=off and check the service name";
+    case NGX_HTTP_WAF_FETCH_ERROR_CONNECT:
+        return "check that the service is running on this port and shares a reachable network";
+    case NGX_HTTP_WAF_FETCH_ERROR_CONNECT_TIMEOUT:
+        return "check the backend address, network route, firewall and listen port";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE:
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_TIMEOUT:
+        return "check the URL scheme, TLS support, trusted CA and certificate hostname";
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_VERIFY:
+    case NGX_HTTP_WAF_FETCH_ERROR_TLS_HOST:
+        return "install the issuing CA and verify that the URL host matches the certificate";
+    case NGX_HTTP_WAF_FETCH_ERROR_SEND:
+    case NGX_HTTP_WAF_FETCH_ERROR_SEND_TIMEOUT:
+        return "check that the backend accepts HTTP and remains reachable";
+    case NGX_HTTP_WAF_FETCH_ERROR_RECEIVE:
+    case NGX_HTTP_WAF_FETCH_ERROR_RECEIVE_TIMEOUT:
+        return "check backend health, response time and whether it closes the connection";
+    case NGX_HTTP_WAF_FETCH_ERROR_RESPONSE:
+    case NGX_HTTP_WAF_FETCH_ERROR_RESPONSE_TOO_LARGE:
+        return "check that the configured URL is the Anubis or captcha HTTP API";
+    case NGX_HTTP_WAF_FETCH_ERROR_STATUS:
+        return "check BASE_PREFIX and the inspection endpoint; it returned an unusable status";
+    case NGX_HTTP_WAF_FETCH_ERROR_NONE:
+    case NGX_HTTP_WAF_FETCH_ERROR_INTERNAL:
+        return "check Nginx memory pressure and the surrounding error log";
+    }
+
+    return "check Nginx memory pressure and the surrounding error log";
+}
+
+
+static void ngx_http_waf_fetch_note_error(ngx_http_waf_ctx_t* ctx,
+    ngx_http_waf_fetch_error_t error, ngx_err_t err, ngx_uint_t detail)
+{
+    if (ctx == NULL || ctx->fetch.failure != NGX_HTTP_WAF_FETCH_ERROR_NONE) {
+        return;
+    }
+
+    ctx->fetch.failure = error;
+    ctx->fetch.failure_errno = err;
+    ctx->fetch.failure_detail = detail;
+}
+
+
+static void ngx_http_waf_fetch_note_timeout(ngx_http_waf_ctx_t* ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    switch (ctx->fetch.phase) {
+    case NGX_HTTP_WAF_FETCH_PHASE_CONNECT:
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_CONNECT_TIMEOUT, NGX_ETIMEDOUT, 0);
+        break;
+    case NGX_HTTP_WAF_FETCH_PHASE_HANDSHAKE:
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_TIMEOUT, NGX_ETIMEDOUT, 0);
+        break;
+    case NGX_HTTP_WAF_FETCH_PHASE_SEND:
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_SEND_TIMEOUT, NGX_ETIMEDOUT, 0);
+        break;
+    case NGX_HTTP_WAF_FETCH_PHASE_IDLE:
+    case NGX_HTTP_WAF_FETCH_PHASE_RECEIVE:
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_RECEIVE_TIMEOUT, NGX_ETIMEDOUT, 0);
+        break;
+    }
+}
+
+
+static ngx_http_waf_fetch_error_t ngx_http_waf_fetch_io_error(
+    ngx_err_t error, ngx_http_waf_fetch_error_t fallback)
+{
+    switch (error) {
+    case NGX_ECONNREFUSED:
+    case NGX_EHOSTUNREACH:
+    case NGX_ENETUNREACH:
+        return NGX_HTTP_WAF_FETCH_ERROR_CONNECT;
+    default:
+        return fallback;
+    }
+}
+
+
+static void ngx_http_waf_fetch_log_failure(ngx_http_request_t* r,
+    ngx_http_waf_ctx_t* ctx)
+{
+    ngx_http_waf_endpoint_t* api;
+    ngx_uint_t blocked, status;
+    ngx_str_t endpoint, provider;
+    ngx_err_t error;
+    ngx_log_t* log;
+    ngx_uint_t level;
+    const char* resolved;
+    const char* policy;
+    u_char errstr[NGX_MAX_ERROR_STR];
+    u_char* errstr_end;
+    size_t errstr_len;
+
+    if (ctx == NULL || ctx->fetch.failure == NGX_HTTP_WAF_FETCH_ERROR_NONE
+        || ctx->fetch.failure_logged)
+    {
+        return;
+    }
+
+    ctx->fetch.failure_logged = 1;
+    api = ctx->fetch.api;
+
+    if (ctx->fetch.anubis
+        || (ctx->step != NULL
+            && ctx->step->kind == NGX_WAF_STEP_KIND_HTTP_REQUEST
+            && ctx->step->pending.request_kind
+               == NGX_WAF_HTTP_REQUEST_KIND_ANUBIS))
+    {
+        ngx_str_set(&provider, "anubis");
+    } else {
+        ngx_str_set(&provider, "captcha");
+    }
+
+    if (api != NULL && api->url.len != 0) {
+        endpoint = api->url;
+    } else {
+        ngx_str_set(&endpoint, "<unconfigured>");
+    }
+
+    if (api == NULL) {
+        resolved = "unknown";
+    } else {
+        resolved = api->resolved ? "yes" : "no";
+    }
+
+    blocked = ctx->step != NULL
+              && ctx->step->kind == NGX_WAF_STEP_KIND_RESPONSE
+              && ctx->step->decision.blocked;
+    status = ctx->step != NULL
+             && ctx->step->kind == NGX_WAF_STEP_KIND_RESPONSE
+             ? (ngx_uint_t) ctx->step->decision.status : 0;
+
+    policy = blocked ? "fail-closed" : "fail-open";
+    level = blocked || ctx->step == NULL
+            || ctx->step->kind == NGX_WAF_STEP_KIND_INTERNAL_ERROR
+            ? NGX_LOG_ERR : NGX_LOG_WARN;
+    log = r->connection->log;
+    error = ctx->fetch.failure_errno;
+
+    if (error != 0) {
+        errstr_end = ngx_strerror(error, errstr, sizeof(errstr));
+        errstr_len = errstr_end - errstr;
+    } else {
+        errstr_len = 0;
+    }
+
+    ngx_log_error(level, log, 0,
+        "ngx_waf: backend request failed provider=%V endpoint=\"%V\" "
+        "stage=%s cause=%s resolved_at_startup=%s error=\"%*s\" detail=%ui "
+        "policy=%s status=%ui hint=\"%s\"",
+        &provider,
+        &endpoint,
+        ngx_http_waf_fetch_stage(ctx->fetch.failure),
+        ngx_http_waf_fetch_cause(ctx->fetch.failure),
+        resolved,
+        errstr_len,
+        errstr,
+        ctx->fetch.failure_detail,
+        policy,
+        status,
+        ngx_http_waf_fetch_hint(ctx->fetch.failure));
+}
 
 
 static void ngx_http_waf_fetch_noop(ngx_event_t* ev) {
@@ -59,7 +333,8 @@ static ngx_int_t ngx_http_waf_get_peer(ngx_peer_connection_t* pc, void* data) {
 }
 
 
-static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_connection_t* c) {
+static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_http_waf_ctx_t* ctx,
+    ngx_connection_t* c) {
     int       err;
     socklen_t len = sizeof(int);
 
@@ -72,7 +347,8 @@ static ngx_int_t ngx_http_waf_fetch_connect_test(ngx_connection_t* c) {
     }
 
     if (err) {
-        ngx_log_error(NGX_LOG_ERR, c->log, err, "ngx_waf: connect() failed");
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_CONNECT, err, 0);
         return NGX_ERROR;
     }
 
@@ -204,10 +480,15 @@ void ngx_http_waf_fetch_failed(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx) {
         return;
     }
 
+    ngx_http_waf_fetch_note_error(
+        ctx, NGX_HTTP_WAF_FETCH_ERROR_INTERNAL, 0, 0);
+
     ngx_memzero(&event, sizeof(ngx_waf_event_t));
     event.kind = NGX_WAF_EVENT_KIND_HTTP_FAILED;
 
     ngx_http_waf_resume(r, ctx, &event);
+
+    ngx_http_waf_fetch_log_failure(r, ctx);
 
     ngx_http_waf_fetch_settle(ctx);
     ngx_http_waf_fetch_wake(r, ctx);
@@ -267,6 +548,11 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
      * peer sends back would be parsed as an answer.
      */
     if (c->ssl == NULL || !c->ssl->handshaked || c->timedout || c->error) {
+        ngx_http_waf_fetch_note_error(
+            ctx,
+            c->timedout ? NGX_HTTP_WAF_FETCH_ERROR_TLS_TIMEOUT
+                        : NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE,
+            c->timedout ? NGX_ETIMEDOUT : 0, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
@@ -280,9 +566,8 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
     rc = SSL_get_verify_result(c->ssl->connection);
 
     if (rc != X509_V_OK) {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                      "ngx_waf: the captcha provider certificate could not be "
-                      "verified (%l:%s)", rc, X509_verify_cert_error_string(rc));
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_VERIFY, 0, (ngx_uint_t) rc);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
@@ -292,9 +577,8 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
     if (conf == NULL || ctx->fetch.api == NULL
         || ngx_http_waf_fetch_check_name(c, &ctx->fetch.api->host) != NGX_OK)
     {
-        ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                      "ngx_waf: the captcha provider certificate does not match "
-                      "the configured host");
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_HOST, 0, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
@@ -308,6 +592,7 @@ static void ngx_http_waf_fetch_ssl_done(ngx_connection_t* c) {
     c->read->handler = ngx_http_waf_fetch_read;
     c->write->handler = ngx_http_waf_fetch_write;
 
+    ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_SEND;
     ngx_http_waf_fetch_write(c->write);
 }
 
@@ -317,11 +602,19 @@ static ngx_int_t ngx_http_waf_fetch_status(ngx_http_request_t* r,
 {
     ngx_waf_event_t event;
 
+    if (!((status >= 200 && status < 300) || status == 401
+          || status == 403 || status == 307))
+    {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_STATUS, 0, status);
+    }
+
     ngx_memzero(&event, sizeof(ngx_waf_event_t));
     event.kind = NGX_WAF_EVENT_KIND_HTTP_STATUS;
     event.status = status;
 
     ngx_http_waf_resume(r, ctx, &event);
+    ngx_http_waf_fetch_log_failure(r, ctx);
     ngx_http_waf_fetch_settle(ctx);
     ngx_http_waf_fetch_wake(r, ctx);
 
@@ -371,7 +664,12 @@ static ngx_int_t ngx_http_waf_fetch_anubis_head(ngx_http_request_t* r,
     }
 
     if (end == NULL) {
-        return b->last == b->end ? NGX_ERROR : NGX_AGAIN;
+        if (b->last == b->end) {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_RESPONSE_TOO_LARGE, 0, 0);
+            return NGX_ERROR;
+        }
+        return NGX_AGAIN;
     }
 
     probe = *b;
@@ -379,6 +677,8 @@ static ngx_int_t ngx_http_waf_fetch_anubis_head(ngx_http_request_t* r,
     ngx_memzero(&status, sizeof(ngx_http_status_t));
     rc = ngx_http_parse_status_line(r, &probe, &status);
     if (rc != NGX_OK || status.code < 100 || status.code > 599) {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_RESPONSE, 0, 0);
         return NGX_ERROR;
     }
 
@@ -399,6 +699,7 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
     }
 
     if (rev->timedout) {
+        ngx_http_waf_fetch_note_timeout(ctx);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
@@ -424,6 +725,8 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
 
             if (b->last == b->end) {
                 /* a provider answer bigger than the buffer is not one we can use */
+                ngx_http_waf_fetch_note_error(
+                    ctx, NGX_HTTP_WAF_FETCH_ERROR_RESPONSE_TOO_LARGE, 0, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
                 return;
             }
@@ -438,6 +741,8 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
 
         if (n == 0) {
             if (ctx->fetch.anubis) {
+                ngx_http_waf_fetch_note_error(
+                    ctx, NGX_HTTP_WAF_FETCH_ERROR_RESPONSE, 0, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
                 return;
             }
@@ -454,11 +759,21 @@ static void ngx_http_waf_fetch_read(ngx_event_t* rev) {
 
         if (n == NGX_AGAIN) {
             if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
+                ngx_http_waf_fetch_note_error(
+                    ctx,
+                    ngx_http_waf_fetch_io_error(
+                        ngx_socket_errno, NGX_HTTP_WAF_FETCH_ERROR_RECEIVE),
+                    ngx_socket_errno, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
+        ngx_http_waf_fetch_note_error(
+            ctx,
+            ngx_http_waf_fetch_io_error(
+                ngx_socket_errno, NGX_HTTP_WAF_FETCH_ERROR_RECEIVE),
+            ngx_socket_errno, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
@@ -478,16 +793,18 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
     }
 
     if (wev->timedout) {
+        ngx_http_waf_fetch_note_timeout(ctx);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
-    if (ngx_http_waf_fetch_connect_test(c) != NGX_OK) {
+    if (ngx_http_waf_fetch_connect_test(ctx, c) != NGX_OK) {
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
 
     if (ctx->fetch.use_ssl && !ctx->fetch.handshake_done) {
+        ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_HANDSHAKE;
         rc = ngx_ssl_handshake(c);
 
         if (rc == NGX_AGAIN) {
@@ -496,12 +813,18 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
             if (ngx_handle_read_event(c->read, 0) != NGX_OK
                 || ngx_handle_write_event(c->write, 0) != NGX_OK)
             {
+                ngx_http_waf_fetch_note_error(
+                    ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE,
+                    ngx_socket_errno, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
         if (rc != NGX_OK) {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE,
+                ngx_socket_errno, 0);
             ngx_http_waf_fetch_failed(r, ctx);
             return;
         }
@@ -509,6 +832,7 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
         ctx->fetch.handshake_done = 1;
     }
 
+    ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_SEND;
     b = ctx->fetch.request;
 
     while (b->pos < b->last) {
@@ -523,11 +847,21 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
             ngx_add_timer(c->write, NGX_HTTP_WAF_FETCH_TIMEOUT);
 
             if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
+                ngx_http_waf_fetch_note_error(
+                    ctx,
+                    ngx_http_waf_fetch_io_error(
+                        ngx_socket_errno, NGX_HTTP_WAF_FETCH_ERROR_SEND),
+                    ngx_socket_errno, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
             }
             return;
         }
 
+        ngx_http_waf_fetch_note_error(
+            ctx,
+            ngx_http_waf_fetch_io_error(
+                ngx_socket_errno, NGX_HTTP_WAF_FETCH_ERROR_SEND),
+            ngx_socket_errno, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         return;
     }
@@ -538,6 +872,7 @@ static void ngx_http_waf_fetch_write(ngx_event_t* wev) {
 
     /* stop writing, wait for the answer */
     c->write->handler = ngx_http_waf_fetch_noop;
+    ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_RECEIVE;
     ngx_add_timer(c->read, NGX_HTTP_WAF_FETCH_TIMEOUT);
 
     ngx_http_waf_fetch_read(c->read);
@@ -713,8 +1048,8 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
          * so this only happens when a request reaches the provider without a
          * captcha configuration at all.
          */
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-            "ngx_waf: the Anubis or captcha endpoint is not configured");
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT, 0, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
@@ -726,6 +1061,12 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
      * when the resolver of the enclosing context answered from its cache.
      */
     if (ctx->fetch.request == NULL) {
+        ctx->fetch.failure = NGX_HTTP_WAF_FETCH_ERROR_NONE;
+        ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_IDLE;
+        ctx->fetch.failure_errno = 0;
+        ctx->fetch.failure_detail = 0;
+        ctx->fetch.failure_logged = 0;
+
         if (step->pending.request_kind == NGX_WAF_HTTP_REQUEST_KIND_ANUBIS) {
             /*
              * Anubis only emits its risk headers in reverse-proxy mode.  A
@@ -734,8 +1075,9 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
              */
             ngx_http_waf_remove_client_risk_headers(r);
             if (!conf->anubis_api.configured) {
-                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "ngx_waf: the Anubis endpoint is not configured");
+                ctx->fetch.anubis = 1;
+                ngx_http_waf_fetch_note_error(
+                    ctx, NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT, 0, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
                 ctx->fetch.in_drive = 0;
                 return NGX_OK;
@@ -744,8 +1086,9 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
             ctx->fetch.anubis = 1;
         } else {
             if (!conf->captcha_api.configured) {
-                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "ngx_waf: the captcha endpoint is not configured");
+                ctx->fetch.anubis = 0;
+                ngx_http_waf_fetch_note_error(
+                    ctx, NGX_HTTP_WAF_FETCH_ERROR_ENDPOINT, 0, 0);
                 ngx_http_waf_fetch_failed(r, ctx);
                 ctx->fetch.in_drive = 0;
                 return NGX_OK;
@@ -767,6 +1110,8 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         }
         b = ngx_create_temp_buf(r->pool, len);
         if (b == NULL) {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_INTERNAL, 0, 0);
             ngx_http_waf_fetch_failed(r, ctx);
             ctx->fetch.in_drive = 0;
             return NGX_OK;
@@ -823,6 +1168,8 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
         ctx->fetch.response = ngx_create_temp_buf(r->pool,
             ctx->fetch.anubis ? 16 * 1024 : NGX_HTTP_WAF_FETCH_BUFFER);
         if (ctx->fetch.response == NULL) {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_INTERNAL, 0, 0);
             ngx_http_waf_fetch_failed(r, ctx);
             ctx->fetch.in_drive = 0;
             return NGX_OK;
@@ -838,6 +1185,8 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
     if (clcf->resolver == NULL) {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_RESOLVER_CONFIG, 0, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
@@ -846,6 +1195,8 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
     rc = ngx_resolve_start(clcf->resolver, NULL);
 
     if (rc == NULL || rc == NGX_NO_RESOLVER) {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_RESOLVER, 0, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
@@ -865,6 +1216,8 @@ ngx_int_t ngx_http_waf_start_http(ngx_http_request_t* r, ngx_http_waf_ctx_t* ctx
          * `ngx_resolve_name_done()` here would read and free it a second
          * time.
          */
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_RESOLVER, ngx_socket_errno, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         ctx->fetch.in_drive = 0;
         return NGX_OK;
@@ -933,10 +1286,15 @@ static void ngx_http_waf_fetch_resolved(ngx_resolver_ctx_t* rc) {
             ctx->fetch.resolved_valid = 1;
 
         } else {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_INTERNAL, 0, 0);
             ctx->fetch.resolved_failed = 1;
         }
 
     } else {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_RESOLVER, 0,
+            rc->state == NGX_OK ? 0 : (ngx_uint_t) rc->state);
         ctx->fetch.resolved_failed = 1;
     }
 
@@ -972,6 +1330,7 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
 
     ctx->fetch.sockaddr = sockaddr;
     ctx->fetch.socklen = socklen;
+    ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_CONNECT;
 
     ngx_memzero(&peer, sizeof(ngx_peer_connection_t));
     peer.get = ngx_http_waf_get_peer;
@@ -984,6 +1343,8 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
     if (rc == NGX_ERROR || rc == NGX_BUSY || rc == NGX_DECLINED
         || peer.connection == NULL || peer.connection->fd == -1)
     {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_CONNECT, ngx_socket_errno, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         return NGX_OK;
     }
@@ -1009,6 +1370,8 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
      */
     cln = ngx_pool_cleanup_add(r->pool, 0);
     if (cln == NULL) {
+        ngx_http_waf_fetch_note_error(
+            ctx, NGX_HTTP_WAF_FETCH_ERROR_INTERNAL, 0, 0);
         ngx_http_waf_fetch_failed(r, ctx);
         return NGX_OK;
     }
@@ -1019,6 +1382,8 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
         if (ngx_ssl_create_connection(&ctx->fetch.api->ssl, c,
                                       NGX_SSL_BUFFER|NGX_SSL_CLIENT) != NGX_OK)
         {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_HANDSHAKE, 0, 0);
             ctx->fetch.connection = c;
             ngx_http_waf_fetch_failed(r, ctx);
             return NGX_OK;
@@ -1027,12 +1392,15 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
         if (SSL_set_tlsext_host_name(c->ssl->connection, (char*) ctx->fetch.api->host.data)
             == 0)
         {
+            ngx_http_waf_fetch_note_error(
+                ctx, NGX_HTTP_WAF_FETCH_ERROR_TLS_HOST, 0, 0);
             ngx_http_waf_fetch_failed(r, ctx);
             return NGX_OK;
         }
 
         c->ssl->handler = ngx_http_waf_fetch_ssl_done;
 
+        ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_HANDSHAKE;
         rc = ngx_ssl_handshake(c);
 
         if (rc == NGX_AGAIN) {
@@ -1068,6 +1436,7 @@ static ngx_int_t ngx_http_waf_fetch_connect(ngx_http_request_t* r, ngx_http_waf_
 
     if (rc == NGX_OK || c->write->ready) {
         /* the first send may already carry the whole request */
+        ctx->fetch.phase = NGX_HTTP_WAF_FETCH_PHASE_SEND;
         ngx_http_waf_fetch_write(c->write);
         ctx->fetch.in_drive = 0;
 
