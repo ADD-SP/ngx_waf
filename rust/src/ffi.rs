@@ -204,7 +204,7 @@ impl RawRequestView {
 /// lives as long as the request does.
 struct InspectionState {
     step: NgxWafStep,
-    machine: Option<check::Machine>,
+    machine: check::Machine,
     buffers: InspectionStepBuffers,
 }
 
@@ -678,7 +678,7 @@ pub unsafe extern "C" fn ngx_waf_inspection_begin(
         let machine = check::Machine::new(conf, raw, cookies, http_transport);
         let mut handle = InspectionState {
             step: NgxWafStep::empty(),
-            machine: Some(machine),
+            machine,
             buffers: InspectionStepBuffers::default(),
         };
         handle.advance();
@@ -717,11 +717,7 @@ pub unsafe extern "C" fn ngx_waf_inspection_resume(
     }
     // SAFETY: the C side owns a live handle for this call.
     let handle = unsafe { &mut *(check as *mut InspectionState) };
-    let log = handle
-        .machine
-        .as_ref()
-        .map(|machine| machine.log())
-        .unwrap_or(std::ptr::null_mut());
+    let log = handle.machine.log();
 
     let result = catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: the C side owns a live event for this call, and every view of
@@ -762,33 +758,21 @@ pub unsafe extern "C" fn ngx_waf_inspection_log(check: *mut NgxWafInspectionHand
     }
     // SAFETY: the C side owns a live handle for this call.
     let handle = unsafe { &mut *(check as *mut InspectionState) };
-    let log = handle
-        .machine
-        .as_ref()
-        .map(|machine| machine.log())
-        .unwrap_or(std::ptr::null_mut());
+    let log = handle.machine.log();
     guard_with_log(log, (), || {
-        if let Some(machine) = handle.machine.as_mut() {
-            machine.log_phase();
-        }
+        handle.machine.log_phase();
     });
 }
 
 impl InspectionState {
     /// Run the machine once and publish the result into the C visible step.
     fn advance(&mut self) {
-        let step = match self.machine.as_mut() {
-            Some(machine) => machine.step(),
-            None => return,
-        };
+        let step = self.machine.step();
         self.publish(step);
     }
 
     fn resume(&mut self, event: check::Event<'_>) {
-        let step = match self.machine.as_mut() {
-            Some(machine) => machine.resume(event),
-            None => return,
-        };
+        let step = self.machine.resume(event);
         self.publish(step);
     }
 
@@ -804,27 +788,23 @@ impl InspectionState {
             check::Step::Pending(pending) => match pending {
                 check::Pending::ResolveAddr => {
                     self.step.kind = NgxWafStepKind::ResolveAddr;
-                    if let Some(machine) = self.machine.as_ref() {
-                        self.step.pending.ip = machine.raw().ip.as_view();
-                    }
+                    self.step.pending.ip = self.machine.raw().ip.as_view();
                 }
                 check::Pending::HttpRequest => {
                     self.step.kind = NgxWafStepKind::HttpRequest;
-                    if let Some(machine) = self.machine.as_ref() {
-                        if let Some(request) = machine.fetch() {
-                            self.step.pending.url = NgxWafStringView {
-                                len: request.url.len(),
-                                data: request.url.as_ptr(),
-                            };
-                            self.step.pending.body = NgxWafStringView {
-                                len: request.body.len(),
-                                data: request.body.as_ptr(),
-                            };
-                            self.step.pending.request_kind = match request.kind {
-                                check::HttpRequestKind::Captcha => NgxWafHttpRequestKind::Captcha,
-                                check::HttpRequestKind::Anubis => NgxWafHttpRequestKind::Anubis,
-                            };
-                        }
+                    if let Some(request) = self.machine.fetch() {
+                        self.step.pending.url = NgxWafStringView {
+                            len: request.url.len(),
+                            data: request.url.as_ptr(),
+                        };
+                        self.step.pending.body = NgxWafStringView {
+                            len: request.body.len(),
+                            data: request.body.as_ptr(),
+                        };
+                        self.step.pending.request_kind = match request.kind {
+                            check::HttpRequestKind::Captcha => NgxWafHttpRequestKind::Captcha,
+                            check::HttpRequestKind::Anubis => NgxWafHttpRequestKind::Anubis,
+                        };
                     }
                 }
             },
@@ -1016,6 +996,32 @@ mod tests {
         LOG_LOCK.lock().unwrap_or_else(|error| error.into_inner())
     }
 
+    /// A handle for tests that only exercise publishing.  The machine keeps a
+    /// pointer to the config, so the config has to outlive the handle.
+    fn test_inspection_state() -> InspectionState {
+        let conf = Box::leak(Box::new(LocationConfiguration::default()));
+        let raw = RawRequestView {
+            ip: RawStringView::EMPTY,
+            method: NgxWafHttpMethod::Get,
+            uri: RawStringView::EMPTY,
+            unparsed_uri: RawStringView::EMPTY,
+            user_agent: RawStringView::EMPTY,
+            body: RawStringView::EMPTY,
+            now: 0,
+            modsecurity: None,
+            log: std::ptr::null_mut(),
+            cc_zone: std::ptr::null(),
+            action_zone: std::ptr::null(),
+            captcha_zone: std::ptr::null(),
+        };
+        let machine = check::Machine::new(std::ptr::NonNull::from(conf), raw, Vec::new(), false);
+        InspectionState {
+            step: NgxWafStep::empty(),
+            machine,
+            buffers: InspectionStepBuffers::default(),
+        }
+    }
+
     /// `ngx_str_t` of nginx: the length first, then the data.  The C glue casts
     /// between the two types, the layouts have to agree on every target.
     #[test]
@@ -1141,11 +1147,7 @@ mod tests {
     /// buffer without the manual free the old leak-based scheme needed.
     #[test]
     fn a_republished_step_points_into_the_owned_buffers() {
-        let mut handle = InspectionState {
-            step: NgxWafStep::empty(),
-            machine: None,
-            buffers: InspectionStepBuffers::default(),
-        };
+        let mut handle = test_inspection_state();
 
         let decision = |status: u32, body: &[u8], cookie: &str| check::Outcome {
             kind: check::OutcomeKind::Response,
@@ -1193,11 +1195,7 @@ mod tests {
     /// The typed outcome maps back to the numeric contract of the C header.
     #[test]
     fn the_typed_outcome_maps_to_the_c_codes() {
-        let mut handle = InspectionState {
-            step: NgxWafStep::empty(),
-            machine: None,
-            buffers: InspectionStepBuffers::default(),
-        };
+        let mut handle = test_inspection_state();
         let outcome = |kind, content_type| check::Outcome {
             kind,
             status: OK,

@@ -103,14 +103,14 @@ fn captcha_dispatch(state: &mut State, path: CaptchaPath) -> CheckResult {
     body.extend_from_slice(b"&secret=");
     body.extend_from_slice(&state.conf.captcha.secret);
 
-    CheckResult::Fetch {
-        continuation: Continuation::Captcha { path },
+    CheckResult::Suspend(Continuation::Captcha {
+        path,
         request: HttpRequest {
             url: String::from_utf8_lossy(&state.conf.captcha.api).into_owned(),
             body,
             kind: HttpRequestKind::Captcha,
         },
-    }
+    })
 }
 
 /// The form field the provider puts its token in.  Turnstile also accepts the

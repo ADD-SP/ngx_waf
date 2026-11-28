@@ -332,13 +332,8 @@ impl State<'_, '_> {
 enum CheckResult {
     NotMatched,
     Matched,
-    /// The inspection needs data only nginx can produce.
+    /// The inspection needs data or an operation only nginx can provide.
     Suspend(Continuation),
-    /// The inspection needs an HTTP request to be performed.
-    Fetch {
-        continuation: Continuation,
-        request: HttpRequest,
-    },
 }
 
 impl From<bool> for CheckResult {
@@ -374,25 +369,49 @@ pub struct HttpRequest {
 }
 
 /// The state kept while the request is parked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Continuation {
     /// Waiting for the PTR of the client address; `bot` is the crawler whose
     /// user agent matched.
     VerifyBot { bot: BotId },
     /// Waiting for the captcha provider.
-    Captcha { path: CaptchaPath },
+    Captcha {
+        path: CaptchaPath,
+        request: HttpRequest,
+    },
     /// Waiting for the Anubis auth check.
-    Anubis,
+    Anubis { request: HttpRequest },
 }
 
 impl Continuation {
-    fn pending(self) -> Pending {
+    fn pending(&self) -> Pending {
         match self {
             Continuation::VerifyBot { .. } => Pending::ResolveAddr,
             Continuation::Captcha { .. } => Pending::HttpRequest,
-            Continuation::Anubis => Pending::HttpRequest,
+            Continuation::Anubis { .. } => Pending::HttpRequest,
         }
     }
+
+    fn request(&self) -> Option<&HttpRequest> {
+        match self {
+            Continuation::VerifyBot { .. } => None,
+            Continuation::Captcha { request, .. } | Continuation::Anubis { request } => {
+                Some(request)
+            }
+        }
+    }
+}
+
+/// The complete execution state of one request inspection.
+enum MachinePhase {
+    /// No asynchronous operation is in flight.
+    Ready { next_index: usize },
+    /// The C side must complete the continuation before the next check runs.
+    Waiting {
+        next_index: usize,
+        continuation: Continuation,
+    },
+    /// The request was decided; another `step()` or `resume()` is invalid.
+    Done,
 }
 
 /// One step of the machine.
@@ -446,16 +465,10 @@ pub struct Machine {
     req: RawRequestView,
     cookies: Vec<Vec<u8>>,
     priority: Vec<CheckKind>,
-    /// Index of the next inspection to run.
-    index: usize,
-    checked: bool,
+    phase: MachinePhase,
     start: Instant,
     decision: Option<Decision>,
     meta: InspectionMetadata,
-    continuation: Option<Continuation>,
-    /// The request the C side has to perform when the machine parks on an HTTP
-    /// step.
-    fetch: Option<HttpRequest>,
     /// The ModSecurity transaction of this request.  It is created when the
     /// `waf_modsecurity` inspection runs and stays alive until the machine is
     /// released, which is after the log phase of nginx.
@@ -483,13 +496,10 @@ impl Machine {
             req,
             cookies,
             priority,
-            index: 0,
-            checked: false,
+            phase: MachinePhase::Ready { next_index: 0 },
             start: Instant::now(),
             decision: None,
             meta: InspectionMetadata::new(),
-            continuation: None,
-            fetch: None,
             modsecurity: None,
             http_transport,
         }
@@ -497,8 +507,23 @@ impl Machine {
 
     /// Run until the request is decided or an asynchronous operation is needed.
     pub fn step(&mut self) -> Step {
+        let next_index = match &self.phase {
+            MachinePhase::Ready { next_index } => *next_index,
+            MachinePhase::Waiting { .. } | MachinePhase::Done => {
+                return Step::InternalError;
+            }
+        };
+        self.phase = MachinePhase::Done;
+        self.run_from(next_index)
+    }
+
+    /// Run checks from `next_index` while the public state remains terminal
+    /// until the result is known.  A panic therefore cannot make a later call
+    /// resume a half-processed transition.
+    fn run_from(&mut self, next_index: usize) -> Step {
         let conf = self.conf.get_mut();
         if !matches!(conf.waf, Some(WafSwitch::On | WafSwitch::Bypass)) {
+            self.phase = MachinePhase::Done;
             return Step::Decision(Outcome::allow(false, 0.0));
         }
 
@@ -507,7 +532,7 @@ impl Machine {
         let result = run_checks(
             conf,
             &req,
-            self.index,
+            next_index,
             &self.priority,
             &mut self.decision,
             &mut self.meta,
@@ -517,28 +542,17 @@ impl Machine {
 
         match result {
             RunResult::Suspend {
-                index,
+                next_index,
                 continuation,
             } => {
-                self.index = index;
-                self.continuation = Some(continuation);
-                self.fetch = None;
-                Step::Pending(continuation.pending())
+                let pending = continuation.pending();
+                self.phase = MachinePhase::Waiting {
+                    next_index,
+                    continuation,
+                };
+                Step::Pending(pending)
             }
-            RunResult::Fetch {
-                index,
-                continuation,
-                request,
-            } => {
-                self.index = index;
-                self.continuation = Some(continuation);
-                self.fetch = Some(request);
-                Step::Pending(Pending::HttpRequest)
-            }
-            RunResult::Finished => {
-                self.checked = true;
-                Step::Decision(self.finish())
-            }
+            RunResult::Finished => self.finish(true),
         }
     }
 
@@ -567,7 +581,10 @@ impl Machine {
 
     /// The HTTP request of a parked step, `(url, body)`.
     pub fn fetch(&self) -> Option<&HttpRequest> {
-        self.fetch.as_ref()
+        match &self.phase {
+            MachinePhase::Waiting { continuation, .. } => continuation.request(),
+            MachinePhase::Ready { .. } | MachinePhase::Done => None,
+        }
     }
 
     /// The log phase of nginx: let ModSecurity write the audit log of the
@@ -580,20 +597,36 @@ impl Machine {
 
     /// Feed the result of the asynchronous operation back into the machine.
     pub fn resume(&mut self, event: Event<'_>) -> Step {
-        let Some(continuation) = self.continuation.take() else {
-            return Step::InternalError;
+        let phase = std::mem::replace(&mut self.phase, MachinePhase::Done);
+        let (next_index, continuation) = match phase {
+            MachinePhase::Waiting {
+                next_index,
+                continuation,
+            } => (next_index, continuation),
+            phase => {
+                self.phase = phase;
+                return Step::InternalError;
+            }
         };
 
         match continuation {
-            Continuation::VerifyBot { bot } => self.resume_verify_bot(bot, event),
-            Continuation::Captcha { path } => self.resume_captcha(path, event),
-            Continuation::Anubis => self.resume_anubis(event),
+            Continuation::VerifyBot { bot } => self.resume_verify_bot(next_index, bot, event),
+            Continuation::Captcha { path, request } => {
+                self.resume_captcha(next_index, path, request, event)
+            }
+            Continuation::Anubis { .. } => self.resume_anubis(next_index, event),
         }
     }
 
     /// The captcha provider answered, or could not be reached.  An answer the
     /// provider is still sending parks the machine again on the same request.
-    fn resume_captcha(&mut self, path: CaptchaPath, event: Event<'_>) -> Step {
+    fn resume_captcha(
+        &mut self,
+        next_index: usize,
+        path: CaptchaPath,
+        request: HttpRequest,
+        event: Event<'_>,
+    ) -> Step {
         let verdict = match event {
             Event::HttpData { data, eof } => match http_response::parse(data, eof) {
                 Response::Complete { status, body } => {
@@ -615,7 +648,10 @@ impl Machine {
                 Response::Incomplete => {
                     // The provider is still talking: the machine waits for the
                     // rest of the answer with the same parked request.
-                    self.continuation = Some(Continuation::Captcha { path });
+                    self.phase = MachinePhase::Waiting {
+                        next_index,
+                        continuation: Continuation::Captcha { path, request },
+                    };
                     return Step::Pending(Pending::HttpRequest);
                 }
             },
@@ -629,7 +665,7 @@ impl Machine {
 
     /// Anubis answered the auth check with a status line, or the check could
     /// not be completed.
-    fn resume_anubis(&mut self, event: Event<'_>) -> Step {
+    fn resume_anubis(&mut self, next_index: usize, event: Event<'_>) -> Step {
         let conf = self.conf.get_mut();
         let status = match event {
             Event::HttpStatus(status) => status,
@@ -637,7 +673,7 @@ impl Machine {
         };
 
         if (200..300).contains(&status) {
-            return self.step();
+            return self.run_from(next_index);
         }
 
         if matches!(status, 401 | 307) {
@@ -648,8 +684,7 @@ impl Machine {
             self.meta.general_log = true;
             self.meta.blocked = true;
             self.decision = Some(Decision::redirect(307, location));
-            self.checked = true;
-            return Step::Decision(self.finish());
+            return self.finish(true);
         }
 
         if status == 403 {
@@ -662,8 +697,7 @@ impl Machine {
             } else {
                 Decision::page(403, Rc::clone(&conf.block_page))
             });
-            self.checked = true;
-            return Step::Decision(self.finish());
+            return self.finish(true);
         }
 
         self.meta.rule_type = b"ANUBIS".to_vec();
@@ -672,12 +706,11 @@ impl Machine {
         if conf.anubis.on_error.unwrap_or(AnubisErrorPolicy::Allow) == AnubisErrorPolicy::Deny {
             self.meta.blocked = true;
             self.decision = Some(Decision::status(503));
-            self.checked = true;
-            return Step::Decision(self.finish());
+            return self.finish(true);
         }
 
         self.decision = None;
-        self.step()
+        self.run_from(next_index)
     }
 
     /// Apply the verdict of one captcha attempt.
@@ -698,11 +731,10 @@ impl Machine {
             debug_assert!(matches!(result, CheckResult::Matched));
         }
         self.decision = decision;
-        self.checked = true;
-        Step::Decision(self.finish())
+        self.finish(true)
     }
 
-    fn resume_verify_bot(&mut self, bot: BotId, event: Event<'_>) -> Step {
+    fn resume_verify_bot(&mut self, next_index: usize, bot: BotId, event: Event<'_>) -> Step {
         let conf = self.conf.get_mut();
         let name = match event {
             Event::ResolvedName(name) => name,
@@ -732,8 +764,7 @@ impl Machine {
             self.meta.rule_details = details.to_vec();
             self.meta.general_log = true;
             self.decision = Some(Decision::allow());
-            self.checked = true;
-            return Step::Decision(self.finish());
+            return self.finish(true);
         }
 
         // A user agent that claims to be a crawler whose address does not
@@ -755,19 +786,19 @@ impl Machine {
             };
             state.apply_policy(policy);
             self.decision = decision;
-            self.checked = true;
-            return Step::Decision(self.finish());
+            return self.finish(true);
         }
 
         self.decision = None;
-        self.step()
+        self.run_from(next_index)
     }
 
     /// The outcome of a request that no longer needs to be inspected.
-    fn finish(&mut self) -> Outcome {
+    fn finish(&mut self, checked: bool) -> Step {
+        self.phase = MachinePhase::Done;
         let conf = self.conf.get();
         let spend = self.start.elapsed().as_secs_f64() * 1000.0;
-        let mut outcome = resolve(conf, &self.meta, &mut self.decision, spend, self.checked);
+        let mut outcome = resolve(conf, &self.meta, &mut self.decision, spend, checked);
 
         // In bypass mode the inspections still run (so `$waf_*` and the log are
         // filled in) but nothing is blocked and no content handler is
@@ -780,7 +811,7 @@ impl Machine {
             outcome.retry_after = -1;
         }
 
-        outcome
+        Step::Decision(outcome)
     }
 }
 
@@ -811,18 +842,8 @@ fn run_checks(
             CheckResult::Matched => return RunResult::Finished,
             CheckResult::Suspend(continuation) => {
                 return RunResult::Suspend {
-                    index,
+                    next_index: index,
                     continuation,
-                }
-            }
-            CheckResult::Fetch {
-                continuation,
-                request,
-            } => {
-                return RunResult::Fetch {
-                    index,
-                    continuation,
-                    request,
                 }
             }
             CheckResult::NotMatched => *state.decision = None,
@@ -842,18 +863,8 @@ fn run_checks(
             CheckResult::Matched => return RunResult::Finished,
             CheckResult::Suspend(continuation) => {
                 return RunResult::Suspend {
-                    index: index + offset + 1,
+                    next_index: index + offset + 1,
                     continuation,
-                }
-            }
-            CheckResult::Fetch {
-                continuation,
-                request,
-            } => {
-                return RunResult::Fetch {
-                    index: index + offset + 1,
-                    continuation,
-                    request,
                 }
             }
             CheckResult::NotMatched => {
@@ -869,21 +880,15 @@ fn run_checks(
 enum RunResult {
     Finished,
     Suspend {
-        index: usize,
+        next_index: usize,
         continuation: Continuation,
-    },
-    Fetch {
-        index: usize,
-        continuation: Continuation,
-        request: HttpRequest,
     },
 }
 
-/// Inspect a request that never needs the event loop.  Only the tests use this,
-/// the C side always drives `Machine` through the FFI.
+/// Build a machine from the test-side request type.
 #[cfg(test)]
-pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
-    let mut machine = Machine::new(
+pub fn machine_for_test(conf: &mut LocationConfiguration, req: &Request<'_>) -> Machine {
+    Machine::new(
         NonNull::from(conf),
         RawRequestView {
             ip: RawStringView {
@@ -922,7 +927,13 @@ pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
         },
         req.cookies.to_vec(),
         true,
-    );
+    )
+}
+
+/// Inspect a request that never needs the event loop.
+#[cfg(test)]
+pub fn check(conf: &mut LocationConfiguration, req: &Request) -> Outcome {
+    let mut machine = machine_for_test(conf, req);
     match machine.step() {
         Step::Decision(outcome) => outcome,
         // Nothing in the tests parks a request; a parked step means the caller
