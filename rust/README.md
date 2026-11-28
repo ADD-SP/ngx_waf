@@ -44,7 +44,8 @@ configuration, so an unreadable or invalid rule file aborts startup.
 | `src/abi.rs` | the `#[repr(C)]` vocabulary shared with the C glue |
 | `src/ffi.rs` | the exported C entry points and panic guards |
 | `src/config.rs` | directive parsing, validation, defaults and inheritance |
-| `src/check.rs` | the request machine and the five-inspection priority chain |
+| `src/check.rs` | the request machine, priority chain and response resolution |
+| `src/check/` | the per-inspection checks, shared cookie support and grouped tests |
 | `src/modsecurity.rs` | libmodsecurity bindings and transaction lifetime |
 | `src/cc.rs` | CC counters kept in a shared memory zone |
 | `src/action.rs` | CAPTCHA challenge entries kept in shared memory |
