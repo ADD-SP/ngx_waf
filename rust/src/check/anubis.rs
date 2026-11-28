@@ -28,14 +28,13 @@ pub(super) fn check_anubis(state: &mut State) -> CheckResult {
     url.extend_from_slice(ANUBIS_RESERVED_PATH);
     url.extend_from_slice(ANUBIS_CHECK_PATH);
 
-    CheckResult::Fetch {
-        continuation: Continuation::Anubis,
+    CheckResult::Suspend(Continuation::Anubis {
         request: HttpRequest {
             url: String::from_utf8_lossy(&url).into_owned(),
             body: Vec::new(),
             kind: HttpRequestKind::Anubis,
         },
-    }
+    })
 }
 
 /// Apply the configured policy to an auth check that could not produce a

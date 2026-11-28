@@ -61,6 +61,24 @@ fn verify_bot_suspends_for_a_crawler_user_agent() {
 }
 
 #[test]
+fn verify_bot_wait_has_no_http_request_and_rejects_step() {
+    let mut conf = verify_bot_conf("strict");
+    let mut machine = machine_for_user_agent(&mut conf, b"Googlebot");
+    assert!(matches!(
+        machine.step(),
+        Step::Pending(Pending::ResolveAddr)
+    ));
+    assert!(machine.fetch().is_none());
+    assert!(matches!(machine.step(), Step::InternalError));
+
+    // The rejected step did not consume the waiting continuation.
+    assert!(matches!(
+        machine.resume(Event::ResolvedName(b"example.com")),
+        Step::Decision(_)
+    ));
+}
+
+#[test]
 fn verify_bot_ignores_an_unrelated_user_agent() {
     let mut conf = verify_bot_conf("strict");
     let mut machine = machine_for_user_agent(&mut conf, b"curl/8.0");

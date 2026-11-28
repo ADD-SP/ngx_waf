@@ -52,6 +52,36 @@ fn request<'a>(uri: &'a [u8], cookies: &'a [Vec<u8>]) -> Request<'a> {
 }
 
 #[test]
+fn resume_before_step_is_an_internal_error() {
+    let mut conf = active_conf();
+    let cookies = Vec::new();
+    let req = request(b"/", &cookies);
+    let mut machine = machine_for_test(&mut conf, &req);
+
+    assert!(matches!(
+        machine.resume(Event::ResolveFailed),
+        Step::InternalError
+    ));
+    // The invalid call did not consume the ready state.
+    assert!(matches!(machine.step(), Step::Decision(_)));
+}
+
+#[test]
+fn step_and_resume_after_a_decision_are_internal_errors() {
+    let mut conf = active_conf();
+    let cookies = Vec::new();
+    let req = request(b"/", &cookies);
+    let mut machine = machine_for_test(&mut conf, &req);
+
+    assert!(matches!(machine.step(), Step::Decision(_)));
+    assert!(matches!(machine.step(), Step::InternalError));
+    assert!(matches!(
+        machine.resume(Event::ResolveFailed),
+        Step::InternalError
+    ));
+}
+
+#[test]
 fn disabled_waf_does_not_check() {
     let mut conf = active_conf();
     conf.waf = Some(WafSwitch::Off);
